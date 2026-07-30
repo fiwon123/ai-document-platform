@@ -23,7 +23,13 @@
   // Configure tool-specific properties.
   "customizations": {
     "vscode": {
-      "extensions": ["GitHub.copilot", "ms-python.python", "charliermarsh.ruff"]
+      "extensions": [
+        "GitHub.copilot",
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "redhat.vscode-yaml",
+        "tamasfe.even-better-toml"
+      ]
     }
   }
 
