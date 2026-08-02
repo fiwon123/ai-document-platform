@@ -1,8 +1,10 @@
-import enum  # noqa: I001
+import enum
 from datetime import datetime
 from uuid import uuid4
+
 from sqlalchemy import DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column
+
 from ..database import Base
 
 
