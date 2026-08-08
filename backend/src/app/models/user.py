@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import Column, DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -16,11 +16,11 @@ class Role(enum.Enum):
 class UserDB(Base):
     __tablename__ = "users"
 
-    id: Mapped[uuid4] = mapped_column(primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     username: Mapped[str] = mapped_column(nullable=False, unique=True)
     hashed_password: Mapped[str] = mapped_column(nullable=False)
-    is_active: Mapped[bool] = Mapped[str](default=True)
-    role: Mapped[enum.Enum] = mapped_column(
+    is_active: Mapped[bool] = mapped_column(default=True)
+    role: Mapped[Role] = mapped_column(
         default=Role.customer, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -28,5 +28,8 @@ class UserDB(Base):
         server_onupdate=func.now(),
         nullable=False,
     )
-    created_at = Column(DateTime(timezone=True),
-                        server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )

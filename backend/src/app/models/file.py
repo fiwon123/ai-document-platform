@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -17,8 +17,8 @@ class Status(enum.Enum):
 class File(Base):
     __tablename__ = "files"
 
-    id: Mapped[uuid4] = mapped_column(primary_key=True,  default=uuid4)
-    user_id: Mapped[uuid4] = mapped_column(
+    id: Mapped[UUID] = mapped_column(primary_key=True,  default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
         ForeignKey("users.id"), default=None)
     filename: Mapped[str] = mapped_column(nullable=False)
     file_path = Mapped[str] = mapped_column(nullable=False)
@@ -31,5 +31,7 @@ class File(Base):
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
