@@ -17,7 +17,7 @@ class Status(enum.Enum):
 class File(Base):
     __tablename__ = "files"
 
-    id: Mapped[uuid4] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[uuid4] = mapped_column(primary_key=True,  default=uuid4)
     user_id: Mapped[uuid4] = mapped_column(
         ForeignKey("users.id"), default=None)
     filename: Mapped[str] = mapped_column(nullable=False)
