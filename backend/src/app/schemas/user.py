@@ -1,4 +1,3 @@
-import re
 from datetime import datetime
 from uuid import UUID
 
@@ -27,6 +26,12 @@ class CreateUserRequest(BaseModel):
             }
         }
     }
+
+
+class UserListResponse(BaseModel):
+    users: datetime | None
+
+    model_config = {"from_attributes": True}
 
 
 class UserResponse(BaseModel):
