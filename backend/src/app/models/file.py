@@ -14,7 +14,7 @@ class Status(enum.Enum):
     failed = "failed"
 
 
-class File(Base):
+class FileDB(Base):
     __tablename__ = "files"
 
     id: Mapped[UUID] = mapped_column(primary_key=True,  default=uuid4)
