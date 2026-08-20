@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from passlib.context import CryptContext
 
 from ..repositories.user import UserRepository
@@ -20,7 +22,7 @@ class UserService:
 
         return result
 
-    def get_by_id(self, id: int):
+    def get_by_id(self, id: UUID):
         user = self.repo.get_by_id(id)
 
         return user
@@ -28,10 +30,10 @@ class UserService:
     def create(self, username: str, password: str):
         return self.repo.create(username, self.crypt_context.hash(password))
 
-    async def update(self, id: int, data: dict):
+    async def update(self, id: UUID, data: dict):
         return self.repo.update(id, data)
 
-    def delete(self, id: int):
+    def delete(self, id: UUID):
         return self.repo.delete(
             id,
         )
