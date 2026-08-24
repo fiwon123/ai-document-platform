@@ -1,0 +1,27 @@
+{
+  "name": "Full Stack (Frontend + Backend)",
+  "dockerComposeFile": ["docker-compose.yaml"],
+  "service": "backend",
+  "runServices": ["backend", "frontend"],
+  "workspaceFolder": "/workspaces/myproject",
+  "features": {
+    "ghcr.io/va-h/devcontainers-features/uv:1": {},
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "configureZshAsDefaultShell": true
+    }
+  },
+  "forwardPorts": [8000, 5173],
+  "postCreateCommand": "cd backend && uv sync && cd ../frontend && npm install",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "GitHub.copilot",
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "oxc.oxc-vscode",
+        "redhat.vscode-yaml",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  }
+}

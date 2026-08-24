@@ -1,0 +1,16 @@
+services:
+  backend:
+    image: mcr.microsoft.com/devcontainers/python:3.12-trixie
+    volumes:
+      - ../:/workspaces/myproject:cached
+    command: sleep infinity
+    ports:
+      - "8000:8000"
+
+  frontend:
+    image: mcr.microsoft.com/devcontainers/typescript-node:20
+    volumes:
+      - ../:/workspaces/myproject:cached
+    command: sleep infinity
+    ports:
+      - "5173:5173"
