@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.models.file import Status
+from app.models.document import Status
 
 
 class CreateFileRequest(BaseModel):
@@ -13,7 +13,6 @@ class CreateFileRequest(BaseModel):
 
 class UpdateFileRequest(BaseModel):
     filename: str
-    file_path: str
     status: Status
 
 
