@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 
-from .routes import files
+from .routes import document
 
 app = FastAPI()
 
 v1 = FastAPI()
 
-v1.add_route(files.router)
+v1.include_router(document.router)
 
 
 @app.get("/")

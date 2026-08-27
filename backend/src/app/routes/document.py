@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database.db import get_db
 from app.repositories.document import DocumentRepository
+from app.schemas.document import FileResponse
 from app.services.document import DocumentService
 from app.storage.storage import storage
 
@@ -41,6 +42,7 @@ def get_document_service(
 @router.post(
     "/",
     status_code=status.HTTP_201_CREATED,
+    response_model=FileResponse,
 )
 def upload_document(
     upload_file: Annotated[UploadFile, File(...)],
@@ -57,7 +59,7 @@ def upload_document(
     )
 
 
-@router.get("/{document_id}")
+@router.get("/{document_id}", response_model=FileResponse)
 def get_document(
     document_id: UUID,
     service: Annotated[
