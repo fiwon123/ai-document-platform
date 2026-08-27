@@ -9,8 +9,7 @@
     "ghcr.io/devcontainers/features/common-utils:2": {},
     "ghcr.io/devcontainers/features/node:1": {
       "version": "22"
-    },
-    "ghcr.io/devcontainers/features/node:2": {}
+    }
   },
   "forwardPorts": [8000, 5173],
   "postCreateCommand": "cd backend && uv sync && cd ../frontend && npm install",
