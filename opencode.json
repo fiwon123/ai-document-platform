@@ -1,0 +1,119 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode/big-pickle",
+  "instructions": ["AGENTS.md", ".opencode/instructions/*.md"],
+  "agent": {
+    "build": {
+      "mode": "primary",
+      "model": "opencode/big-pickle",
+      "prompt": "You are a senior full-stack developer. You implement features, fix bugs, and refactor code across backend (Python/FastAPI) and frontend (React/TypeScript). Always follow existing patterns, run tests before committing, and use conventional commits.",
+      "permission": {
+        "edit": "allow",
+        "bash": {
+          "*": "ask",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git branch*": "allow",
+          "docker compose ps*": "allow",
+          "docker compose logs*": "allow"
+        }
+      }
+    },
+    "plan": {
+      "mode": "primary",
+      "model": "opencode/mimo-v2.5-free",
+      "prompt": "You are a software architect. Analyze requirements, explore the codebase, and create detailed implementation plans. Do not make any changes. Output: Goal, Files to modify, Dependencies, Risks, Steps.",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "git log*": "allow",
+          "git diff*": "allow",
+          "docker compose ps*": "allow",
+          "ls*": "allow"
+        },
+        "skill": {
+          "*": "allow"
+        }
+      }
+    },
+    "backend": {
+      "description": "Implements backend routes, services, database changes, and storage logic",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "backend/**": "allow",
+          "*.py": "allow",
+          "migrations/**": "allow"
+        },
+        "bash": {
+          "*": "ask",
+          "cd backend*": "allow",
+          "uv run*": "allow",
+          "uv sync*": "allow",
+          "python*": "allow",
+          "docker compose exec backend*": "allow"
+        }
+      }
+    },
+    "frontend": {
+      "description": "Implements UI components, pages, hooks, and client-side behavior",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "frontend/**": "allow",
+          "*.tsx": "allow",
+          "*.ts": "allow"
+        },
+        "bash": {
+          "*": "ask",
+          "cd frontend*": "allow",
+          "npm*": "allow",
+          "npx*": "allow"
+        }
+      }
+    },
+    "tester": {
+      "description": "Writes and runs tests for backend and frontend",
+      "mode": "subagent",
+      "model": "opencode/nemotron-3.5-lightning-free",
+      "permission": {
+        "edit": {
+          "**/test*": "allow",
+          "**/*_test*": "allow",
+          "**/*.test.*": "allow",
+          "**/*.spec.*": "allow",
+          "conftest.py": "allow",
+          "pytest.ini": "allow",
+          "vitest.config.*": "allow",
+          "jest.config.*": "allow"
+        },
+        "bash": {
+          "*": "ask",
+          "cd backend* && uv run pytest*": "allow",
+          "cd frontend* && npm test*": "allow",
+          "npm run lint*": "allow",
+          "npm run build*": "allow"
+        }
+      }
+    },
+    "reviewer": {
+      "description": "Reviews code for bugs, security issues, and regressions without editing",
+      "mode": "subagent",
+      "model": "opencode/muse-spark-1.3-contributor-free",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "grep *": "allow"
+        },
+        "skill": {
+          "*": "allow"
+        }
+      }
+    }
+  }
+}

@@ -214,3 +214,30 @@ If the user explicitly permits reading environment configuration:
 5. If a file contains both safe and secret variables, read only the explicitly approved safe variables.
 6. Never include secret values in the final answer. Refer to them only by variable name, for example, `STRIPE_SECRET_KEY is configured`.
 7. Prefer checking whether a variable exists rather than printing its value.
+
+## Development Workflow
+
+### Git Workflow
+
+- Work only in feature branches
+- Never push directly to main
+- Follow branch naming: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`
+- Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`
+- Run tests before opening a PR
+- Do NOT merge pull requests unless explicitly instructed
+
+### Agents
+
+- **build** (primary): Full development work with all tools enabled
+- **plan** (primary): Analysis and planning without making changes
+- **planner** (subagent): Creates implementation plans, explores codebase
+- **backend** (subagent): Implements routes, services, database changes
+- **frontend** (subagent): Implements UI components and client-side behavior
+- **tester** (subagent): Writes and runs tests
+- **reviewer** (subagent): Reviews code for bugs, security, and regressions
+
+### Skills
+
+- `api-design`: Load when working on routes or endpoints
+- `docker-dev`: Load when working with Docker containers
+- `github-workflow`: Load for git operations and PR conventions
