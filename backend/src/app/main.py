@@ -1,16 +1,17 @@
 from fastapi import FastAPI
 
-from .routes import document
+from .routes import document, health
 
 app = FastAPI()
 
 v1 = FastAPI()
 
 v1.include_router(document.router)
+v1.include_router(health.router)
 
 
 @app.get("/")
-def heath():
+def health():
     return {"msg": "backend live on!"}
 
 

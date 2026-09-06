@@ -71,7 +71,9 @@ frontend/ # React 19, Vite 8, TypeScript
 cd backend
 uv sync              # Install dependencies
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-````
+uv run alembic upgrade head  # Run database migrations
+uv run alembic revision --autogenerate -m "description"  # Create new migration
+```
 
 ### Frontend (Node 22)
 
@@ -84,6 +86,26 @@ npm run lint         # Run oxlint
 npm run lint:fix     # Auto-fix lint issues
 ```
 
+### Docker Compose (Full Stack)
+
+```bash
+# Start all services (PostgreSQL, Redis, MinIO, Backend, Frontend)
+docker compose up -d
+
+# Start only infrastructure services
+docker compose up -d postgres redis minio
+
+# View logs
+docker compose logs -f backend
+docker compose logs -f postgres
+
+# Stop all services
+docker compose down
+
+# Stop and remove volumes (clean slate)
+docker compose down -v
+```
+
 ## Architecture
 
 ### Backend Layering
@@ -94,12 +116,21 @@ npm run lint:fix     # Auto-fix lint issues
 - **Models** (`backend/src/app/models/`): SQLAlchemy ORM models
 - **Schemas** (`backend/src/app/schemas/`): Pydantic request/response models
 - **Storage** (`backend/src/app/storage/`): MinIO/S3 client (boto3)
+- **Cache** (`backend/src/app/cache/`): Redis client for caching
 
 ### API Routing
 
 - Frontend proxies `/v1/*` to backend (`vite.config.ts:8`)
 - Backend mounts all routes under `/v1` (`backend/src/app/main.py:17`)
 - Document CRUD: `POST /v1/documents/`, `GET /v1/documents/{id}`, `DELETE /v1/documents/{id}`
+- Health check: `GET /v1/health` (checks PostgreSQL, Redis, MinIO)
+
+### Infrastructure Services
+
+- **PostgreSQL** (port 5432): Primary database
+- **Redis** (port 6379): Caching layer
+- **MinIO** (ports 9000/9001): S3-compatible object storage
+  - Console: http://localhost:9001 (minioadmin/minioadmin)
 
 ### Dev Container
 
@@ -110,9 +141,23 @@ npm run lint:fix     # Auto-fix lint issues
 ## Environment Variables
 
 Backend reads from `backend/src/app/.env` (gitignored):
-
 - `POSTGRES_*`: Database connection (defaults: `localhost:5432/mydb`)
+- `REDIS_*`: Redis connection (defaults: `localhost:6379`)
 - `MINIO_*`: S3-compatible storage (defaults: `localhost:9000`, bucket: `documents`)
+- `DATABASE_URL`: Full PostgreSQL URL (used by Alembic)
+- `SECRET_KEY`: JWT signing key (required)
+- `ALGORITHM`: JWT algorithm (default: HS256)
+
+## Database Migrations
+
+Alembic manages database schema changes:
+```bash
+cd backend
+uv run alembic upgrade head  # Apply all migrations
+uv run alembic revision --autogenerate -m "add feature"  # Create migration
+uv run alembic history  # View migration history
+uv run alembic current  # View current revision
+```
 
 ## Key Conventions
 
@@ -121,6 +166,8 @@ Backend reads from `backend/src/app/.env` (gitignored):
 - No test suite present
 - No CI/CD workflows configured
 - Auth is stubbed: `get_current_user_id()` returns hardcoded UUID
+- Database uses UUID primary keys for all models
+- MinIO objects stored at: `users/{owner_id}/documents/{document_id}/{filename}`
 
 ## Environment and secret-file rules
 

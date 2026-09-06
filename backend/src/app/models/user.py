@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from ..database import Base
+from app.database import Base
 
 
 class Role(enum.Enum):
