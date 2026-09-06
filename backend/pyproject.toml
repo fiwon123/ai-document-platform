@@ -1,7 +1,7 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI Document Intelligence Platform Backend"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -9,10 +9,13 @@ dependencies = [
     "boto3>=1.43.68",
     "fastapi[standard]>=0.140.13",
     "passlib>=1.7.4",
+    "pgvector>=0.3.6",
     "psycopg2-binary>=2.9.12",
+    "PyPDF2>=3.0.0",
     "python-jose[cryptography]>=3.5.0",
     "redis>=5.0.0",
     "sqlalchemy>=2.0.51",
+    "openai>=1.0.0",
 ]
 
 [build-system]

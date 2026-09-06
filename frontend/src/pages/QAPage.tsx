@@ -1,0 +1,124 @@
+import { useState } from "react";
+import { qa } from "../services/api";
+import type { QAResponse, SearchResult } from "../types";
+
+interface Message {
+  id: string;
+  type: "user" | "assistant";
+  content: string;
+  sources?: SearchResult[];
+}
+
+export function QAPage() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      type: "user",
+      content: input,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response: QAResponse = await qa.ask(input);
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        type: "assistant",
+        content: response.answer,
+        sources: response.sources,
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to get answer");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return (
+    <div className="page qa-page">
+      <header className="page-header">
+        <h1>Document Q&A</h1>
+        <p>Ask questions about your documents and get AI-powered answers</p>
+      </header>
+
+      <div className="chat-container">
+        <div className="chat-messages">
+          {messages.length === 0 && (
+            <div className="empty-state">
+              <p>Ask a question about your documents to get started.</p>
+            </div>
+          )}
+
+          {messages.map((message) => (
+            <div key={message.id} className={`chat-message ${message.type}`}>
+              <div className="message-avatar">
+                {message.type === "user" ? "U" : "AI"}
+              </div>
+              <div className="message-content">
+                <p>{message.content}</p>
+                {message.sources && message.sources.length > 0 && (
+                  <div className="message-sources">
+                    <strong>Sources:</strong>
+                    {message.sources.map((source) => (
+                      <div key={source.chunk_id} className="source-item">
+                        <span className="source-document">
+                          {source.document_filename}
+                        </span>
+                        <span className="source-preview">
+                          {source.content.substring(0, 100)}...
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {isLoading && (
+            <div className="chat-message assistant">
+              <div className="message-avatar">AI</div>
+              <div className="message-content">
+                <p className="typing">Thinking...</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {error && <p className="error-message">{error}</p>}
+
+        <form onSubmit={handleSubmit} className="chat-input-form">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask a question about your documents..."
+            className="chat-input"
+            disabled={isLoading}
+          />
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={isLoading || !input.trim()}
+          >
+            Send
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}

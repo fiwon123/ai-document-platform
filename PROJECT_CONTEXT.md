@@ -66,3 +66,278 @@ Background Document Processor
   ↓
 LLM and Embedding APIs
 ```
+
+## Project structure
+
+```
+├── backend/                    # FastAPI application
+│   ├── src/app/               # Application source code
+│   │   ├── main.py            # FastAPI app entry point
+│   │   ├── models/            # SQLAlchemy ORM models
+│   │   │   ├── __init__.py    # Model exports
+│   │   │   ├── user.py        # UserDB model
+│   │   │   ├── document.py    # DocumentDB model
+│   │   │   ├── chunk.py       # DocumentChunk model
+│   │   │   └── search.py      # SearchHistory model
+│   │   ├── routes/            # API route handlers
+│   │   │   ├── __init__.py    # Route exports
+│   │   │   ├── auth.py        # Authentication routes
+│   │   │   ├── document.py    # Document routes
+│   │   │   ├── search.py      # Search routes
+│   │   │   ├── qa.py          # Q&A routes
+│   │   │   └── health.py      # Health check routes
+│   │   ├── schemas/           # Pydantic request/response models
+│   │   │   ├── __init__.py    # Schema exports
+│   │   │   ├── user.py        # User schemas
+│   │   │   └── document.py    # Document/Search/QA schemas
+│   │   ├── services/          # Business logic layer
+│   │   │   ├── __init__.py    # Service exports
+│   │   │   ├── user.py        # User service
+│   │   │   ├── document.py    # Document service
+│   │   │   ├── search.py      # Search service
+│   │   │   ├── qa.py          # Q&A service
+│   │   │   ├── embedding.py   # Embedding generation
+│   │   │   ├── text_extraction.py  # Text extraction
+│   │   │   └── chunking.py    # Text chunking
+│   │   ├── repositories/      # Database query layer
+│   │   │   ├── __init__.py    # Repository exports
+│   │   │   ├── user.py        # User repository
+│   │   │   ├── document.py    # Document repository
+│   │   │   └── search.py      # Search repository
+│   │   ├── storage/           # MinIO/S3 client
+│   │   │   ├── __init__.py    # Storage exports
+│   │   │   └── storage.py     # MinioStorage class
+│   │   ├── cache/             # Redis client
+│   │   │   ├── __init__.py    # Cache exports
+│   │   │   └── redis.py       # RedisClient class
+│   │   ├── middleware/         # FastAPI middleware
+│   │   │   ├── __init__.py    # Middleware exports
+│   │   │   ├── rate_limit.py  # Rate limiting
+│   │   │   └── logging.py     # Request logging
+│   │   └── worker/            # Background job processing
+│   │       └── __init__.py    # Worker implementation
+│   ├── migrations/            # Alembic migrations
+│   │   ├── env.py             # Migration environment
+│   │   └── versions/          # Migration versions
+│   │       ├── 001_initial_migration.py
+│   │       └── 002_add_chunks_search_pgvector.py
+│   └── pyproject.toml         # Python dependencies (uv)
+├── frontend/                   # React application
+│   ├── src/                   # Source code
+│   │   ├── components/        # React components
+│   │   │   ├── Navbar.tsx     # Navigation bar
+│   │   │   └── ProtectedRoute.tsx  # Auth route guard
+│   │   ├── pages/             # Page components
+│   │   │   ├── LoginPage.tsx  # Login page
+│   │   │   ├── RegisterPage.tsx  # Registration page
+│   │   │   ├── DocumentsPage.tsx  # Document management
+│   │   │   ├── SearchPage.tsx # Search page
+│   │   │   └── QAPage.tsx     # Q&A chat interface
+│   │   ├── hooks/             # Custom React hooks
+│   │   │   └── useAuth.tsx    # Authentication hook
+│   │   ├── services/          # API client functions
+│   │   │   └── api.ts         # API client
+│   │   ├── types/             # TypeScript type definitions
+│   │   │   └── index.ts       # Type exports
+│   │   ├── App.tsx            # Main app with routing
+│   │   ├── App.css            # Global styles
+│   │   ├── index.css          # Base styles
+│   │   └── main.tsx           # Entry point
+│   ├── index.html             # HTML entry point
+│   ├── vite.config.ts         # Vite configuration
+│   ├── tsconfig.json          # TypeScript configuration
+│   └── package.json           # Node.js dependencies
+├── docker-compose.yml         # Docker Compose configuration
+├── .devcontainer/             # Dev Container setup
+└── AGENTS.md                  # Development guidelines
+```
+
+## Database models
+
+### User
+- `id`: UUID primary key
+- `username`: unique username
+- `hashed_password`: bcrypt hashed password
+- `is_active`: account status flag
+- `role`: user role (customer/admin)
+- `created_at`: registration timestamp
+- `updated_at`: last update timestamp
+
+### Document
+- `id`: UUID primary key
+- `owner_id`: UUID (user who owns the document)
+- `filename`: original filename
+- `object_key`: MinIO storage path (unique)
+- `mime_type`: MIME type
+- `status`: processing status (pending/processing/ready/failed)
+- `error_message`: error details if processing failed
+- `created_at`: upload timestamp
+- `updated_at`: last update timestamp
+
+### DocumentChunk
+- `id`: UUID primary key
+- `document_id`: foreign key to Document
+- `content`: extracted text content
+- `chunk_index`: position in document
+- `embedding`: vector embedding (1536 dimensions for OpenAI)
+- `metadata`: JSON metadata (page number, section, etc.)
+- `created_at`: creation timestamp
+
+### SearchHistory
+- `id`: UUID primary key
+- `user_id`: UUID of the user who performed the search
+- `query`: search query text
+- `results_count`: number of results returned
+- `created_at`: search timestamp
+
+## API endpoints
+
+### Authentication
+- `POST /v1/auth/register` - User registration
+- `POST /v1/auth/login` - User login (OAuth2 form)
+- `GET /v1/auth/me` - Get current user profile
+
+### Documents
+- `POST /v1/documents/` - Upload document
+- `GET /v1/documents/` - List user documents
+- `GET /v1/documents/{id}` - Get document details
+- `GET /v1/documents/{id}/download` - Get presigned download URL
+- `DELETE /v1/documents/{id}` - Delete document
+
+### Search
+- `POST /v1/search/` - Semantic search
+
+### Question Answering
+- `POST /v1/qa/ask` - Ask question about documents
+
+### Health
+- `GET /v1/health` - Health check endpoint
+
+## Environment configuration
+
+### Backend (backend/src/app/.env)
+- `POSTGRES_DB`: Database name (default: mydb)
+- `POSTGRES_USER`: Database user (default: postgres)
+- `POSTGRES_PASSWORD`: Database password
+- `POSTGRES_HOST`: Database host (default: localhost)
+- `POSTGRES_PORT`: Database port (default: 5432)
+- `DATABASE_URL`: Full PostgreSQL connection string (used by Alembic)
+- `REDIS_HOST`: Redis hostname (default: localhost)
+- `REDIS_PORT`: Redis port (default: 6379)
+- `MINIO_ENDPOINT`: MinIO endpoint (default: localhost:9000)
+- `MINIO_ACCESS_KEY`: MinIO access key (default: minioadmin)
+- `MINIO_SECRET_KEY`: MinIO secret key (default: minioadmin)
+- `MINIO_BUCKET`: Bucket name (default: documents)
+- `SECRET_KEY`: JWT signing key (required)
+- `ALGORITHM`: JWT algorithm (default: HS256)
+- `ACCESS_TOKEN_EXPIRE_MINUTES`: Token expiration (default: 30)
+- `OPENAI_API_KEY`: OpenAI API key (for embeddings/LLM)
+- `OPENAI_MODEL`: Model name (default: gpt-4)
+- `EMBEDDING_MODEL`: Embedding model (default: text-embedding-ada-002)
+- `RATE_LIMIT_REQUESTS`: Rate limit requests (default: 100)
+- `RATE_LIMIT_WINDOW`: Rate limit window in seconds (default: 60)
+
+### Frontend
+- No additional environment variables required (uses proxy)
+
+## Development workflow
+
+1. **Setup**: Start infrastructure with `docker compose up -d postgres redis minio`
+2. **Backend**: Run `uv run uvicorn app.main:app --reload` in backend directory
+3. **Frontend**: Run `npm run dev` in frontend directory
+4. **Migrations**: Use `uv run alembic upgrade head` to apply migrations
+5. **New migrations**: Use `uv run alembic revision --autogenerate -m "description"`
+
+## Key design decisions
+
+- **UUID primary keys**: Used for all models to prevent ID enumeration attacks
+- **Layered architecture**: Clear separation between routes, services, and repositories
+- **Async processing**: Document processing handled in background workers to avoid blocking API
+- **Vector embeddings**: Stored in PostgreSQL with pgvector for semantic search
+- **Object storage**: MinIO/S3 for document file storage with user isolation
+- **JWT authentication**: Stateless authentication with refresh tokens
+- **Pydantic schemas**: Strict request/response validation
+
+## Current implementation status
+
+### Completed
+- [x] Project structure and configuration
+- [x] Docker Compose setup
+- [x] FastAPI application skeleton
+- [x] SQLAlchemy models (User, Document, DocumentChunk, SearchHistory)
+- [x] Database migrations (Alembic)
+- [x] User authentication (JWT with registration and login)
+- [x] Document upload, list, download, and delete endpoints
+- [x] MinIO storage integration
+- [x] Document processing worker (background jobs)
+- [x] Text extraction service (PDF, text, JSON)
+- [x] Document chunking service
+- [x] Embedding generation service (OpenAI)
+- [x] Semantic search with pgvector
+- [x] Question answering with LLM
+- [x] Rate limiting middleware
+- [x] Logging middleware
+- [x] CORS configuration
+- [x] Frontend React app with routing
+- [x] Frontend auth pages (login/register)
+- [x] Frontend document management page
+- [x] Frontend search UI
+- [x] Frontend Q&A chat interface
+
+### In Progress
+- [ ] Testing suite
+- [ ] CI/CD pipeline
+
+### Planned
+- [ ] Advanced caching strategies
+- [ ] Document preview/thumbnails
+- [ ] Bulk document upload
+- [ ] Export search results
+- [ ] User admin dashboard
+
+## Contributing
+
+- Follow existing code style and patterns
+- Use type hints for Python code
+- Use TypeScript for frontend code
+- Write meaningful commit messages
+- Add tests for new features
+- Update documentation as needed
+
+## Running the application
+
+### Development
+
+1. Start infrastructure services:
+   ```bash
+   docker compose up -d postgres redis minio
+   ```
+
+2. Start backend:
+   ```bash
+   cd backend
+   uv sync
+   uv run alembic upgrade head
+   uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+3. Start frontend:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+### Docker Compose (Full Stack)
+
+```bash
+docker compose up -d
+```
+
+### Accessing services
+
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- API Documentation: http://localhost:8000/docs
+- MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
+
