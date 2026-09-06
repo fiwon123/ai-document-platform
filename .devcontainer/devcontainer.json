@@ -12,7 +12,7 @@
     }
   },
   "forwardPorts": [8000, 5173],
-  "postCreateCommand": "cd backend && uv sync && cd ../frontend && npm install",
+  "postCreateCommand": "npm install -g opencode-ai && cd backend && uv sync && cd ../frontend && npm install",
   "customizations": {
     "vscode": {
       "extensions": [
