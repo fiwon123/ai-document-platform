@@ -18,13 +18,13 @@
     "react-router-dom": "^7.6.1"
   },
   "devDependencies": {
-    "@types/node": "^24.13.2",
+    "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
-    "@vitejs/plugin-react": "^6.0.3",
-    "oxfmt": "^0.60.0",
-    "oxlint": "^1.75.0",
-    "typescript": "~6.0.2",
-    "vite": "^8.1.1"
+    "@vitejs/plugin-react": "^6.1.1",
+    "oxfmt": "^0.66.0",
+    "oxlint": "^1.81.0",
+    "typescript": "~7.0.2",
+    "vite": "^8.2.2"
   }
 }
