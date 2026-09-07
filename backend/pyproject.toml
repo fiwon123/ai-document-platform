@@ -15,7 +15,7 @@ dependencies = [
     "psycopg2-binary>=2.9.12",
     "PyPDF2>=3.0.0",
     "python-jose[cryptography]>=3.5.0",
-    "redis>=5.0.0",
+    "redis>=8.1.0",
     "sqlalchemy>=2.0.51",
     "openai>=1.0.0",
 ]
