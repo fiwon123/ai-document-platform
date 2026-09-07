@@ -1,17 +1,43 @@
 version: 2
 updates:
-  # Backend Python dependencies
+  # Backend Python dependencies (uv/pyproject.toml)
   - package-ecosystem: "pip"
     directory: "/backend"
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 5
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "python"
     commit-message:
       prefix: "deps"
+    # bcrypt is pinned to 4.0.1 for passlib 1.7.4 compatibility
+    # (passlib breaks with bcrypt>=4.1 due to removed bcrypt.__about__)
+    ignore:
+      - dependency-name: "bcrypt"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+    groups:
+      fastapi-core:
+        patterns:
+          - "fastapi"
+          - "sqlalchemy"
+          - "alembic"
+          - "psycopg2-binary"
+      ai:
+        patterns:
+          - "openai"
+          - "pgvector"
+      aws-storage:
+        patterns:
+          - "boto3"
+      parsing:
+        patterns:
+          - "PyPDF2"
 
   # Frontend npm dependencies
   - package-ecosystem: "npm"
@@ -19,12 +45,30 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 5
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "javascript"
     commit-message:
       prefix: "deps"
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "react-router-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      vite-tooling:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "typescript"
+          - "@types/node"
+          - "oxlint"
+          - "oxfmt"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -32,7 +76,9 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 3
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "ci"
