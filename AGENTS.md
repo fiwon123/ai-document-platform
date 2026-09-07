@@ -106,6 +106,37 @@ docker compose down
 docker compose down -v
 ```
 
+## Runtime Environment
+
+The AI agent (opencode) runs **inside a Dev Container**, not on a bare machine.
+
+### No docker CLI inside the container
+
+- `docker` and `docker compose` commands are **NOT available** inside the Dev Container
+- Infrastructure services (PostgreSQL, Redis, MinIO) run in separate containers on the host
+- They are reachable via forwarded ports on `localhost`
+
+### What the agent CAN do
+
+- Run backend commands: `uv`, `python`
+- Run frontend commands: `npm`, `npx`, `node`
+- Run git commands: `git`, `gh`
+- Access services at forwarded ports (see below)
+
+### Service ports (forwarded from host)
+
+- PostgreSQL: `localhost:5432`
+- Redis: `localhost:6379`
+- MinIO API: `localhost:9000` / Console: `localhost:9001`
+- Backend API: `localhost:8000`
+- Frontend Dev: `localhost:5173`
+
+### What the agent CANNOT do
+
+- Run `docker` or `docker compose` commands
+- Access the Docker socket
+- Modify the host filesystem (only `/workspace` is writable)
+
 ## Architecture
 
 ### Backend Layering
@@ -134,7 +165,7 @@ docker compose down -v
 
 ### Dev Container
 
-- Services run in Docker Compose: `backend` (Python 3.14) + `frontend` (Node 20)
+- Services run in Docker Compose: `backend` (Python 3.14) + `frontend` (Node 22)
 - Forwarded ports: 8000 (API), 5173 (Vite dev server)
 - Post-create: installs `opencode-ai` globally, syncs backend deps, installs frontend deps
 
@@ -163,9 +194,10 @@ uv run alembic current  # View current revision
 
 - Python package manager: **uv** (not pip/poetry)
 - Linting: **oxlint** (frontend), no backend linter configured
-- No test suite present
-- No CI/CD workflows configured
-- Auth is stubbed: `get_current_user_id()` returns hardcoded UUID
+- Test suite not yet written — see `.opencode/instructions/testing.md` for the plan
+- GitHub Actions CI runs lint + build on PRs (`.github/workflows/ci.yml`)
+- Dependabot groups dependency updates (`.github/dependabot.yml`)
+- Auth is fully implemented with JWT (register, login, me) — `backend/src/app/routes/auth.py`
 - Database uses UUID primary keys for all models
 - MinIO objects stored at: `users/{owner_id}/documents/{document_id}/{filename}`
 
@@ -221,16 +253,17 @@ If the user explicitly permits reading environment configuration:
 
 - Work only in feature branches
 - Never push directly to main
-- Follow branch naming: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`
-- Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`
+- Follow branch naming: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/`, `ci/`
+- Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `ci:`
 - Run tests before opening a PR
 - Do NOT merge pull requests unless explicitly instructed
 
 ### Agents
 
+Agent definitions live in `opencode.json` and `.opencode/agents/`:
+
 - **build** (primary): Full development work with all tools enabled
 - **plan** (primary): Analysis and planning without making changes
-- **planner** (subagent): Creates implementation plans, explores codebase
 - **backend** (subagent): Implements routes, services, database changes
 - **frontend** (subagent): Implements UI components and client-side behavior
 - **tester** (subagent): Writes and runs tests
