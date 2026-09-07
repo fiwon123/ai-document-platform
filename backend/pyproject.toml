@@ -5,9 +5,9 @@ description = "AI Document Intelligence Platform Backend"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "alembic>=1.14.0",
+    "alembic>=1.19.2",
     "boto3>=1.43.68",
-    "fastapi[standard]>=0.140.13",
+    "fastapi[standard]>=0.141.1",
     # Pinned: passlib 1.7.4 is incompatible with bcrypt>=4.1 (removed bcrypt.__about__)
     "bcrypt==4.0.1",
     "passlib>=1.7.4",
@@ -16,7 +16,7 @@ dependencies = [
     "PyPDF2>=3.0.0",
     "python-jose[cryptography]>=3.5.0",
     "redis>=5.0.0",
-    "sqlalchemy>=2.0.51",
+    "sqlalchemy>=2.0.52",
     "openai>=1.0.0",
 ]
 
