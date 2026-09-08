@@ -3,6 +3,7 @@ import { DocumentFilter } from "../components/DocumentFilter";
 import { qa } from "../services/api";
 import type { QAResponse, SearchResult } from "../types";
 import { Spinner } from "../components/Spinner";
+import { Markdown } from "../components/Markdown";
 
 interface Message {
   id: string;
@@ -77,7 +78,11 @@ export function QAPage() {
                 {message.type === "user" ? "U" : "AI"}
               </div>
               <div className="message-content">
-                <p>{message.content}</p>
+                {message.type === "assistant" ? (
+                  <Markdown>{message.content}</Markdown>
+                ) : (
+                  <p>{message.content}</p>
+                )}
                 {message.sources && message.sources.length > 0 && (
                   <div className="message-sources">
                     <strong>Sources:</strong>
