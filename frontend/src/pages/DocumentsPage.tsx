@@ -60,30 +60,41 @@ export function DocumentsPage() {
     return () => clearInterval(interval);
   }, [docs]);
 
-  async function uploadFile(file: File) {
+  /** Uploads one or more files sequentially; continues after individual failures. */
+  async function uploadFiles(files: File[]) {
+    if (files.length === 0) return;
+
     setIsUploading(true);
     setError(null);
+    let failed = 0;
 
-    try {
-      const doc = await documents.upload(file);
-      setDocs((prev) => [doc, ...prev]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setIsUploading(false);
+    for (const file of files) {
+      try {
+        const doc = await documents.upload(file);
+        setDocs((prev) => [doc, ...prev]);
+      } catch (err) {
+        failed += 1;
+        setError(
+          `Upload of "${file.name}" failed: ${
+            err instanceof Error ? err.message : "unknown error"
+          }`,
+        );
+      }
     }
+
+    setIsUploading(false);
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (file) void uploadFile(file);
+    const files = Array.from(event.target.files ?? []);
+    void uploadFiles(files);
   }
 
   function handleDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setIsDragging(false);
-    const file = event.dataTransfer.files[0];
-    if (file) void uploadFile(file);
+    const files = Array.from(event.dataTransfer.files);
+    void uploadFiles(files);
   }
 
   async function handleDelete(id: string) {
@@ -135,11 +146,18 @@ export function DocumentsPage() {
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
         >
-          <input type="file" onChange={handleFileChange} disabled={isUploading} />
+          <input
+            type="file"
+            multiple
+            onChange={handleFileChange}
+            disabled={isUploading}
+          />
           <span className="upload-symbol">+</span>
-          <strong>{isUploading ? "Uploading..." : "Drop a document here"}</strong>
-          <span>or choose a file from your device</span>
-          <small>PDF, TXT, JSON, CSV up to 25 MB</small>
+          <strong>
+            {isUploading ? "Uploading…" : "Drop documents here"}
+          </strong>
+          <span>or choose one or more files from your device</span>
+          <small>PDF, TXT, JSON, CSV up to 25 MB each</small>
         </label>
       </div>
 
