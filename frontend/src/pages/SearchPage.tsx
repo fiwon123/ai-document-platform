@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DocumentFilter } from "../components/DocumentFilter";
 import { search } from "../services/api";
 import type { SearchResult } from "../types";
 import { Spinner } from "../components/Spinner";
+
+const DEBOUNCE_MS = 300;
 
 export function SearchPage() {
   const [query, setQuery] = useState("");
@@ -11,23 +13,46 @@ export function SearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    if (!query.trim()) return;
-
+  async function runSearch(q: string, ids: string[]) {
+    if (!q.trim()) return;
     setIsLoading(true);
     setError(null);
     setHasSearched(true);
 
     try {
-      const response = await search.search(query, 5, selectedIds);
+      const response = await search.search(q, 5, ids);
       setResults(response.results);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
     } finally {
       setIsLoading(false);
     }
+  }
+
+  // Debounced auto-search as the user types or changes the document filter.
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      setHasSearched(false);
+      return;
+    }
+
+    debounceRef.current = setTimeout(() => {
+      void runSearch(query, selectedIds);
+    }, DEBOUNCE_MS);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, selectedIds]);
+
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    void runSearch(query, selectedIds);
   }
 
   return (
