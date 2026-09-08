@@ -38,6 +38,7 @@ export function QAPage() {
       const response: QAResponse = await qa.ask(
         input,
         selectedIds.length > 0 ? selectedIds : undefined,
+        localStorage.getItem("askdocs-model") ?? undefined,
       );
 
       const assistantMessage: Message = {
