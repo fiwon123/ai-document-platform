@@ -97,6 +97,20 @@ export function DocumentsPage() {
     }
   }
 
+  async function handleDownload(doc: Document) {
+    try {
+      const { download_url, filename } = await documents.getDownloadUrl(doc.id);
+      const link = document.createElement("a");
+      link.href = download_url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Download failed");
+    }
+  }
+
   const statusColors: Record<string, string> = {
     pending: "#f59e0b",
     processing: "#3b82f6",
@@ -170,6 +184,13 @@ export function DocumentsPage() {
                 </p>
               </div>
               <div className="document-card-footer">
+                <button
+                  onClick={() => handleDownload(doc)}
+                  disabled={doc.status !== "ready"}
+                  className="btn btn-secondary"
+                >
+                  Download
+                </button>
                 <button
                   onClick={() => handleDelete(doc.id)}
                   className="btn btn-danger"
