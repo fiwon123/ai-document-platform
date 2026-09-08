@@ -3,6 +3,7 @@ import type { ChangeEvent, DragEvent } from "react";
 import { documents } from "../services/api";
 import type { Document, DocumentStatusResponse } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
+import { useToast } from "../context/ToastContext";
 
 /** How often to re-check documents that are still processing. */
 const POLL_INTERVAL_MS = 3000;
@@ -17,6 +18,7 @@ export function DocumentsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const toast = useToast();
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -68,20 +70,21 @@ export function DocumentsPage() {
     setError(null);
     let failed = 0;
 
-    for (const file of files) {
+for (const file of files) {
       try {
         const doc = await documents.upload(file);
         setDocs((prev) => [doc, ...prev]);
+        toast.success(`Uploaded "${file.name}" — processing started`);
       } catch (err) {
         failed += 1;
-        setError(
-          `Upload of "${file.name}" failed: ${
-            err instanceof Error ? err.message : "unknown error"
-          }`,
-        );
+        const message =
+          err instanceof Error ? err.message : "unknown error";
+        setError(`Upload of "${file.name}" failed: ${message}`);
+        toast.error(`Upload of "${file.name}" failed: ${message}`);
       }
     }
 
+    if (failed === 0) toast.success("All documents uploaded");
     setIsUploading(false);
   }
 
@@ -103,8 +106,10 @@ export function DocumentsPage() {
     try {
       await documents.delete(id);
       setDocs((prev) => prev.filter((d) => d.id !== id));
+      toast.success("Document deleted");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
+      toast.error(err instanceof Error ? err.message : "Delete failed");
     }
   }
 
