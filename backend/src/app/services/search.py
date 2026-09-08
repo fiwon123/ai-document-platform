@@ -23,6 +23,7 @@ class SearchService:
         user_id: UUID,
         query: str,
         top_k: int = 5,
+        document_ids: list[UUID] | None = None,
     ) -> SearchResponse:
         # Generate a query embedding so the repository can run semantic
         # (vector) search. Falls back to plain text search when embedding
@@ -39,6 +40,7 @@ class SearchService:
             user_id=user_id,
             query_embedding=query_embedding,
             top_k=top_k,
+            document_ids=document_ids,
         )
 
         search_history = SearchHistory(
