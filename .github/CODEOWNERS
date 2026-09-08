@@ -1,17 +1,17 @@
 # Default owner for everything in the repo
-* @felipeinoue
+* @fiwon123
 
 # Backend code
-/backend/ @felipeinoue
+/backend/ @fiwon123
 
 # Frontend code
-/frontend/ @felipeinoue
+/frontend/ @fiwon123
 
 # Dev container and Docker
-.devcontainer/ @felipeinoue
-docker-compose.yaml @felipeinoue
+.devcontainer/ @fiwon123
+docker-compose.yaml @fiwon123
 
 # OpenCode configuration
-.opencode/ @felipeinoue
-opencode.json @felipeinoue
-AGENTS.md @felipeinoue
+.opencode/ @fiwon123
+opencode.json @fiwon123
+AGENTS.md @fiwon123

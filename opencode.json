@@ -15,6 +15,14 @@
           "git diff*": "allow",
           "git log*": "allow",
           "git branch*": "allow",
+          "gh issue*": "allow",
+          "gh pr create*": "allow",
+          "gh pr comment*": "allow",
+          "gh pr edit*": "allow",
+          "gh pr list*": "allow",
+          "gh pr view*": "allow",
+          "gh pr checks*": "allow",
+          "gh label*": "allow",
           "docker compose ps*": "allow",
           "docker compose logs*": "allow"
         }

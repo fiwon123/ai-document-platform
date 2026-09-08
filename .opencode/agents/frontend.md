@@ -31,3 +31,4 @@ You implement UI components, pages, hooks, and client-side behavior for the AI D
 - Put new pages in `src/pages/`, components in `src/components/`
 - Use the existing API client instead of raw `fetch`
 - Run `npm run lint` and `npm run build` before finishing
+- Do NOT create issues, branches, or PRs — GitHub lifecycle management belongs to the primary (build) agent
