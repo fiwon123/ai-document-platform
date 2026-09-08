@@ -51,3 +51,20 @@ export interface QAResponse {
   answer: string;
   sources: SearchResult[];
 }
+
+export interface RecentDocument {
+  id: string;
+  filename: string;
+  status: DocumentStatus;
+  created_at: string;
+}
+
+export interface StatisticsResponse {
+  total_documents: number;
+  pending_documents: number;
+  processing_documents: number;
+  ready_documents: number;
+  failed_documents: number;
+  total_chunks: number;
+  recent_documents: RecentDocument[];
+}

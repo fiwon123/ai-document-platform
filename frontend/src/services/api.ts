@@ -3,6 +3,7 @@ import type {
   DocumentStatusResponse,
   QAResponse,
   SearchResponse,
+  StatisticsResponse,
   TokenResponse,
   User,
 } from "../types";
@@ -112,6 +113,12 @@ export const documents = {
 
   async getDownloadUrl(id: string): Promise<{ id: string; filename: string; download_url: string }> {
     return request(`/documents/${id}/download`);
+  },
+};
+
+export const statistics = {
+  async getMe(): Promise<StatisticsResponse> {
+    return request<StatisticsResponse>("/statistics/me");
   },
 };
 
