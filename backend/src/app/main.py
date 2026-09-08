@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .middleware import LoggingMiddleware, RateLimitMiddleware
-from .routes import auth, document, health, qa, search, users
+from .routes import auth, document, health, qa, search, statistics, users
 
 
 @asynccontextmanager
@@ -37,6 +37,7 @@ app.include_router(document.router, prefix="/v1")
 app.include_router(health.router, prefix="/v1")
 app.include_router(search.router, prefix="/v1")
 app.include_router(qa.router, prefix="/v1")
+app.include_router(statistics.router, prefix="/v1")
 app.include_router(users.router, prefix="/v1")
 
 
