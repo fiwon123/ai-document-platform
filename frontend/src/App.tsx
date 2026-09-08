@@ -30,6 +30,9 @@ const SearchPage = lazy(() =>
 const QAPage = lazy(() =>
   import("./pages/QAPage").then((m) => ({ default: m.QAPage })),
 );
+const NotFoundPage = lazy(() =>
+  import("./pages/NotFoundPage").then((m) => ({ default: m.NotFoundPage })),
+);
 
 const pageFallback = <div className="loading">Loading page…</div>;
 
@@ -55,6 +58,7 @@ function App() {
                       <Route path="/qa" element={<QAPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route path="/admin" element={<AdminPage />} />
+                      <Route path="*" element={<NotFoundPage />} />
                     </Routes>
                   </main>
                 </ProtectedRoute>
