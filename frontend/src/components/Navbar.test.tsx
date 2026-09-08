@@ -48,6 +48,7 @@ describe("Navbar", () => {
     expect(screen.getByText("Documents")).toBeTruthy();
     expect(screen.getByText("Search")).toBeTruthy();
     expect(screen.getByText("Q&A")).toBeTruthy();
+    expect(screen.getByText("Settings")).toBeTruthy();
   });
 
   it("only renders the Users link for admins", () => {
@@ -68,6 +69,7 @@ describe("Navbar", () => {
     expect(screen.getByRole("link", { name: "Documents" }).getAttribute("href")).toBe("/app/documents");
     expect(screen.getByRole("link", { name: "Search" }).getAttribute("href")).toBe("/app/search");
     expect(screen.getByRole("link", { name: "Q&A" }).getAttribute("href")).toBe("/app/qa");
+    expect(screen.getByRole("link", { name: "Settings" }).getAttribute("href")).toBe("/app/settings");
   });
 
   it("links the admin and profile areas under /app", () => {
