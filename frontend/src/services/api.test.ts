@@ -176,7 +176,11 @@ describe("api client request paths", () => {
     const [url, options] = mockFetch.mock.calls[0];
     expect(url).toBe("/v1/search/");
     expect(options.method).toBe("POST");
-    expect(JSON.parse(options.body as string)).toEqual({ query: "quarterly report", top_k: 7 });
+    expect(JSON.parse(options.body as string)).toEqual({
+      query: "quarterly report",
+      top_k: 7,
+      document_ids: null,
+    });
   });
 
   it("should send qa.ask to /v1/qa/ask with question and document_ids", async () => {
@@ -266,5 +270,55 @@ describe("documents.getStatus", () => {
     expect(error).toBeInstanceOf(Error);
     expect((error as Error & { status: number }).status).toBe(404);
     expect((error as Error).message).toBe("Document not found");
+  });
+});
+describe("search.search", () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn();
+    localStorage.setItem("token", "test-token");
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("sends document_ids when documents are selected", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify({ query: "hello", results: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await search.search("hello", 5, ["doc-a", "doc-b"]);
+
+    const [, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(JSON.parse(String(options?.body))).toEqual({
+      query: "hello",
+      top_k: 5,
+      document_ids: ["doc-a", "doc-b"],
+    });
+  });
+
+  it("sends document_ids as null when no documents are selected", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify({ query: "hello", results: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await search.search("hello");
+
+    const [, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(JSON.parse(String(options?.body))).toEqual({
+      query: "hello",
+      top_k: 5,
+      document_ids: null,
+    });
   });
 });

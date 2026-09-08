@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DocumentFilter } from "../components/DocumentFilter";
 import { search } from "../services/api";
 import type { SearchResult } from "../types";
 
@@ -8,6 +9,7 @@ export function SearchPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -18,7 +20,7 @@ export function SearchPage() {
     setHasSearched(true);
 
     try {
-      const response = await search.search(query);
+      const response = await search.search(query, 5, selectedIds);
       setResults(response.results);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
@@ -53,6 +55,8 @@ export function SearchPage() {
           </button>
         </div>
       </form>
+
+      <DocumentFilter selected={selectedIds} onChange={setSelectedIds} />
 
       {error && <p className="error-message">{error}</p>}
 
