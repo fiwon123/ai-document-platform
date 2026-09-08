@@ -3,6 +3,7 @@ import type { ChangeEvent, DragEvent } from "react";
 import { documents } from "../services/api";
 import type { Document, DocumentStatusResponse } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
+import { Spinner } from "../components/Spinner";
 import { useToast } from "../context/ToastContext";
 
 /** How often to re-check documents that are still processing. */
@@ -16,6 +17,8 @@ export function DocumentsPage() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const toast = useToast();
@@ -103,6 +106,8 @@ for (const file of files) {
   async function handleDelete(id: string) {
     if (!confirm("Are you sure you want to delete this document?")) return;
 
+    setDeletingId(id);
+    setError(null);
     try {
       await documents.delete(id);
       setDocs((prev) => prev.filter((d) => d.id !== id));
@@ -110,10 +115,14 @@ for (const file of files) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
       toast.error(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeletingId(null);
     }
   }
 
   async function handleDownload(doc: Document) {
+    setDownloadingId(doc.id);
+    setError(null);
     try {
       const { download_url, filename } = await documents.getDownloadUrl(doc.id);
       const link = document.createElement("a");
@@ -124,6 +133,8 @@ for (const file of files) {
       link.remove();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Download failed");
+    } finally {
+      setDownloadingId(null);
     }
   }
 
@@ -211,16 +222,31 @@ for (const file of files) {
               <div className="document-card-footer">
                 <button
                   onClick={() => handleDownload(doc)}
-                  disabled={doc.status !== "ready"}
+                  disabled={doc.status !== "ready" || downloadingId === doc.id}
                   className="btn btn-secondary"
                 >
-                  Download
+                  {downloadingId === doc.id ? (
+                    <>
+                      <Spinner size={14} label="Downloading" />
+                      Downloading…
+                    </>
+                  ) : (
+                    "Download"
+                  )}
                 </button>
                 <button
                   onClick={() => handleDelete(doc.id)}
+                  disabled={deletingId === doc.id}
                   className="btn btn-danger"
                 >
-                  Delete
+                  {deletingId === doc.id ? (
+                    <>
+                      <Spinner size={14} label="Deleting" />
+                      Deleting…
+                    </>
+                  ) : (
+                    "Delete"
+                  )}
                 </button>
               </div>
             </div>
