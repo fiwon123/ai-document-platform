@@ -13,7 +13,9 @@ export function Navbar() {
   return (
     <nav className="navbar">
       <div className="navbar-brand">
-        <Link to="/">AD</Link>
+        <Link to="/" aria-label="AskDocs home">
+          AskDocs
+        </Link>
       </div>
       <div className="navbar-links">
         <Link to="/">Dashboard</Link>
