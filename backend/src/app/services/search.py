@@ -5,7 +5,7 @@ from uuid import UUID
 from app.cache.redis import redis_client
 from app.models.search import SearchHistory
 from app.repositories.search import SearchRepository
-from app.schemas.document import SearchResponse, SearchResult
+from app.schemas.document import SearchResponse
 from app.services.embedding import EmbeddingService
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,7 @@ def _search_cache_key(
     user_id: UUID,
     query: str,
     top_k: int,
+    offset: int,
     document_ids: list[UUID] | None,
 ) -> str | None:
     """Build the cache key for a search, including a per-user version.
@@ -29,7 +30,7 @@ def _search_cache_key(
     try:
         version = redis_client.get(_SEARCH_VERSION_KEY.format(user_id=user_id)) or "0"
         cache_id = hashlib.sha256(
-            f"{query}|{top_k}|{sorted(map(str, document_ids or []))}".encode()
+            f"{query}|{top_k}|{offset}|{sorted(map(str, document_ids or []))}".encode()
         ).hexdigest()[:16]
         return _SEARCH_KEY.format(user_id=user_id, version=version, cache_id=cache_id)
     except Exception as e:  # noqa: BLE001 - cache must never break search
@@ -41,17 +42,17 @@ def _get_cached_search(
     user_id: UUID,
     query: str,
     top_k: int,
+    offset: int,
     document_ids: list[UUID] | None,
 ) -> SearchResponse | None:
-    key = _search_cache_key(user_id, query, top_k, document_ids)
+    key = _search_cache_key(user_id, query, top_k, offset, document_ids)
     if key is None:
         return None
     try:
         payload = redis_client.get_json(key)
         if payload is None:
             return None
-        results = [SearchResult.model_validate(item) for item in payload["results"]]
-        return SearchResponse(query=query, results=results)
+        return SearchResponse.model_validate(payload)
     except Exception as e:  # noqa: BLE001 - fall back to a live search
         logger.warning(f"Search cache read failed: {e}")
         return None
@@ -61,10 +62,11 @@ def _cache_search(
     user_id: UUID,
     query: str,
     top_k: int,
+    offset: int,
     document_ids: list[UUID] | None,
     response: SearchResponse,
 ) -> None:
-    key = _search_cache_key(user_id, query, top_k, document_ids)
+    key = _search_cache_key(user_id, query, top_k, offset, document_ids)
     if key is None:
         return
     try:
@@ -104,9 +106,10 @@ class SearchService:
         user_id: UUID,
         query: str,
         top_k: int = 5,
+        offset: int = 0,
         document_ids: list[UUID] | None = None,
     ) -> SearchResponse:
-        cached = _get_cached_search(user_id, query, top_k, document_ids)
+        cached = _get_cached_search(user_id, query, top_k, offset, document_ids)
         if cached is not None:
             # A cached search was already recorded in history the first
             # time it ran, so there is no need to write it again.
@@ -123,20 +126,26 @@ class SearchService:
                 f"Query embedding unavailable, falling back to text search: {e}"
             )
 
-        results = self.repository.search(
+        results, total_count = self.repository.search(
             user_id=user_id,
             query_embedding=query_embedding,
             top_k=top_k,
+            offset=offset,
             document_ids=document_ids,
         )
 
         search_history = SearchHistory(
             user_id=user_id,
             query=query,
-            results_count=len(results),
+            results_count=total_count,
         )
         self.repository.save_search_history(search_history)
 
-        response = SearchResponse(query=query, results=results)
-        _cache_search(user_id, query, top_k, document_ids, response)
+        response = SearchResponse(
+            query=query,
+            results=results,
+            total_count=total_count,
+            has_more=offset + len(results) < total_count,
+        )
+        _cache_search(user_id, query, top_k, offset, document_ids, response)
         return response

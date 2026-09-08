@@ -98,7 +98,7 @@ class TestSearchRepositoryDocumentFilter:
         user, doc1, _doc2 = _seed_user_with_documents(db_session)
         repo = SearchRepository(db_session)
 
-        results = repo.search(
+        results, total_count = repo.search(
             user_id=user.id,
             query_embedding=_make_vector(0),
             top_k=10,
@@ -106,6 +106,7 @@ class TestSearchRepositoryDocumentFilter:
         )
 
         assert len(results) == 1
+        assert total_count == 1
         assert results[0].document_id == doc1.id
         assert "revenue" in results[0].content
 
@@ -113,7 +114,7 @@ class TestSearchRepositoryDocumentFilter:
         user, _doc1, doc2 = _seed_user_with_documents(db_session)
         repo = SearchRepository(db_session)
 
-        results = repo.search(
+        results, _ = repo.search(
             user_id=user.id,
             query_embedding=None,
             top_k=10,
@@ -127,13 +128,14 @@ class TestSearchRepositoryDocumentFilter:
         user, doc1, _doc2 = _seed_user_with_documents(db_session)
         repo = SearchRepository(db_session)
 
-        results = repo.search(
+        results, total_count = repo.search(
             user_id=user.id,
             query_embedding=None,
             top_k=10,
         )
 
         assert {r.document_id for r in results} == {doc1.id, _doc2.id}
+        assert total_count == 2
 
 
 class TestQARoute:

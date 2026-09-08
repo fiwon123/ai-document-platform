@@ -42,6 +42,11 @@ class DocumentChunkResponse(BaseModel):
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=1000, description="Search query")
     top_k: int = Field(default=5, ge=1, le=20, description="Number of results")
+    offset: int = Field(
+        default=0,
+        ge=0,
+        description="Number of results to skip (pagination cursor)",
+    )
 
 
 class SearchResult(BaseModel):
@@ -56,6 +61,8 @@ class SearchResult(BaseModel):
 class SearchResponse(BaseModel):
     query: str
     results: list[SearchResult]
+    total_count: int
+    has_more: bool
 
 
 class QARequest(BaseModel):
