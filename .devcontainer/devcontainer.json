@@ -9,7 +9,8 @@
     "ghcr.io/devcontainers/features/common-utils:2": {},
     "ghcr.io/devcontainers/features/node:1": {
       "version": "22"
-    }
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "forwardPorts": [8000, 5173],
   "postCreateCommand": "npm install -g opencode-ai && cd backend && uv sync && cd ../frontend && npm install",
