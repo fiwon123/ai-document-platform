@@ -111,6 +111,10 @@ gh pr create \
 - **Comment on the issue**: `gh issue comment <issue-number> --body "🔗 PR opened: #<pr-number>"`
 - Work only in feature branches — never push directly to main
 
+> Note: GitHub auto-drops the PR author from the assignee list, so if the agent
+> doubly owns the PR (author + would-be assignee) the PR itself may show no
+> assignee. Always assign the linked *issue*, which is what tracks ownership.
+
 ### 6. Review & Merge
 
 - Verify CI checks pass (green ✅) — backend check, frontend lint, frontend build
