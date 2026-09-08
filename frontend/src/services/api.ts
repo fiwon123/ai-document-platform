@@ -1,7 +1,9 @@
 import type {
   Document,
+  DocumentStatusResponse,
   QAResponse,
   SearchResponse,
+  StatisticsResponse,
   TokenResponse,
   User,
 } from "../types";
@@ -95,6 +97,10 @@ export const documents = {
     return request<Document>(`/${id}`);
   },
 
+  async getStatus(id: string): Promise<DocumentStatusResponse> {
+    return request<DocumentStatusResponse>(`/documents/${id}/status`);
+  },
+
   async upload(file: File): Promise<Document> {
     const formData = new FormData();
     formData.append("upload_file", file);
@@ -110,11 +116,25 @@ export const documents = {
   },
 };
 
+export const statistics = {
+  async getMe(): Promise<StatisticsResponse> {
+    return request<StatisticsResponse>("/statistics/me");
+  },
+};
+
 export const search = {
-  async search(query: string, topK = 5): Promise<SearchResponse> {
+  async search(
+    query: string,
+    topK = 5,
+    documentIds: string[] = [],
+  ): Promise<SearchResponse> {
     return request<SearchResponse>("/search/", {
       method: "POST",
-      body: JSON.stringify({ query, top_k: topK }),
+      body: JSON.stringify({
+        query,
+        top_k: topK,
+        document_ids: documentIds.length > 0 ? documentIds : null,
+      }),
     });
   },
 };
