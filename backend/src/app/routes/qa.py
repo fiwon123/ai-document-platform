@@ -1,14 +1,14 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database.db import get_db
 from app.repositories.search import SearchRepository
 from app.routes.auth import get_current_user_id
 from app.schemas.document import QARequest, QAResponse
-from app.services.qa import QAService
+from app.services.qa import AVAILABLE_MODELS, QAService
 from app.services.search import SearchService
 
 router = APIRouter(prefix="/qa", tags=["qa"])
@@ -28,8 +28,20 @@ def ask_question(
     service: Annotated[QAService, Depends(get_qa_service)],
     owner_id: Annotated[UUID, Depends(get_current_user_id)],
 ):
+    if request.model is not None and request.model not in AVAILABLE_MODELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown model: {request.model}",
+        )
     return service.ask(
         user_id=owner_id,
         question=request.question,
         document_ids=request.document_ids,
+        model=request.model,
     )
+
+
+@router.get("/models")
+def list_models() -> dict:
+    """List models available for question answering, split by tier."""
+    return QAService.list_models()

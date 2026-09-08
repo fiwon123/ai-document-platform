@@ -71,12 +71,20 @@ class QARequest(BaseModel):
         default=None,
         description="Specific document IDs to search (None = all documents)",
     )
+    model: str | None = Field(
+        default=None,
+        description="Model override; defaults to OPENAI_MODEL",
+    )
 
 
 class QAResponse(BaseModel):
     question: str
     answer: str
     sources: list[SearchResult]
+    model: str | None = Field(
+        default=None,
+        description="Model that produced the answer",
+    )
 
 
 class DownloadUrlResponse(BaseModel):

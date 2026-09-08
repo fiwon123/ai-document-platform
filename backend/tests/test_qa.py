@@ -169,6 +169,7 @@ class TestQARoute:
             user_id=fake_service.ask.call_args.kwargs["user_id"],
             question="what is revenue?",
             document_ids=[UUIDType("00000000-0000-0000-0000-000000000002")],
+            model=None,
         )
 
     def test_ask_endpoint_accepts_request_schema(self, db_session):
@@ -189,6 +190,73 @@ class TestQARoute:
             score=0.1,
         )
         assert search_result.score == 0.1
+
+    def test_ask_endpoint_forwards_model_override(self, client, auth_headers):
+        from app.main import app
+        from app.routes.qa import get_qa_service
+
+        fake_service = MagicMock()
+        fake_service.ask.return_value = {
+            "question": "q",
+            "answer": "a",
+            "sources": [],
+        }
+        app.dependency_overrides[get_qa_service] = lambda: fake_service
+        try:
+            resp = client.post(
+                "/v1/qa/ask",
+                json={"question": "q", "model": "gpt-4o-mini"},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        assert fake_service.ask.call_args.kwargs["model"] == "gpt-4o-mini"
+
+    def test_ask_endpoint_without_model_forwards_none(self, client, auth_headers):
+        from app.main import app
+        from app.routes.qa import get_qa_service
+
+        fake_service = MagicMock()
+        fake_service.ask.return_value = {
+            "question": "q",
+            "answer": "a",
+            "sources": [],
+        }
+        app.dependency_overrides[get_qa_service] = lambda: fake_service
+        try:
+            resp = client.post(
+                "/v1/qa/ask",
+                json={"question": "q"},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        assert fake_service.ask.call_args.kwargs["model"] is None
+
+    def test_ask_rejects_unknown_model(self, client, auth_headers):
+        resp = client.post(
+            "/v1/qa/ask",
+            json={"question": "q", "model": "does-not-exist"},
+            headers=auth_headers,
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["error"]["message"] == "Unknown model: does-not-exist"
+
+    def test_models_endpoint(self, client):
+        from app.services.qa import AVAILABLE_MODELS
+
+        resp = client.get("/v1/qa/models")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["free"] == ["gpt-4o-mini"]
+        assert "gpt-4o-mini" not in data["paid"]
+        assert sorted(data["free"] + data["paid"]) == sorted(AVAILABLE_MODELS)
 
 class TestQAServiceAnswerGeneration:
     """Answer synthesis path with the LLM client mocked."""
@@ -285,3 +353,50 @@ class TestQAServiceAnswerGeneration:
         response = service.ask(user_id=uuid4(), question="q")
 
         assert response.answer == "Error generating answer: boom"
+
+    def test_ask_passes_model_override(self, monkeypatch):
+        from types import SimpleNamespace
+
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Mocked answer"))]
+        )
+        monkeypatch.setattr("app.services.qa.client", fake_client)
+
+        fake_search = MagicMock()
+        fake_search.search.return_value = MagicMock(results=[])
+        service = QAService(search_service=fake_search)
+
+        response = service.ask(
+            user_id=uuid4(),
+            question="q",
+            model="gpt-4o-mini",
+        )
+
+        assert (
+            fake_client.chat.completions.create.call_args.kwargs["model"]
+            == "gpt-4o-mini"
+        )
+        assert response.model == "gpt-4o-mini"
+
+    def test_ask_defaults_to_configured_model(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from app.services.qa import OPENAI_MODEL
+
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Mocked answer"))]
+        )
+        monkeypatch.setattr("app.services.qa.client", fake_client)
+
+        fake_search = MagicMock()
+        fake_search.search.return_value = MagicMock(results=[])
+        service = QAService(search_service=fake_search)
+
+        response = service.ask(user_id=uuid4(), question="q")
+
+        assert fake_client.chat.completions.create.call_args.kwargs["model"] == (
+            OPENAI_MODEL
+        )
+        assert response.model == OPENAI_MODEL
