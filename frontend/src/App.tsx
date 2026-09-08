@@ -16,6 +16,9 @@ const LoginPage = lazy(() =>
 const RegisterPage = lazy(() =>
   import("./pages/RegisterPage").then((m) => ({ default: m.RegisterPage })),
 );
+const DemoPage = lazy(() =>
+  import("./pages/DemoPage").then((m) => ({ default: m.DemoPage })),
+);
 const DocumentsPage = lazy(() =>
   import("./pages/DocumentsPage").then((m) => ({ default: m.DocumentsPage })),
 );
@@ -65,6 +68,7 @@ function App() {
               <Route path="/" element={<LandingGate />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/demo" element={<DemoPage />} />
               <Route
                 path="/app/*"
                 element={
