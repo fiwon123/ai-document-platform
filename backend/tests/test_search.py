@@ -34,6 +34,7 @@ class TestSearchServiceUnit:
             user_id=user_id,
             query_embedding=_make_vector(0),
             top_k=5,
+            document_ids=None,
         )
         repo.save_search_history.assert_called_once()
         assert isinstance(response, SearchResponse)
@@ -53,6 +54,7 @@ class TestSearchServiceUnit:
             user_id=user_id,
             query_embedding=None,
             top_k=5,
+            document_ids=None,
         )
         assert response.results == []
 
@@ -69,12 +71,13 @@ class TestSearchServiceUnit:
             user_id=repo.search.call_args.kwargs["user_id"],
             query_embedding=_make_vector(0),
             top_k=3,
+            document_ids=None,
         )
 
 
 class TestVectorSearchWithDatabase:
     def test_vector_search_returns_ranked_results(self, db_session):
-        user = UserDB(username="alice", hashed_password="x")
+        user = UserDB(username="alice", hashed_password="x")  # noqa: S106
         db_session.add(user)
         db_session.flush()
 
