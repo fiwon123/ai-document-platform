@@ -17,23 +17,36 @@ class SearchRepository:
         user_id: UUID,
         query_embedding: list[float] | None,
         top_k: int = 5,
+        document_ids: list[UUID] | None = None,
     ) -> list[SearchResult]:
         if query_embedding is None:
-            return self._text_search(user_id=user_id, top_k=top_k)
+            return self._text_search(
+                user_id=user_id,
+                top_k=top_k,
+                document_ids=document_ids,
+            )
         return self._vector_search(
             user_id=user_id,
             query_embedding=query_embedding,
             top_k=top_k,
+            document_ids=document_ids,
         )
 
-    def _text_search(self, user_id: UUID, top_k: int) -> list[SearchResult]:
-        results = (
+    def _text_search(
+        self,
+        user_id: UUID,
+        top_k: int,
+        document_ids: list[UUID] | None = None,
+    ) -> list[SearchResult]:
+        query = (
             self.db.query(DocumentChunk, DocumentDB.filename)
             .join(DocumentDB, DocumentChunk.document_id == DocumentDB.id)
             .filter(DocumentDB.owner_id == user_id)
-            .limit(top_k)
-            .all()
         )
+        if document_ids:
+            query = query.filter(DocumentDB.id.in_(document_ids))
+
+        results = query.limit(top_k).all()
 
         return [
             SearchResult(
@@ -52,18 +65,20 @@ class SearchRepository:
         user_id: UUID,
         query_embedding: list[float],
         top_k: int,
+        document_ids: list[UUID] | None = None,
     ) -> list[SearchResult]:
         distance = DocumentChunk.embedding.cosine_distance(query_embedding)
 
-        results = (
+        query = (
             self.db.query(DocumentChunk, DocumentDB.filename, distance.label("score"))
             .join(DocumentDB, DocumentChunk.document_id == DocumentDB.id)
             .filter(DocumentDB.owner_id == user_id)
             .filter(DocumentChunk.embedding.isnot(None))
-            .order_by(distance)
-            .limit(top_k)
-            .all()
         )
+        if document_ids:
+            query = query.filter(DocumentDB.id.in_(document_ids))
+
+        results = query.order_by(distance).limit(top_k).all()
 
         return [
             SearchResult(
