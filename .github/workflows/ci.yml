@@ -2,17 +2,36 @@ name: CI
 
 on:
   pull_request:
+    types: [labeled, synchronize]
     branches: [main]
-  push:
-    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# dorny/paths-filter reads the PR change list via the GitHub API.
+permissions:
+  contents: read
+  pull-requests: read
+
+# CI is intentionally label-gated to conserve Actions minutes during
+# development. Jobs run only when:
+#   * a pull request carries (or just received) the `ci` label, or
+#   * the workflow is manually dispatched from the Actions tab.
+# The focal CI gate lets us do all heavy verification at milestone time.
 jobs:
   backend-check:
     name: Backend (uv sync + syntax check)
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,6 +55,7 @@ jobs:
 
   backend-test:
     name: Backend (pytest)
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -55,19 +75,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # Skip the expensive pytest job body entirely for PRs that touch no
+      # backend code (frontend-only work is validated by the frontend jobs).
+      - name: Detect backend changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/workflows/**'
+
       - name: Install uv
+        if: steps.changes.outputs.backend == 'true'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
       - name: Set up Python
+        if: steps.changes.outputs.backend == 'true'
         run: uv python install 3.14
 
       - name: Sync dependencies (locked)
+        if: steps.changes.outputs.backend == 'true'
         run: uv sync --locked
         working-directory: backend
 
       - name: Run tests
+        if: steps.changes.outputs.backend == 'true'
         # Exit code 5 means pytest collected no tests (e.g. main without
         # the test suite yet) — treat that as a pass, not a failure.
         run: uv run pytest -q || test $? -eq 5
@@ -75,6 +112,7 @@ jobs:
 
   frontend-lint:
     name: Frontend (oxlint)
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -97,6 +135,7 @@ jobs:
 
   frontend-build:
     name: Frontend (typecheck + build)
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

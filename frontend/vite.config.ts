@@ -10,6 +10,11 @@ const proxyTarget = process.env.VITE_PROXY_TARGET ?? "http://localhost:8000";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // Pre-bundle these eagerly so lazy-loaded modules (QAPage → Markdown)
+  // never hit a not-yet-bundled dependency in dev (net::ERR_ABORTED 500).
+  optimizeDeps: {
+    include: ["react-markdown", "remark-gfm"],
+  },
   server: {
     proxy: { "/v1": proxyTarget },
   },
