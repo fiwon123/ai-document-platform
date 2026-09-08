@@ -1,12 +1,13 @@
+import asyncio
 import logging
-import threading
-import time
-from queue import Queue
-from typing import Any
+import os
 from uuid import UUID
 
+from arq import create_pool
+from arq.connections import ArqRedis, RedisSettings
 from sqlalchemy.orm import Session
 
+from app.cache.redis import REDIS_PASSWORD
 from app.database.db import SessionLocal
 from app.models.document import DocumentDB, DocumentStatus
 from app.repositories.document import DocumentRepository
@@ -17,26 +18,64 @@ from app.storage.storage import storage
 
 logger = logging.getLogger(__name__)
 
-task_queue: Queue = Queue()
-worker_thread: threading.Thread | None = None
-is_running = False
+MAX_RETRIES = 3
+
+# arq coroutine names are derived from the functions' ``__qualname__``; keep
+# them unique and stable so enqueued jobs always resolve to the same handler.
+_JOB_NAME = "process_document"
 
 
-def process_document_task(document_id: UUID):
-    task_queue.put(("process_document", document_id))
+def worker_redis_settings() -> RedisSettings:
+    """Build arq RedisSettings from the shared app environment variables."""
+    return RedisSettings(
+        host=os.getenv("REDIS_HOST", "localhost"),
+        port=int(os.getenv("REDIS_PORT", "6379")),
+        database=int(os.getenv("REDIS_DB", "0")),
+        password=REDIS_PASSWORD,
+    )
 
 
-def _process_document(document_id: UUID):
+def _invalidate_caches(document: DocumentDB) -> None:
+    """Drop stale cached metadata + search results for a processed doc.
+
+    Status transitions (READY/FAILED) change a document's row and its
+    searchability, so cached document metadata and the user's cached
+    search results must be invalidated. Imports are lazy to avoid a
+    circular import (services.document imports this module). Failures are
+    logged and swallowed so a Redis hiccup never fails a job.
+    """
+    try:
+        from app.services.search import invalidate_user_search_cache
+
+        invalidate_user_search_cache(document.owner_id)
+    except Exception as e:  # noqa: BLE001 - cache must never break the worker
+        logger.warning(f"Search cache invalidation failed: {e}")
+    try:
+        from app.services.document import invalidate_document_cache
+
+        invalidate_document_cache(document.owner_id, document.id)
+    except Exception as e:  # noqa: BLE001 - cache must never break the worker
+        logger.warning(f"Document cache invalidation failed: {e}")
+
+
+async def process_document(ctx: dict, document_id: str) -> None:
+    """Process a single uploaded document end-to-end.
+
+    Called by the arq worker. ``document_id`` arrives as a string (job
+    args are serialized), so we parse it back to a UUID up front; a
+    malformed id fails the job immediately rather than surfacing later.
+    """
+    document_uuid = UUID(document_id)
     db: Session = SessionLocal()
     try:
         repository = DocumentRepository(db)
-        document = repository.get_by_id(document_id)
+        document = repository.get_by_id(document_uuid)
 
         if document is None:
-            logger.error(f"Document not found: {document_id}")
+            logger.error(f"Document not found: {document_uuid}")
             return
 
-        repository.update_status(document_id, DocumentStatus.PROCESSING)
+        repository.update_status(document_uuid, DocumentStatus.PROCESSING)
 
         try:
             file_content = storage.download(document.object_key)
@@ -54,10 +93,11 @@ def _process_document(document_id: UUID):
 
             if not text.strip():
                 repository.update_status(
-                    document_id,
+                    document_uuid,
                     DocumentStatus.FAILED,
                     error_message="No text content could be extracted",
                 )
+                _invalidate_caches(document)
                 return
 
             chunking = ChunkingService()
@@ -65,68 +105,83 @@ def _process_document(document_id: UUID):
 
             embedding_service = EmbeddingService()
 
+            # Generate embeddings for every chunk. This is best-effort:
+            # if the OpenAI client is not configured (or the API call
+            # fails), we still save the chunks without vectors so the
+            # document remains searchable via plain text search.
+            try:
+                embeddings = embedding_service.generate_embeddings(
+                    [chunk.content for chunk in chunks]
+                )
+            except Exception as e:  # noqa: BLE001 - worker must not fail on embedding issues
+                logger.warning(
+                    f"Embeddings unavailable for document {document_uuid}, "
+                    f"saving chunks without vectors: {e}"
+                )
+                embeddings = [None] * len(chunks)
+
             from app.models.chunk import DocumentChunk
 
-            for chunk in chunks:
-                db_chunk = DocumentChunk(
-                    document_id=document_id,
-                    content=chunk.content,
-                    chunk_index=chunk.chunk_index,
-                    metadata_=chunk.metadata,
+            for chunk, embedding in zip(chunks, embeddings):
+                db.add(
+                    DocumentChunk(
+                        document_id=document_uuid,
+                        content=chunk.content,
+                        chunk_index=chunk.chunk_index,
+                        metadata_=chunk.metadata,
+                        embedding=embedding,
+                    )
                 )
-                db.add(db_chunk)
 
             db.commit()
 
-            repository.update_status(document_id, DocumentStatus.READY)
-            logger.info(f"Document processed successfully: {document_id}")
+            repository.update_status(document_uuid, DocumentStatus.READY)
+            _invalidate_caches(document)
+            logger.info(f"Document processed successfully: {document_uuid}")
 
-        except Exception as e:
-            logger.error(f"Error processing document {document_id}: {e}")
+        except Exception as e:  # noqa: BLE001 - any processing error marks FAILED
+            logger.error(f"Error processing document {document_uuid}: {e}")
             repository.update_status(
-                document_id,
+                document_uuid,
                 DocumentStatus.FAILED,
                 error_message=str(e),
             )
+            _invalidate_caches(document)
 
     finally:
         db.close()
 
 
-def _worker_loop():
-    global is_running
-    is_running = True
-    logger.info("Document processing worker started")
-
-    while is_running:
-        try:
-            task_type, document_id = task_queue.get(timeout=1)
-
-            if task_type == "process_document":
-                _process_document(document_id)
-
-            task_queue.task_done()
-
-        except Exception:
-            continue
-
-    logger.info("Document processing worker stopped")
+async def _enqueue(document_id: UUID, pool: ArqRedis) -> None:
+    await pool.enqueue_job(_JOB_NAME, str(document_id))
 
 
-def start_worker():
-    global worker_thread, is_running
-
-    if worker_thread is not None and worker_thread.is_alive():
-        logger.warning("Worker already running")
-        return
-
-    is_running = True
-    worker_thread = threading.Thread(target=_worker_loop, daemon=True)
-    worker_thread.start()
+async def _enqueue_with_new_pool(document_id: UUID) -> None:
+    pool = create_pool(worker_redis_settings())
+    try:
+        await _enqueue(document_id, pool)
+    finally:
+        await pool.close()
 
 
-def stop_worker():
-    global is_running
-    is_running = False
-    if worker_thread:
-        worker_thread.join(timeout=5)
+def process_document_task(document_id: UUID) -> None:
+    """Enqueue a document-processing job (synchronous facade for routes).
+
+    FastAPI document endpoints are synchronous ``def`` handlers with no
+    active event loop, so it is safe to drive the async enqueue via
+    asyncio here. Redis being down must not break the upload response, so
+    a failure is logged and swallowed.
+    """
+    try:
+        asyncio.run(_enqueue_with_new_pool(document_id))
+    except Exception as e:  # noqa: BLE001 - enqueue must never break upload
+        logger.error(f"Failed to enqueue document {document_id}: {e}")
+
+
+# arq CLI settings: module must expose ``WorkerSettings``. A dict is a valid
+# WorkerSettingsType.
+WorkerSettings = {
+    "functions": [process_document],
+    "redis_settings": worker_redis_settings(),
+    "max_tries": MAX_RETRIES,
+}
