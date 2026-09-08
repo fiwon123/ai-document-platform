@@ -258,8 +258,8 @@ If the user explicitly permits reading environment configuration:
 - Run tests before opening a PR
 - Do NOT merge pull requests unless explicitly instructed
 - Every change is tracked on GitHub: **issue → branch → PR → merge**
-- Always create a GitHub issue before starting work; assign it to `felipeinoue` and label it per the commit type (see `.opencode/instructions/workflow.md`)
-- Assign every PR to `felipeinoue`, apply the matching label, and link its issue with `Closes #<issue-number>`
+- Always create a GitHub issue before starting work; assign it to `fiwon123` and label it per the commit type (see `.opencode/instructions/workflow.md`)
+- Assign every PR to `fiwon123`, apply the matching label, and link its issue with `Closes #<issue-number>`
 - Comment on the issue/PR at every milestone (work started, PR opened, CI passed, merged) — see the comment templates in `.opencode/instructions/workflow.md`
 
 ### Agents

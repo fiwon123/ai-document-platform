@@ -7,7 +7,7 @@ the issue and PR assigned, labeled, linked, and commented at each milestone.
 
 ### GitHub conventions (apply to every step)
 
-- **Assignee**: always `felipeinoue` (issues AND pull requests)
+- **Assignee**: always `fiwon123` (issues AND pull requests)
 - **Labels**: match the commit type (see table below)
 - **Comments**: post at every milestone (see "Comment milestones" below)
 - **Linking**: every PR references its issue (`Closes #N`), and branch names are derived from the work
@@ -50,7 +50,7 @@ Post these comments automatically — no user prompting required:
     --title "<type>: <short description>" \
     --body "<problem statement / acceptance criteria>" \
     --label "<label per mapping table>" \
-    --assignee felipeinoue
+    --assignee fiwon123
   ```
 - **Comment on the issue**: `gh issue comment <issue-number> --body "🔍 Starting work on this"`
 - Output: Goal, Files to modify, Dependencies, Risks, Steps
@@ -103,7 +103,7 @@ gh pr create \
   --title "<type>: <description>" \
   --body "<template>" \
   --label "<label per mapping table>" \
-  --assignee felipeinoue
+  --assignee fiwon123
 ```
 
 - Fill out the PR template completely (`.github/pull_request_template.md`)

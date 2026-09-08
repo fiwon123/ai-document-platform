@@ -19,7 +19,7 @@ Every change is tracked on GitHub: **issue → branch → PR → merge**.
 
 ### Assignee
 
-- All issues and PRs are assigned to `felipeinoue`.
+- All issues and PRs are assigned to `fiwon123`.
 
 ### Label Mapping
 
@@ -82,7 +82,7 @@ gh issue create \
   --title "<type>: <short description>" \
   --body "<problem statement / acceptance criteria>" \
   --label "<label per mapping table>" \
-  --assignee felipeinoue
+  --assignee fiwon123
 
 # Comment on an issue at each milestone
 gh issue comment <number> --body "🔍 Starting work on this"
@@ -99,13 +99,13 @@ gh pr create \
   --title "<type>: <description>" \
   --body-file <path> \
   --label "<label per mapping table>" \
-  --assignee felipeinoue
+  --assignee fiwon123
 
 # Comment on the PR
 gh pr comment <number> --body "<message>"
 
 # Edit an existing PR (assignee/labels)
-gh pr edit <number> --add-assignee felipeinoue --add-label "<label>"
+gh pr edit <number> --add-assignee fiwon123 --add-label "<label>"
 
 # Check CI status before merging
 gh pr checks <number> --watch

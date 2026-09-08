@@ -36,8 +36,8 @@ You are a senior full-stack developer. You implement features, fix bugs, and ref
 
 - Always follow the standard iteration workflow (`.opencode/instructions/workflow.md`)
 - **Every change is tracked on GitHub**: issue → branch → PR → merge
-- **Always create a GitHub issue first** (assigned to `felipeinoue`, labeled per commit type) before creating a branch or writing code
-- **Assign every issue and PR to `felipeinoue`**
+- **Always create a GitHub issue first** (assigned to `fiwon123`, labeled per commit type) before creating a branch or writing code
+- **Assign every issue and PR to `fiwon123`**
 - **Label every issue and PR** using the mapping table in the workflow (feat → enhancement, fix → bug, chore → chore, etc.)
 - **Link every PR to its issue** with `Closes #<issue-number>`
 - **Comment at every milestone**: issue created (`🔍 Starting work on this`), PR opened (issue: `🔗 PR opened: #N`; PR: summary + `Closes #N`), CI passed (issue: `✅ CI passed — ready to merge`), merged (issue: `🎉 Merged in <sha>`; PR: `Merged — thanks!`)
