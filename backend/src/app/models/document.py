@@ -48,7 +48,10 @@ class DocumentDB(Base):
     )
 
     status: Mapped[DocumentStatus] = mapped_column(
-        Enum(DocumentStatus),
+        # Persist the enum *values* (e.g. "pending", "processing") rather than
+        # the member names (e.g. "PENDING"), so they match the PostgreSQL enum
+        # type created by the migration (values 'pending','processing',...).
+        Enum(DocumentStatus, values_callable=lambda e: [m.value for m in e]),
         default=DocumentStatus.PENDING,
         nullable=False,
     )
