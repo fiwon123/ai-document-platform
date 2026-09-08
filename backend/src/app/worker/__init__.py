@@ -173,7 +173,7 @@ async def _enqueue(document_id: UUID, pool: ArqRedis) -> None:
 
 
 async def _enqueue_with_new_pool(document_id: UUID) -> None:
-    pool = create_pool(worker_redis_settings())
+    pool = await create_pool(worker_redis_settings())
     try:
         await _enqueue(document_id, pool)
     finally:
