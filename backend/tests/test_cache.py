@@ -258,7 +258,16 @@ class TestDocumentServiceCaching:
         service = self._service(db_session)
         assert service.get(document_id=uuid4(), owner_id=user.id) is None
 
-    def test_upload_invalidates_user_search_cache(self, db_session, fake_redis):
+    def test_upload_invalidates_user_search_cache(
+        self, db_session, fake_redis, monkeypatch
+    ):
+        from app.services import document as document_module
+
+        # Enqueue is exercised elsewhere; here we only assert cache behavior.
+        monkeypatch.setattr(
+            document_module, "process_document_task", lambda _document_id: None
+        )
+
         user = UserDB(username="doc3", hashed_password="x")
         db_session.add(user)
         db_session.commit()
@@ -267,6 +276,7 @@ class TestDocumentServiceCaching:
         upload_file.filename = "up.txt"
         upload_file.content_type = "text/plain"
         upload_file.file = MagicMock()
+        upload_file.file.read.return_value = b"hello"
 
         service = self._service(db_session)
         created = service.upload(owner_id=user.id, upload_file=upload_file)

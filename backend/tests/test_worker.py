@@ -7,8 +7,10 @@ task itself). Enqueueing is exercised with mocks so no Redis is required.
 import asyncio
 import io
 import os
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
+
+import pytest
 
 from app.models.chunk import DocumentChunk
 from app.models.document import DocumentDB, DocumentStatus
@@ -18,6 +20,7 @@ from app.worker import (
     WorkerSettings,
     process_document,
     process_document_task,
+    recover_stale_documents,
 )
 
 DIM = 1536
@@ -160,13 +163,29 @@ class TestProcessDocumentTask:
             monkeypatch, extractor=FakeExtractorError()
         )
 
-        asyncio.run(process_document({}, str(doc.id)))
+        # job_try == MAX_RETRIES => final attempt: failure is recorded.
+        with pytest.raises(RuntimeError, match="extraction boom"):
+            asyncio.run(process_document({"job_try": 3}, str(doc.id)))
 
         db_session.refresh(doc)
         assert doc.status == DocumentStatus.FAILED
         assert doc.error_message == "extraction boom"
         assert invalidated.call_count == 1
         assert invalidated.call_args.args[0].id == doc.id
+
+    def test_processing_error_retries_when_tries_remain(self, db_session, monkeypatch):
+        """Transient errors re-raise as arq Retry and keep PROCESSING."""
+        from arq.worker import Retry
+
+        doc = _seed_pending_document(db_session)
+        _patch_worker_deps(monkeypatch, extractor=FakeExtractorError())
+
+        with pytest.raises(Retry):
+            asyncio.run(process_document({"job_try": 1}, str(doc.id)))
+
+        db_session.refresh(doc)
+        assert doc.status == DocumentStatus.PROCESSING
+        assert doc.error_message is None
 
     def test_missing_document_is_a_noop(self, db_session, monkeypatch):
         from app.worker import storage as worker_storage
@@ -186,7 +205,7 @@ class TestProcessDocumentTask:
 
 class TestEnqueueFacade:
     def test_process_document_task_enqueues_job(self, monkeypatch):
-        enqueue = MagicMock()
+        enqueue = AsyncMock()
         monkeypatch.setattr("app.worker._enqueue_with_new_pool", enqueue)
         document_id = uuid4()
 
@@ -194,13 +213,15 @@ class TestEnqueueFacade:
 
         enqueue.assert_called_once_with(document_id)
 
-    def test_enqueue_failure_is_logged_not_raised(self, monkeypatch):
-        def boom(_):
+    def test_enqueue_failure_raises_for_caller_to_record(self, monkeypatch):
+        """Enqueue failures propagate so upload can mark the doc FAILED."""
+        async def boom(_):
             raise RuntimeError("redis down")
 
         monkeypatch.setattr("app.worker._enqueue_with_new_pool", boom)
 
-        process_document_task(uuid4())  # must not raise
+        with pytest.raises(RuntimeError, match="redis down"):
+            process_document_task(uuid4())
 
 
 class TestWorkerSettings:
@@ -239,3 +260,77 @@ class TestUploadRouteEnqueues:
         assert body["status"] == "pending"
         assert body["filename"] == "notes.txt"
         enqueued.assert_called_once_with(UUID(body["id"]))
+
+    def test_upload_marks_failed_when_enqueue_fails(
+        self, client, auth_headers, monkeypatch
+    ):
+        """Upload succeeds but the document is FAILED if enqueue fails."""
+        from app.services import document as document_service_module
+        from app.storage.storage import storage as app_storage
+
+        monkeypatch.setattr(app_storage, "upload", lambda **kwargs: None)
+
+        def boom(_document_id):
+            raise RuntimeError("redis unavailable")
+
+        monkeypatch.setattr(
+            document_service_module, "process_document_task", boom
+        )
+
+        resp = client.post(
+            "/v1/documents/",
+            files={"upload_file": ("notes.txt", b"hello world", "text/plain")},
+            headers=auth_headers,
+        )
+
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["status"] == "failed"
+        assert "Failed to start processing" in body["error_message"]
+
+
+class TestRecoverStaleDocuments:
+    def _seed(self, db_session, status, minutes_old):
+        from datetime import UTC, datetime, timedelta
+
+        user = UserDB(username=f"recover_{uuid4().hex[:8]}", hashed_password="x")  # noqa: S106
+        db_session.add(user)
+        db_session.flush()
+        doc = DocumentDB(
+            owner_id=user.id,
+            filename="stale.txt",
+            object_key=f"users/{user.id}/documents/x/stale.txt",
+            mime_type="text/plain",
+            status=status,
+        )
+        db_session.add(doc)
+        db_session.flush()
+        doc.created_at = datetime.now(UTC) - timedelta(minutes=minutes_old)
+        db_session.commit()
+        return doc
+
+    def test_marks_old_pending_and_processing_as_failed(self, db_session):
+        old_pending = self._seed(db_session, DocumentStatus.PENDING, 45)
+        old_processing = self._seed(db_session, DocumentStatus.PROCESSING, 45)
+
+        asyncio.run(recover_stale_documents({}))
+
+        db_session.refresh(old_pending)
+        db_session.refresh(old_processing)
+        assert old_pending.status == DocumentStatus.FAILED
+        assert old_processing.status == DocumentStatus.FAILED
+        assert (
+            old_pending.error_message
+            == "Processing did not complete within the timeout"
+        )
+
+    def test_leaves_recent_documents_alone(self, db_session):
+        recent_pending = self._seed(db_session, DocumentStatus.PENDING, 5)
+        ready = self._seed(db_session, DocumentStatus.READY, 45)
+
+        asyncio.run(recover_stale_documents({}))
+
+        db_session.refresh(recent_pending)
+        db_session.refresh(ready)
+        assert recent_pending.status == DocumentStatus.PENDING
+        assert ready.status == DocumentStatus.READY

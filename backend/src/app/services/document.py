@@ -172,7 +172,20 @@ class DocumentService:
         # the search cache.
         invalidate_user_search_cache(owner_id)
 
-        process_document_task(document_id)
+        try:
+            process_document_task(document_id)
+        except Exception as e:
+            # Enqueue failed (e.g. Redis unavailable): never leave the
+            # document stuck in pending. Record the failure and return the
+            # refreshed row so the client sees the final status.
+            logger.warning(f"Failed to enqueue processing for {document_id}: {e}")
+            failed = self.repository.update_status(
+                document_id,
+                DocumentStatus.FAILED,
+                error_message=f"Failed to start processing: {e}",
+            )
+            if failed is not None:
+                created = failed
 
         return created
 
