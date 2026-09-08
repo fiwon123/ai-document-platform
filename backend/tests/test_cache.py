@@ -98,7 +98,7 @@ def fake_redis(monkeypatch):
 class TestSearchServiceCaching:
     def test_second_identical_search_is_served_from_cache(self, fake_redis):
         repo = MagicMock()
-        repo.search.return_value = [_make_result()]
+        repo.search.return_value = ([_make_result()], 1)
         service = SearchService(
             repository=repo,
             embedding_service=_embedding_service_mock(),
@@ -115,7 +115,7 @@ class TestSearchServiceCaching:
 
     def test_cache_key_includes_document_ids(self, fake_redis):
         repo = MagicMock()
-        repo.search.return_value = [_make_result()]
+        repo.search.return_value = ([_make_result()], 1)
         service = SearchService(
             repository=repo,
             embedding_service=_embedding_service_mock(),
@@ -129,7 +129,7 @@ class TestSearchServiceCaching:
 
     def test_invalidation_forces_fresh_search(self, fake_redis):
         repo = MagicMock()
-        repo.search.return_value = [_make_result()]
+        repo.search.return_value = ([_make_result()], 1)
         service = SearchService(
             repository=repo,
             embedding_service=_embedding_service_mock(),
@@ -149,7 +149,7 @@ class TestSearchServiceCaching:
     def test_cache_read_failure_falls_back_to_database(self, monkeypatch):
         monkeypatch.setattr(redis_client, "get_json", lambda key: (_ for _ in ()).throw(RuntimeError("redis down")))
         repo = MagicMock()
-        repo.search.return_value = [_make_result()]
+        repo.search.return_value = ([_make_result()], 1)
         service = SearchService(
             repository=repo,
             embedding_service=_embedding_service_mock(),
@@ -163,7 +163,7 @@ class TestSearchServiceCaching:
     def test_cache_write_failure_does_not_break_search(self, monkeypatch):
         monkeypatch.setattr(redis_client, "set_json", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("redis down")))
         repo = MagicMock()
-        repo.search.return_value = [_make_result()]
+        repo.search.return_value = ([_make_result()], 1)
         service = SearchService(
             repository=repo,
             embedding_service=_embedding_service_mock(),
@@ -176,7 +176,7 @@ class TestSearchServiceCaching:
     def test_cached_response_round_trips_via_json(self, fake_redis):
         """Search results must survive JSON serialization (UUIDs etc.)."""
         result = _make_result()
-        payload = SearchResponse(query="q", results=[result])
+        payload = SearchResponse(query="q", results=[result], total_count=1, has_more=False)
         redis_client.set_json("search:1", payload.model_dump(mode="json"))
 
         restored = redis_client.get_json("search:1")

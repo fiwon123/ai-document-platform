@@ -21,7 +21,7 @@ def _make_vector(on_dim: int) -> list[float]:
 class TestSearchServiceUnit:
     def test_search_generates_query_embedding_for_vector_search(self):
         repo = MagicMock()
-        repo.search.return_value = []
+        repo.search.return_value = ([], 0)
         embedding = MagicMock()
         embedding.generate_embedding.return_value = _make_vector(0)
         user_id = uuid4()
@@ -34,6 +34,7 @@ class TestSearchServiceUnit:
             user_id=user_id,
             query_embedding=_make_vector(0),
             top_k=5,
+            offset=0,
             document_ids=None,
         )
         repo.save_search_history.assert_called_once()
@@ -42,7 +43,7 @@ class TestSearchServiceUnit:
 
     def test_search_falls_back_to_text_search_when_embedding_unavailable(self):
         repo = MagicMock()
-        repo.search.return_value = []
+        repo.search.return_value = ([], 0)
         embedding = MagicMock()
         embedding.generate_embedding.side_effect = RuntimeError("no api key")
         user_id = uuid4()
@@ -54,13 +55,14 @@ class TestSearchServiceUnit:
             user_id=user_id,
             query_embedding=None,
             top_k=5,
+            offset=0,
             document_ids=None,
         )
         assert response.results == []
 
     def test_search_respects_top_k(self):
         repo = MagicMock()
-        repo.search.return_value = []
+        repo.search.return_value = ([], 0)
         embedding = MagicMock()
         embedding.generate_embedding.return_value = _make_vector(0)
 
@@ -71,12 +73,13 @@ class TestSearchServiceUnit:
             user_id=repo.search.call_args.kwargs["user_id"],
             query_embedding=_make_vector(0),
             top_k=3,
+            offset=0,
             document_ids=None,
         )
 
     def test_search_forwards_document_ids_to_repository(self):
         repo = MagicMock()
-        repo.search.return_value = []
+        repo.search.return_value = ([], 0)
         embedding = MagicMock()
         embedding.generate_embedding.return_value = _make_vector(0)
         user_id = uuid4()
@@ -89,6 +92,7 @@ class TestSearchServiceUnit:
             user_id=user_id,
             query_embedding=_make_vector(0),
             top_k=5,
+            offset=0,
             document_ids=document_ids,
         )
 
@@ -139,13 +143,131 @@ class TestVectorSearchWithDatabase:
         assert response.results[0].document_filename == "animals.txt"
 
 
+class TestSearchPagination:
+    def _seed_chunks(self, db_session, count: int = 3, marker: str = "a"):
+        user = UserDB(
+            username=f"page_user_{marker}", hashed_password="x"  # noqa: S106
+        )
+        db_session.add(user)
+        db_session.flush()
+
+        doc = DocumentDB(
+            owner_id=user.id,
+            filename=f"paged_{marker}.txt",
+            object_key=f"k/paged_{marker}.txt",
+            mime_type="text/plain",
+            status=DocumentStatus.READY,
+        )
+        db_session.add(doc)
+        db_session.flush()
+
+        chunks = [
+            DocumentChunk(
+                document_id=doc.id,
+                content=f"section {i} content",
+                chunk_index=i,
+                embedding=_make_vector(i),
+            )
+            for i in range(count)
+        ]
+        db_session.add_all(chunks)
+        db_session.commit()
+        return user, doc
+
+    def test_vector_search_pagination_and_total_count(self, db_session):
+        user, _ = self._seed_chunks(db_session, count=3)
+        embedding = MagicMock()
+        embedding.generate_embedding.return_value = _make_vector(0)
+        service = SearchService(
+            repository=SearchRepository(db_session),
+            embedding_service=embedding,
+        )
+
+        page1 = service.search(user_id=user.id, query="q", top_k=2, offset=0)
+        assert len(page1.results) == 2
+        assert page1.total_count == 3
+        assert page1.has_more is True
+
+        page2 = service.search(user_id=user.id, query="q", top_k=2, offset=2)
+        assert len(page2.results) == 1
+        assert page2.total_count == 3
+        assert page2.has_more is False
+
+        # Pages must not overlap and must cover everything.
+        first_ids = {r.chunk_id for r in page1.results}
+        second_ids = {r.chunk_id for r in page2.results}
+        assert not first_ids & second_ids
+        assert len(first_ids | second_ids) == 3
+
+    def test_vector_search_total_count_counts_matching_chunks(self, db_session):
+        """total_count counts this user's embeddable chunks only."""
+        user, _ = self._seed_chunks(db_session, count=2, marker="user_a")
+        # A chunk from ANOTHER user's document must not be counted.
+        other, _ = self._seed_chunks(db_session, count=1, marker="user_b")
+
+        embedding = MagicMock()
+        embedding.generate_embedding.return_value = _make_vector(0)
+        service = SearchService(
+            repository=SearchRepository(db_session),
+            embedding_service=embedding,
+        )
+
+        response = service.search(user_id=user.id, query="q", top_k=10)
+
+        assert response.total_count == 2
+        assert all(r.document_filename == "paged_user_a.txt" for r in response.results)
+
+    def test_text_fallback_pagination(self, db_session):
+        """Embedding failure falls back to text search with paging."""
+        user, _ = self._seed_chunks(db_session, count=3)
+        embedding = MagicMock()
+        embedding.generate_embedding.side_effect = RuntimeError("no api key")
+        service = SearchService(
+            repository=SearchRepository(db_session),
+            embedding_service=embedding,
+        )
+
+        page = service.search(user_id=user.id, query="q", top_k=2, offset=1)
+
+        assert len(page.results) == 2
+        assert page.total_count == 3
+        assert page.has_more is False
+        # Deterministic ordering: chunk_index 1 first, then 2.
+        assert [r.metadata_ for r in page.results] == [None, None]
+        assert [r.content for r in page.results] == ["section 1 content", "section 2 content"]
+
+    def test_search_route_forwards_offset(self, client, auth_headers):
+        from app.main import app
+        from app.routes.search import get_search_service
+
+        fake_service = MagicMock()
+        fake_service.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
+        app.dependency_overrides[get_search_service] = lambda: fake_service
+        try:
+            resp = client.post(
+                "/v1/search/",
+                json={"query": "hello", "top_k": 5, "offset": 10},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        fake_service.search.assert_called_once()
+        assert fake_service.search.call_args.kwargs["offset"] == 10
+
+
 class TestSearchRoute:
     def test_search_endpoint_returns_results(self, client, auth_headers):
         from app.main import app
         from app.routes.search import get_search_service
 
         fake_service = MagicMock()
-        fake_service.search.return_value = SearchResponse(query="q", results=[])
+        fake_service.search.return_value = SearchResponse(\
+            query="q", results=[], total_count=0, has_more=False\
+        )
         app.dependency_overrides[get_search_service] = lambda: fake_service
         try:
             resp = client.post(
@@ -158,5 +280,5 @@ class TestSearchRoute:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body == {"query": "q", "results": []}
+        assert body == {"query": "q", "results": [], "total_count": 0, "has_more": False}
         fake_service.search.assert_called_once()

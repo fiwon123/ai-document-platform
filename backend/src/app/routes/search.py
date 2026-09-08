@@ -30,4 +30,5 @@ def search_documents(
         user_id=owner_id,
         query=request.query,
         top_k=request.top_k,
+        offset=request.offset,
     )
