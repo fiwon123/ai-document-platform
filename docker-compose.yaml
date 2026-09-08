@@ -72,6 +72,11 @@ services:
         condition: service_healthy
     volumes:
       - .:/workspace
+      # Persist gh CLI credentials so they survive container rebuilds.
+      # Mounted at both homes: the agent shell runs as root, while the
+      # interactive devcontainer terminal typically runs as vscode.
+      - gh_cli_config:/root/.config/gh
+      - gh_cli_config:/home/vscode/.config/gh
     working_dir: /workspace/backend
     command: >
       sh -c "uv sync && uv run python -m alembic upgrade head && uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
@@ -128,3 +133,6 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+  # Persists gh CLI credentials across devcontainer rebuilds (see backend
+  # service mounts). Remove with `docker compose down -v` to clear auth.
+  gh_cli_config:
