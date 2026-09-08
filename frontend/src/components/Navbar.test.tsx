@@ -59,6 +59,28 @@ describe("Navbar", () => {
     expect(screen.getAllByText("Users").length).toBeGreaterThan(0);
   });
 
+  it("links all app navigation to /app-prefixed routes", () => {
+    renderNavbar();
+    expect(
+      screen.getByRole("link", { name: "AskDocs home" }).getAttribute("href"),
+    ).toBe("/app");
+    expect(screen.getByRole("link", { name: "Dashboard" }).getAttribute("href")).toBe("/app");
+    expect(screen.getByRole("link", { name: "Documents" }).getAttribute("href")).toBe("/app/documents");
+    expect(screen.getByRole("link", { name: "Search" }).getAttribute("href")).toBe("/app/search");
+    expect(screen.getByRole("link", { name: "Q&A" }).getAttribute("href")).toBe("/app/qa");
+  });
+
+  it("links the admin and profile areas under /app", () => {
+    user = { username: "admin", role: "admin" };
+    renderNavbar();
+    expect(screen.getByRole("link", { name: "Users" }).getAttribute("href")).toBe("/app/admin");
+    const profileLinks = screen.getAllByRole("link", { name: "admin" });
+    expect(profileLinks.length).toBeGreaterThan(0);
+    profileLinks.forEach((link) => {
+      expect(link.getAttribute("href")).toBe("/app/profile");
+    });
+  });
+
   it("logs out and navigates to login", () => {
     renderNavbar();
     fireEvent.click(screen.getAllByText("Logout")[0]);

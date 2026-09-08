@@ -20,7 +20,7 @@ export function Navbar() {
   return (
     <nav className="navbar">
       <div className="navbar-brand">
-<Link to="/" aria-label="AskDocs home" onClick={closeMenu}>
+<Link to="/app" aria-label="AskDocs home" onClick={closeMenu}>
           AskDocs
         </Link>
       </div>
@@ -42,26 +42,26 @@ export function Navbar() {
         className={`navbar-links${menuOpen ? " navbar-links-open" : ""}`}
         id="navbar-links"
       >
-        <Link to="/" onClick={closeMenu}>
+        <Link to="/app" onClick={closeMenu}>
           Dashboard
         </Link>
-        <Link to="/documents" onClick={closeMenu}>
+        <Link to="/app/documents" onClick={closeMenu}>
           Documents
         </Link>
-        <Link to="/search" onClick={closeMenu}>
+        <Link to="/app/search" onClick={closeMenu}>
           Search
         </Link>
-        <Link to="/qa" onClick={closeMenu}>
+        <Link to="/app/qa" onClick={closeMenu}>
           Q&A
         </Link>
         {user?.role === "admin" && (
-          <Link to="/admin" onClick={closeMenu}>
+          <Link to="/app/admin" onClick={closeMenu}>
             Users
           </Link>
         )}
         {user && (
           <div className="navbar-user-mobile">
-            <Link to="/profile" onClick={closeMenu}>
+            <Link to="/app/profile" onClick={closeMenu}>
               {user.username}
             </Link>
             <button
@@ -91,7 +91,7 @@ export function Navbar() {
         </button>
         {user && (
           <>
-            <Link to="/profile" className="navbar-username">
+            <Link to="/app/profile" className="navbar-username">
               {user.username}
             </Link>
             <button onClick={handleLogout} className="btn btn-secondary">
