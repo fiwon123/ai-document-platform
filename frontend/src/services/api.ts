@@ -52,6 +52,10 @@ async function request<T>(
     throw new ApiError(response.status, error.detail || "Request failed");
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json();
 }
 
@@ -142,6 +146,21 @@ export const users = {
       method: "PUT",
       body: JSON.stringify(body),
     });
+  },
+
+  async listUsers(): Promise<User[]> {
+    return request<User[]>("/users/");
+  },
+
+  async updateUserRole(userId: string, role: "customer" | "admin"): Promise<User> {
+    return request<User>(`/users/${userId}/role`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    });
+  },
+
+  async deleteUser(userId: string): Promise<void> {
+    await request<void>(`/users/${userId}`, { method: "DELETE" });
   },
 };
 
