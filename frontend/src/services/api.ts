@@ -57,7 +57,11 @@ async function request<T>(
     }
 
     const error = await response.json().catch(() => ({ detail: "Request failed" }));
-    throw new ApiError(response.status, error.detail || "Request failed");
+    // Support both the legacy `{detail}` and the standardized
+    // `{error: {code, message}}` response shapes.
+    const message =
+      error?.detail ?? error?.error?.message ?? `Request failed (${response.status})`;
+    throw new ApiError(response.status, message);
   }
 
   if (response.status === 204) {

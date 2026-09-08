@@ -15,7 +15,12 @@ from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.repositories.document import DocumentRepository
 from app.routes.auth import get_current_user_id
-from app.schemas.document import DocumentStatusResponse, FileResponse
+from app.schemas.document import (
+    DeleteDocumentResponse,
+    DocumentStatusResponse,
+    DownloadUrlResponse,
+    FileResponse,
+)
 from app.services.document import DocumentService
 from app.storage.storage import storage
 
@@ -81,7 +86,7 @@ def get_document_status(
     return result
 
 
-@router.get("/{document_id}/download")
+@router.get("/{document_id}/download", response_model=DownloadUrlResponse)
 def get_download_url(
     document_id: UUID,
     service: Annotated[DocumentService, Depends(get_document_service)],
@@ -96,7 +101,7 @@ def get_download_url(
     return result
 
 
-@router.delete("/{document_id}")
+@router.delete("/{document_id}", response_model=DeleteDocumentResponse)
 def delete_document(
     document_id: UUID,
     service: Annotated[DocumentService, Depends(get_document_service)],

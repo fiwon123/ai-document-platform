@@ -70,3 +70,18 @@ class QAResponse(BaseModel):
     question: str
     answer: str
     sources: list[SearchResult]
+
+
+class DownloadUrlResponse(BaseModel):
+    """Typed payload for the presigned download URL endpoint."""
+
+    id: UUID
+    filename: str
+    download_url: str
+
+
+class DeleteDocumentResponse(BaseModel):
+    """Typed payload for the document delete endpoint."""
+
+    message: str
+    document_id: UUID
