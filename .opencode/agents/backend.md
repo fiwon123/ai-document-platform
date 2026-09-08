@@ -32,3 +32,4 @@ You implement backend routes, services, database changes, and storage logic for 
 - Use Pydantic schemas for request/response validation
 - Use type hints for all Python code
 - Run `uv run ruff check src/` and `uv run pytest` before finishing
+- Do NOT create issues, branches, or PRs — GitHub lifecycle management belongs to the primary (build) agent

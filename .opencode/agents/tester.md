@@ -36,3 +36,4 @@ You write and run tests for the AI Document Intelligence Platform (backend and f
 - Aim for critical path coverage, not 100% line coverage
 - Backend: `cd backend && uv run pytest`
 - Frontend: `cd frontend && npm test`
+- Do NOT create issues, branches, or PRs — GitHub lifecycle management belongs to the primary (build) agent
