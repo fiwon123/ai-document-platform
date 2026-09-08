@@ -1,10 +1,12 @@
 import asyncio
 import logging
 import os
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
+from arq.worker import Retry
 from sqlalchemy.orm import Session
 
 from app.cache.redis import REDIS_PASSWORD
@@ -19,6 +21,10 @@ from app.storage.storage import storage
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
+BACKOFF_SECONDS = 5
+
+# Documents stuck in these states longer than this are recovered as failed.
+RECOVERY_TIMEOUT_MINUTES = 30
 
 # arq coroutine names are derived from the functions' ``__qualname__``; keep
 # them unique and stable so enqueued jobs always resolve to the same handler.
@@ -139,14 +145,24 @@ async def process_document(ctx: dict, document_id: str) -> None:
             _invalidate_caches(document)
             logger.info(f"Document processed successfully: {document_uuid}")
 
-        except Exception as e:  # noqa: BLE001 - any processing error marks FAILED
-            logger.error(f"Error processing document {document_uuid}: {e}")
-            repository.update_status(
-                document_uuid,
-                DocumentStatus.FAILED,
-                error_message=str(e),
+        except Exception as e:  # noqa: BLE001 - transient errors are retried
+            job_try = int(ctx.get("job_try", 1))
+            logger.error(
+                f"Error processing document {document_uuid} "
+                f"(try {job_try}/{MAX_RETRIES}): {e}"
             )
-            _invalidate_caches(document)
+            if job_try >= MAX_RETRIES:
+                # Final attempt exhausted — record the failure so the
+                # document is never left stuck in a processing state.
+                repository.update_status(
+                    document_uuid,
+                    DocumentStatus.FAILED,
+                    error_message=str(e),
+                )
+                _invalidate_caches(document)
+                raise
+            # Transient failure: let arq retry with exponential backoff.
+            raise Retry(defer=BACKOFF_SECONDS * (2 ** (job_try - 1))) from e
 
     finally:
         db.close()
@@ -169,19 +185,58 @@ def process_document_task(document_id: UUID) -> None:
 
     FastAPI document endpoints are synchronous ``def`` handlers with no
     active event loop, so it is safe to drive the async enqueue via
-    asyncio here. Redis being down must not break the upload response, so
-    a failure is logged and swallowed.
+    asyncio here. Raises on failure so callers can mark the document as
+    failed instead of leaving it stuck in ``pending``.
     """
+    asyncio.run(_enqueue_with_new_pool(document_id))
+
+
+async def recover_stale_documents(ctx: dict) -> None:
+    """Mark documents stuck in pending/processing as failed.
+
+    Runs periodically via the arq cron. Covers jobs that never started
+    (enqueue failed/lost) or workers that crashed mid-flight. A document
+    that has been pending/processing for longer than
+    ``RECOVERY_TIMEOUT_MINUTES`` is marked FAILED with a descriptive
+    error so it never stays stuck forever.
+    """
+    cutoff = datetime.now(UTC) - timedelta(minutes=RECOVERY_TIMEOUT_MINUTES)
+    db: Session = SessionLocal()
     try:
-        asyncio.run(_enqueue_with_new_pool(document_id))
-    except Exception as e:  # noqa: BLE001 - enqueue must never break upload
-        logger.error(f"Failed to enqueue document {document_id}: {e}")
+        stale = (
+            db.query(DocumentDB)
+            .filter(
+                DocumentDB.status.in_(
+                    [DocumentStatus.PENDING, DocumentStatus.PROCESSING]
+                )
+            )
+            .filter(DocumentDB.created_at < cutoff)
+            .all()
+        )
+        for document in stale:
+            logger.warning(
+                f"Recovering stale document {document.id} "
+                f"(status={document.status.value}, created={document.created_at})"
+            )
+            document.status = DocumentStatus.FAILED
+            document.error_message = (
+                "Processing did not complete within the timeout"
+            )
+            _invalidate_caches(document)
+        if stale:
+            db.commit()
+            logger.info(f"Recovered {len(stale)} stale document(s)")
+    finally:
+        db.close()
 
 
 # arq CLI settings: module must expose ``WorkerSettings``. A dict is a valid
 # WorkerSettingsType.
 WorkerSettings = {
     "functions": [process_document],
+    "cron_jobs": [
+        (recover_stale_documents, "*/5 * * * *", False),
+    ],
     "redis_settings": worker_redis_settings(),
     "max_tries": MAX_RETRIES,
 }
