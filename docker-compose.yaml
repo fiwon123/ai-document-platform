@@ -112,6 +112,10 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5173:5173"
+    environment:
+      # Inside this container the backend is only reachable by compose
+      # service name, not localhost, so point the Vite proxy at it.
+      VITE_PROXY_TARGET: http://backend:8000
     depends_on:
       - backend
     volumes:
