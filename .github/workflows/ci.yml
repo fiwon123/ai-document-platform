@@ -34,6 +34,45 @@ jobs:
         run: uv run python -m compileall -q src
         working-directory: backend
 
+  backend-test:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: mysecretpassword
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.14
+
+      - name: Sync dependencies (locked)
+        run: uv sync --locked
+        working-directory: backend
+
+      - name: Run tests
+        # Exit code 5 means pytest collected no tests (e.g. main without
+        # the test suite yet) — treat that as a pass, not a failure.
+        run: uv run pytest -q || test $? -eq 5
+        working-directory: backend
+
   frontend-lint:
     name: Frontend (oxlint)
     runs-on: ubuntu-latest
