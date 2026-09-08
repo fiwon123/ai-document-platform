@@ -19,6 +19,22 @@ function renderNavbar() {
   );
 }
 
+beforeEach(() => {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+});
+
 describe("Navbar", () => {
   beforeEach(() => {
     user = { username: "alice", role: "customer" };
@@ -45,7 +61,7 @@ describe("Navbar", () => {
 
   it("logs out and navigates to login", () => {
     renderNavbar();
-    fireEvent.click(screen.getByText("Logout"));
+    fireEvent.click(screen.getAllByText("Logout")[0]);
     expect(logout).toHaveBeenCalled();
   });
 });
