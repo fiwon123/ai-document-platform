@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .middleware import LoggingMiddleware, RateLimitMiddleware
+from .middleware.rate_limit import RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW
 from .routes import auth, document, health, qa, search, statistics, users
 from .storage.storage import storage
 
@@ -30,7 +31,11 @@ app = FastAPI(
 )
 
 app.add_middleware(LoggingMiddleware)
-app.add_middleware(RateLimitMiddleware)
+app.add_middleware(
+    RateLimitMiddleware,
+    requests=RATE_LIMIT_REQUESTS,
+    window=RATE_LIMIT_WINDOW,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
