@@ -1,13 +1,34 @@
+import logging
 import os
 from uuid import UUID, uuid4
 
 from fastapi import UploadFile
 
+from app.cache.redis import redis_client
 from app.models.document import DocumentDB, DocumentStatus
 from app.repositories.document import DocumentRepository
+from app.schemas.document import DocumentStatusResponse, FileResponse
+from app.services.search import invalidate_user_search_cache
 from app.storage.storage import MinioStorage
 from app.worker import process_document_task
 
+logger = logging.getLogger(__name__)
+
+DOCUMENT_CACHE_TTL_SECONDS = 60
+_DOCUMENT_KEY = "document:{owner_id}:{document_id}"
+
+
+def invalidate_document_cache(owner_id: UUID, document_id: UUID) -> None:
+    """Drop the cached metadata entry for a document.
+
+    Called whenever a document's row changes (status transitions, deletes)
+    so callers never serve stale metadata longer than necessary. The TTL
+    provides a second line of defense if a caller forgets to invalidate.
+    """
+    try:
+        redis_client.delete(_DOCUMENT_KEY.format(owner_id=owner_id, document_id=document_id))
+    except Exception as e:  # noqa: BLE001 - cache must never break the caller
+        logger.warning(f"Document cache invalidation failed: {e}")
 
 class DocumentService:
     def __init__(
@@ -45,21 +66,55 @@ class DocumentService:
 
             created = self.repository.create(document)
 
+            # The document set changed: any cached search results for this
+            # user are now stale (the new document is not included) and the
+            # document's own metadata is not cached yet, so only invalidate
+            # the search cache.
+            invalidate_user_search_cache(owner_id)
+
             process_document_task(document_id)
 
             return created
 
-        except Exception:
+        except Exception as e:
             try:
                 self.storage.delete(object_key)
-            except Exception:
-                pass
+            except Exception as cleanup_error:  # noqa: BLE001 - best-effort cleanup
+                logger.warning(
+                    f"Failed to clean up object {object_key} "
+                    f"after upload failure: {cleanup_error}"
+                )
+            logger.warning(f"Document upload failed: {e}")
             raise
 
     def get(self, document_id: UUID, owner_id: UUID):
-        return self.repository.get_by_id(
+        cached = self._get_cached_document(owner_id, document_id)
+        if cached is not None:
+            return cached
+
+        document = self.repository.get_by_id(
             document_id=document_id,
             owner_id=owner_id,
+        )
+        if document is None:
+            return None
+
+        self._cache_document(owner_id, document_id, document)
+        return document
+
+    def get_status(self, document_id: UUID, owner_id: UUID):
+        """Return a minimal status object for polling clients."""
+        document = self.repository.get_by_id(
+            document_id=document_id,
+            owner_id=owner_id,
+        )
+        if document is None:
+            return None
+
+        return DocumentStatusResponse(
+            id=document.id,
+            status=document.status,
+            error_message=document.error_message,
         )
 
     def list(self, owner_id: UUID, skip: int = 0, limit: int = 20):
@@ -80,10 +135,40 @@ class DocumentService:
         }
 
     def delete(self, document_id: UUID, owner_id: UUID):
-        document = self.get(document_id=document_id, owner_id=owner_id)
+        # Fetch a fresh ORM row directly: the cached FileResponse is not a
+        # mapped instance and cannot be passed to repository.delete().
+        document = self.repository.get_by_id(
+            document_id=document_id,
+            owner_id=owner_id,
+        )
         if document is None:
             return None
 
         self.storage.delete(document.object_key)
         self.repository.delete(document)
+        invalidate_document_cache(owner_id, document_id)
+        invalidate_user_search_cache(owner_id)
         return document
+
+    def _get_cached_document(self, owner_id: UUID, document_id: UUID) -> FileResponse | None:
+        try:
+            payload = redis_client.get_json(
+                _DOCUMENT_KEY.format(owner_id=owner_id, document_id=document_id)
+            )
+            if payload is None:
+                return None
+            return FileResponse.model_validate(payload)
+        except Exception as e:  # noqa: BLE001 - fall back to the database
+            logger.warning(f"Document cache read failed: {e}")
+            return None
+
+    def _cache_document(self, owner_id: UUID, document_id: UUID, document: DocumentDB) -> None:
+        try:
+            serialized = FileResponse.model_validate(document).model_dump(mode="json")
+            redis_client.set_json(
+                _DOCUMENT_KEY.format(owner_id=owner_id, document_id=document_id),
+                serialized,
+                ex=DOCUMENT_CACHE_TTL_SECONDS,
+            )
+        except Exception as e:  # noqa: BLE001 - cache write must never break reads
+            logger.warning(f"Document cache write failed: {e}")
