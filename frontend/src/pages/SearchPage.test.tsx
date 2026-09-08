@@ -52,4 +52,19 @@ describe("SearchPage", () => {
     await runSearch("anything");
     expect(screen.getByText("Search backend unavailable")).toBeTruthy();
   });
+
+  it("shows a styled empty state when no results match", async () => {
+    mockedSearch.mockResolvedValue({ query: "q3 planning", results: [] });
+    await runSearch("q3 planning");
+
+    expect(screen.getByText("No results found")).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Nothing matched "q3 planning". Try different keywords.',
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(screen.queryByText("No results found")).toBeNull();
+  });
 });
