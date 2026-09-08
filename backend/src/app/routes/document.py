@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.repositories.document import DocumentRepository
 from app.routes.auth import get_current_user_id
-from app.schemas.document import FileResponse
+from app.schemas.document import DocumentStatusResponse, FileResponse
 from app.services.document import DocumentService
 from app.storage.storage import storage
 
@@ -64,6 +64,21 @@ def get_document(
             detail="Document not found",
         )
     return document
+
+
+@router.get("/{document_id}/status", response_model=DocumentStatusResponse)
+def get_document_status(
+    document_id: UUID,
+    service: Annotated[DocumentService, Depends(get_document_service)],
+    owner_id: Annotated[UUID, Depends(get_current_user_id)],
+):
+    result = service.get_status(document_id=document_id, owner_id=owner_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+    return result
 
 
 @router.get("/{document_id}/download")
