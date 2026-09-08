@@ -74,6 +74,24 @@ class TestSearchServiceUnit:
             document_ids=None,
         )
 
+    def test_search_forwards_document_ids_to_repository(self):
+        repo = MagicMock()
+        repo.search.return_value = []
+        embedding = MagicMock()
+        embedding.generate_embedding.return_value = _make_vector(0)
+        user_id = uuid4()
+        document_ids = [uuid4(), uuid4()]
+
+        service = SearchService(repository=repo, embedding_service=embedding)
+        service.search(user_id=user_id, query="q", document_ids=document_ids)
+
+        repo.search.assert_called_once_with(
+            user_id=user_id,
+            query_embedding=_make_vector(0),
+            top_k=5,
+            document_ids=document_ids,
+        )
+
 
 class TestVectorSearchWithDatabase:
     def test_vector_search_returns_ranked_results(self, db_session):
