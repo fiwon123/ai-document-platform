@@ -122,6 +122,29 @@ export const statistics = {
   },
 };
 
+export interface UpdateMeInput {
+  username?: string;
+  password?: string;
+  confirmPassword?: string;
+}
+
+export const users = {
+  async updateMe(input: UpdateMeInput): Promise<User> {
+    const body: Record<string, string> = {};
+    if (input.username) {
+      body["username"] = input.username;
+    }
+    if (input.password) {
+      body["password"] = input.password;
+      body["confirm_password"] = input.confirmPassword ?? "";
+    }
+    return request<User>("/users/me", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  },
+};
+
 export const search = {
   async search(
     query: string,
