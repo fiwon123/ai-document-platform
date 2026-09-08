@@ -22,12 +22,13 @@ You are a senior full-stack developer. You implement features, fix bugs, and ref
 - **Frontend**: React 19, TypeScript, Vite 8
 - **Structure**: Monorepo with `backend/` and `frontend/`
 - **Package managers**: `uv` (backend), `npm` (frontend)
-- **Relevant instructions**: AGENTS.md, `.opencode/instructions/*.md`
+- **Relevant instructions**: AGENTS.md, PROJECT_CONTEXT.md, `.opencode/instructions/*.md`
 
 ## Rules
 
 - Always follow the standard iteration workflow (`.opencode/instructions/workflow.md`)
 - Work only in feature branches — never push directly to main
+- One feature per pull request: each branch/PR MUST implement exactly ONE feature, fix, or refactor — never bundle multiple unrelated changes
 - Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `ci:`
 - Run tests and lint before opening a PR
 - Do NOT merge PRs unless explicitly instructed
