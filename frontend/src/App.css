@@ -582,6 +582,51 @@ body {
 }
 
 /* Responsive */
+/* User Admin Table */
+.user-table-wrap {
+  overflow-x: auto;
+}
+
+.user-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border: 1px solid var(--line);
+}
+
+.user-table th,
+.user-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.user-table th {
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+.user-table tbody tr:hover {
+  background: var(--surface, #fafafa);
+}
+
+.user-table select {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: white;
+  font-size: 0.85rem;
+}
+
+.user-table select:disabled,
+.user-table .btn:disabled {
+  cursor: not-allowed;
+}
+
 @media (max-width: 760px) {
   .main-content {
     padding: 16px 20px;

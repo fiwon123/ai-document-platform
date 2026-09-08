@@ -20,6 +20,7 @@ export function Navbar() {
         <Link to="/documents">Documents</Link>
         <Link to="/search">Search</Link>
         <Link to="/qa">Q&A</Link>
+        {user?.role === "admin" && <Link to="/admin">Users</Link>}
       </div>
       <div className="navbar-user">
         {user && (

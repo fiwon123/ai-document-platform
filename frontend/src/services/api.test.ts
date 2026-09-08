@@ -428,3 +428,65 @@ describe("users.updateMe", () => {
     });
   });
 });
+
+describe("users admin methods", () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn();
+    localStorage.setItem("token", "test-token");
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("lists users via GET /v1/users/", async () => {
+    const usersPayload: User[] = [
+      { id: "u-1", username: "alice", is_active: true, role: "customer", created_at: null },
+    ];
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify(usersPayload), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await users.listUsers();
+
+    expect(result).toEqual(usersPayload);
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(String(url)).toBe("/v1/users/");
+    expect(options?.headers).toMatchObject({ Authorization: "Bearer test-token" });
+  });
+
+  it("patches a user role via PATCH /v1/users/{id}/role", async () => {
+    const updated: User = { id: "u-1", username: "alice", is_active: true, role: "admin", created_at: null };
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify(updated), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await users.updateUserRole("u-1", "admin");
+
+    expect(result).toEqual(updated);
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(String(url)).toBe("/v1/users/u-1/role");
+    expect(options?.method).toBe("PATCH");
+    expect(JSON.parse(String(options?.body))).toEqual({ role: "admin" });
+  });
+
+  it("deletes a user via DELETE /v1/users/{id} and tolerates 204", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(users.deleteUser("u-2")).resolves.toBeUndefined();
+
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(String(url)).toBe("/v1/users/u-2");
+    expect(options?.method).toBe("DELETE");
+  });
+});
