@@ -18,7 +18,7 @@ def _make_vector(on_dim: int) -> list[float]:
 
 
 def _seed_user_with_documents(db_session) -> tuple[UserDB, DocumentDB, DocumentDB]:
-    user = UserDB(username="bob", hashed_password="x")
+    user = UserDB(username="bob", hashed_password="x")  # noqa: S106
     db_session.add(user)
     db_session.flush()
 
@@ -187,3 +187,99 @@ class TestQARoute:
             score=0.1,
         )
         assert search_result.score == 0.1
+
+class TestQAServiceAnswerGeneration:
+    """Answer synthesis path with the LLM client mocked."""
+
+    def test_build_context_formats_sources(self):
+        service = QAService(search_service=MagicMock())
+        results = [
+            SearchResult(
+                chunk_id=uuid4(),
+                document_id=uuid4(),
+                document_filename="a.txt",
+                content="first chunk",
+                score=0.5,
+            ),
+            SearchResult(
+                chunk_id=uuid4(),
+                document_id=uuid4(),
+                document_filename="b.txt",
+                content="second chunk",
+                score=0.4,
+            ),
+        ]
+
+        context = service._build_context(results)
+
+        assert "[Source 1] Document: a.txt\nfirst chunk" in context
+        assert "[Source 2] Document: b.txt\nsecond chunk" in context
+
+    def test_build_context_empty_returns_placeholder(self):
+        service = QAService(search_service=MagicMock())
+
+        assert service._build_context([]) == "No relevant documents found."
+
+    def test_ask_falls_back_when_llm_not_configured(self, monkeypatch):
+        monkeypatch.setattr("app.services.qa.client", None)
+        fake_search = MagicMock()
+        fake_search.search.return_value = MagicMock(results=[])
+        service = QAService(search_service=fake_search)
+
+        response = service.ask(user_id=uuid4(), question="q")
+
+        assert "AI service is not configured" in response.answer
+        assert response.sources == []
+
+    def test_ask_uses_mocked_llm_and_returns_sources(self, monkeypatch):
+        from types import SimpleNamespace
+
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Mocked answer"))]
+        )
+        monkeypatch.setattr("app.services.qa.client", fake_client)
+
+        fake_search = MagicMock()
+        result = SearchResult(
+            chunk_id=uuid4(),
+            document_id=uuid4(),
+            document_filename="a.txt",
+            content="context",
+            score=0.5,
+        )
+        fake_search.search.return_value = MagicMock(results=[result])
+        service = QAService(search_service=fake_search)
+        document_ids = [uuid4()]
+
+        response = service.ask(
+            user_id=uuid4(),
+            question="what is revenue?",
+            document_ids=document_ids,
+        )
+
+        fake_search.search.assert_called_once_with(
+            user_id=fake_search.search.call_args.kwargs["user_id"],
+            query="what is revenue?",
+            top_k=5,
+            document_ids=document_ids,
+        )
+        assert response.answer == "Mocked answer"
+        assert response.question == "what is revenue?"
+        assert response.sources == [result]
+        assert "[Source 1]" in fake_client.chat.completions.create.call_args.kwargs[
+            "messages"
+        ][1]["content"]
+
+    def test_ask_surfaces_llm_errors(self, monkeypatch):
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.side_effect = RuntimeError("boom")
+        monkeypatch.setattr("app.services.qa.client", fake_client)
+
+        fake_search = MagicMock()
+        fake_search.search.return_value = MagicMock(results=[])
+        service = QAService(search_service=fake_search)
+
+        response = service.ask(user_id=uuid4(), question="q")
+
+        assert response.answer == "Error generating answer: boom"
