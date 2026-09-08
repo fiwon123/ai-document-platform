@@ -115,7 +115,7 @@ export function QAPage() {
           )}
         </div>
 
-        {error && <p className="error-message">{error}</p>}
+        {error && <p className="error-message" role="alert">{error}</p>}
 
         <form onSubmit={handleSubmit} className="chat-input-form">
           <input
@@ -123,6 +123,7 @@ export function QAPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question about your documents..."
+            aria-label="Ask a question about your documents"
             className="chat-input"
             disabled={isLoading}
           />

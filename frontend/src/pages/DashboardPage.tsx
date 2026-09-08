@@ -46,7 +46,7 @@ export function DashboardPage() {
   if (error) {
     return (
       <div className="page">
-        <p className="error-message">{error}</p>
+        <p className="error-message" role="alert">{error}</p>
       </div>
     );
   }

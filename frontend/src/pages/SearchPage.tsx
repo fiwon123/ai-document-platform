@@ -69,6 +69,7 @@ export function SearchPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search your documents..."
+            aria-label="Search your documents"
             className="search-input"
             disabled={isLoading}
           />
@@ -84,7 +85,7 @@ export function SearchPage() {
 
       <DocumentFilter selected={selectedIds} onChange={setSelectedIds} />
 
-      {error && <p className="error-message">{error}</p>}
+      {error && <p className="error-message" role="alert">{error}</p>}
 
       {isLoading && (
         <div className="loading">

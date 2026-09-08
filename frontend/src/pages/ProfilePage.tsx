@@ -94,7 +94,7 @@ export function ProfilePage() {
           />
         </div>
 
-        {error && <p className="error-message">{error}</p>}
+        {error && <p className="error-message" role="alert">{error}</p>}
         {success && <p className="success-message">{success}</p>}
 
         <button

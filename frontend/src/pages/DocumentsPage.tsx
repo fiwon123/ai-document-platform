@@ -146,22 +146,24 @@ export function DocumentsPage() {
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
         >
+
           <input
             type="file"
             multiple
             onChange={handleFileChange}
             disabled={isUploading}
           />
-          <span className="upload-symbol">+</span>
+          <span className="upload-symbol" aria-hidden="true">+</span>
           <strong>
             {isUploading ? "Uploading…" : "Drop documents here"}
           </strong>
           <span>or choose one or more files from your device</span>
           <small>PDF, TXT, JSON, CSV up to 25 MB each</small>
+ (fix: accessibility pass across pages)
         </label>
       </div>
 
-      {error && <p className="error-message">{error}</p>}
+      {error && <p className="error-message" role="alert">{error}</p>}
 
       {isLoading ? (
         <div className="document-grid" aria-busy="true">
@@ -178,7 +180,7 @@ export function DocumentsPage() {
           {docs.map((doc) => (
             <div key={doc.id} className="document-card">
               <div className="document-card-header">
-                <div className="file-icon">FILE</div>
+                <div className="file-icon" aria-hidden="true">FILE</div>
                 <div className="document-info">
                   <h3>{doc.filename}</h3>
                   <p>{doc.mime_type || "Unknown type"}</p>
