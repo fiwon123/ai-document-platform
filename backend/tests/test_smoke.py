@@ -15,7 +15,8 @@ def test_auth_register_and_login(auth_headers):
 
 def test_imports_app_modules():
     """Core app modules import cleanly."""
-    from app.main import app  # noqa: F401
-    from app.routes import auth, document, health, qa, search  # noqa: F401
+    from app.main import app
+    from app.routes import auth, document, health, qa, search
 
     assert app.title == "AI Document Intelligence Platform"
+    assert all(hasattr(module, "router") for module in (auth, document, health, qa, search))

@@ -16,7 +16,8 @@ export function Navbar() {
         <Link to="/">AD</Link>
       </div>
       <div className="navbar-links">
-        <Link to="/">Documents</Link>
+        <Link to="/">Dashboard</Link>
+        <Link to="/documents">Documents</Link>
         <Link to="/search">Search</Link>
         <Link to="/qa">Q&A</Link>
       </div>
