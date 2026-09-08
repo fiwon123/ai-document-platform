@@ -1,9 +1,11 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import { useTheme } from "../hooks/useTheme";
 
 export function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
 
   const handleLogout = () => {
     logout();
@@ -25,6 +27,15 @@ export function Navbar() {
         {user?.role === "admin" && <Link to="/admin">Users</Link>}
       </div>
       <div className="navbar-user">
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={toggleTheme}
+          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+        >
+          {theme === "dark" ? "Light" : "Dark"}
+        </button>
         {user && (
           <>
             <Link to="/profile" className="navbar-username">

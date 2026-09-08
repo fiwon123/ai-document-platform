@@ -17,6 +17,27 @@
   --danger: #dc2626;
   --info: #2563eb;
   --code-bg: #f1f5f9;
+
+  color-scheme: light;
+}
+
+/* Dark theme: the ink/paper pair inverts (bg becomes dark, text light) and
+   the navbar renders as a light bar on dark pages. */
+:root[data-theme="dark"] {
+  --ink: #e2e8f0; /* slate-200 — light text on dark surfaces */
+  --muted: #94a3b8; /* slate-400 */
+  --line: #1e293b; /* slate-800 */
+  --paper: #0f172a; /* slate-900 — dark background */
+  --surface: #1e293b; /* slate-800 */
+  --blue: #3b82f6; /* blue-500 — brighter accent on dark */
+  --blue-hover: #60a5fa; /* blue-400 */
+  --blue-soft: rgb(37 99 235 / 0.16);
+  --green: #22c55e; /* green-500 */
+  --green-soft: rgb(34 197 94 / 0.12);
+  --info: #3b82f6;
+  --code-bg: #1e293b;
+
+  color-scheme: dark;
 }
 
 * {
@@ -219,6 +240,24 @@ body {
   font-size: 0.9rem;
 }
 
+.theme-toggle {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--paper);
+  opacity: 0.85;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.theme-toggle:hover {
+  opacity: 1;
+}
+
 /* Buttons */
 .btn {
   padding: 10px 20px;
@@ -271,6 +310,11 @@ body {
   align-items: center;
   padding: 20px;
   background: radial-gradient(circle at 85% 8%, #dbeafe 0, transparent 28%),
+    var(--paper);
+}
+
+:root[data-theme="dark"] .auth-page {
+  background: radial-gradient(circle at 85% 8%, rgb(37 99 235 / 0.28) 0, transparent 28%),
     var(--paper);
 }
 

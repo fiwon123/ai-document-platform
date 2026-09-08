@@ -28,6 +28,18 @@
   }
 }
 
+/* Dark theme (toggled via data-theme on <html>, see useTheme). */
+:root[data-theme="dark"] {
+  --text: #e2e8f0;
+  --text-h: #f1f5f9;
+  --bg: #0f172a;
+  --border: #1e293b;
+  --code-bg: #1e293b;
+  --accent: #3b82f6;
+  --shadow: rgba(0, 0, 0, 0.55) 0 10px 15px -3px,
+    rgba(0, 0, 0, 0.35) 0 4px 6px -2px;
+}
+
 #root {
   width: 100%;
   max-width: 100%;
