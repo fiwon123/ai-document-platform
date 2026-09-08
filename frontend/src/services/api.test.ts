@@ -196,7 +196,33 @@ describe("api client request paths", () => {
     expect(JSON.parse(options.body as string)).toEqual({
       question: "What is the refund policy?",
       document_ids: ["doc-a", "doc-b"],
+      model: null,
     });
+  });
+
+  it("should send qa.ask with the selected model when provided", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ question: "q", answer: "a", sources: [] }), { status: 200 }),
+    );
+
+    await qa.ask("What is the refund policy?", undefined, "gpt-4o-mini");
+
+    const [, options] = mockFetch.mock.calls[0];
+    expect(JSON.parse(options.body as string)).toEqual({
+      question: "What is the refund policy?",
+      document_ids: null,
+      model: "gpt-4o-mini",
+    });
+  });
+
+  it("should send qa.getModels to /v1/qa/models", async () => {
+    const models = { free: ["gpt-4o-mini"], paid: ["gpt-4o", "gpt-4"] };
+    mockFetch.mockResolvedValue(new Response(JSON.stringify(models), { status: 200 }));
+
+    const result = await qa.getModels();
+
+    expect(mockFetch).toHaveBeenCalledWith("/v1/qa/models", expect.anything());
+    expect(result).toEqual(models);
   });
 
   it("should attach the Bearer token from localStorage", async () => {
