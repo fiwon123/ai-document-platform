@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import { documents } from "../services/api";
 import type { Document, DocumentStatusResponse } from "../types";
+import { SkeletonCard } from "../components/Skeleton";
 
 /** How often to re-check documents that are still processing. */
 const POLL_INTERVAL_MS = 3000;
@@ -131,7 +132,11 @@ export function DocumentsPage() {
       {error && <p className="error-message">{error}</p>}
 
       {isLoading ? (
-        <div className="loading">Loading documents...</div>
+        <div className="document-grid" aria-busy="true">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       ) : docs.length === 0 ? (
         <div className="empty-state">
           <p>No documents uploaded yet. Upload your first document above.</p>

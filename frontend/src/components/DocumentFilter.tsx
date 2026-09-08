@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { documents } from "../services/api";
 import type { Document } from "../types";
+import { Spinner } from "./Spinner";
 
 interface DocumentFilterProps {
   /** Currently selected document IDs (empty = all documents). */
@@ -46,7 +47,12 @@ export function DocumentFilter({ selected, onChange }: DocumentFilterProps) {
   }
 
   if (isLoading) {
-    return <p className="filter-note">Loading documents...</p>;
+    return (
+      <p className="filter-note">
+        <Spinner size={14} label="Loading documents" />
+        Loading documents…
+      </p>
+    );
   }
 
   if (docs.length === 0) {

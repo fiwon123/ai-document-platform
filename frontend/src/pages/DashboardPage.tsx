@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { statistics } from "../services/api";
 import type { DocumentStatus, StatisticsResponse } from "../types";
+import { Spinner } from "../components/Spinner";
 
 const STATUS_LABELS: Record<DocumentStatus, string> = {
   pending: "Pending",
@@ -35,7 +36,11 @@ export function DashboardPage() {
   }, []);
 
   if (isLoading) {
-    return <div className="loading">Loading dashboard...</div>;
+    return (
+      <div className="loading">
+        <Spinner size={24} label="Loading dashboard" />
+      </div>
+    );
   }
 
   if (error) {
