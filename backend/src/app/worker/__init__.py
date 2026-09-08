@@ -65,14 +65,30 @@ def _process_document(document_id: UUID):
 
             embedding_service = EmbeddingService()
 
+            # Generate embeddings for every chunk. This is best-effort:
+            # if the OpenAI client is not configured (or the API call
+            # fails), we still save the chunks without vectors so the
+            # document remains searchable via plain text search.
+            try:
+                embeddings = embedding_service.generate_embeddings(
+                    [chunk.content for chunk in chunks]
+                )
+            except Exception as e:  # noqa: BLE001 - worker must not fail on embedding issues
+                logger.warning(
+                    f"Embeddings unavailable for document {document_id}, "
+                    f"saving chunks without vectors: {e}"
+                )
+                embeddings = [None] * len(chunks)
+
             from app.models.chunk import DocumentChunk
 
-            for chunk in chunks:
+            for chunk, embedding in zip(chunks, embeddings):
                 db_chunk = DocumentChunk(
                     document_id=document_id,
                     content=chunk.content,
                     chunk_index=chunk.chunk_index,
                     metadata_=chunk.metadata,
+                    embedding=embedding,
                 )
                 db.add(db_chunk)
 
