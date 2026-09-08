@@ -1,12 +1,15 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { AuthProvider } from "./hooks/useAuth";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { ToastProvider } from "./context/ToastContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Navbar } from "./components/Navbar";
 import "./App.css";
 
 // Route pages are code-split so each loads on demand.
+const LandingPage = lazy(() =>
+  import("./pages/LandingPage").then((m) => ({ default: m.LandingPage })),
+);
 const LoginPage = lazy(() =>
   import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })),
 );
@@ -37,6 +40,20 @@ const NotFoundPage = lazy(() =>
 
 const pageFallback = <div className="loading">Loading page…</div>;
 
+/**
+ * Renders the public landing page at "/", but bounces already-authenticated
+ * users straight into the protected /app area.
+ */
+export function LandingGate() {
+  const { user } = useAuth();
+
+  if (user) {
+    return <Navigate to="/app" replace />;
+  }
+
+  return <LandingPage />;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -45,30 +62,32 @@ function App() {
           <ToastProvider>
           <div className="app">
             <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route
-              path="/*"
-              element={
-                <ProtectedRoute>
-                  <Navbar />
-                  <main className="main-content">
-                    <Routes>
-                      <Route path="/" element={<DashboardPage />} />
-                      <Route path="/documents" element={<DocumentsPage />} />
-                      <Route path="/search" element={<SearchPage />} />
-                      <Route path="/qa" element={<QAPage />} />
-                      <Route path="/profile" element={<ProfilePage />} />
-                      <Route path="/admin" element={<AdminPage />} />
-                      <Route path="*" element={<NotFoundPage />} />
-                    </Routes>
-                  </main>
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
-        </div>
-        </ToastProvider>
+              <Route path="/" element={<LandingGate />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              <Route
+                path="/app/*"
+                element={
+                  <ProtectedRoute>
+                    <Navbar />
+                    <main className="main-content">
+                      <Routes>
+                        <Route path="" element={<DashboardPage />} />
+                        <Route path="documents" element={<DocumentsPage />} />
+                        <Route path="search" element={<SearchPage />} />
+                        <Route path="qa" element={<QAPage />} />
+                        <Route path="profile" element={<ProfilePage />} />
+                        <Route path="admin" element={<AdminPage />} />
+                        <Route path="*" element={<NotFoundPage />} />
+                      </Routes>
+                    </main>
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+          </div>
+          </ToastProvider>
         </Suspense>
       </AuthProvider>
     </BrowserRouter>

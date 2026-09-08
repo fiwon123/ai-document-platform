@@ -11,7 +11,7 @@ export function NotFoundPage() {
         <p>
           The page you are looking for might have been moved or never existed.
         </p>
-        <Link to="/" className="btn btn-primary">
+        <Link to="/app" className="btn btn-primary">
           Back to dashboard
         </Link>
       </div>
