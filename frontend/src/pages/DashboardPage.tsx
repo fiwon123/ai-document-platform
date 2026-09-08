@@ -10,6 +10,13 @@ const STATUS_LABELS: Record<DocumentStatus, string> = {
   failed: "Failed",
 };
 
+const STATUS_COLORS: Record<DocumentStatus, string> = {
+  pending: "#f59e0b",
+  processing: "#3b82f6",
+  ready: "#10b981",
+  failed: "#ef4444",
+};
+
 export function DashboardPage() {
   const [stats, setStats] = useState<StatisticsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -103,7 +110,12 @@ export function DashboardPage() {
             {stats.recent_documents.map((doc) => (
               <li key={doc.id} className="recent-item">
                 <span className="recent-filename">{doc.filename}</span>
-                <span className="status-badge">{STATUS_LABELS[doc.status]}</span>
+                <span
+                  className="status-badge"
+                  style={{ backgroundColor: STATUS_COLORS[doc.status] }}
+                >
+                  {STATUS_LABELS[doc.status]}
+                </span>
                 <span className="recent-date">
                   {new Date(doc.created_at).toLocaleDateString()}
                 </span>
