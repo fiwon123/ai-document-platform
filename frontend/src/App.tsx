@@ -6,6 +6,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { SearchPage } from "./pages/SearchPage";
 import { QAPage } from "./pages/QAPage";
 import "./App.css";
@@ -29,6 +30,7 @@ function App() {
                       <Route path="/documents" element={<DocumentsPage />} />
                       <Route path="/search" element={<SearchPage />} />
                       <Route path="/qa" element={<QAPage />} />
+                      <Route path="/profile" element={<ProfilePage />} />
                     </Routes>
                   </main>
                 </ProtectedRoute>

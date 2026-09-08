@@ -282,6 +282,15 @@ body {
   font-size: 0.9rem;
 }
 
+.success-message {
+  padding: 12px;
+  margin: 16px 0;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: var(--success, #16a34a);
+  font-size: 0.9rem;
+}
+
 /* Empty State */
 .empty-state {
   padding: 60px 20px;

@@ -24,7 +24,9 @@ export function Navbar() {
       <div className="navbar-user">
         {user && (
           <>
-            <span>{user.username}</span>
+            <Link to="/profile" className="navbar-username">
+              {user.username}
+            </Link>
             <button onClick={handleLogout} className="btn btn-secondary">
               Logout
             </button>

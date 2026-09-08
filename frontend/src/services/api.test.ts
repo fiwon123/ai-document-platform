@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { auth, documents, qa, search, statistics } from "./api";
+import { auth, documents, qa, search, statistics, users } from "./api";
 
 describe("api client request paths", () => {
   const mockFetch = vi.fn();
@@ -368,5 +368,63 @@ describe("statistics.getMe", () => {
     const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
     expect(String(url)).toBe("/v1/statistics/me");
     expect(options?.headers).toMatchObject({ Authorization: "Bearer test-token" });
+  });
+});
+import type { User } from "../types";
+
+describe("users.updateMe", () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn();
+    localStorage.setItem("token", "test-token");
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("updates the username on /v1/users/me with the auth header", async () => {
+    const updated: User = {
+      id: "u-1",
+      username: "alice_new",
+      is_active: true,
+      role: "customer",
+      created_at: null,
+    };
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify(updated), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await users.updateMe({ username: "alice_new" });
+
+    expect(result).toEqual(updated);
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(String(url)).toBe("/v1/users/me");
+    expect(options?.method).toBe("PUT");
+    expect(JSON.parse(String(options?.body))).toEqual({ username: "alice_new" });
+    expect(options?.headers).toMatchObject({ Authorization: "Bearer test-token" });
+  });
+
+  it("sends confirm_password when changing the password", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify({ id: "u-1", username: "alice", is_active: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await users.updateMe({ password: "new-password-123", confirmPassword: "new-password-123" });
+
+    const [, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(JSON.parse(String(options?.body))).toEqual({
+      password: "new-password-123",
+      confirm_password: "new-password-123",
+    });
   });
 });
