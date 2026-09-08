@@ -7,7 +7,7 @@ from fastapi import UploadFile
 from app.cache.redis import redis_client
 from app.models.document import DocumentDB, DocumentStatus
 from app.repositories.document import DocumentRepository
-from app.schemas.document import FileResponse
+from app.schemas.document import DocumentStatusResponse, FileResponse
 from app.services.search import invalidate_user_search_cache
 from app.storage.storage import MinioStorage
 from app.worker import process_document_task
@@ -29,7 +29,6 @@ def invalidate_document_cache(owner_id: UUID, document_id: UUID) -> None:
         redis_client.delete(_DOCUMENT_KEY.format(owner_id=owner_id, document_id=document_id))
     except Exception as e:  # noqa: BLE001 - cache must never break the caller
         logger.warning(f"Document cache invalidation failed: {e}")
-
 
 class DocumentService:
     def __init__(
@@ -102,6 +101,21 @@ class DocumentService:
 
         self._cache_document(owner_id, document_id, document)
         return document
+
+    def get_status(self, document_id: UUID, owner_id: UUID):
+        """Return a minimal status object for polling clients."""
+        document = self.repository.get_by_id(
+            document_id=document_id,
+            owner_id=owner_id,
+        )
+        if document is None:
+            return None
+
+        return DocumentStatusResponse(
+            id=document.id,
+            status=document.status,
+            error_message=document.error_message,
+        )
 
     def list(self, owner_id: UUID, skip: int = 0, limit: int = 20):
         return self.repository.get_by_owner(owner_id=owner_id, skip=skip, limit=limit)
