@@ -1,5 +1,6 @@
 import logging
 import os
+from urllib.parse import unquote
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, UploadFile, status
@@ -15,9 +16,32 @@ from app.worker import process_document_task
 logger = logging.getLogger(__name__)
 
 MAX_FILENAME_LENGTH = 255
+MAX_UPLOAD_SIZE = 25 * 1024 * 1024  # 25 MB
+
+# File types the text extraction service can handle (see text_extraction.py).
+ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".csv", ".html", ".htm", ".json"}
+ALLOWED_MIME_TYPES = {
+    "application/pdf",
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "text/html",
+    "application/json",
+}
 
 DOCUMENT_CACHE_TTL_SECONDS = 60
 _DOCUMENT_KEY = "document:{owner_id}:{document_id}"
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Strip path components and characters that break storage/DB keys."""
+    # Clients can percent-encode control chars / separators in the filename
+    # header (e.g. %00 or %2F); decode before any other checks.
+    filename = unquote(filename)
+    filename = os.path.basename(filename)
+    # Remove null bytes and control characters (keep printable ASCII >= space).
+    filename = "".join(ch for ch in filename if ch >= " " and ch != "\x7f")
+    return filename.strip() or "unknown-file"
 
 
 def invalidate_document_cache(owner_id: UUID, document_id: UUID) -> None:
@@ -47,7 +71,7 @@ class DocumentService:
         upload_file: UploadFile,
     ):
         document_id = uuid4()
-        filename = os.path.basename(upload_file.filename or "unknown-file")
+        filename = _sanitize_filename(upload_file.filename or "unknown-file")
 
         # Validate filename length to prevent database DataError on INSERT.
         if len(filename) > MAX_FILENAME_LENGTH:
@@ -64,6 +88,41 @@ class DocumentService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid filename",
             )
+
+        extension = os.path.splitext(filename)[1].lower()
+        if extension not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Unsupported file type. "
+                    "Allowed types: pdf, txt, md, csv, html, json."
+                ),
+            )
+
+        content_type = upload_file.content_type
+        if content_type and content_type not in ALLOWED_MIME_TYPES:
+            # Some browsers send application/octet-stream for any file —
+            # the extension allowlist above is the source of truth.
+            if content_type != "application/octet-stream":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Unsupported file type. Allowed types: pdf, txt, md, csv, html, json.",
+                )
+
+        # Read up to MAX_UPLOAD_SIZE + 1 bytes: detects oversized files
+        # without buffering the whole payload.
+        content = upload_file.file.read(MAX_UPLOAD_SIZE + 1)
+        if len(content) > MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail="File too large. Maximum size is 25 MB.",
+            )
+        if not content:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File is empty.",
+            )
+        upload_file.file.seek(0)
 
         object_key = f"users/{owner_id}/documents/{document_id}/{filename}"
 
