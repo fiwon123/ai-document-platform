@@ -71,7 +71,7 @@ class TestDocumentStatusEndpoint:
     def test_missing_document_returns_404(self, client, auth_headers, db_session):
         resp = client.get(f"/v1/documents/{uuid4()}/status", headers=auth_headers)
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Document not found"
+        assert resp.json()["error"]["message"] == "Document not found"
 
     def test_other_users_document_returns_404(self, client, auth_headers, db_session):
         # A different user's document is invisible (owner scoping).

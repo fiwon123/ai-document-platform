@@ -94,7 +94,7 @@ class TestUpdateCurrentUser:
             headers=headers,
         )
         assert resp.status_code == 400
-        assert resp.json()["detail"] == "Passwords do not match"
+        assert resp.json()["error"]["message"] == "Passwords do not match"
 
     def test_username_conflict_returns_409(self, client):
         _register(client, "taken_name")
@@ -107,7 +107,7 @@ class TestUpdateCurrentUser:
             headers=headers,
         )
         assert resp.status_code == 409
-        assert resp.json()["detail"] == "Username already registered"
+        assert resp.json()["error"]["message"] == "Username already registered"
 
     def test_own_username_is_not_a_conflict(self, client):
         _register(client, "same_user")
@@ -126,7 +126,7 @@ class TestUpdateCurrentUser:
 
         resp = client.put("/v1/users/me", json={}, headers=headers)
         assert resp.status_code == 400
-        assert resp.json()["detail"] == "Nothing to update"
+        assert resp.json()["error"]["message"] == "Nothing to update"
 
     def test_update_requires_auth(self, client):
         resp = client.put("/v1/users/me", json={"username": "x_x_x"})
@@ -169,7 +169,7 @@ class TestAdminEndpoints:
 
         resp = client.get("/v1/users/", headers=headers)
         assert resp.status_code == 403
-        assert resp.json()["detail"] == "Admin privileges required"
+        assert resp.json()["error"]["message"] == "Admin privileges required"
 
     def test_admin_can_list_users(self, client, db_session):
         _register(client, "visible_user")
@@ -246,7 +246,7 @@ class TestUserDeactivation:
             data={"username": "soon_disabled", "password": "testpass123"},
         )
         assert resp.status_code == 403
-        assert resp.json()["detail"] == "Account is disabled"
+        assert resp.json()["error"]["message"] == "Account is disabled"
 
     def test_valid_token_rejected_for_deactivated_user(self, client, db_session):
         """A token issued before deactivation must stop working."""
@@ -293,7 +293,7 @@ class TestUserDeactivation:
             headers=admin_headers,
         )
         assert resp.status_code == 400
-        assert resp.json()["detail"] == "Cannot deactivate your own account"
+        assert resp.json()["error"]["message"] == "Cannot deactivate your own account"
 
     def test_deactivate_requires_admin(self, client, db_session):
         _register(client, "some_admin_target")

@@ -220,6 +220,23 @@ describe("api client request paths", () => {
       message: "Not found",
     });
   });
+
+  it("should throw ApiError using the standardized error envelope", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: { code: "not_found", message: "Document not found" },
+        }),
+        { status: 404 },
+      ),
+    );
+
+    await expect(documents.get("missing")).rejects.toMatchObject({
+      name: "ApiError",
+      status: 404,
+      message: "Document not found",
+    });
+  });
 });import type { DocumentStatusResponse } from "../types";
 
 describe("documents.getStatus", () => {
