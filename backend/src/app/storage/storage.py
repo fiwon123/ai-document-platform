@@ -132,6 +132,11 @@ class MinioStorage:
         object_key: str,
         content_type: str | None = None,
     ) -> str:
+        # Defensive: ensure bucket exists before uploading.  This covers
+        # the case where the bucket was removed after startup or the
+        # startup ensure_bucket() call failed.
+        self.ensure_bucket()
+
         extra_args = {}
 
         if content_type:

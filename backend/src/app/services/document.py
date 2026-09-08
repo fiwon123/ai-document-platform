@@ -2,7 +2,7 @@ import logging
 import os
 from uuid import UUID, uuid4
 
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile, status
 
 from app.cache.redis import redis_client
 from app.models.document import DocumentDB, DocumentStatus
@@ -13,6 +13,8 @@ from app.storage.storage import MinioStorage
 from app.worker import process_document_task
 
 logger = logging.getLogger(__name__)
+
+MAX_FILENAME_LENGTH = 255
 
 DOCUMENT_CACHE_TTL_SECONDS = 60
 _DOCUMENT_KEY = "document:{owner_id}:{document_id}"
@@ -46,6 +48,23 @@ class DocumentService:
     ):
         document_id = uuid4()
         filename = os.path.basename(upload_file.filename or "unknown-file")
+
+        # Validate filename length to prevent database DataError on INSERT.
+        if len(filename) > MAX_FILENAME_LENGTH:
+            # Truncate the extension if needed to fit within the limit.
+            name, ext = os.path.splitext(filename)
+            max_name_len = MAX_FILENAME_LENGTH - len(ext)
+            if max_name_len < 1:
+                filename = filename[:MAX_FILENAME_LENGTH]
+            else:
+                filename = f"{name[:max_name_len]}{ext}"
+
+        if not filename or filename in (".", ".."):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid filename",
+            )
+
         object_key = f"users/{owner_id}/documents/{document_id}/{filename}"
 
         try:
@@ -54,7 +73,14 @@ class DocumentService:
                 object_key=object_key,
                 content_type=upload_file.content_type,
             )
+        except Exception as e:
+            logger.warning(f"Storage upload failed for {object_key}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Document storage is temporarily unavailable. Please try again.",
+            ) from e
 
+        try:
             document = DocumentDB(
                 id=document_id,
                 owner_id=owner_id,
@@ -65,27 +91,31 @@ class DocumentService:
             )
 
             created = self.repository.create(document)
-
-            # The document set changed: any cached search results for this
-            # user are now stale (the new document is not included) and the
-            # document's own metadata is not cached yet, so only invalidate
-            # the search cache.
-            invalidate_user_search_cache(owner_id)
-
-            process_document_task(document_id)
-
-            return created
-
         except Exception as e:
+            # Storage upload succeeded but DB insert failed — clean up the
+            # orphaned object so we don't leak storage.
             try:
                 self.storage.delete(object_key)
             except Exception as cleanup_error:  # noqa: BLE001 - best-effort cleanup
                 logger.warning(
                     f"Failed to clean up object {object_key} "
-                    f"after upload failure: {cleanup_error}"
+                    f"after DB failure: {cleanup_error}"
                 )
-            logger.warning(f"Document upload failed: {e}")
-            raise
+            logger.warning(f"Document DB create failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to save document metadata. Please try again.",
+            ) from e
+
+        # The document set changed: any cached search results for this
+        # user are now stale (the new document is not included) and the
+        # document's own metadata is not cached yet, so only invalidate
+        # the search cache.
+        invalidate_user_search_cache(owner_id)
+
+        process_document_task(document_id)
+
+        return created
 
     def get(self, document_id: UUID, owner_id: UUID):
         cached = self._get_cached_document(owner_id, document_id)
