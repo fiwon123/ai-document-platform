@@ -4,6 +4,7 @@ import { qa } from "../services/api";
 import type { QAResponse, SearchResult } from "../types";
 import { Spinner } from "../components/Spinner";
 import { Markdown } from "../components/Markdown";
+import { EmptyState } from "../components/EmptyState";
 
 interface Message {
   id: string;
@@ -67,9 +68,10 @@ export function QAPage() {
       <div className="chat-container">
         <div className="chat-messages">
           {messages.length === 0 && (
-            <div className="empty-state">
-              <p>Ask a question about your documents to get started.</p>
-            </div>
+            <EmptyState
+              title="No messages yet"
+              description="Ask a question about your documents to get started."
+            />
           )}
 
           {messages.map((message) => (
