@@ -2,6 +2,7 @@ import { useState } from "react";
 import { DocumentFilter } from "../components/DocumentFilter";
 import { qa } from "../services/api";
 import type { QAResponse, SearchResult } from "../types";
+import { Spinner } from "../components/Spinner";
 
 interface Message {
   id: string;
@@ -100,7 +101,10 @@ export function QAPage() {
             <div className="chat-message assistant">
               <div className="message-avatar">AI</div>
               <div className="message-content">
-                <p className="typing">Thinking...</p>
+                <span className="typing">
+                  <Spinner size={16} label="Thinking" />
+                  Thinking…
+                </span>
               </div>
             </div>
           )}

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { DocumentFilter } from "../components/DocumentFilter";
 import { search } from "../services/api";
 import type { SearchResult } from "../types";
+import { Spinner } from "../components/Spinner";
 
 export function SearchPage() {
   const [query, setQuery] = useState("");
@@ -60,7 +61,12 @@ export function SearchPage() {
 
       {error && <p className="error-message">{error}</p>}
 
-      {isLoading && <div className="loading">Searching...</div>}
+      {isLoading && (
+        <div className="loading">
+          <Spinner size={20} label="Searching" />
+          <span>Searching…</span>
+        </div>
+      )}
 
       {!isLoading && hasSearched && results.length === 0 && (
         <div className="empty-state">

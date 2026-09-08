@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { users } from "../services/api";
 import type { User } from "../types";
 import { useAuth } from "../hooks/useAuth";
+import { SkeletonList } from "../components/Skeleton";
 
 type Role = "customer" | "admin";
 
@@ -83,7 +84,7 @@ export function AdminPage() {
       {error && <p className="error-message">{error}</p>}
 
       {isLoading ? (
-        <div className="loading">Loading users...</div>
+        <SkeletonList rows={4} />
       ) : userList.length === 0 ? (
         <div className="empty-state">
           <p>No users found.</p>
