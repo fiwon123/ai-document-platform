@@ -13,7 +13,6 @@ from app.database.db import get_db
 from app.repositories.user import UserRepository
 from app.schemas.user import (
     CreateUserRequest,
-    LoginRequest,
     TokenResponse,
     UserResponse,
 )
@@ -56,11 +55,11 @@ def get_current_user(
         if user_id is None:
             raise credentials_exception
     except JWTError:
-        raise credentials_exception
+        raise credentials_exception from None
 
     repo = UserRepository(db)
     user = repo.get_by_id(UUID(user_id))
-    if user is None:
+    if user is None or not user.is_active:
         raise credentials_exception
 
     return UserResponse.model_validate(user)
@@ -113,6 +112,12 @@ def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is disabled",
         )
 
     token = create_access_token(

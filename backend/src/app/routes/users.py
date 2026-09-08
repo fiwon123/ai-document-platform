@@ -34,6 +34,10 @@ class UpdateRoleRequest(BaseModel):
     role: Literal["customer", "admin"]
 
 
+class UpdateActiveRequest(BaseModel):
+    is_active: bool
+
+
 def get_current_admin(
     current_user: Annotated[UserResponse, Depends(get_current_user)],
 ) -> UserResponse:
@@ -133,6 +137,30 @@ def update_user_role(
         )
 
     updated = repo.update(user_id, {"role": Role(request.role)})
+    return UserResponse.model_validate(updated)
+
+
+@router.patch("/{user_id}/active", response_model=UserResponse)
+def update_user_active(
+    user_id: UUID,
+    request: UpdateActiveRequest,
+    _admin: Annotated[UserResponse, Depends(get_current_admin)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    repo = UserRepository(db)
+    user = repo.get_by_id(user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    if user.id == _admin.id and not request.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot deactivate your own account",
+        )
+
+    updated = repo.update(user_id, {"is_active": request.is_active})
     return UserResponse.model_validate(updated)
 
 

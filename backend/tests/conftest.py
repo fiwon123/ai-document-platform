@@ -25,6 +25,8 @@ PG_PASSWORD = os.getenv("POSTGRES_PASSWORD", "mysecretpassword")
 # Configure everything before any `app.*` import.
 os.environ["POSTGRES_DB"] = TEST_DB_NAME
 os.environ.setdefault("SECRET_KEY", "test-only-secret-key")
+# Keep the in-memory rate limiter from tripping during long test runs.
+os.environ.setdefault("RATE_LIMIT_REQUESTS", "10000")
 
 from sqlalchemy import create_engine, text
 
