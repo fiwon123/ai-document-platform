@@ -1,16 +1,22 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;600;700;800&display=swap");
 
 :root {
-  --ink: #17221e;
-  --muted: #718079;
-  --line: #d4ddd7;
-  --paper: #f4f6ef;
-  --lime: #d8f36b;
-  --rust: #d96943;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --info: #3b82f6;
+  /* AskDocs brand palette: white, blue, black, green */
+  --ink: #0f172a; /* slate-900 — near-black for text and dark surfaces */
+  --muted: #64748b; /* slate-500 */
+  --line: #e2e8f0; /* slate-200 */
+  --paper: #ffffff; /* white background */
+  --surface: #f8fafc; /* slate-50 */
+  --blue: #2563eb; /* blue-600 — primary accent */
+  --blue-hover: #1d4ed8; /* blue-700 */
+  --blue-soft: #eff6ff; /* blue-50 — tinted backgrounds */
+  --green: #16a34a; /* green-600 — success/positive */
+  --green-soft: #f0fdf4; /* green-50 */
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #2563eb;
+  --code-bg: #f1f5f9;
 }
 
 * {
@@ -54,14 +60,22 @@ body {
 }
 
 .navbar-brand a {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  background: var(--lime);
-  color: var(--ink);
+  font-size: 1.15rem;
   font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--paper);
   text-decoration: none;
+  white-space: nowrap;
+}
+
+.navbar-brand a::after {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--blue);
 }
 
 .navbar-links {
@@ -110,12 +124,12 @@ body {
 }
 
 .btn-primary {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--blue);
+  color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #2a3a32;
+  background: var(--blue-hover);
 }
 
 .btn-secondary {
@@ -144,7 +158,7 @@ body {
   justify-content: center;
   align-items: center;
   padding: 20px;
-  background: radial-gradient(circle at 85% 8%, #e7f4b7 0, transparent 28%),
+  background: radial-gradient(circle at 85% 8%, #dbeafe 0, transparent 28%),
     var(--paper);
 }
 
@@ -189,7 +203,7 @@ body {
 
 .form-group input:focus {
   outline: none;
-  border-color: var(--ink);
+  border-color: var(--blue);
 }
 
 .auth-card .btn {
@@ -205,7 +219,7 @@ body {
 }
 
 .auth-footer a {
-  color: var(--ink);
+  color: var(--blue);
   font-weight: 600;
 }
 
@@ -247,7 +261,7 @@ body {
 .dropzone:hover,
 .dropzone.is-dragging {
   background: #edf6c9;
-  border-color: var(--ink);
+  border-color: var(--blue);
 }
 
 .dropzone input {
@@ -257,7 +271,7 @@ body {
 .upload-symbol {
   font-size: 2.4rem;
   line-height: 1;
-  color: var(--rust);
+  color: var(--blue);
 }
 
 .dropzone strong {
@@ -401,7 +415,7 @@ body {
 
 .search-input:focus {
   outline: none;
-  border-color: var(--ink);
+  border-color: var(--blue);
 }
 
 .search-results h2 {
@@ -425,7 +439,7 @@ body {
 
 .result-document {
   font-weight: 600;
-  color: var(--rust);
+  color: var(--blue);
 }
 
 .result-score {
@@ -448,7 +462,7 @@ body {
 
 .metadata-tag {
   padding: 4px 8px;
-  background: var(--paper);
+  background: var(--surface);
   font: 500 10px "DM Mono", monospace;
 }
 
@@ -486,15 +500,15 @@ body {
   height: 36px;
   display: grid;
   place-items: center;
-  background: var(--ink);
-  color: var(--lime);
+  background: var(--blue);
+  color: white;
   font-weight: 700;
   font-size: 0.85rem;
   flex-shrink: 0;
 }
 
 .chat-message.user .message-avatar {
-  background: var(--rust);
+  background: var(--green);
   color: white;
 }
 
@@ -578,7 +592,7 @@ body {
 
 .chat-input:focus {
   outline: none;
-  border-color: var(--ink);
+  border-color: var(--blue);
 }
 
 /* Responsive */
