@@ -48,6 +48,14 @@ async function request<T>(
   });
 
   if (!response.ok) {
+    // If the server returns 401, the token is invalid or expired.
+    // Clear it and redirect to login so the user can re-authenticate.
+    if (response.status === 401) {
+      localStorage.removeItem("token");
+      window.location.href = "/login";
+      throw new ApiError(401, "Session expired. Please log in again.");
+    }
+
     const error = await response.json().catch(() => ({ detail: "Request failed" }));
     throw new ApiError(response.status, error.detail || "Request failed");
   }
