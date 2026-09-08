@@ -26,6 +26,7 @@ class QAService:
             user_id=user_id,
             query=question,
             top_k=5,
+            document_ids=document_ids,
         )
 
         context = self._build_context(search_response.results)

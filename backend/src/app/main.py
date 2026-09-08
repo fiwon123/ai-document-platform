@@ -4,15 +4,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .middleware import LoggingMiddleware, RateLimitMiddleware
+<<<<<<< HEAD
 from .routes import auth, document, health, qa, search, users
 from .worker import start_worker, stop_worker
+=======
+from .routes import auth, document, health, qa, search
+>>>>>>> origin/main
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    start_worker()
+    # Document processing now runs in a dedicated arq worker process
+    # (see docker-compose.yaml `worker` service); no in-process thread
+    # is started here anymore.
     yield
-    stop_worker()
 
 
 app = FastAPI(

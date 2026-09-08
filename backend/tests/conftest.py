@@ -26,7 +26,7 @@ PG_PASSWORD = os.getenv("POSTGRES_PASSWORD", "mysecretpassword")
 os.environ["POSTGRES_DB"] = TEST_DB_NAME
 os.environ.setdefault("SECRET_KEY", "test-only-secret-key")
 
-from sqlalchemy import create_engine, text  # noqa: E402
+from sqlalchemy import create_engine, text
 
 
 def _server_engine():
@@ -57,7 +57,7 @@ def db_engine():
     """Engine bound to the test database; skips tests when PG is down."""
     try:
         _ensure_test_database()
-    except Exception as exc:  # pragma: no cover - environment dependent
+    except Exception as exc:  # noqa: BLE001 - skip on any connectivity error
         pytest.skip(f"PostgreSQL not available: {exc}")
 
     from app.database.db import Base
