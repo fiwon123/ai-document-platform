@@ -81,7 +81,7 @@ export function AdminPage() {
         <p>Manage accounts and roles</p>
       </header>
 
-      {error && <p className="error-message">{error}</p>}
+      {error && <p className="error-message" role="alert">{error}</p>}
 
       {isLoading ? (
         <SkeletonList rows={4} />

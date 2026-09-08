@@ -911,6 +911,7 @@ body {
     flex-direction: column;
   }
 }
+
 /* Markdown rendering (assistant answers) */
 .markdown {
   font-size: 0.95rem;
@@ -1005,5 +1006,25 @@ body {
   border: 0;
   border-top: 1px solid var(--line);
   margin: 14px 0;
+}
+
+
+
+
+/* Accessibility */
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
