@@ -20,6 +20,13 @@ Every code change follows this workflow. No exceptions.
 - Branch types: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/`, `ci/`
 - Example: `feat/document-chunking`, `fix/auth-token-expiry`
 
+### One feature per pull request
+
+- Each branch/PR MUST implement exactly ONE feature, fix, or refactor.
+- Do NOT bundle multiple unrelated changes into a single branch/PR.
+- If additional issues are discovered while implementing, create a separate branch and PR for each one instead of folding them into the current change.
+- Tests for the feature being implemented belong in the same PR as the feature.
+
 ### 3. Implement
 
 - Make changes in small, focused commits

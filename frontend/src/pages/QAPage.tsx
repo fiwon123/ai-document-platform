@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DocumentFilter } from "../components/DocumentFilter";
 import { qa } from "../services/api";
 import type { QAResponse, SearchResult } from "../types";
 
@@ -14,6 +15,7 @@ export function QAPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,7 +33,10 @@ export function QAPage() {
     setError(null);
 
     try {
-      const response: QAResponse = await qa.ask(input);
+      const response: QAResponse = await qa.ask(
+        input,
+        selectedIds.length > 0 ? selectedIds : undefined,
+      );
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -54,6 +59,8 @@ export function QAPage() {
         <h1>Document Q&A</h1>
         <p>Ask questions about your documents and get AI-powered answers</p>
       </header>
+
+      <DocumentFilter selected={selectedIds} onChange={setSelectedIds} />
 
       <div className="chat-container">
         <div className="chat-messages">

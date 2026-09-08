@@ -20,6 +20,12 @@ export interface Document {
   updated_at: string;
 }
 
+export interface DocumentStatusResponse {
+  id: string;
+  status: DocumentStatus;
+  error_message: string | null;
+}
+
 export interface TokenResponse {
   access_token: string;
   token_type: string;
