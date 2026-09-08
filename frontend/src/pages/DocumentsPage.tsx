@@ -143,7 +143,7 @@ for (const file of files) {
 
       <div className="upload-section">
         <label
-          className={`dropzone${isDragging ? " is-dragging" : ""}`}
+          className={`dropzone${isDragging ? " is-dragging" : ""}${isUploading ? " is-uploading" : ""}`}
           onDragOver={(e) => {
             e.preventDefault();
             setIsDragging(true);

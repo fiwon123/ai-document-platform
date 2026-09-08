@@ -932,6 +932,11 @@ body {
   border-color: var(--blue);
 }
 
+.dropzone.is-uploading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .dropzone input {
   display: none;
 }
