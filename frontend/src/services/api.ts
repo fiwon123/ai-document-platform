@@ -1,5 +1,6 @@
 import type {
   Document,
+  DocumentStatusResponse,
   QAResponse,
   SearchResponse,
   TokenResponse,
@@ -93,6 +94,10 @@ export const documents = {
 
   async get(id: string): Promise<Document> {
     return request<Document>(`/${id}`);
+  },
+
+  async getStatus(id: string): Promise<DocumentStatusResponse> {
+    return request<DocumentStatusResponse>(`/documents/${id}/status`);
   },
 
   async upload(file: File): Promise<Document> {
