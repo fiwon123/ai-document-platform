@@ -122,7 +122,7 @@ async def process_document(ctx: dict, document_id: str) -> None:
 
             from app.models.chunk import DocumentChunk
 
-            for chunk, embedding in zip(chunks, embeddings):
+            for chunk, embedding in zip(chunks, embeddings, strict=False):
                 db.add(
                     DocumentChunk(
                         document_id=document_uuid,

@@ -63,7 +63,7 @@ class FakeEmbedder:
 
 
 def _seed_pending_document(db_session) -> DocumentDB:
-    user = UserDB(username="worker_test", hashed_password="x")
+    user = UserDB(username="worker_test", hashed_password="x")  # noqa: S106
     db_session.add(user)
     db_session.flush()
     doc = DocumentDB(
