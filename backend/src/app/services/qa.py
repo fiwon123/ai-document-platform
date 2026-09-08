@@ -9,6 +9,9 @@ from app.services.search import SearchService
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
 
+AVAILABLE_MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-4", "gpt-4-turbo"]
+FREE_MODELS = ["gpt-4o-mini"]
+
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 
@@ -21,6 +24,7 @@ class QAService:
         user_id: UUID,
         question: str,
         document_ids: list[UUID] | None = None,
+        model: str | None = None,
     ) -> QAResponse:
         search_response = self.search_service.search(
             user_id=user_id,
@@ -31,13 +35,27 @@ class QAService:
 
         context = self._build_context(search_response.results)
 
-        answer = self._generate_answer(question=question, context=context)
+        effective_model = model or OPENAI_MODEL
+        answer = self._generate_answer(
+            question=question,
+            context=context,
+            model=effective_model,
+        )
 
         return QAResponse(
             question=question,
             answer=answer,
             sources=search_response.results,
+            model=effective_model,
         )
+
+    @staticmethod
+    def list_models() -> dict:
+        """Available QA models split into free and paid tiers."""
+        return {
+            "free": FREE_MODELS,
+            "paid": [m for m in AVAILABLE_MODELS if m not in FREE_MODELS],
+        }
 
     def _build_context(self, results: list[SearchResult]) -> str:
         if not results:
@@ -52,7 +70,12 @@ class QAService:
 
         return "\n\n".join(context_parts)
 
-    def _generate_answer(self, question: str, context: str) -> str:
+    def _generate_answer(
+        self,
+        question: str,
+        context: str,
+        model: str | None = None,
+    ) -> str:
         if client is None:
             return (
                 "AI service is not configured. Please set the OPENAI_API_KEY "
@@ -74,7 +97,7 @@ class QAService:
 
         try:
             response = client.chat.completions.create(
-                model=OPENAI_MODEL,
+                model=model or OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
