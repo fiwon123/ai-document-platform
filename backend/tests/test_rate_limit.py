@@ -1,7 +1,7 @@
 """Tests for the rate-limiting middleware (Redis path and fallback)."""
 
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
