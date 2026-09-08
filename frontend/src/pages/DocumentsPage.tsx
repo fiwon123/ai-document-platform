@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import { documents } from "../services/api";
-import type { Document } from "../types";
+import type { Document, DocumentStatusResponse } from "../types";
+
+/** How often to re-check documents that are still processing. */
+const POLL_INTERVAL_MS = 3000;
+
+function isProcessing(status: Document["status"]): boolean {
+  return status === "pending" || status === "processing";
+}
 
 export function DocumentsPage() {
   const [docs, setDocs] = useState<Document[]>([]);
@@ -24,6 +31,33 @@ export function DocumentsPage() {
   useEffect(() => {
     loadDocuments();
   }, [loadDocuments]);
+
+  // Poll status of every document that is still pending/processing so the
+  // badges update live (after upload or external processing) without a reload.
+  useEffect(() => {
+    const active = docs.filter((d) => isProcessing(d.status));
+    if (active.length === 0) return;
+
+    const interval = setInterval(async () => {
+      let statuses: DocumentStatusResponse[];
+      try {
+        statuses = await Promise.all(active.map((d) => documents.getStatus(d.id)));
+      } catch {
+        return; // Transient error — keep polling on the next tick.
+      }
+
+      setDocs((prev) =>
+        prev.map((doc) => {
+          const next = statuses.find((s) => s.id === doc.id);
+          return next
+            ? { ...doc, status: next.status, error_message: next.error_message }
+            : doc;
+        }),
+      );
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [docs]);
 
   async function uploadFile(file: File) {
     setIsUploading(true);

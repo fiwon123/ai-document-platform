@@ -89,11 +89,11 @@ export const auth = {
 
 export const documents = {
   async list(skip = 0, limit = 20): Promise<Document[]> {
-    return request<Document[]>(`/?skip=${skip}&limit=${limit}`);
+    return request<Document[]>(`/documents/?skip=${skip}&limit=${limit}`);
   },
 
   async get(id: string): Promise<Document> {
-    return request<Document>(`/${id}`);
+    return request<Document>(`/documents/${id}`);
   },
 
   async getStatus(id: string): Promise<DocumentStatusResponse> {
@@ -103,11 +103,11 @@ export const documents = {
   async upload(file: File): Promise<Document> {
     const formData = new FormData();
     formData.append("upload_file", file);
-    return request<Document>("/", { method: "POST", body: formData });
+    return request<Document>("/documents/", { method: "POST", body: formData });
   },
 
   async delete(id: string): Promise<void> {
-    await request<{ message: string }>(`/${id}`, { method: "DELETE" });
+    await request<{ message: string }>(`/documents/${id}`, { method: "DELETE" });
   },
 
   async getDownloadUrl(id: string): Promise<{ id: string; filename: string; download_url: string }> {

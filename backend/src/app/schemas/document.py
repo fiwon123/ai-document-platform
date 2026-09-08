@@ -20,6 +20,14 @@ class FileResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DocumentStatusResponse(BaseModel):
+    """Minimal status payload for clients that poll processing state."""
+
+    id: UUID
+    status: DocumentStatus
+    error_message: str | None = None
+
+
 class DocumentChunkResponse(BaseModel):
     id: UUID
     document_id: UUID
