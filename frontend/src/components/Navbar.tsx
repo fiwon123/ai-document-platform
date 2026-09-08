@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
@@ -6,8 +7,12 @@ export function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const closeMenu = () => setMenuOpen(false);
 
   const handleLogout = () => {
+    closeMenu();
     logout();
     navigate("/login");
   };
@@ -15,17 +20,65 @@ export function Navbar() {
   return (
     <nav className="navbar">
       <div className="navbar-brand">
-        <Link to="/" aria-label="AskDocs home">
+<Link to="/" aria-label="AskDocs home" onClick={closeMenu}>
           AskDocs
         </Link>
       </div>
-      <div className="navbar-links">
-        <Link to="/">Dashboard</Link>
-        <Link to="/documents">Documents</Link>
-        <Link to="/search">Search</Link>
-        <Link to="/qa">Q&A</Link>
-        {user?.role === "admin" && <Link to="/admin">Users</Link>}
+
+      <button
+        type="button"
+        className="navbar-toggle"
+        aria-expanded={menuOpen}
+        aria-controls="navbar-links"
+        aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
+        onClick={() => setMenuOpen((open) => !open)}
+      >
+        <span className="navbar-toggle-bar" />
+        <span className="navbar-toggle-bar" />
+        <span className="navbar-toggle-bar" />
+      </button>
+
+      <div
+        className={`navbar-links${menuOpen ? " navbar-links-open" : ""}`}
+        id="navbar-links"
+      >
+        <Link to="/" onClick={closeMenu}>
+          Dashboard
+        </Link>
+        <Link to="/documents" onClick={closeMenu}>
+          Documents
+        </Link>
+        <Link to="/search" onClick={closeMenu}>
+          Search
+        </Link>
+        <Link to="/qa" onClick={closeMenu}>
+          Q&A
+        </Link>
+        {user?.role === "admin" && (
+          <Link to="/admin" onClick={closeMenu}>
+            Users
+          </Link>
+        )}
+        {user && (
+          <div className="navbar-user-mobile">
+            <Link to="/profile" onClick={closeMenu}>
+              {user.username}
+            </Link>
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={toggleTheme}
+              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            >
+              {theme === "dark" ? "Light" : "Dark"}
+            </button>
+            <button onClick={handleLogout} className="btn btn-secondary">
+              Logout
+            </button>
+          </div>
+        )}
       </div>
+
       <div className="navbar-user">
         <button
           type="button"
