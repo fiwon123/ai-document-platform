@@ -1541,3 +1541,82 @@ body {
     transform: translateY(0);
   }
 }
+
+/* Settings Page */
+.settings-card {
+  max-width: 640px;
+  margin-bottom: 24px;
+  padding: 24px 28px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+
+.settings-card h2 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+.settings-desc {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.settings-note {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.settings-model-group {
+  margin-bottom: 20px;
+}
+
+.settings-model-group:last-child {
+  margin-bottom: 0;
+}
+
+.settings-model-group-label {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.settings-model-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  font-size: 0.92rem;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.settings-model-option:last-child {
+  margin-bottom: 0;
+}
+
+.settings-model-option:hover {
+  border-color: var(--blue);
+  background: var(--surface);
+}
+
+.settings-model-option input {
+  accent-color: var(--blue);
+}
+
+.settings-api-key-form {
+  margin-bottom: 16px;
+}
+
+.settings-api-key-actions {
+  display: flex;
+  gap: 10px;
+}

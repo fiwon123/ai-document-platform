@@ -28,6 +28,7 @@ function AppShell() {
         <Route path="documents" element={<div>documents</div>} />
         <Route path="search" element={<div>search</div>} />
         <Route path="qa" element={<div>qa</div>} />
+        <Route path="settings" element={<div>settings</div>} />
         <Route path="profile" element={<div>profile</div>} />
         <Route path="admin" element={<div>admin</div>} />
         <Route path="*" element={<NotFoundPage />} />
@@ -47,6 +48,8 @@ describe("app route tree", () => {
     expect(screen.getByText("documents")).toBeTruthy();
     render(<AppRoutes path="/app/search" />);
     expect(screen.getByText("search")).toBeTruthy();
+    render(<AppRoutes path="/app/settings" />);
+    expect(screen.getByText("settings")).toBeTruthy();
   });
 
   it("renders the 404 page for unknown paths inside /app", () => {
