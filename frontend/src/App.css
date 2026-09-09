@@ -1248,6 +1248,111 @@ body {
   flex: 1;
 }
 
+/* Dashboard stats
+   Colored stat cards reuse the -600 badge weights from Theme Rule 8 so
+   white text stays WCAG AA in both themes (the weights never brighten). */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px;
+  border-radius: 14px; /* matches .document-card / .skeleton-card */
+  color: white;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: white;
+  line-height: 1.1;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: white;
+}
+
+.stat-total {
+  background: #0f172a; /* slate-900 */
+}
+
+.stat-processing {
+  background: #2563eb; /* blue-600 */
+}
+
+.stat-ready {
+  background: #16a34a; /* green-600 */
+}
+
+.stat-pending {
+  background: #b45309; /* amber-600 */
+}
+
+.stat-failed {
+  background: #dc2626; /* red-600 */
+}
+
+/* Chunks indexed is the AI/embedding metric; violet-600 (#7c3aed) keeps
+   white text at ~5.6:1. Off-palette by design so it reads as "AI". */
+.stat-chunks {
+  background: #7c3aed;
+}
+
+/* The total card inverts in dark mode (like the navbar): slate-900 blends
+   into the page background, so it becomes a light card with dark text. */
+:root[data-theme="dark"] .stat-total,
+:root[data-theme="dark"] .stat-total .stat-value,
+:root[data-theme="dark"] .stat-total .stat-label {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Recent documents */
+.recent-section {
+  margin-top: 36px;
+}
+
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.recent-filename {
+  flex: 1;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.recent-date {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 /* Search Page */
 .search-form {
   margin-bottom: 32px;
