@@ -851,6 +851,7 @@ body {
 .btn {
   padding: 10px 20px;
   border: none;
+  border-radius: 8px; /* consistent soft corners on every button, both themes */
   cursor: pointer;
   font-family: inherit;
   font-size: 0.9rem;
@@ -1142,13 +1143,21 @@ body {
 /* Document Grid */
 .document-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  /* auto-fit (not auto-fill): cards stretch to fill the row instead of
+     leaving fixed-width gaps when there are few documents. */
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 20px;
 }
 
 .document-card {
+  /* Flex column so the footer pins to the bottom: buttons align at the
+     same Y position across cards in a row, even when bodies vary. */
+  display: flex;
+  flex-direction: column;
   background: var(--paper);
   border: 1px solid var(--line);
+  border-radius: 14px; /* matches .skeleton-card placeholders */
+  overflow: hidden; /* keep header/body/footer inside the rounded corners */
   transition: box-shadow 0.2s;
 }
 
@@ -1162,6 +1171,7 @@ body {
 
 .document-card-header {
   display: flex;
+  flex-shrink: 0;
   gap: 16px;
   padding: 20px;
   border-bottom: 1px solid var(--line);
@@ -1190,6 +1200,8 @@ body {
 }
 
 .document-card-body {
+  /* Grow to fill leftover space so every footer sits at the same height. */
+  flex: 1;
   padding: 20px;
 }
 
@@ -1222,8 +1234,18 @@ body {
 }
 
 .document-card-footer {
+  display: flex;
+  gap: 10px;
+  /* Aligned with .document-card-body { flex: 1 } — belt and braces so the
+     footer is always pushed to the card bottom. */
+  margin-top: auto;
   padding: 16px 20px;
   border-top: 1px solid var(--line);
+}
+
+.document-card-footer .btn {
+  /* Equal-width actions keep buttons at the same position across cards. */
+  flex: 1;
 }
 
 /* Search Page */
@@ -1626,6 +1648,11 @@ body {
 
   .navbar-links {
     gap: 16px;
+  }
+
+  .document-grid {
+    /* Single column on phones: cards stack full-width. */
+    grid-template-columns: 1fr;
   }
 
   .search-input-group {
