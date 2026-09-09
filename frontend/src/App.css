@@ -1367,15 +1367,24 @@ body {
   flex: 1;
   padding: 14px 16px;
   border: 1px solid var(--line);
+  border-radius: 8px; /* consistent with .btn */
   font-family: inherit;
   font-size: 1rem;
   background: var(--surface);
   color: var(--ink);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-input::placeholder {
+  color: var(--muted);
 }
 
 .search-input:focus {
   outline: none;
   border-color: var(--blue);
+  /* Theme-aware focus ring: --blue-soft is a translucent accent in both
+     themes, so no dark-mode override is needed (Theme Rule 5). */
+  box-shadow: 0 0 0 3px var(--blue-soft);
 }
 
 .search-results h2 {
@@ -1388,23 +1397,37 @@ body {
   margin-bottom: 16px;
   background: var(--paper);
   border: 1px solid var(--line);
+  border-radius: 10px; /* matches .recent-item / .skeleton-row */
+}
+
+/* Theme Rule 5: black shadows vanish on dark surfaces — add separation. */
+:root[data-theme="dark"] .search-result-card {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 .result-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
 .result-document {
   font-weight: 600;
   color: var(--blue);
+  overflow-wrap: anywhere;
 }
 
 .result-score {
+  flex-shrink: 0;
   font: 500 11px "DM Mono", monospace;
   color: var(--muted);
+  padding: 3px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px; /* pill badge */
+  white-space: nowrap;
 }
 
 .result-content {
@@ -1423,6 +1446,9 @@ body {
 .metadata-tag {
   padding: 4px 8px;
   background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
   font: 500 10px "DM Mono", monospace;
 }
 
