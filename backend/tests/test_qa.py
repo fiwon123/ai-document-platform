@@ -7,7 +7,7 @@ from app.models.chunk import DocumentChunk
 from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
 from app.repositories.search import SearchRepository
-from app.schemas.document import QARequest, SearchResult
+from app.schemas.document import QARequest, QAResponse, SearchResult
 from app.services.qa import QAService
 
 DIM = 1536
@@ -254,9 +254,47 @@ class TestQARoute:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert data["free"] == ["gpt-4o-mini"]
+        # Free tier = GPT-4o mini + the free Groq Llama models.
+        assert data["free"] == [
+            "gpt-4o-mini",
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+        ]
         assert "gpt-4o-mini" not in data["paid"]
         assert sorted(data["free"] + data["paid"]) == sorted(AVAILABLE_MODELS)
+
+    def test_ask_accepts_groq_model(self, client, auth_headers, monkeypatch):
+        """Groq model ids pass route validation and reach the groq client."""
+        from types import SimpleNamespace
+
+        from app.main import app
+        from app.routes.qa import get_qa_service
+        from app.services import qa as qa_module
+
+        fake_groq = MagicMock()
+        fake_groq.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Groq answer"))]
+        )
+        monkeypatch.setattr(qa_module, "_groq_client", fake_groq)
+        fake_service = MagicMock()
+        fake_service.ask.return_value = QAResponse(
+            question="q",
+            answer="Groq answer",
+            sources=[],
+            model="llama-3.3-70b-versatile",
+        )
+        app.dependency_overrides[get_qa_service] = lambda: fake_service
+        try:
+            resp = client.post(
+                "/v1/qa/ask",
+                json={"question": "q", "model": "llama-3.3-70b-versatile"},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        assert fake_service.ask.call_args.kwargs["model"] == "llama-3.3-70b-versatile"
 
 class TestQAServiceAnswerGeneration:
     """Answer synthesis path with the LLM client mocked."""
@@ -291,7 +329,9 @@ class TestQAServiceAnswerGeneration:
         assert service._build_context([]) == "No relevant documents found."
 
     def test_ask_falls_back_when_llm_not_configured(self, monkeypatch):
-        monkeypatch.setattr("app.services.qa.client", None)
+        from app.services import qa as qa_module
+
+        monkeypatch.setattr(qa_module, "_openai_client", None)
         fake_search = MagicMock()
         fake_search.search.return_value = MagicMock(results=[])
         service = QAService(search_service=fake_search)
@@ -301,6 +341,56 @@ class TestQAServiceAnswerGeneration:
         assert "AI service is not configured" in response.answer
         assert response.sources == []
 
+    def test_ask_groq_missing_key_message(self, monkeypatch):
+        """A free Groq model without GROQ_API_KEY gives a helpful hint."""
+        from app.services import qa as qa_module
+
+        monkeypatch.setattr(qa_module, "_groq_client", None)
+        fake_search = MagicMock()
+        fake_search.search.return_value = MagicMock(results=[])
+        service = QAService(search_service=fake_search)
+
+        response = service.ask(
+            user_id=uuid4(),
+            question="q",
+            model="llama-3.1-8b-instant",
+        )
+
+        assert "AI service is not configured" in response.answer
+        assert "GROQ_API_KEY" in response.answer
+        assert response.model == "llama-3.1-8b-instant"
+
+    def test_ask_uses_groq_client_for_groq_model(self, monkeypatch):
+        """Model routing: Groq models hit the Groq client, not OpenAI."""
+        from types import SimpleNamespace
+
+        from app.services import qa as qa_module
+
+        fake_groq = MagicMock()
+        fake_groq.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Groq answer"))]
+        )
+        monkeypatch.setattr(qa_module, "_groq_client", fake_groq)
+        # OpenAI is NOT configured in this scenario.
+        monkeypatch.setattr(qa_module, "_openai_client", None)
+
+        fake_search = MagicMock()
+        fake_search.search.return_value = MagicMock(results=[])
+        service = QAService(search_service=fake_search)
+
+        response = service.ask(
+            user_id=uuid4(),
+            question="q",
+            model="llama-3.3-70b-versatile",
+        )
+
+        assert (
+            fake_groq.chat.completions.create.call_args.kwargs["model"]
+            == "llama-3.3-70b-versatile"
+        )
+        assert response.answer == "Groq answer"
+        assert response.model == "llama-3.3-70b-versatile"
+
     def test_ask_uses_mocked_llm_and_returns_sources(self, monkeypatch):
         from types import SimpleNamespace
 
@@ -308,7 +398,7 @@ class TestQAServiceAnswerGeneration:
         fake_client.chat.completions.create.return_value = SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="Mocked answer"))]
         )
-        monkeypatch.setattr("app.services.qa.client", fake_client)
+        monkeypatch.setattr("app.services.qa._openai_client", fake_client)
 
         fake_search = MagicMock()
         result = SearchResult(
@@ -344,7 +434,7 @@ class TestQAServiceAnswerGeneration:
     def test_ask_surfaces_llm_errors(self, monkeypatch):
         fake_client = MagicMock()
         fake_client.chat.completions.create.side_effect = RuntimeError("boom")
-        monkeypatch.setattr("app.services.qa.client", fake_client)
+        monkeypatch.setattr("app.services.qa._openai_client", fake_client)
 
         fake_search = MagicMock()
         fake_search.search.return_value = MagicMock(results=[])
@@ -361,7 +451,7 @@ class TestQAServiceAnswerGeneration:
         fake_client.chat.completions.create.return_value = SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="Mocked answer"))]
         )
-        monkeypatch.setattr("app.services.qa.client", fake_client)
+        monkeypatch.setattr("app.services.qa._openai_client", fake_client)
 
         fake_search = MagicMock()
         fake_search.search.return_value = MagicMock(results=[])
@@ -388,7 +478,7 @@ class TestQAServiceAnswerGeneration:
         fake_client.chat.completions.create.return_value = SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="Mocked answer"))]
         )
-        monkeypatch.setattr("app.services.qa.client", fake_client)
+        monkeypatch.setattr("app.services.qa._openai_client", fake_client)
 
         fake_search = MagicMock()
         fake_search.search.return_value = MagicMock(results=[])
