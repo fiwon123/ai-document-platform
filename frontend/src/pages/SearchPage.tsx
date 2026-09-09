@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DocumentFilter } from "../components/DocumentFilter";
+import { EmptyState } from "../components/EmptyState";
 import { search } from "../services/api";
 import type { SearchResult } from "../types";
 import { Spinner } from "../components/Spinner";
@@ -95,9 +96,11 @@ export function SearchPage() {
       )}
 
       {!isLoading && hasSearched && results.length === 0 && (
-        <div className="empty-state">
-          <p>No results found for "{query}"</p>
-        </div>
+        <EmptyState
+          title="No results found"
+          description={`Nothing matched "${query}". Try different keywords.`}
+          action={{ label: "Clear search", onClick: () => setQuery("") }}
+        />
       )}
 
       {results.length > 0 && (

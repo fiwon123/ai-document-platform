@@ -3,6 +3,7 @@ import { users } from "../services/api";
 import type { User } from "../types";
 import { useAuth } from "../hooks/useAuth";
 import { SkeletonList } from "../components/Skeleton";
+import { EmptyState } from "../components/EmptyState";
 
 type Role = "customer" | "admin";
 
@@ -86,9 +87,10 @@ export function AdminPage() {
       {isLoading ? (
         <SkeletonList rows={4} />
       ) : userList.length === 0 ? (
-        <div className="empty-state">
-          <p>No users found.</p>
-        </div>
+        <EmptyState
+          title="No users found"
+          description="There are no user accounts yet."
+        />
       ) : (
         <div className="user-table-wrap">
           <table className="user-table">

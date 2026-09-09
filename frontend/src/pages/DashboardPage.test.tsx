@@ -1,4 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { DashboardPage } from "./DashboardPage";
 import type { StatisticsResponse } from "../types";
@@ -34,7 +35,11 @@ describe("DashboardPage", () => {
   });
 
   async function renderPage() {
-    render(<DashboardPage />);
+    render(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>,
+    );
     await act(async () => {});
   }
 
@@ -70,8 +75,11 @@ describe("DashboardPage", () => {
 
     await renderPage();
 
+    expect(screen.getByText("No documents yet")).toBeTruthy();
     expect(
-      screen.getByText("No documents yet. Upload your first document to get started."),
+      screen.getByText("Upload your first document to get started."),
     ).toBeTruthy();
+    const uploadLink = screen.getByRole("link", { name: "Upload a document" });
+    expect(uploadLink).toHaveAttribute("href", "/app/documents");
   });
 });
