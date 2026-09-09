@@ -16,6 +16,7 @@ def health_check(db: Session = Depends(get_db)):
         "services": {
             "database": check_database(db),
             "redis": check_redis(),
+            "worker": check_worker(),
             "storage": check_storage(),
         },
     }
@@ -44,6 +45,27 @@ def check_redis() -> dict:
         if redis_client.ping():
             return {"status": "healthy"}
         return {"status": "unhealthy", "error": "Ping failed"}
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}
+
+
+def check_worker() -> dict:
+    """Report whether a document-processing worker is alive.
+
+    The arq worker refreshes WORKER_HEALTH_CHECK_KEY in Redis every few
+    seconds (see app.worker). A missing/expired key means no worker is
+    consuming jobs — documents would stay pending until the stale
+    recovery cron marks them failed.
+    """
+    try:
+        from app.worker import WORKER_HEALTH_CHECK_KEY
+
+        if redis_client.exists(WORKER_HEALTH_CHECK_KEY):
+            return {"status": "healthy"}
+        return {
+            "status": "unhealthy",
+            "error": "No worker heartbeat detected — document processing is unavailable",
+        }
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
 

@@ -2,7 +2,7 @@
   "name": "Full Stack (Frontend + Backend)",
   "dockerComposeFile": ["../docker-compose.yaml"],
   "service": "backend",
-  "runServices": ["backend", "frontend"],
+  "runServices": ["backend", "frontend", "worker"],
   "workspaceFolder": "/workspace",
   "features": {
     "ghcr.io/va-h/devcontainers-features/uv:1": {},

@@ -157,7 +157,7 @@ class TestUploadFailures:
         assert len(deleted) == 1
         assert deleted[0].endswith(UPLOAD_FILENAME)
 
-    def test_enqueue_failure_marks_document_failed(
+    def test_processing_failure_marks_document_failed(
         self, client, auth_headers, monkeypatch
     ):
         from app.services import document as document_module
@@ -167,14 +167,14 @@ class TestUploadFailures:
         monkeypatch.setattr(
             document_module,
             "process_document_task",
-            lambda _id: (_ for _ in ()).throw(RuntimeError("redis down")),
+            lambda _id: (_ for _ in ()).throw(RuntimeError("extraction boom")),
         )
 
         resp = _post_upload(client, auth_headers)
 
         assert resp.status_code == 201
         assert resp.json()["status"] == "failed"
-        assert "Failed to start processing" in resp.json()["error_message"]
+        assert "Failed to process document" in resp.json()["error_message"]
 
 
 class TestListDocuments:
