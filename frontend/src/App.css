@@ -248,6 +248,25 @@ body {
   font-size: 0.9rem;
 }
 
+/* Username link in the navbar — styled to match .navbar-links a so it is
+   visible on both themes instead of falling back to browser-default blue. */
+.navbar-username {
+  color: var(--paper);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navbar-username:hover {
+  opacity: 1;
+}
+
 
 .theme-toggle {
   background: transparent;
@@ -798,14 +817,30 @@ body {
   background: var(--blue-hover);
 }
 
+/* In dark mode --blue brightens to #60a5fa, which drops white text to a
+   ~2.5:1 contrast ratio. Keep the saturated blue so buttons stay legible. */
+:root[data-theme="dark"] .btn-primary {
+  background: #2563eb;
+}
+
+:root[data-theme="dark"] .btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
 .btn-secondary {
   background: transparent;
-  color: var(--paper);
+  color: var(--ink);
   border: 1px solid var(--muted);
 }
 
 .btn-secondary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+/* Secondary buttons on dark surfaces (navbar, CTA band) keep light text. */
+.navbar .btn-secondary,
+.landing-cta-band .btn-secondary {
+  color: var(--paper);
 }
 
 .btn-danger {
@@ -897,6 +932,13 @@ body {
 /* Page Header */
 .page-header {
   margin-bottom: 32px;
+}
+
+/* Profile page: center the header + form card as one column. Scoped with
+   :has() so the other pages that use .page keep their full-width layouts. */
+.page:has(.profile-card) {
+  max-width: 400px;
+  margin: 0 auto;
 }
 
 .page-header h1 {
