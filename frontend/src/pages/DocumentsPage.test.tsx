@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentsPage } from "./DocumentsPage";
 import type { Document } from "../types";
@@ -23,6 +23,7 @@ vi.mock("../services/api", () => ({
     getStatus: vi.fn(),
     upload: vi.fn(),
     delete: vi.fn(),
+    getDownloadUrl: vi.fn(),
   },
 }));
 
@@ -30,6 +31,9 @@ import { documents } from "../services/api";
 
 const mockedList = vi.mocked(documents.list);
 const mockedGetStatus = vi.mocked(documents.getStatus);
+const mockedUpload = vi.mocked(documents.upload);
+const mockedDelete = vi.mocked(documents.delete);
+const mockedGetDownloadUrl = vi.mocked(documents.getDownloadUrl);
 
 /** Flush pending microtasks inside act so React applies queued state updates. */
 async function settle() {
@@ -122,5 +126,117 @@ describe("DocumentsPage polling", () => {
     expect(
       screen.getByRole("button", { name: "Upload a document" }),
     ).toBeTruthy();
+  });
+});
+
+describe("DocumentsPage busy states", () => {
+  beforeEach(() => {
+    mockedList.mockResolvedValue([readyDoc]);
+    mockedDelete.mockResolvedValue(undefined);
+    mockedGetDownloadUrl.mockResolvedValue({
+      id: "doc-ready",
+      filename: "notes.txt",
+      download_url: "https://example.com/download/notes.txt",
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+  });
+
+  it("disables the row's delete button and shows a spinner while deleting", async () => {
+    let resolveDelete!: () => void;
+    mockedDelete.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveDelete = resolve;
+      }),
+    );
+
+    render(<DocumentsPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    // While the delete request is pending the button is disabled and shows a spinner.
+    const busyButton = screen.getByRole("button", { name: /Deleting/ }) as HTMLButtonElement;
+    expect(busyButton.disabled).toBe(true);
+    expect(screen.getByRole("status", { name: "Deleting" })).toBeTruthy();
+
+    await act(async () => {
+      resolveDelete();
+    });
+    await settle();
+
+    expect(mockedDelete).toHaveBeenCalledWith("doc-ready");
+    expect(screen.queryByText("notes.txt")).toBeNull();
+  });
+
+  it("disables the row's download button and shows a spinner while fetching the URL", async () => {
+    let resolveDownload!: (value: {
+      id: string;
+      filename: string;
+      download_url: string;
+    }) => void;
+    mockedGetDownloadUrl.mockReturnValue(
+      new Promise((resolve) => {
+        resolveDownload = resolve;
+      }),
+    );
+
+    render(<DocumentsPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+
+    // While the download URL request is pending the button is disabled and shows a spinner.
+    const busyButton = screen.getByRole("button", { name: /Downloading/ }) as HTMLButtonElement;
+    expect(busyButton.disabled).toBe(true);
+    expect(screen.getByRole("status", { name: "Downloading" })).toBeTruthy();
+
+    await act(async () => {
+      resolveDownload({
+        id: "doc-ready",
+        filename: "notes.txt",
+        download_url: "https://example.com/download/notes.txt",
+      });
+    });
+    await settle();
+
+    expect(mockedGetDownloadUrl).toHaveBeenCalledWith("doc-ready");
+    // The button returns to its idle state once the URL has been fetched.
+    const idleButton = screen.getByRole("button", { name: "Download" }) as HTMLButtonElement;
+    expect(idleButton.disabled).toBe(false);
+  });
+
+  it("dims and disables the dropzone while uploading", async () => {
+    let resolveUpload!: (doc: Document) => void;
+    mockedUpload.mockReturnValue(
+      new Promise<Document>((resolve) => {
+        resolveUpload = resolve;
+      }),
+    );
+
+    const { container } = render(<DocumentsPage />);
+    await settle();
+
+    const file = new File(["hello world"], "guide.pdf", { type: "application/pdf" });
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    const dropzone = container.querySelector(".dropzone") as HTMLElement;
+    expect(dropzone.classList.contains("is-uploading")).toBe(true);
+    expect((input as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByText("Uploading…")).toBeTruthy();
+
+    await act(async () => {
+      resolveUpload({ ...readyDoc, id: "doc-new", filename: "guide.pdf" });
+    });
+    await settle();
+
+    expect(mockedUpload).toHaveBeenCalledWith(file);
+    expect(container.querySelector(".dropzone")?.classList.contains("is-uploading")).toBe(false);
+    expect(screen.getByText("guide.pdf")).toBeTruthy();
   });
 });

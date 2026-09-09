@@ -778,6 +778,10 @@ body {
   font-size: 0.9rem;
   font-weight: 600;
   transition: background 0.2s, transform 0.1s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .btn:disabled {
@@ -930,6 +934,11 @@ body {
   background: var(--blue-soft);
   border-color: var(--blue);
   border-color: var(--blue);
+}
+
+.dropzone.is-uploading {
+  opacity: 0.6;
+  pointer-events: none;
 }
 
 .dropzone input {
