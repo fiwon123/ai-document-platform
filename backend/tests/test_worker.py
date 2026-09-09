@@ -206,21 +206,43 @@ class TestProcessDocumentTask:
 class TestEnqueueFacade:
     def test_process_document_task_enqueues_job(self, monkeypatch):
         enqueue = AsyncMock()
-        monkeypatch.setattr("app.worker._enqueue_with_new_pool", enqueue)
+        monkeypatch.setattr("app.worker._enqueue_with_retry", enqueue)
         document_id = uuid4()
 
         process_document_task(document_id)
 
         enqueue.assert_called_once_with(document_id)
 
-    def test_enqueue_failure_raises_for_caller_to_record(self, monkeypatch):
-        """Enqueue failures propagate so upload can mark the doc FAILED."""
+    def test_enqueue_failure_falls_back_to_inline_processing(self, monkeypatch):
+        """Queue transport failures fall back to synchronous processing
+        instead of surfacing a cryptic error to the user."""
         async def boom(_):
             raise RuntimeError("redis down")
 
-        monkeypatch.setattr("app.worker._enqueue_with_new_pool", boom)
+        monkeypatch.setattr("app.worker._enqueue_with_retry", boom)
+        inline = MagicMock()
+        monkeypatch.setattr("app.worker.process_document_sync", inline)
 
-        with pytest.raises(RuntimeError, match="redis down"):
+        # No exception: the document is processed inline as a fallback.
+        process_document_task(uuid4())
+
+        assert inline.call_count == 1
+
+    def test_inline_fallback_failure_propagates(self, monkeypatch):
+        """If the queue is down AND inline processing fails, the real
+        processing error propagates so the upload route marks it failed."""
+
+        async def boom(_):
+            raise RuntimeError("redis down")
+
+        monkeypatch.setattr("app.worker._enqueue_with_retry", boom)
+
+        def inline_boom(_):
+            raise RuntimeError("extraction boom")
+
+        monkeypatch.setattr("app.worker.process_document_sync", inline_boom)
+
+        with pytest.raises(RuntimeError, match="extraction boom"):
             process_document_task(uuid4())
 
 
@@ -261,17 +283,18 @@ class TestUploadRouteEnqueues:
         assert body["filename"] == "notes.txt"
         enqueued.assert_called_once_with(UUID(body["id"]))
 
-    def test_upload_marks_failed_when_enqueue_fails(
+    def test_upload_marks_failed_when_processing_fails(
         self, client, auth_headers, monkeypatch
     ):
-        """Upload succeeds but the document is FAILED if enqueue fails."""
+        """Upload succeeds but the document is FAILED if processing (the
+        inline fallback path) fails with a real processing error."""
         from app.services import document as document_service_module
         from app.storage.storage import storage as app_storage
 
         monkeypatch.setattr(app_storage, "upload", lambda **kwargs: None)
 
         def boom(_document_id):
-            raise RuntimeError("redis unavailable")
+            raise RuntimeError("extraction boom")
 
         monkeypatch.setattr(
             document_service_module, "process_document_task", boom
@@ -286,7 +309,8 @@ class TestUploadRouteEnqueues:
         assert resp.status_code == 201
         body = resp.json()
         assert body["status"] == "failed"
-        assert "Failed to start processing" in body["error_message"]
+        assert "Failed to process document" in body["error_message"]
+        assert "extraction boom" in body["error_message"]
 
 
 class TestRecoverStaleDocuments:
