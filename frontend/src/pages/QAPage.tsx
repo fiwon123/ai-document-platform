@@ -10,6 +10,7 @@ interface Message {
   type: "user" | "assistant";
   content: string;
   sources?: SearchResult[];
+  model?: string | null;
 }
 
 export function QAPage() {
@@ -45,6 +46,7 @@ export function QAPage() {
         type: "assistant",
         content: response.answer,
         sources: response.sources,
+        model: response.model,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -79,7 +81,14 @@ export function QAPage() {
               </div>
               <div className="message-content">
                 {message.type === "assistant" ? (
-                  <Markdown>{message.content}</Markdown>
+                  <>
+                    <Markdown>{message.content}</Markdown>
+                    {message.model && (
+                      <span className="model-badge">
+                        Answered by {message.model}
+                      </span>
+                    )}
+                  </>
                 ) : (
                   <p>{message.content}</p>
                 )}

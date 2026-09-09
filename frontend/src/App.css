@@ -1225,6 +1225,17 @@ body {
   font-size: 0.85rem;
 }
 
+.model-badge {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 2px 10px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font: 500 0.75rem "DM Mono", monospace;
+}
+
 .source-item {
   padding: 8px;
   margin-bottom: 8px;
