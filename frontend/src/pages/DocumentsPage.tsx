@@ -183,8 +183,7 @@ for (const file of files) {
             {isUploading ? "Uploading…" : "Drop documents here"}
           </strong>
           <span>or choose one or more files from your device</span>
-          <small>PDF, TXT, JSON, CSV up to 25 MB each</small>
- (fix: accessibility pass across pages)
+<small>PDF, TXT, JSON, CSV up to 25 MB each</small>
         </label>
       </div>
 
