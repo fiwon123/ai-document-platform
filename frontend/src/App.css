@@ -1,5 +1,41 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;600;700;800&display=swap");
 
+/* ============================================================================
+   THEME & LAYOUT RULES — read before adding styles
+   ----------------------------------------------------------------------------
+   1. Colors: use design tokens only (--ink, --paper, --surface, --line,
+      --muted, --blue, --green, --danger, ...). Never hardcode hex/rgba; a
+      hardcoded color breaks one of the two themes by construction.
+   2. Headings on colored surfaces: index.css forces `color: var(--text-h)`
+      on every <h1>/<h2>. Inside an inverted band (bg: var(--ink)) or any
+      colored surface, re-set the heading color with a class selector, e.g.
+      `.landing-cta-band h2 { color: var(--paper); }` — the class beats the
+      global `h2` rule (specificity).
+   3. White text on blue/green accents: in dark mode --blue (#60a5fa) and
+      --green (#22c55e) are too bright for white text (< 4.5:1). Every time
+      you pair `color: white` with `background: var(--blue|--green)`, add a
+      dark override: `:root[data-theme="dark"] .el { background: #2563eb; }`
+      (green: #16a34a).
+   4. Navbar borders: the navbar background is var(--ink), which INVERTS in
+      dark mode. Never use rgba(255,255,255,…) borders — use var(--line).
+   5. Shadows: black shadows are invisible on dark backgrounds. Whenever
+      box-shadow provides depth (cards, modals, previews), add a dark-mode
+      override with a stronger black (rgba(0,0,0,0.4)) and/or a var(--line)
+      border.
+   6. Form controls: always set `background: var(--surface); color: var(--ink)`
+      on inputs/textareas — do not rely on color-scheme alone. Style
+      ::placeholder with var(--muted).
+   7. Cards on var(--paper): cards need a var(--line) border; in dark mode
+      --paper equals the page background, so add a subtle shadow in the dark
+      override for separation.
+   8. Status badges: white text on inline badge colors must be WCAG AA
+      (>= 4.5:1). Use -600 weight colors: #b45309 (pending), #2563eb
+      (processing), #16a34a (ready), #dc2626 (failed).
+   9. Structure: add rules under the matching section comment (for example
+      "Landing page" or "Auth Pages") and keep each dark-mode override next
+      to its base rule so they stay in sync.
+   ========================================================================== */
+
 :root {
   /* AskDocs brand palette: white, blue, black, green */
   --ink: #0f172a; /* slate-900 — near-black for text and dark surfaces */
@@ -297,7 +333,7 @@ body {
   padding: 8px;
   margin-left: auto;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid var(--line);
   border-radius: 8px;
   cursor: pointer;
 }
@@ -348,7 +384,7 @@ body {
     gap: 4px;
     width: 100%;
     padding: 8px 0 4px;
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    border-top: 1px solid var(--line);
   }
 
   .navbar-links.navbar-links-open {
@@ -366,7 +402,7 @@ body {
     gap: 10px;
     padding: 14px 6px 6px;
     margin-top: 6px;
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    border-top: 1px solid var(--line);
   }
 
   .navbar-user-mobile a {
@@ -510,6 +546,10 @@ body {
   overflow: hidden;
   box-shadow: 0 24px 48px rgb(15 23 42 / 0.14);
   background: var(--surface);
+}
+
+:root[data-theme="dark"] .preview-window {
+  box-shadow: 0 24px 48px rgb(0 0 0 / 0.5);
 }
 
 .preview-bar {
@@ -658,6 +698,12 @@ body {
   font-weight: 800;
 }
 
+/* In dark mode --blue brightens to #60a5fa and drops white text below
+   4.5:1 — keep the saturated blue (same pattern as .btn-primary). */
+:root[data-theme="dark"] .landing-step-number {
+  background: #2563eb;
+}
+
 .landing-step h3 {
   margin: 0 0 8px;
 }
@@ -714,6 +760,14 @@ body {
   box-shadow: 0 12px 30px rgb(37 99 235 / 0.18);
 }
 
+/* In dark mode --paper == page background, so cards on it look flat.
+   Add a subtle shadow to separate them from the page. */
+:root[data-theme="dark"] .landing-card,
+:root[data-theme="dark"] .landing-step,
+:root[data-theme="dark"] .landing-plan {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+}
+
 .landing-table-wrap {
   overflow-x: auto;
   max-width: 900px;
@@ -756,6 +810,11 @@ body {
 .landing-cta-band h2 {
   margin: 0 0 24px;
   font-size: clamp(1.4rem, 2.8vw, 2rem);
+  /* index.css forces `h2 { color: var(--text-h) }` — that would render
+     near-white text on the band's light background in dark mode. This
+     class selector wins the specificity battle and keeps the heading
+     opposite to the band background in both themes. */
+  color: var(--paper);
 }
 
 .landing-footer {
@@ -876,6 +935,11 @@ body {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
 }
 
+:root[data-theme="dark"] .auth-card {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--line);
+}
+
 .auth-card h1 {
   margin: 0 0 8px;
   font-size: 1.8rem;
@@ -904,6 +968,8 @@ body {
   border: 1px solid var(--line);
   font-family: inherit;
   font-size: 1rem;
+  background: var(--surface);
+  color: var(--ink);
   transition: border-color 0.2s;
 }
 
@@ -1090,6 +1156,10 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
+:root[data-theme="dark"] .document-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
 .document-card-header {
   display: flex;
   gap: 16px;
@@ -1172,6 +1242,8 @@ body {
   border: 1px solid var(--line);
   font-family: inherit;
   font-size: 1rem;
+  background: var(--surface);
+  color: var(--ink);
 }
 
 .search-input:focus {
@@ -1268,9 +1340,17 @@ body {
   flex-shrink: 0;
 }
 
+:root[data-theme="dark"] .message-avatar {
+  background: #2563eb;
+}
+
 .chat-message.user .message-avatar {
   background: var(--green);
   color: white;
+}
+
+:root[data-theme="dark"] .chat-message.user .message-avatar {
+  background: #16a34a;
 }
 
 .message-content {
@@ -1376,15 +1456,17 @@ body {
 }
 
 .demo-back-home {
-  color: var(--muted);
+  color: var(--paper);
   font-size: 0.85rem;
   font-weight: 600;
   text-decoration: none;
-  transition: color 0.2s;
+  opacity: 0.85;
+  transition: opacity 0.2s;
 }
 
 .demo-back-home:hover {
   color: var(--paper);
+  opacity: 1;
 }
 
 .demo-content {
@@ -1400,6 +1482,10 @@ body {
 
 .demo-usage .status-badge {
   background: var(--blue);
+}
+
+:root[data-theme="dark"] .demo-usage .status-badge {
+  background: #2563eb;
 }
 
 .demo-section {
@@ -1466,11 +1552,21 @@ body {
   border: 1px solid var(--line);
   font-family: inherit;
   font-size: 1rem;
+  background: var(--surface);
+  color: var(--ink);
 }
 
 .chat-input:focus {
   outline: none;
   border-color: var(--blue);
+}
+
+/* Placeholders inherit no color-scheme styling — give them the muted token. */
+.form-group input::placeholder,
+.search-input::placeholder,
+.chat-input::placeholder {
+  color: var(--muted);
+  opacity: 1;
 }
 
 /* Responsive */

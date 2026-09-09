@@ -12,10 +12,11 @@ const STATUS_LABELS: Record<DocumentStatus, string> = {
 };
 
 const STATUS_COLORS: Record<DocumentStatus, string> = {
-  pending: "#f59e0b",
-  processing: "#3b82f6",
-  ready: "#10b981",
-  failed: "#ef4444",
+  // -600 weight shades keep white text WCAG AA (>= 4.5:1) in both themes.
+  pending: "#b45309",
+  processing: "#2563eb",
+  ready: "#16a34a",
+  failed: "#dc2626",
 };
 
 export function DashboardPage() {
