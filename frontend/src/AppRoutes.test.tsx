@@ -5,14 +5,16 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 
 /**
  * Mirrors the route tree declared in App.tsx to lock in the routing contract:
- * - "/" is public (landing), "/app/*" is the protected shell with RELATIVE
- *   inner paths, and unknown public paths fall back to the 404 page.
+ * - "/" is public (landing), "/demo" is the public demo page, "/app/*" is the
+ *   protected shell with RELATIVE inner paths, and unknown public paths fall
+ *   back to the 404 page.
  */
 function AppRoutes({ path }: { path: string }) {
   return (
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/" element={<div>landing</div>} />
+        <Route path="/demo" element={<div>demo</div>} />
         <Route path="/app/*" element={<AppShell />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
@@ -50,6 +52,11 @@ describe("app route tree", () => {
     expect(screen.getByText("search")).toBeTruthy();
     render(<AppRoutes path="/app/settings" />);
     expect(screen.getByText("settings")).toBeTruthy();
+  });
+
+  it("renders the public demo page at /demo", () => {
+    render(<AppRoutes path="/demo" />);
+    expect(screen.getByText("demo")).toBeTruthy();
   });
 
   it("renders the 404 page for unknown paths inside /app", () => {

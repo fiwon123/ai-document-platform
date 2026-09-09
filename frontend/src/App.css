@@ -1254,6 +1254,112 @@ body {
   color: var(--muted);
 }
 
+/* Demo page (public, session-only, client-side mock search/QA) */
+.demo-page {
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.demo-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 14px 6vw;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.demo-banner p {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.demo-banner .btn {
+  padding: 7px 16px;
+  font-size: 0.85rem;
+}
+
+.demo-back-home {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.demo-back-home:hover {
+  color: var(--paper);
+}
+
+.demo-content {
+  padding: 32px 6vw 64px;
+}
+
+.demo-usage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.demo-usage .status-badge {
+  background: var(--blue);
+}
+
+.demo-section {
+  margin-top: 40px;
+}
+
+.demo-section-title {
+  margin: 0 0 18px;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.demo-counter {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.demo-model-badge {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.demo-limit-block {
+  padding: 24px;
+  margin: 16px 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  text-align: center;
+}
+
+.demo-limit-block p {
+  margin: 0 0 6px;
+  color: var(--muted);
+}
+
+.demo-limit-block p:first-child {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.demo-limit-block .btn {
+  margin-top: 10px;
+}
+
 .chat-input-form {
   display: flex;
   gap: 12px;
