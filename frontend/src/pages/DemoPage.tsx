@@ -266,7 +266,7 @@ export function DemoPage() {
                 <div className="document-card-body">
                   <div className="status-row">
                     <span>Status:</span>
-                    <span className="status-badge" style={{ backgroundColor: "#10b981" }}>
+                    <span className="status-badge" style={{ backgroundColor: "#16a34a" }}>
                       {doc.status}
                     </span>
                   </div>
