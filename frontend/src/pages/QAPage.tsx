@@ -4,12 +4,14 @@ import { qa } from "../services/api";
 import type { QAResponse, SearchResult } from "../types";
 import { Spinner } from "../components/Spinner";
 import { Markdown } from "../components/Markdown";
+import { EmptyState } from "../components/EmptyState";
 
 interface Message {
   id: string;
   type: "user" | "assistant";
   content: string;
   sources?: SearchResult[];
+  model?: string | null;
 }
 
 export function QAPage() {
@@ -38,6 +40,7 @@ export function QAPage() {
       const response: QAResponse = await qa.ask(
         input,
         selectedIds.length > 0 ? selectedIds : undefined,
+        localStorage.getItem("askdocs-model") ?? undefined,
       );
 
       const assistantMessage: Message = {
@@ -45,6 +48,7 @@ export function QAPage() {
         type: "assistant",
         content: response.answer,
         sources: response.sources,
+        model: response.model,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -67,9 +71,10 @@ export function QAPage() {
       <div className="chat-container">
         <div className="chat-messages">
           {messages.length === 0 && (
-            <div className="empty-state">
-              <p>Ask a question about your documents to get started.</p>
-            </div>
+            <EmptyState
+              title="No messages yet"
+              description="Ask a question about your documents to get started."
+            />
           )}
 
           {messages.map((message) => (
@@ -79,7 +84,14 @@ export function QAPage() {
               </div>
               <div className="message-content">
                 {message.type === "assistant" ? (
-                  <Markdown>{message.content}</Markdown>
+                  <>
+                    <Markdown>{message.content}</Markdown>
+                    {message.model && (
+                      <span className="model-badge">
+                        Answered by {message.model}
+                      </span>
+                    )}
+                  </>
                 ) : (
                   <p>{message.content}</p>
                 )}

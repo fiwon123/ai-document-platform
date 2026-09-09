@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { statistics } from "../services/api";
 import type { DocumentStatus, StatisticsResponse } from "../types";
 import { Spinner } from "../components/Spinner";
+import { EmptyState } from "../components/EmptyState";
 
 const STATUS_LABELS: Record<DocumentStatus, string> = {
   pending: "Pending",
@@ -102,9 +103,11 @@ export function DashboardPage() {
       <section className="recent-section">
         <h2>Recently uploaded</h2>
         {stats.recent_documents.length === 0 ? (
-          <div className="empty-state">
-            <p>No documents yet. Upload your first document to get started.</p>
-          </div>
+          <EmptyState
+            title="No documents yet"
+            description="Upload your first document to get started."
+            action={{ label: "Upload a document", to: "/app/documents" }}
+          />
         ) : (
           <ul className="recent-list">
             {stats.recent_documents.map((doc) => (

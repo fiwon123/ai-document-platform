@@ -193,17 +193,28 @@ export const search = {
   },
 };
 
+export interface QAModels {
+  free: string[];
+  paid: string[];
+}
+
 export const qa = {
   async ask(
     question: string,
     documentIds?: string[],
+    model?: string,
   ): Promise<QAResponse> {
     return request<QAResponse>("/qa/ask", {
       method: "POST",
       body: JSON.stringify({
         question,
         document_ids: documentIds || null,
+        model: model ?? null,
       }),
     });
+  },
+
+  async getModels(): Promise<QAModels> {
+    return request<QAModels>("/qa/models");
   },
 };

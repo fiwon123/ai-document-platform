@@ -128,6 +128,16 @@ describe("AdminPage", () => {
     expect((rootSelect as HTMLSelectElement).disabled).toBe(true);
   });
 
+  it("shows an empty state when there are no users", async () => {
+    mockedListUsers.mockResolvedValue([]);
+    await renderPage();
+
+    expect(screen.getByText("No users found")).toBeTruthy();
+    expect(
+      screen.getByText("There are no user accounts yet."),
+    ).toBeTruthy();
+  });
+
   it("shows an access-denied message for non-admin users", async () => {
     mockedUseAuth.mockReturnValue({
       user: alice,

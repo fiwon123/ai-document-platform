@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import { documents } from "../services/api";
 import type { Document, DocumentStatusResponse } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
 import { Spinner } from "../components/Spinner";
+import { EmptyState } from "../components/EmptyState";
 import { useToast } from "../context/ToastContext";
 
 /** How often to re-check documents that are still processing. */
@@ -22,6 +23,7 @@ export function DocumentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const toast = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -96,6 +98,11 @@ for (const file of files) {
     void uploadFiles(files);
   }
 
+  /** Opens the hidden file picker, e.g. from the empty-state CTA. */
+  function openFilePicker() {
+    fileInputRef.current?.click();
+  }
+
   function handleDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setIsDragging(false);
@@ -166,6 +173,7 @@ for (const file of files) {
           <input
             type="file"
             multiple
+            ref={fileInputRef}
             onChange={handleFileChange}
             disabled={isUploading}
           />
@@ -188,9 +196,11 @@ for (const file of files) {
           <SkeletonCard />
         </div>
       ) : docs.length === 0 ? (
-        <div className="empty-state">
-          <p>No documents uploaded yet. Upload your first document above.</p>
-        </div>
+        <EmptyState
+          title="No documents uploaded yet"
+          description="Upload your first document above to start asking questions."
+          action={{ label: "Upload a document", onClick: openFilePicker }}
+        />
       ) : (
         <div className="document-grid">
           {docs.map((doc) => (

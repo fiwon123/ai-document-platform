@@ -50,6 +50,7 @@ export interface QAResponse {
   question: string;
   answer: string;
   sources: SearchResult[];
+  model: string | null;
 }
 
 export interface RecentDocument {

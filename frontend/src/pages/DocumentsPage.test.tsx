@@ -112,6 +112,21 @@ describe("DocumentsPage polling", () => {
 
     expect(mockedGetStatus).not.toHaveBeenCalled();
   });
+
+  it("shows the empty state with an upload CTA when there are no documents", async () => {
+    mockedList.mockResolvedValue([]);
+
+    render(<DocumentsPage />);
+    await settle();
+
+    expect(screen.getByText("No documents uploaded yet")).toBeTruthy();
+    expect(
+      screen.getByText("Upload your first document above to start asking questions."),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Upload a document" }),
+    ).toBeTruthy();
+  });
 });
 
 describe("DocumentsPage busy states", () => {

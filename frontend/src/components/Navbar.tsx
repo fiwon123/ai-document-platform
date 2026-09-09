@@ -54,6 +54,9 @@ export function Navbar() {
         <Link to="/app/qa" onClick={closeMenu}>
           Q&A
         </Link>
+        <Link to="/app/settings" onClick={closeMenu}>
+          Settings
+        </Link>
         {user?.role === "admin" && (
           <Link to="/app/admin" onClick={closeMenu}>
             Users

@@ -984,9 +984,51 @@ body {
 
 /* Empty State */
 .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   padding: 60px 20px;
   text-align: center;
   color: var(--muted);
+}
+
+.empty-state-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+
+.empty-state-icon svg {
+  width: 100%;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+.empty-state-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.empty-state-description {
+  margin: 0;
+  max-width: 420px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.empty-state-action {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
 }
 
 /* Document Grid */
@@ -1234,6 +1276,17 @@ body {
   font-size: 0.85rem;
 }
 
+.model-badge {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 2px 10px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font: 500 0.75rem "DM Mono", monospace;
+}
+
 .source-item {
   padding: 8px;
   margin-bottom: 8px;
@@ -1250,6 +1303,112 @@ body {
 .source-preview {
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+/* Demo page (public, session-only, client-side mock search/QA) */
+.demo-page {
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.demo-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 14px 6vw;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.demo-banner p {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.demo-banner .btn {
+  padding: 7px 16px;
+  font-size: 0.85rem;
+}
+
+.demo-back-home {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.demo-back-home:hover {
+  color: var(--paper);
+}
+
+.demo-content {
+  padding: 32px 6vw 64px;
+}
+
+.demo-usage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.demo-usage .status-badge {
+  background: var(--blue);
+}
+
+.demo-section {
+  margin-top: 40px;
+}
+
+.demo-section-title {
+  margin: 0 0 18px;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.demo-counter {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.demo-model-badge {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.demo-limit-block {
+  padding: 24px;
+  margin: 16px 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  text-align: center;
+}
+
+.demo-limit-block p {
+  margin: 0 0 6px;
+  color: var(--muted);
+}
+
+.demo-limit-block p:first-child {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.demo-limit-block .btn {
+  margin-top: 10px;
 }
 
 .chat-input-form {
@@ -1538,4 +1697,83 @@ body {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Settings Page */
+.settings-card {
+  max-width: 640px;
+  margin-bottom: 24px;
+  padding: 24px 28px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+
+.settings-card h2 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+.settings-desc {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.settings-note {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.settings-model-group {
+  margin-bottom: 20px;
+}
+
+.settings-model-group:last-child {
+  margin-bottom: 0;
+}
+
+.settings-model-group-label {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.settings-model-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  font-size: 0.92rem;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.settings-model-option:last-child {
+  margin-bottom: 0;
+}
+
+.settings-model-option:hover {
+  border-color: var(--blue);
+  background: var(--surface);
+}
+
+.settings-model-option input {
+  accent-color: var(--blue);
+}
+
+.settings-api-key-form {
+  margin-bottom: 16px;
+}
+
+.settings-api-key-actions {
+  display: flex;
+  gap: 10px;
 }

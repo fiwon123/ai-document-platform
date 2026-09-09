@@ -16,6 +16,9 @@ const LoginPage = lazy(() =>
 const RegisterPage = lazy(() =>
   import("./pages/RegisterPage").then((m) => ({ default: m.RegisterPage })),
 );
+const DemoPage = lazy(() =>
+  import("./pages/DemoPage").then((m) => ({ default: m.DemoPage })),
+);
 const DocumentsPage = lazy(() =>
   import("./pages/DocumentsPage").then((m) => ({ default: m.DocumentsPage })),
 );
@@ -33,6 +36,9 @@ const SearchPage = lazy(() =>
 );
 const QAPage = lazy(() =>
   import("./pages/QAPage").then((m) => ({ default: m.QAPage })),
+);
+const SettingsPage = lazy(() =>
+  import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
 );
 const NotFoundPage = lazy(() =>
   import("./pages/NotFoundPage").then((m) => ({ default: m.NotFoundPage })),
@@ -65,6 +71,7 @@ function App() {
               <Route path="/" element={<LandingGate />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/demo" element={<DemoPage />} />
               <Route
                 path="/app/*"
                 element={
@@ -76,6 +83,7 @@ function App() {
                         <Route path="documents" element={<DocumentsPage />} />
                         <Route path="search" element={<SearchPage />} />
                         <Route path="qa" element={<QAPage />} />
+                        <Route path="settings" element={<SettingsPage />} />
                         <Route path="profile" element={<ProfilePage />} />
                         <Route path="admin" element={<AdminPage />} />
                         <Route path="*" element={<NotFoundPage />} />
