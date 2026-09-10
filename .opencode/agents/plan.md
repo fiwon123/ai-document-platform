@@ -50,3 +50,11 @@ What we're building and why.
 - Do NOT make any changes — only plan and advise
 - Load relevant skills when needed (api-design, docker-dev, github-workflow)
 - Ask clarifying questions if requirements are ambiguous
+
+## Subagents
+
+You may only spawn these read-only subagents via the Task tool:
+- **explore**: For codebase exploration and search
+- **reviewer**: For code review (read-only)
+
+Do NOT spawn build, tester, or any other subagents that can edit files or run bash commands. If you need implementation done, present your plan to the user and let them switch to build mode.
