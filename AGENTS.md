@@ -251,16 +251,35 @@ If the user explicitly permits reading environment configuration:
 
 ### Git Workflow
 
-- Work only in feature branches
-- Never push directly to main
-- Follow branch naming: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/`, `ci/`
+- Branch from `dev` (not `main`)
+- Never push directly to `dev` or `main`
+- Branch naming: `<type>/<issue-number>-<slug>` (e.g., `feat/42-document-chunking`)
+- Branch types: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/`, `ci/`
 - Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `ci:`
-- Run tests before opening a PR
+- All testing is local for feature branches — CI only runs on `dev` → `main` PRs
 - Do NOT merge pull requests unless explicitly instructed
 - Every change is tracked on GitHub: **issue → branch → PR → merge**
-- Always create a GitHub issue before starting work; assign it to `fiwon123` and label it per the commit type (see `.opencode/instructions/workflow.md`)
-- Assign every PR to `fiwon123`, apply the matching label, and link its issue with `Closes #<issue-number>`
-- Comment on the issue/PR at every milestone (work started, PR opened, CI passed, merged) — see the comment templates in `.opencode/instructions/workflow.md`
+
+### Branch Strategy
+
+```text
+main          ← release merges (CI runs here)
+  └── dev     ← integration branch (all feature branches merge here)
+        ├── feat/<issue>-<slug>
+        ├── fix/<issue>-<slug>
+        └── refactor/<issue>-<slug>
+```
+
+- Feature branches: `feat/<issue>-<slug>` → merge to `dev`
+- Release: `dev` → `main` (PR triggers CI)
+- Hotfixes: `fix/<issue>-<slug>` → merge to `dev`, cherry-pick to `main` if urgent
+
+### Milestones
+
+- Every issue MUST be assigned to a milestone before work begins
+- Milestones represent releases or sprint iterations
+- Use `gh issue edit <number> --milestone "<milestone-name>"`
+- Track milestone progress on the GitHub Milestones page
 
 ### Agents
 

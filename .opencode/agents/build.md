@@ -41,7 +41,7 @@ You are a senior full-stack developer. You implement features, fix bugs, and ref
 - **Label every issue and PR** using the mapping table in the workflow (feat → enhancement, fix → bug, chore → chore, etc.)
 - **Link every PR to its issue** with `Closes #<issue-number>`
 - **Comment at every milestone**: issue created (`🔍 Starting work on this`), PR opened (issue: `🔗 PR opened: #N`; PR: summary + `Closes #N`), CI passed (issue: `✅ CI passed — ready to merge`), merged (issue: `🎉 Merged in <sha>`; PR: `Merged — thanks!`)
-- Work only in feature branches — never push directly to main
+- Work only in feature branches — never push directly to `dev` or `main`
 - One feature per pull request: each branch/PR MUST implement exactly ONE feature, fix, or refactor — never bundle multiple unrelated changes
 - Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `ci:`
 - Run tests and lint before opening a PR
