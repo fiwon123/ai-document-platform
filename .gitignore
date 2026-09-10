@@ -221,3 +221,6 @@ __marimo__/
 result
 result-*
 .direnv/
+
+# OpenCode
+.opencode/node_modules/

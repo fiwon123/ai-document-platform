@@ -36,7 +36,7 @@ Build a platform where users can:
 - AI: OpenAI or another compatible LLM API
 - Development: Docker and Dev Containers
 
-### Core architecture
+### Core Architecture
 
 ```text
 React
@@ -50,18 +50,17 @@ Redis Queue
 Background Document Processor
   ↓
 Embeddings and LLM API
+```
 
 ## Project Structure
 
 Full-stack monorepo: Python/FastAPI backend + React/TypeScript frontend.
 
-```
-
-backend/ # FastAPI app, PostgreSQL, MinIO/S3 storage
-frontend/ # React 19, Vite 8, TypeScript
+```text
+backend/       # FastAPI app, PostgreSQL, MinIO/S3 storage
+frontend/      # React 19, Vite 8, TypeScript
 .devcontainer/ # Docker Compose dev environment
-
-````
+```
 
 ## Development Commands
 
@@ -258,6 +257,8 @@ If the user explicitly permits reading environment configuration:
 - Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `ci:`
 - All testing is local for feature branches — CI only runs on `dev` → `main` PRs
 - Do NOT merge pull requests unless explicitly instructed
+- Do NOT automatically create release PRs or merge to main — user must explicitly request
+- Always return to `dev` branch after completing any merge
 - Every change is tracked on GitHub: **issue → branch → PR → merge**
 
 ### Branch Strategy
@@ -297,3 +298,28 @@ Agent definitions live in `opencode.json` and `.opencode/agents/`:
 - `api-design`: Load when working on routes or endpoints
 - `docker-dev`: Load when working with Docker containers
 - `github-workflow`: Load for git operations and PR conventions
+
+### Linking conventions (mandatory)
+
+Every change must be traceable end-to-end:
+
+| From | To | How |
+|------|-----|-----|
+| Branch | Issue | Branch name includes issue number: `feat/42-document-chunking` |
+| PR | Issue | `Closes #<number>` in PR body |
+| PR | Milestone | `gh pr edit <number> --milestone "<name>"` |
+| Issue | Milestone | `gh issue edit <number> --milestone "<name>"` |
+| Commit | Issue | Conventional commit with issue context |
+
+No orphaned branches, PRs, or issues. Every piece of work is linked.
+
+### Rules for Agents
+
+All workflow rules that agents must follow are documented in this file. When configuring a project, ensure AGENTS.md contains:
+
+- branch strategy and naming conventions;
+- CI strategy (which PRs trigger CI, local testing requirements);
+- milestone and issue conventions;
+- development commands (test, lint, build, format);
+- environment and secret-file rules;
+- any project-specific constraints or permissions.

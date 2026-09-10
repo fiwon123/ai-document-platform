@@ -19,6 +19,11 @@
           "git diff*": "allow",
           "git log*": "allow",
           "git branch*": "allow",
+          "git checkout*": "allow",
+          "git pull*": "allow",
+          "git push*": "allow",
+          "git add*": "allow",
+          "git commit*": "allow",
           "gh issue*": "allow",
           "gh pr create*": "allow",
           "gh pr comment*": "allow",
@@ -29,6 +34,14 @@
           "gh label*": "allow",
           "docker compose ps*": "allow",
           "docker compose logs*": "allow"
+        },
+        "task": {
+          "*": "deny",
+          "explore": "allow",
+          "reviewer": "allow"
+        },
+        "skill": {
+          "*": "allow"
         }
       }
     },
