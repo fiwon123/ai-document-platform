@@ -1,7 +1,11 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "opencode/big-pickle",
-  "instructions": ["AGENTS.md", "PROJECT_CONTEXT.md", ".opencode/instructions/*.md"],
+  "instructions": [
+    "AGENTS.md",
+    "PROJECT_CONTEXT.md",
+    ".opencode/instructions/*.md"
+  ],
   "agent": {
     "build": {
       "mode": "primary",
@@ -43,6 +47,11 @@
         },
         "skill": {
           "*": "allow"
+        },
+        "task": {
+          "*": "deny",
+          "explore": "allow",
+          "reviewer": "allow"
         }
       }
     },
