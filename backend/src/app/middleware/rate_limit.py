@@ -15,7 +15,15 @@ RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
 # Probed once per process; None = not yet probed.
 _REDIS_AVAILABLE: bool | None = None
 
+# Upper bound for the in-memory fallback map. Prevents unbounded growth
+# when Redis is down for a long time; the oldest entries are evicted once
+# the limit is reached.
+_MEMORY_FALLBACK_MAX_ENTRIES = 10_000
+
 _RATE_LIMIT_429_MESSAGE = "Too many requests. Please try again later."
+
+# Header(s) set by trusted reverse proxies; the client IP is the first entry.
+_FORWARDED_FOR_HEADER = "X-Forwarded-For"
 
 
 def _redis_is_available() -> bool:
@@ -41,13 +49,29 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.window = window
         self.clients: dict[str, list[float]] = defaultdict(list)
 
+    def _client_ip(self, request: Request) -> str:
+        """Best-effort client IP.
+
+        Uses the first ``X-Forwarded-For`` entry when present (set by the
+        reverse proxy in front of the app), falling back to the direct
+        connection address.
+        """
+        forwarded = request.headers.get(_FORWARDED_FOR_HEADER)
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        return request.client.host if request.client else "unknown"
+
     def _redis_count(self, client_ip: str) -> int:
-        """Atomic INCR, key expires ``window`` seconds after first hit."""
-        key = f"ratelimit:{client_ip}"
-        count = redis_client.increment(key)
-        if count == 1:
-            redis_client.client.expire(key, self.window)
-        return count
+        """Atomic fixed-window counter.
+
+        INCR + EXPIRE run inside a single Redis MULTI/EXEC transaction so
+        the key can never be left without a TTL (expiry is set with
+        ``nx=True``, only on the first request).
+        """
+        return redis_client.increment_with_ttl(
+            f"ratelimit:{client_ip}",
+            ttl=self.window,
+        )
 
     def _too_many_response(self) -> JSONResponse:
         """429 in the standardized error envelope.
@@ -76,7 +100,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = self._client_ip(request)
         now = time.time()
 
         if _redis_is_available():
@@ -85,6 +109,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if count > self.requests:
                 return self._too_many_response()
         else:
+            # Evict the oldest non-memory visitors once the map grows too
+            # large so a Redis outage cannot leak memory indefinitely.
+            if client_ip not in self.clients and len(self.clients) >= _MEMORY_FALLBACK_MAX_ENTRIES:
+                self.clients.pop(next(iter(self.clients)))
+
             self.clients[client_ip] = [
                 t for t in self.clients[client_ip] if now - t < self.window
             ]
