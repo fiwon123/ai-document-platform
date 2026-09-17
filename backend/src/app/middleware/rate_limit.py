@@ -1,3 +1,4 @@
+import ipaddress
 import os
 import time
 from collections import defaultdict
@@ -14,6 +15,11 @@ RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
 
 # Probed once per process; None = not yet probed.
 _REDIS_AVAILABLE: bool | None = None
+# When Redis fails mid-request we stop probing for this long and fall
+# back to the in-memory limiter, so a stalled Redis cannot take down the
+# API or hammer the connection pool.
+_REDIS_COOLDOWN_SECONDS = 30
+_REDIS_DOWN_UNTIL: float = 0.0
 
 # Upper bound for the in-memory fallback map. Prevents unbounded growth
 # when Redis is down for a long time; the oldest entries are evicted once
@@ -22,16 +28,52 @@ _MEMORY_FALLBACK_MAX_ENTRIES = 10_000
 
 _RATE_LIMIT_429_MESSAGE = "Too many requests. Please try again later."
 
-# Header(s) set by trusted reverse proxies; the client IP is the first entry.
+# Header set by trusted reverse proxies; the client IP is the first
+# entry. It is only honored when the direct peer is in TRUSTED_PROXIES,
+# otherwise a client could spoof it to rotate rate-limit buckets.
 _FORWARDED_FOR_HEADER = "X-Forwarded-For"
+
+# Comma-separated CIDRs (e.g. "10.0.0.0/8,172.16.0.0/12") whose requests
+# may carry X-Forwarded-For. Empty (default) = never trust the header,
+# so the limiter keys on the direct connection address.
+_TRUSTED_PROXIES_ENV = "TRUSTED_PROXIES"
+
+
+def _parse_trusted_proxies(raw: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            continue
+    return networks
+
+
+TRUSTED_PROXIES = _parse_trusted_proxies(os.getenv(_TRUSTED_PROXIES_ENV, ""))
 
 
 def _redis_is_available() -> bool:
-    """Whether Redis is reachable. Cached after the first probe."""
-    global _REDIS_AVAILABLE
+    """Whether Redis is reachable. Cached after the first probe; a failed
+    mid-request call arms a cooldown so we stop hammering a down Redis."""
+    global _REDIS_AVAILABLE, _REDIS_DOWN_UNTIL
+    if time.time() < _REDIS_DOWN_UNTIL:
+        return False
     if _REDIS_AVAILABLE is None:
-        _REDIS_AVAILABLE = redis_client.ping()
+        try:
+            _REDIS_AVAILABLE = redis_client.ping()
+        except Exception:  # noqa: BLE001 - probe failures just mean fallback
+            _REDIS_AVAILABLE = False
     return _REDIS_AVAILABLE
+
+
+def _mark_redis_unavailable() -> None:
+    """Enter the cooldown: use the in-memory limiter for a while."""
+    global _REDIS_AVAILABLE, _REDIS_DOWN_UNTIL
+    _REDIS_AVAILABLE = False
+    _REDIS_DOWN_UNTIL = time.time() + _REDIS_COOLDOWN_SECONDS
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -49,17 +91,37 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.window = window
         self.clients: dict[str, list[float]] = defaultdict(list)
 
+    def _trusted_proxy(self, direct_ip: str) -> bool:
+        """Whether the direct peer is a configured trusted proxy."""
+        if not TRUSTED_PROXIES or direct_ip == "unknown":
+            return False
+        try:
+            addr = ipaddress.ip_address(direct_ip)
+        except ValueError:
+            return False
+        return any(addr in net for net in TRUSTED_PROXIES)
+
     def _client_ip(self, request: Request) -> str:
         """Best-effort client IP.
 
-        Uses the first ``X-Forwarded-For`` entry when present (set by the
-        reverse proxy in front of the app), falling back to the direct
-        connection address.
+        Only when the direct peer is a trusted proxy do we use the first
+        valid entry of ``X-Forwarded-For`` (set by that proxy); otherwise
+        a client could spoof the header to rotate rate-limit buckets.
+        Falls back to the direct connection address in all other cases.
         """
+        direct = request.client.host if request.client else "unknown"
         forwarded = request.headers.get(_FORWARDED_FOR_HEADER)
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-        return request.client.host if request.client else "unknown"
+        if forwarded and self._trusted_proxy(direct):
+            for candidate in forwarded.split(","):
+                candidate = candidate.strip()
+                if len(candidate) > 64:  # safety cap against absurd headers
+                    continue
+                try:
+                    ipaddress.ip_address(candidate)
+                except ValueError:
+                    continue
+                return candidate
+        return direct
 
     def _redis_count(self, client_ip: str) -> int:
         """Atomic fixed-window counter.
@@ -72,6 +134,26 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             f"ratelimit:{client_ip}",
             ttl=self.window,
         )
+
+    def _memory_count(self, client_ip: str, now: float) -> int | None:
+        """Slide the in-memory window; return remaining or None if over."""
+        if (
+            client_ip not in self.clients
+            and len(self.clients) >= _MEMORY_FALLBACK_MAX_ENTRIES
+            and self.clients
+        ):
+            # Evict the oldest visitor (dicts preserve insertion order).
+            self.clients.pop(next(iter(self.clients)))
+
+        self.clients[client_ip] = [
+            t for t in self.clients[client_ip] if now - t < self.window
+        ]
+
+        if len(self.clients[client_ip]) >= self.requests:
+            return None
+
+        self.clients[client_ip].append(now)
+        return max(0, self.requests - len(self.clients[client_ip]))
 
     def _too_many_response(self) -> JSONResponse:
         """429 in the standardized error envelope.
@@ -104,25 +186,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         now = time.time()
 
         if _redis_is_available():
-            count = self._redis_count(client_ip)
-            remaining = max(0, self.requests - count)
-            if count > self.requests:
-                return self._too_many_response()
+            try:
+                count = self._redis_count(client_ip)
+                remaining = max(0, self.requests - count)
+                if count > self.requests:
+                    return self._too_many_response()
+            except Exception:  # noqa: BLE001 - degrade to the in-memory limiter
+                _mark_redis_unavailable()
+                remaining = self._memory_count(client_ip, now)
+                if remaining is None:
+                    return self._too_many_response()
         else:
-            # Evict the oldest non-memory visitors once the map grows too
-            # large so a Redis outage cannot leak memory indefinitely.
-            if client_ip not in self.clients and len(self.clients) >= _MEMORY_FALLBACK_MAX_ENTRIES:
-                self.clients.pop(next(iter(self.clients)))
-
-            self.clients[client_ip] = [
-                t for t in self.clients[client_ip] if now - t < self.window
-            ]
-
-            if len(self.clients[client_ip]) >= self.requests:
+            remaining = self._memory_count(client_ip, now)
+            if remaining is None:
                 return self._too_many_response()
-
-            self.clients[client_ip].append(now)
-            remaining = max(0, self.requests - len(self.clients[client_ip]))
 
         response = await call_next(request)
         response.headers["X-RateLimit-Limit"] = str(self.requests)

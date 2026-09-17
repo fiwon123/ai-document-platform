@@ -21,6 +21,15 @@ def _make_client(requests=2, window=60):
     return TestClient(mini, raise_server_exceptions=False)
 
 
+def _trust_proxies(monkeypatch):
+    """Simulate a deployment behind a trusted proxy (honors X-Forwarded-For)."""
+    monkeypatch.setattr(
+        rate_limit.RateLimitMiddleware,
+        "_trusted_proxy",
+        lambda self, direct_ip: True,
+    )
+
+
 class TestMemoryFallback:
     """In-process sliding window used when Redis is unreachable."""
 
@@ -58,8 +67,9 @@ class TestMemoryFallback:
             assert client.get("/").status_code == 200
 
     def test_forwarded_for_header_determines_client(self, monkeypatch):
-        """Trust the first X-Forwarded-For entry when present (proxied deploys)."""
+        """Trust the first valid X-Forwarded-For entry when the peer is a trusted proxy."""
         monkeypatch.setattr(rate_limit, "_redis_is_available", lambda: False)
+        _trust_proxies(monkeypatch)
         with _make_client(requests=1) as client:
             headers = {"X-Forwarded-For": "203.0.113.7, 10.0.0.1"}
             assert client.get("/", headers=headers).status_code == 200
@@ -71,10 +81,29 @@ class TestMemoryFallback:
                 == 200
             )
 
+    def test_forwarded_for_ignored_without_trusted_proxy(self, monkeypatch):
+        """Without a configured trusted proxy, X-Forwarded-For is ignored
+        (direct connection IP is used), so clients cannot spoof the header."""
+        monkeypatch.setattr(rate_limit, "_redis_is_available", lambda: False)
+        with _make_client(requests=1) as client:
+            # Same direct peer regardless of the spoofed header.
+            assert client.get("/", headers={"X-Forwarded-For": "1.2.3.4"}).status_code == 200
+            assert client.get("/", headers={"X-Forwarded-For": "5.6.7.8"}).status_code == 429
+
+    def test_forwarded_for_skips_invalid_entries(self, monkeypatch):
+        """Non-IP garbage in X-Forwarded-For is skipped, not used as a key."""
+        monkeypatch.setattr(rate_limit, "_redis_is_available", lambda: False)
+        _trust_proxies(monkeypatch)
+        with _make_client(requests=1) as client:
+            headers = {"X-Forwarded-For": "not-an-ip, 203.0.113.7"}
+            assert client.get("/", headers=headers).status_code == 200
+            assert client.get("/", headers=headers).status_code == 429
+
     def test_memory_fallback_evicts_oldest_when_full(self, monkeypatch):
         """The in-memory map is bounded: oldest visitors are evicted first."""
         monkeypatch.setattr(rate_limit, "_redis_is_available", lambda: False)
         monkeypatch.setattr(rate_limit, "_MEMORY_FALLBACK_MAX_ENTRIES", 3)
+        _trust_proxies(monkeypatch)
         with _make_client(requests=1) as client:
             for i in range(3):
                 resp = client.get("/", headers={"X-Forwarded-For": f"10.0.0.{i}"})
@@ -129,6 +158,7 @@ class TestRedisPath:
     def test_redis_path_uses_forwarded_for_ip(self, monkeypatch):
         """The Redis key must use the real client IP behind a proxy."""
         monkeypatch.setattr(rate_limit, "_redis_is_available", lambda: True)
+        _trust_proxies(monkeypatch)
         increment_with_ttl = MagicMock(return_value=1)
         monkeypatch.setattr(redis_client, "increment_with_ttl", increment_with_ttl)
 
@@ -136,3 +166,14 @@ class TestRedisPath:
             client.get("/", headers={"X-Forwarded-For": "203.0.113.7, 10.0.0.1"})
 
         assert increment_with_ttl.call_args.args[0] == "ratelimit:203.0.113.7"
+
+    def test_redis_path_falls_back_to_memory_on_redis_failure(self, monkeypatch):
+        """A raising Redis mid-request must not 500; it degrades to memory."""
+        monkeypatch.setattr(rate_limit, "_redis_is_available", lambda: True)
+        monkeypatch.setattr(
+            redis_client, "increment_with_ttl", MagicMock(side_effect=RuntimeError("redis down"))
+        )
+        with _make_client(requests=1) as client:
+            resp = client.get("/")
+            assert resp.status_code == 200
+            assert resp.headers["X-RateLimit-Remaining"] == "0"
