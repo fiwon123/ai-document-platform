@@ -124,11 +124,14 @@ The AI agent (opencode) runs **inside a Dev Container**, not on a bare machine.
 
 ### Service ports (forwarded from host)
 
-- PostgreSQL: `localhost:5432`
+Host ports of the Docker Compose stack (container-internal ports stay at the
+standard values: 5432, 6379, 8000, 5173):
+
+- PostgreSQL: `localhost:5434`
 - Redis: `localhost:63790`
 - MinIO API: `localhost:9000` / Console: `localhost:9001`
-- Backend API: `localhost:8000`
-- Frontend Dev: `localhost:5173`
+- Backend API: `localhost:8001`
+- Frontend Dev: `localhost:5175`
 
 ### What the agent CANNOT do
 
@@ -157,7 +160,7 @@ The AI agent (opencode) runs **inside a Dev Container**, not on a bare machine.
 
 ### Infrastructure Services
 
-- **PostgreSQL** (port 5432): Primary database
+- **PostgreSQL** (host port 5434 → container 5432): Primary database
 - **Redis** (host port 63790 → container 6379): Caching layer
 - **MinIO** (ports 9000/9001): S3-compatible object storage
   - Console: http://localhost:9001 (minioadmin/minioadmin)
@@ -165,13 +168,13 @@ The AI agent (opencode) runs **inside a Dev Container**, not on a bare machine.
 ### Dev Container
 
 - Services run in Docker Compose: `backend` (Python 3.14) + `frontend` (Node 22)
-- Forwarded ports: 8000 (API), 5173 (Vite dev server)
+- Forwarded ports: 8001 (API), 5175 (Vite dev server)
 - Post-create: installs `opencode-ai` globally, syncs backend deps, installs frontend deps
 
 ## Environment Variables
 
 Backend reads from `backend/src/app/.env` (gitignored):
-- `POSTGRES_*`: Database connection (defaults: `localhost:5432/mydb`)
+- `POSTGRES_*`: Database connection (defaults: `localhost:5434/mydb`)
 - `REDIS_*`: Redis connection (defaults: `localhost:63790`)
 - `MINIO_*`: S3-compatible storage (defaults: `localhost:9000`, bucket: `documents`)
 - `DATABASE_URL`: Full PostgreSQL URL (used by Alembic)

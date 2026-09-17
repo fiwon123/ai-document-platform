@@ -2,7 +2,9 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     ports:
-      - "5432:5432"
+      # Host port 5434 avoids conflicts with other local PostgreSQL instances /
+      # Docker projects binding 5432. Internal container port stays 5432.
+      - "5434:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mydb}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -51,7 +53,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      # Host port 8001 avoids conflicts with other local projects' containers
+      # binding 8000. Internal container port stays 8000.
+      - "8001:8000"
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
@@ -118,7 +122,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "5173:5173"
+      # Host port 5175 avoids conflicts with other local projects' containers
+      # binding 5173. Internal container port stays 5173.
+      - "5175:5173"
     environment:
       # Inside this container the backend is only reachable by compose
       # service name, not localhost, so point the Vite proxy at it.

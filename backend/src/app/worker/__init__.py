@@ -4,7 +4,7 @@ import os
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from arq import create_pool
+from arq import create_pool, cron
 from arq.connections import ArqRedis, RedisSettings
 from arq.worker import Retry
 from sqlalchemy.orm import Session
@@ -339,7 +339,15 @@ async def _worker_shutdown(ctx: dict) -> None:
 WorkerSettings = {
     "functions": [process_document],
     "cron_jobs": [
-        (recover_stale_documents, "*/5 * * * *", False),
+        # Every 5 minutes. arq >= 0.26 requires CronJob instances: the legacy
+        # (coroutine, cron-string, unique) tuples are no longer accepted, so
+        # build one with the cron() factory (minute set + second=0 == "*/5").
+        cron(
+            recover_stale_documents,
+            minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
+            second=0,
+            unique=False,
+        ),
     ],
     "redis_settings": worker_redis_settings(),
     "max_tries": MAX_RETRIES,

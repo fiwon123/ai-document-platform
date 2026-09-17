@@ -30,27 +30,49 @@ permissions:
 # The focal CI gate lets us do all heavy verification at milestone time.
 jobs:
   backend-check:
-    name: Backend (uv sync + syntax check)
+    name: Backend (uv sync + ruff + syntax)
     if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # Skip the expensive job body entirely for PRs that touch no backend
+      # code (frontend-only work is validated by the frontend jobs).
+      - name: Detect backend changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/workflows/**'
+
       - name: Install uv
+        if: steps.changes.outputs.backend == 'true'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
       - name: Set up Python
+        if: steps.changes.outputs.backend == 'true'
         run: uv python install 3.14
 
       - name: Sync dependencies (locked)
+        if: steps.changes.outputs.backend == 'true'
         run: uv sync --locked
         working-directory: backend
 
       - name: Syntax check
+        if: steps.changes.outputs.backend == 'true'
         run: uv run python -m compileall -q src
+        working-directory: backend
+
+      - name: Lint (ruff)
+        if: steps.changes.outputs.backend == 'true'
+        run: uv run ruff check src/
         working-directory: backend
 
   backend-test:
@@ -154,4 +176,27 @@ jobs:
 
       - name: Typecheck and build
         run: npm run build
+        working-directory: frontend
+
+  frontend-test:
+    name: Frontend (vitest)
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run tests
+        run: npm test
         working-directory: frontend
