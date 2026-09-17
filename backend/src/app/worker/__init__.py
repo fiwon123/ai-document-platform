@@ -57,10 +57,11 @@ def _invalidate_caches(document: DocumentDB) -> None:
     """Drop stale cached metadata + search results for a processed doc.
 
     Status transitions (READY/FAILED) change a document's row and its
-    searchability, so cached document metadata and the user's cached
-    search results must be invalidated. Imports are lazy to avoid a
-    circular import (services.document imports this module). Failures are
-    logged and swallowed so a Redis hiccup never fails a job.
+    searchability, so cached document metadata, the user's cached search
+    results, and any cached listing pages must be invalidated. Imports
+    are lazy to avoid a circular import (services.document imports this
+    module). Failures are logged and swallowed so a Redis hiccup never
+    fails a job.
     """
     try:
         from app.services.search import invalidate_user_search_cache
@@ -69,9 +70,13 @@ def _invalidate_caches(document: DocumentDB) -> None:
     except Exception as e:  # noqa: BLE001 - cache must never break the worker
         logger.warning(f"Search cache invalidation failed: {e}")
     try:
-        from app.services.document import invalidate_document_cache
+        from app.services.document import (
+            invalidate_document_cache,
+            invalidate_document_list_cache,
+        )
 
         invalidate_document_cache(document.owner_id, document.id)
+        invalidate_document_list_cache(document.owner_id)
     except Exception as e:  # noqa: BLE001 - cache must never break the worker
         logger.warning(f"Document cache invalidation failed: {e}")
 

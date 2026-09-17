@@ -31,6 +31,10 @@ ALLOWED_MIME_TYPES = {
 
 DOCUMENT_CACHE_TTL_SECONDS = 300  # individual document metadata
 DOCUMENT_LIST_CACHE_TTL_SECONDS = 60  # paginated listings
+# Cap on pages kept per owner. Clients may page arbitrarily deep with
+# distinct skip values; keeping every page in one blob could grow (and
+# re-serialize) the cached value without bound.
+DOCUMENT_LIST_MAX_PAGES = 10
 _DOCUMENT_KEY = "document:{owner_id}:{document_id}"
 # One cached object per owner holding every recently-requested page:
 # {"<skip>:<limit>": [FileResponse, ...], ...}. A single key per owner
@@ -205,6 +209,9 @@ class DocumentService:
             )
             if failed is not None:
                 created = failed
+            # The status change may be visible in cached listing pages;
+            # drop them so the failed state is served immediately.
+            invalidate_document_list_cache(owner_id)
 
         return created
 
@@ -313,11 +320,17 @@ class DocumentService:
             key = _DOCUMENT_LIST_KEY.format(owner_id=owner_id)
             # Merge into the existing cached pages so requesting a new
             # page does not evict pages the client already loaded.
-            payload: dict = redis_client.get_json(key) or {}
+            payload = redis_client.get_json(key)
+            if not isinstance(payload, dict):
+                payload = {}
             payload[f"{skip}:{limit}"] = [
                 FileResponse.model_validate(doc).model_dump(mode="json")
                 for doc in documents
             ]
+            # Bound the stored page count (see DOCUMENT_LIST_MAX_PAGES);
+            # evict the oldest page when the cap is reached.
+            if len(payload) > DOCUMENT_LIST_MAX_PAGES:
+                payload.pop(next(iter(payload)))
             redis_client.set_json(
                 key,
                 payload,
