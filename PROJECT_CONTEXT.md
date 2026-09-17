@@ -255,7 +255,7 @@ LLM and Embedding APIs
 - **Async processing**: Document processing handled in background workers to avoid blocking API
 - **Vector embeddings**: Stored in PostgreSQL with pgvector for semantic search
 - **Object storage**: MinIO/S3 for document file storage with user isolation
-- **JWT authentication**: Stateless authentication with refresh tokens
+- **JWT authentication**: Stateless authentication with access tokens
 - **Pydantic schemas**: Strict request/response validation
 
 ## Current implementation status
@@ -283,10 +283,9 @@ LLM and Embedding APIs
 - [x] Frontend document management page
 - [x] Frontend search UI
 - [x] Frontend Q&A chat interface
-
-### In Progress
-- [ ] Testing suite
-- [ ] CI/CD pipeline
+- [x] Testing suite (127 backend tests, 93 frontend tests)
+- [x] CI/CD pipeline (GitHub Actions: backend tests + lint, frontend lint + build + tests)
+- [x] Rate limiting and logging middleware
 
 ### Planned
 - [ ] Advanced caching strategies
@@ -334,10 +333,10 @@ LLM and Embedding APIs
 docker compose up -d
 ```
 
-### Accessing services
+### Accessing services (Docker Compose stack — host ports)
 
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:8000
-- API Documentation: http://localhost:8000/docs
+- Frontend: http://localhost:5175
+- Backend API: http://localhost:8001
+- API Documentation: http://localhost:8001/docs
 - MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
 
