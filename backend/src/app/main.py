@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -13,6 +14,17 @@ from .schemas.error import ErrorDetail, ErrorResponse
 from .storage.storage import storage
 
 logger = logging.getLogger(__name__)
+
+# Comma-separated list of allowed CORS origins. In production set
+# CORS_ORIGINS to the real frontend origin(s), e.g. https://app.example.com.
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://localhost:5175,http://localhost:3000",
+    ).split(",")
+    if origin.strip()
+]
 
 # Stable machine-readable codes for common HTTP statuses.
 _EXCEPTION_CODES: dict[int, str] = {
@@ -117,10 +129,11 @@ app.add_middleware(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
+    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-Process-Time"],
 )
 
 app.include_router(auth.router, prefix="/v1")
