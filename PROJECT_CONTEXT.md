@@ -220,7 +220,7 @@ LLM and Embedding APIs
 - `POSTGRES_USER`: Database user (default: postgres)
 - `POSTGRES_PASSWORD`: Database password
 - `POSTGRES_HOST`: Database host (default: localhost)
-- `POSTGRES_PORT`: Database port (default: 5432)
+- `POSTGRES_PORT`: Database port (default: 5432; dockerized dev host port: 5433)
 - `DATABASE_URL`: Full PostgreSQL connection string (used by Alembic)
 - `REDIS_HOST`: Redis hostname (default: localhost)
 - `REDIS_PORT`: Redis port (default: 6379)
