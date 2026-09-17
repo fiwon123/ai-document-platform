@@ -14,7 +14,7 @@ metadata:
 | backend | 8000 | FastAPI + uvicorn |
 | frontend | 5173 | Vite dev server |
 | postgres | 5432 | PostgreSQL 16 + pgvector |
-| redis | 6379 | Caching |
+| redis | 63790 (host) → 6379 (container) | Caching |
 | minio | 9000/9001 | S3-compatible storage |
 
 ### Starting Services

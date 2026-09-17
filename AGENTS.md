@@ -125,7 +125,7 @@ The AI agent (opencode) runs **inside a Dev Container**, not on a bare machine.
 ### Service ports (forwarded from host)
 
 - PostgreSQL: `localhost:5432`
-- Redis: `localhost:6379`
+- Redis: `localhost:63790`
 - MinIO API: `localhost:9000` / Console: `localhost:9001`
 - Backend API: `localhost:8000`
 - Frontend Dev: `localhost:5173`
@@ -158,7 +158,7 @@ The AI agent (opencode) runs **inside a Dev Container**, not on a bare machine.
 ### Infrastructure Services
 
 - **PostgreSQL** (port 5432): Primary database
-- **Redis** (port 6379): Caching layer
+- **Redis** (host port 63790 → container 6379): Caching layer
 - **MinIO** (ports 9000/9001): S3-compatible object storage
   - Console: http://localhost:9001 (minioadmin/minioadmin)
 
@@ -172,7 +172,7 @@ The AI agent (opencode) runs **inside a Dev Container**, not on a bare machine.
 
 Backend reads from `backend/src/app/.env` (gitignored):
 - `POSTGRES_*`: Database connection (defaults: `localhost:5432/mydb`)
-- `REDIS_*`: Redis connection (defaults: `localhost:6379`)
+- `REDIS_*`: Redis connection (defaults: `localhost:63790`)
 - `MINIO_*`: S3-compatible storage (defaults: `localhost:9000`, bucket: `documents`)
 - `DATABASE_URL`: Full PostgreSQL URL (used by Alembic)
 - `SECRET_KEY`: JWT signing key (required)

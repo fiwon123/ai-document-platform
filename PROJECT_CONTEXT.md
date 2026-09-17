@@ -223,7 +223,7 @@ LLM and Embedding APIs
 - `POSTGRES_PORT`: Database port (default: 5432)
 - `DATABASE_URL`: Full PostgreSQL connection string (used by Alembic)
 - `REDIS_HOST`: Redis hostname (default: localhost)
-- `REDIS_PORT`: Redis port (default: 6379)
+- `REDIS_PORT`: Redis port (default: 6379; dockerized dev host port: 63790)
 - `MINIO_ENDPOINT`: MinIO endpoint (default: localhost:9000)
 - `MINIO_ACCESS_KEY`: MinIO access key (default: minioadmin)
 - `MINIO_SECRET_KEY`: MinIO secret key (default: minioadmin)
