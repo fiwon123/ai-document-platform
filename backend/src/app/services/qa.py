@@ -1,10 +1,18 @@
+import logging
 import os
+import re
 from uuid import UUID
 
 from openai import OpenAI
 
 from app.schemas.document import QAResponse, SearchResult
 from app.services.search import SearchService
+
+logger = logging.getLogger(__name__)
+
+# Redact anything that looks like an API key inside logged provider errors
+# (OpenAI/Groq messages may echo the key prefix).
+_KEY_PATTERN = re.compile(r"sk-[A-Za-z0-9_-]+")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
@@ -92,10 +100,27 @@ def _provider_client(provider: str) -> OpenAI | None:
     return _openai_client
 
 
+def _provider_base_url(provider: str) -> str | None:
+    """Base URL used for a provider's OpenAI-compatible API."""
+    if provider == "groq":
+        return GROQ_BASE_URL
+    # OpenAI — use the SDK default endpoint.
+    return None
+
+
 def _client_for_model(model_id: str) -> tuple[OpenAI | None, str]:
     """Resolve a model id to its provider client + provider name."""
     entry = _MODEL_BY_ID.get(model_id) or _MODEL_BY_ID[OPENAI_MODEL]
     return _provider_client(entry["provider"]), entry["provider"]
+
+
+def _client_for_api_key(api_key: str, provider: str) -> OpenAI:
+    """Build a throwaway client for a user-supplied API key.
+
+    The key is used only for this one request and the client is discarded
+    after the call returns — BYOK keys are never stored or logged.
+    """
+    return OpenAI(api_key=api_key, base_url=_provider_base_url(provider))
 
 
 class QAService:
@@ -108,6 +133,7 @@ class QAService:
         question: str,
         document_ids: list[UUID] | None = None,
         model: str | None = None,
+        api_key: str | None = None,
     ) -> QAResponse:
         search_response = self.search_service.search(
             user_id=user_id,
@@ -123,6 +149,7 @@ class QAService:
             question=question,
             context=context,
             model=effective_model,
+            api_key=api_key,
         )
 
         return QAResponse(
@@ -158,9 +185,19 @@ class QAService:
         question: str,
         context: str,
         model: str | None = None,
+        api_key: str | None = None,
     ) -> str:
         effective_model = model or OPENAI_MODEL
-        client, provider = _client_for_model(effective_model)
+        _client, provider = _client_for_model(effective_model)
+
+        # A user-supplied key wins over the server-configured key for this
+        # request only (bring-your-own-key). Without one, fall back to the
+        # server-level client for the provider.
+        client = (
+            _client_for_api_key(api_key, provider)
+            if api_key
+            else _client
+        )
 
         if client is None:
             return (
@@ -193,4 +230,12 @@ class QAService:
             )
             return response.choices[0].message.content or "No answer generated."
         except Exception as e:
-            return f"Error generating answer: {str(e)}"
+            # Never echo provider internals to the user — the SDK message may
+            # contain key prefixes or account hints. Log the detail (with any
+            # key-shaped strings redacted) instead.
+            logger.warning(
+                "LLM call failed for provider %s: %s",
+                provider,
+                _KEY_PATTERN.sub("sk-***", str(e)),
+            )
+            return "Could not generate an answer with the AI provider. Please try again."

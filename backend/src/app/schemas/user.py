@@ -23,9 +23,16 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class LogoutResponse(BaseModel):
+    """Payload returned after the refresh cookie is cleared."""
+
+    message: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"  # noqa: S105  # OAuth2 token-type literal, not a secret
+    expires_in: int  # access-token lifetime in seconds (for proactive refresh)
     user: UserResponse
 
 

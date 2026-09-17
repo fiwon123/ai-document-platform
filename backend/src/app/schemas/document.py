@@ -75,6 +75,16 @@ class QARequest(BaseModel):
         default=None,
         description="Model override; defaults to OPENAI_MODEL",
     )
+    api_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description=(
+            "Optional bring-your-own-key. When provided, the user's key is "
+            "used for this request instead of the server's key for the "
+            "chosen provider. Never stored or logged."
+        ),
+    )
 
 
 class QAResponse(BaseModel):
@@ -85,6 +95,15 @@ class QAResponse(BaseModel):
         default=None,
         description="Model that produced the answer",
     )
+
+
+class DocumentPreviewResponse(BaseModel):
+    """Text preview of a stored document (owner-scoped, truncated)."""
+
+    id: UUID
+    filename: str
+    preview: str
+    truncated: bool
 
 
 class DownloadUrlResponse(BaseModel):

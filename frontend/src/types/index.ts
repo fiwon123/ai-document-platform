@@ -29,7 +29,15 @@ export interface DocumentStatusResponse {
 export interface TokenResponse {
   access_token: string;
   token_type: string;
+  expires_in: number;
   user: User;
+}
+
+export interface DocumentPreview {
+  id: string;
+  filename: string;
+  preview: string;
+  truncated: boolean;
 }
 
 export interface SearchResult {

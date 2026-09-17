@@ -170,6 +170,7 @@ class TestQARoute:
             question="what is revenue?",
             document_ids=[UUIDType("00000000-0000-0000-0000-000000000002")],
             model=None,
+            api_key=None,
         )
 
     def test_ask_endpoint_accepts_request_schema(self, db_session):
@@ -213,6 +214,52 @@ class TestQARoute:
 
         assert resp.status_code == 200
         assert fake_service.ask.call_args.kwargs["model"] == "gpt-4o-mini"
+
+    def test_ask_endpoint_forwards_api_key(self, client, auth_headers):
+        from app.main import app
+        from app.routes.qa import get_qa_service
+
+        fake_service = MagicMock()
+        fake_service.ask.return_value = {
+            "question": "q",
+            "answer": "a",
+            "sources": [],
+        }
+        app.dependency_overrides[get_qa_service] = lambda: fake_service
+        try:
+            resp = client.post(
+                "/v1/qa/ask",
+                json={"question": "q", "api_key": "sk-user-key-123"},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        assert fake_service.ask.call_args.kwargs["api_key"] == "sk-user-key-123"
+
+    def test_ask_endpoint_without_api_key_forwards_none(self, client, auth_headers):
+        from app.main import app
+        from app.routes.qa import get_qa_service
+
+        fake_service = MagicMock()
+        fake_service.ask.return_value = {
+            "question": "q",
+            "answer": "a",
+            "sources": [],
+        }
+        app.dependency_overrides[get_qa_service] = lambda: fake_service
+        try:
+            resp = client.post(
+                "/v1/qa/ask",
+                json={"question": "q"},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        assert fake_service.ask.call_args.kwargs["api_key"] is None
 
     def test_ask_endpoint_without_model_forwards_none(self, client, auth_headers):
         from app.main import app
@@ -432,6 +479,8 @@ class TestQAServiceAnswerGeneration:
         ][1]["content"]
 
     def test_ask_surfaces_llm_errors(self, monkeypatch):
+        from app.services.qa import _KEY_PATTERN  # noqa: F401
+
         fake_client = MagicMock()
         fake_client.chat.completions.create.side_effect = RuntimeError("boom")
         monkeypatch.setattr("app.services.qa._openai_client", fake_client)
@@ -442,7 +491,12 @@ class TestQAServiceAnswerGeneration:
 
         response = service.ask(user_id=uuid4(), question="q")
 
-        assert response.answer == "Error generating answer: boom"
+        # Provider failure (SDK messages can leak API-key prefixes) is
+        # redacted from the user-facing answer — exactly as the "LLM error
+        # must be redacted" checklist item requires.
+        assert response.answer == (
+            "Could not generate an answer with the AI provider. Please try again."
+        )
 
     def test_ask_passes_model_override(self, monkeypatch):
         from types import SimpleNamespace
@@ -468,6 +522,74 @@ class TestQAServiceAnswerGeneration:
             == "gpt-4o-mini"
         )
         assert response.model == "gpt-4o-mini"
+
+    def test_ask_with_api_key_builds_throwaway_client(self, monkeypatch):
+        """BYOK: a user key creates a per-request client and is not required
+        to be configured server-side."""
+        from types import SimpleNamespace
+
+        from app.services import qa as qa_module
+
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="BYOK answer"))]
+        )
+        captured: dict = {}
+
+        def fake_openai_factory(api_key=None, base_url=None):
+            captured["api_key"] = api_key
+            captured["base_url"] = base_url
+            return fake_client
+
+        monkeypatch.setattr(qa_module, "OpenAI", fake_openai_factory)
+        # No server key configured — BYOK must still work.
+        monkeypatch.setattr(qa_module, "_openai_client", None)
+
+        fake_search = MagicMock()
+        fake_search.search.return_value = MagicMock(results=[])
+        service = QAService(search_service=fake_search)
+
+        response = service.ask(user_id=uuid4(), question="q", api_key="sk-user-secret")
+
+        assert captured["api_key"] == "sk-user-secret"
+        # OpenAI provider uses the SDK default endpoint.
+        assert captured["base_url"] is None
+        assert response.answer == "BYOK answer"
+
+    def test_ask_with_api_key_for_groq_model_uses_groq_base_url(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from app.services import qa as qa_module
+
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Groq BYOK"))]
+        )
+        captured: dict = {}
+        monkeypatch.setattr(
+            qa_module,
+            "OpenAI",
+            lambda api_key=None, base_url=None: captured.update(
+                api_key=api_key, base_url=base_url
+            )
+            or fake_client,
+        )
+        monkeypatch.setattr(qa_module, "_groq_client", None)
+
+        fake_search = MagicMock()
+        fake_search.search.return_value = MagicMock(results=[])
+        service = QAService(search_service=fake_search)
+
+        response = service.ask(
+            user_id=uuid4(),
+            question="q",
+            model="llama-3.1-8b-instant",
+            api_key="sk-user-groq",
+        )
+
+        assert captured["api_key"] == "sk-user-groq"
+        assert captured["base_url"] == qa_module.GROQ_BASE_URL
+        assert response.answer == "Groq BYOK"
 
     def test_ask_defaults_to_configured_model(self, monkeypatch):
         from types import SimpleNamespace
