@@ -17,14 +17,20 @@ logger = logging.getLogger(__name__)
 
 # Comma-separated list of allowed CORS origins. In production set
 # CORS_ORIGINS to the real frontend origin(s), e.g. https://app.example.com.
+_DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://localhost:5175,http://localhost:3000"
 CORS_ORIGINS = [
     origin.strip()
-    for origin in os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:5173,http://localhost:5175,http://localhost:3000",
-    ).split(",")
+    for origin in os.getenv("CORS_ORIGINS", _DEFAULT_CORS_ORIGINS).split(",")
     if origin.strip()
 ]
+if not CORS_ORIGINS:
+    # An empty/misconfigured CORS_ORIGINS would silently break every
+    # browser request; fail back to the dev defaults and warn instead.
+    logger.warning(
+        "CORS_ORIGINS resolved to no origins; falling back to %s",
+        _DEFAULT_CORS_ORIGINS,
+    )
+    CORS_ORIGINS = _DEFAULT_CORS_ORIGINS.split(",")
 
 # Stable machine-readable codes for common HTTP statuses.
 _EXCEPTION_CODES: dict[int, str] = {
