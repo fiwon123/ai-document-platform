@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -10,7 +12,7 @@ router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
-def health_check(db: Session = Depends(get_db)):
+def health_check(db: Annotated[Session, Depends(get_db)]):
     checks = {
         "status": "healthy",
         "services": {
