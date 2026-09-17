@@ -1,5 +1,6 @@
 import logging
 import os
+from io import BytesIO
 from urllib.parse import unquote
 from uuid import UUID, uuid4
 
@@ -8,8 +9,13 @@ from fastapi import HTTPException, UploadFile, status
 from app.cache.redis import redis_client
 from app.models.document import DocumentDB, DocumentStatus
 from app.repositories.document import DocumentRepository
-from app.schemas.document import DocumentStatusResponse, FileResponse
+from app.schemas.document import (
+    DocumentPreviewResponse,
+    DocumentStatusResponse,
+    FileResponse,
+)
 from app.services.search import invalidate_user_search_cache
+from app.services.text_extraction import TextExtractionService
 from app.storage.storage import MinioStorage
 from app.worker import process_document_task
 
@@ -17,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 MAX_FILENAME_LENGTH = 255
 MAX_UPLOAD_SIZE = 25 * 1024 * 1024  # 25 MB
+PREVIEW_MAX_CHARS = 5000
 
 # File types the text extraction service can handle (see text_extraction.py).
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".csv", ".html", ".htm", ".json"}
@@ -236,6 +243,48 @@ class DocumentService:
                 expires_in=3600,
             ),
         }
+
+    def preview(self, document_id: UUID, owner_id: UUID):
+        """Return a truncated text preview of the stored document."""
+        document = self.repository.get_by_id(
+            document_id=document_id,
+            owner_id=owner_id,
+        )
+        if document is None:
+            return None
+
+        try:
+            body = self.storage.download(document.object_key)
+            try:
+                raw = body.read()
+            finally:
+                # Close the streaming body so the connection is released.
+                body.close()
+        except Exception as e:
+            logger.warning(f"Preview storage read failed for {document_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Document storage is temporarily unavailable. Please try again.",
+            ) from e
+
+        try:
+            text = TextExtractionService().extract_text(
+                BytesIO(raw),
+                document.mime_type,
+            )
+        except Exception as e:
+            logger.warning(f"Preview extraction failed for {document_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Could not extract text for preview.",
+            ) from e
+
+        return DocumentPreviewResponse(
+            id=document.id,
+            filename=document.filename,
+            preview=text[:PREVIEW_MAX_CHARS],
+            truncated=len(text) > PREVIEW_MAX_CHARS,
+        )
 
     def delete(self, document_id: UUID, owner_id: UUID):
         # Fetch a fresh ORM row directly: the cached FileResponse is not a

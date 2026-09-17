@@ -111,12 +111,31 @@ describe("api client request paths", () => {
     );
   });
 
+  it("should send documents.preview to /v1/documents/{id}/preview", async () => {
+    const preview = {
+      id: "doc-5",
+      filename: "a.pdf",
+      preview: "hello",
+      truncated: false,
+    };
+    mockFetch.mockResolvedValue(new Response(JSON.stringify(preview), { status: 200 }));
+
+    const result = await documents.preview("doc-5");
+
+    expect(result).toEqual(preview);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/v1/documents/doc-5/preview",
+      expect.anything(),
+    );
+  });
+
   it("should send auth.login to /v1/auth/login with form-urlencoded body", async () => {
     mockFetch.mockResolvedValue(
       new Response(
         JSON.stringify({
           access_token: "token",
           token_type: "bearer",
+          expires_in: 1800,
           user: { id: "u1", username: "alice" },
         }),
         { status: 200 },
@@ -131,6 +150,76 @@ describe("api client request paths", () => {
     expect(options.headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
     expect(String(options.body)).toContain("username=alice");
     expect(String(options.body)).toContain("password=secret123");
+  });
+
+  it("should call /v1/auth/refresh for auth.refresh", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          access_token: "fresh-token",
+          token_type: "bearer",
+          expires_in: 1800,
+          user: { id: "u1", username: "alice" },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await auth.refresh();
+
+    expect(result.access_token).toBe("fresh-token");
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe("/v1/auth/refresh");
+    expect(options.method).toBe("POST");
+    expect(options.credentials).toBe("include");
+  });
+
+  it("should call /v1/auth/logout for auth.logout", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ message: "Logged out successfully" }), { status: 200 }),
+    );
+
+    await auth.logout();
+
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe("/v1/auth/logout");
+    expect(options.method).toBe("POST");
+  });
+
+  it("should refresh the token and retry the request once on 401", async () => {
+    localStorage.setItem("token", "expired-token");
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: "Token expired" }), { status: 401 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "fresh-token",
+            token_type: "bearer",
+            expires_in: 1800,
+            user: { id: "u1", username: "alice" },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: "doc-1" }]), { status: 200 }));
+
+    const result = await documents.list();
+
+    expect(result).toEqual([{ id: "doc-1" }]);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    // The refresh call is unauthenticated (cookie-only) and explicit.
+    const [refreshUrl, refreshOptions] = mockFetch.mock.calls[1];
+    expect(refreshUrl).toBe("/v1/auth/refresh");
+    expect(refreshOptions.method).toBe("POST");
+    expect(refreshOptions.credentials).toBe("include");
+    expect(refreshOptions.headers?.Authorization).toBeUndefined();
+    // The replayed request carries the freshly minted token.
+    const retriedOptions = mockFetch.mock.calls[2][1] as RequestInit;
+    expect(retriedOptions.headers).toMatchObject({
+      Authorization: "Bearer fresh-token",
+    });
   });
 
   it("should send auth.register to /v1/auth/register with JSON body", async () => {
@@ -197,6 +286,7 @@ describe("api client request paths", () => {
       question: "What is the refund policy?",
       document_ids: ["doc-a", "doc-b"],
       model: null,
+      api_key: null,
     });
   });
 
@@ -212,6 +302,24 @@ describe("api client request paths", () => {
       question: "What is the refund policy?",
       document_ids: null,
       model: "gpt-4o-mini",
+      api_key: null,
+    });
+  });
+
+  it("should send the BYOK api_key with qa.ask when saved", async () => {
+    localStorage.setItem("askdocs-api-key", "sk-user-key-123");
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ question: "q", answer: "a", sources: [] }), { status: 200 }),
+    );
+
+    await qa.ask("What is the refund policy?");
+
+    const [, options] = mockFetch.mock.calls[0];
+    expect(JSON.parse(options.body as string)).toEqual({
+      question: "What is the refund policy?",
+      document_ids: null,
+      model: null,
+      api_key: "sk-user-key-123",
     });
   });
 

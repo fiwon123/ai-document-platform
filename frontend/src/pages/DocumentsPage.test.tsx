@@ -24,6 +24,7 @@ vi.mock("../services/api", () => ({
     upload: vi.fn(),
     delete: vi.fn(),
     getDownloadUrl: vi.fn(),
+    preview: vi.fn(),
   },
 }));
 
@@ -34,6 +35,7 @@ const mockedGetStatus = vi.mocked(documents.getStatus);
 const mockedUpload = vi.mocked(documents.upload);
 const mockedDelete = vi.mocked(documents.delete);
 const mockedGetDownloadUrl = vi.mocked(documents.getDownloadUrl);
+const mockedPreview = vi.mocked(documents.preview);
 
 /** Flush pending microtasks inside act so React applies queued state updates. */
 async function settle() {
@@ -126,6 +128,89 @@ describe("DocumentsPage polling", () => {
     expect(
       screen.getByRole("button", { name: "Upload a document" }),
     ).toBeTruthy();
+  });
+});
+
+describe("DocumentsPage preview", () => {
+  beforeEach(() => {
+    mockedList.mockResolvedValue([readyDoc]);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+  });
+
+  it("opens the preview modal with the extracted text", async () => {
+    mockedPreview.mockResolvedValue({
+      id: "doc-ready",
+      filename: "notes.txt",
+      preview: "hello from the document",
+      truncated: false,
+    });
+
+    render(<DocumentsPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await settle();
+
+    expect(mockedPreview).toHaveBeenCalledWith("doc-ready");
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeTruthy();
+    expect(screen.getByText("hello from the document")).toBeTruthy();
+  });
+
+  it("shows the truncation note for long previews", async () => {
+    mockedPreview.mockResolvedValue({
+      id: "doc-ready",
+      filename: "notes.txt",
+      preview: "short",
+      truncated: true,
+    });
+
+    render(<DocumentsPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await settle();
+
+    expect(
+      screen.getByText("Preview truncated to the first 5000 characters."),
+    ).toBeTruthy();
+  });
+
+  it("closes the modal when the Close button is clicked", async () => {
+    mockedPreview.mockResolvedValue({
+      id: "doc-ready",
+      filename: "notes.txt",
+      preview: "x",
+      truncated: false,
+    });
+
+    render(<DocumentsPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await settle();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await settle();
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("surfaces a preview error", async () => {
+    mockedPreview.mockRejectedValue(new Error("Preview failed"));
+
+    render(<DocumentsPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await settle();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Preview failed");
   });
 });
 

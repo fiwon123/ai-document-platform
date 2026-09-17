@@ -356,6 +356,87 @@ class TestDownloadDocument:
         assert resp.status_code == 404
 
 
+class TestPreviewDocument:
+    """GET /documents/{id}/preview extracts text from the stored object."""
+
+    @staticmethod
+    def _fake_body(content: bytes):
+        from types import SimpleNamespace
+
+        # `download` is consumed via `with` in the service, so the fake needs
+        # both `read` and `close` like the real streaming body.
+        return SimpleNamespace(read=lambda: content, close=lambda: None)
+
+    def test_returns_extracted_text(self, client, auth_headers, monkeypatch):
+        from app.storage.storage import storage as app_storage
+
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        monkeypatch.setattr(
+            app_storage, "download", lambda _k: self._fake_body(b"Hello preview world")
+        )
+
+        resp = client.get(f"/v1/documents/{created['id']}/preview", headers=auth_headers)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["id"] == created["id"]
+        assert body["filename"] == UPLOAD_FILENAME
+        assert body["preview"] == "Hello preview world"
+        assert body["truncated"] is False
+
+    def test_truncates_long_text(self, client, auth_headers, monkeypatch):
+        from app.storage.storage import storage as app_storage
+
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        long_text = b"x" * 6000
+        monkeypatch.setattr(
+            app_storage, "download", lambda object_key: self._fake_body(long_text)
+        )
+
+        resp = client.get(f"/v1/documents/{created['id']}/preview", headers=auth_headers)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["truncated"] is True
+        assert len(body["preview"]) == 5000
+        assert body["preview"] == "x" * 5000
+
+    def test_404_for_missing_document(self, client, auth_headers):
+        from uuid import uuid4
+
+        resp = client.get(f"/v1/documents/{uuid4()}/preview", headers=auth_headers)
+
+        assert resp.status_code == 404
+        assert resp.json()["error"]["code"] == "not_found"
+
+    def test_ownership_isolation(self, client, auth_headers, monkeypatch):
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        other_headers = _register_second_user(client)
+
+        resp = client.get(f"/v1/documents/{created['id']}/preview", headers=other_headers)
+
+        assert resp.status_code == 404
+
+    def test_storage_failure_returns_503(self, client, auth_headers, monkeypatch):
+        from app.storage.storage import storage as app_storage
+
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        monkeypatch.setattr(
+            app_storage,
+            "download",
+            lambda object_key: (_ for _ in ()).throw(RuntimeError("s3 down")),
+        )
+
+        resp = client.get(f"/v1/documents/{created['id']}/preview", headers=auth_headers)
+
+        assert resp.status_code == 503
+        assert resp.json()["error"]["code"] == "service_unavailable"
+
+
 def _create_document(client, headers, filename=UPLOAD_FILENAME, content=b"hello world"):
     """Upload a document and return its response body (assumes upload works)."""
     resp = _post_upload(client, headers, content=content, filename=filename)

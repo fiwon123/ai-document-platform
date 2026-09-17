@@ -17,6 +17,7 @@ from app.repositories.document import DocumentRepository
 from app.routes.auth import get_current_user_id
 from app.schemas.document import (
     DeleteDocumentResponse,
+    DocumentPreviewResponse,
     DocumentStatusResponse,
     DownloadUrlResponse,
     FileResponse,
@@ -78,6 +79,21 @@ def get_document_status(
     owner_id: Annotated[UUID, Depends(get_current_user_id)],
 ):
     result = service.get_status(document_id=document_id, owner_id=owner_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+    return result
+
+
+@router.get("/{document_id}/preview", response_model=DocumentPreviewResponse)
+def get_document_preview(
+    document_id: UUID,
+    service: Annotated[DocumentService, Depends(get_document_service)],
+    owner_id: Annotated[UUID, Depends(get_current_user_id)],
+):
+    result = service.preview(document_id=document_id, owner_id=owner_id)
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

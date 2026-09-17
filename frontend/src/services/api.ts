@@ -1,5 +1,6 @@
 import type {
   Document,
+  DocumentPreview,
   DocumentStatusResponse,
   QAResponse,
   SearchResponse,
@@ -20,9 +21,37 @@ class ApiError extends Error {
   }
 }
 
+type RequestOptions = RequestInit & { _retried?: boolean };
+
+/** Deduped in-flight refresh call: concurrent 401s share one request. */
+let refreshPromise: Promise<TokenResponse | null> | null = null;
+
+async function refreshAccessToken(): Promise<TokenResponse | null> {
+  try {
+    // No Authorization header and no retry: the refresh cookie is the auth.
+    const response = await fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as TokenResponse;
+  } catch {
+    return null;
+  }
+}
+
+function getRefreshPromise(): Promise<TokenResponse | null> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 async function request<T>(
   path: string,
-  options: RequestInit = {},
+  options: RequestOptions = {},
 ): Promise<T> {
   const token = localStorage.getItem("token");
 
@@ -45,12 +74,27 @@ async function request<T>(
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
+    // Refresh-token cookie must be sent on same-origin requests (Vite proxy
+    // in dev; same domain in production).
+    credentials: "include",
   });
 
   if (!response.ok) {
-    // If the server returns 401, the token is invalid or expired.
-    // Clear it and redirect to login so the user can re-authenticate.
-    if (response.status === 401) {
+    if (
+      response.status === 401 &&
+      !options._retried &&
+      // Login failures come from bad credentials, not an expired session —
+      // replaying through a refresh would only mask the real error.
+      path !== "/auth/login"
+    ) {
+      // Try to mint a fresh access token from the refresh cookie, then
+      // replay the original request once. If refresh fails, the session
+      // is gone — clear the token and send the user back to login.
+      const refreshed = await getRefreshPromise();
+      if (refreshed) {
+        localStorage.setItem("token", refreshed.access_token);
+        return request<T>(path, { ...options, _retried: true });
+      }
       localStorage.removeItem("token");
       window.location.href = "/login";
       throw new ApiError(401, "Session expired. Please log in again.");
@@ -102,6 +146,21 @@ export const auth = {
   async getMe(): Promise<User> {
     return request<User>("/auth/me");
   },
+
+  /** Mint a fresh access token from the httpOnly refresh cookie. */
+  async refresh(): Promise<TokenResponse> {
+    const refreshed = await getRefreshPromise();
+    if (!refreshed) {
+      throw new ApiError(401, "Session expired. Please log in again.");
+    }
+    return refreshed;
+  },
+
+  /** Ask the server to clear the httpOnly refresh cookie. */
+  async logout(): Promise<void> {
+    // _retried: never retry/redirect on 401 — the cookie is already gone.
+    await request<void>("/auth/logout", { method: "POST", _retried: true });
+  },
 };
 
 export const documents = {
@@ -129,6 +188,10 @@ export const documents = {
 
   async getDownloadUrl(id: string): Promise<{ id: string; filename: string; download_url: string }> {
     return request(`/documents/${id}/download`);
+  },
+
+  async preview(id: string): Promise<DocumentPreview> {
+    return request<DocumentPreview>(`/documents/${id}/preview`);
   },
 };
 
@@ -204,12 +267,16 @@ export const qa = {
     documentIds?: string[],
     model?: string,
   ): Promise<QAResponse> {
+    // Bring-your-own-key: send the user's key (stored in localStorage by
+    // the Settings page) so the backend can route this request through it.
+    const apiKey = localStorage.getItem("askdocs-api-key");
     return request<QAResponse>("/qa/ask", {
       method: "POST",
       body: JSON.stringify({
         question,
         document_ids: documentIds || null,
         model: model ?? null,
+        api_key: apiKey || null,
       }),
     });
   },

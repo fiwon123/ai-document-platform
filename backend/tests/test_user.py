@@ -222,6 +222,90 @@ class TestAdminEndpoints:
         assert resp.status_code == 401
 
 
+class TestRefreshTokens:
+    """httpOnly refresh-cookie flow: login sets it, /refresh rotates it,
+    /logout clears it. Access tokens are never accepted as refresh tokens."""
+
+    def test_login_sets_refresh_cookie(self, client):
+        _register(client, "cookie_user")
+        login = client.post(
+            "/v1/auth/login",
+            data={"username": "cookie_user", "password": "testpass123"},
+        )
+
+        assert login.status_code == 200
+        assert login.cookies.get("refresh_token") is not None
+
+    def test_refresh_returns_new_access_token_and_rotates_cookie(self, client):
+        _register(client, "rotator_user")
+        login = client.post(
+            "/v1/auth/login",
+            data={"username": "rotator_user", "password": "testpass123"},
+        )
+        old_refresh = login.cookies.get("refresh_token")
+        assert old_refresh
+
+        resp = client.post("/v1/auth/refresh")
+
+        assert resp.status_code == 200
+        assert resp.json()["access_token"]
+        assert resp.json()["user"]["username"] == "rotator_user"
+        new_refresh = resp.cookies.get("refresh_token")
+        assert new_refresh is not None
+        assert new_refresh != old_refresh
+
+    def test_refresh_token_works_for_api_calls(self, client):
+        _register(client, "relay_user")
+        client.post(
+            "/v1/auth/login",
+            data={"username": "relay_user", "password": "testpass123"},
+        )
+
+        refreshed = client.post("/v1/auth/refresh")
+        assert refreshed.status_code == 200
+        token = refreshed.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        me = client.get("/v1/auth/me", headers=headers)
+        assert me.status_code == 200
+        assert me.json()["username"] == "relay_user"
+
+    def test_refresh_without_cookie_returns_401(self, client):
+        resp = client.post("/v1/auth/refresh")
+
+        assert resp.status_code == 401
+        assert resp.json()["error"]["code"] == "unauthorized"
+
+    def test_access_token_rejected_as_refresh_token(self, client):
+        _register(client, "shape_user")
+        login = client.post(
+            "/v1/auth/login",
+            data={"username": "shape_user", "password": "testpass123"},
+        )
+        access_token = login.json()["access_token"]
+        client.cookies.set("refresh_token", access_token)
+
+        resp = client.post("/v1/auth/refresh")
+
+        assert resp.status_code == 401
+
+    def test_logout_clears_cookie_and_kills_refresh(self, client):
+        _register(client, "bye_user")
+        login = client.post(
+            "/v1/auth/login",
+            data={"username": "bye_user", "password": "testpass123"},
+        )
+        assert login.cookies.get("refresh_token")
+
+        resp = client.post("/v1/auth/logout")
+        assert resp.status_code == 200
+        assert resp.json()["message"] == "Logged out successfully"
+
+        # The cookie is gone, so refreshing is rejected.
+        assert client.cookies.get("refresh_token") is None
+        assert client.post("/v1/auth/refresh").status_code == 401
+
+
 class TestUserDeactivation:
     """Deactivated accounts must not be able to log in or use the API."""
 

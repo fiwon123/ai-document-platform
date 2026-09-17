@@ -27,6 +27,9 @@ os.environ["POSTGRES_DB"] = TEST_DB_NAME
 os.environ.setdefault("SECRET_KEY", "test-only-secret-key")
 # Keep the in-memory rate limiter from tripping during long test runs.
 os.environ.setdefault("RATE_LIMIT_REQUESTS", "10000")
+# httpx (TestClient) never sends Secure cookies over plain http:// — disable
+# the Secure flag in tests so the refresh-cookie flow is exercised end-to-end.
+os.environ.setdefault("REFRESH_COOKIE_SECURE", "false")
 
 from sqlalchemy import create_engine, text
 

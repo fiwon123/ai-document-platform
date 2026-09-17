@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import { documents } from "../services/api";
-import type { Document, DocumentStatusResponse } from "../types";
+import type { Document, DocumentPreview, DocumentStatusResponse } from "../types";
 import { SkeletonCard } from "../components/Skeleton";
 import { Spinner } from "../components/Spinner";
 import { EmptyState } from "../components/EmptyState";
@@ -20,6 +20,9 @@ export function DocumentsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<DocumentPreview | null>(null);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const toast = useToast();
@@ -66,6 +69,16 @@ export function DocumentsPage() {
 
     return () => clearInterval(interval);
   }, [docs]);
+
+  // Close the preview modal on Escape (matches the overlay click handler).
+  useEffect(() => {
+    if (!preview) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPreview(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [preview]);
 
   /** Uploads one or more files sequentially; continues after individual failures. */
   async function uploadFiles(files: File[]) {
@@ -145,6 +158,19 @@ for (const file of files) {
     }
   }
 
+  async function handlePreview(doc: Document) {
+    setPreviewLoadingId(doc.id);
+    setPreviewError(null);
+    try {
+      const data = await documents.preview(doc.id);
+      setPreview(data);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : "Preview failed");
+    } finally {
+      setPreviewLoadingId(null);
+    }
+  }
+
   const statusColors: Record<string, string> = {
     // -600 weight shades keep white text WCAG AA (>= 4.5:1) in both themes.
     pending: "#b45309",
@@ -188,6 +214,7 @@ for (const file of files) {
       </div>
 
       {error && <p className="error-message" role="alert">{error}</p>}
+      {previewError && <p className="error-message" role="alert">{previewError}</p>}
 
       {isLoading ? (
         <div className="document-grid" aria-busy="true">
@@ -231,6 +258,20 @@ for (const file of files) {
               </div>
               <div className="document-card-footer">
                 <button
+                  onClick={() => handlePreview(doc)}
+                  disabled={previewLoadingId === doc.id}
+                  className="btn btn-secondary"
+                >
+                  {previewLoadingId === doc.id ? (
+                    <>
+                      <Spinner size={14} label="Loading preview" />
+                      Loading…
+                    </>
+                  ) : (
+                    "Preview"
+                  )}
+                </button>
+                <button
                   onClick={() => handleDownload(doc)}
                   disabled={doc.status !== "ready" || downloadingId === doc.id}
                   className="btn btn-secondary"
@@ -261,6 +302,35 @@ for (const file of files) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {preview && (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Preview of ${preview.filename}`}
+          onClick={() => setPreview(null)}
+        >
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{preview.filename}</h2>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setPreview(null)}
+              >
+                Close
+              </button>
+            </div>
+            <pre className="preview-text">{preview.preview}</pre>
+            {preview.truncated && (
+              <p className="preview-note">
+                Preview truncated to the first 5000 characters.
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>

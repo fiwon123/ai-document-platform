@@ -38,6 +38,7 @@ def ask_question(
         question=request.question,
         document_ids=request.document_ids,
         model=request.model,
+        api_key=request.api_key,
     )
 
 

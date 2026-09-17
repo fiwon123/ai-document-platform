@@ -1248,6 +1248,73 @@ body {
   flex: 1;
 }
 
+/* Document preview modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.55); /* slate-900 at 55% */
+}
+
+:root[data-theme="dark"] .modal-overlay {
+  background: rgba(2, 6, 23, 0.75); /* deeper black in dark mode */
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  max-height: min(80vh, 640px);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px; /* matches .document-card */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-theme="dark"] .modal {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.preview-text {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 20px;
+  background: var(--surface);
+  font: 400 0.85rem/1.6 "DM Mono", monospace;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.preview-note {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 10px 20px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 /* Dashboard stats
    Colored stat cards reuse the -600 badge weights from Theme Rule 8 so
    white text stays WCAG AA in both themes (the weights never brighten). */
