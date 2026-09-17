@@ -305,6 +305,132 @@ class TestDocumentServiceCaching:
         assert document_key not in fake_redis.store
         assert fake_redis.counters[_SEARCH_VERSION_KEY.format(user_id=user.id)] == 1
 
+    def test_list_caches_pages_per_skip_limit(self, db_session, fake_redis):
+        user = UserDB(username="doc5", hashed_password="x")  # noqa: S106
+        db_session.add(user)
+        db_session.flush()
+        for i in range(3):
+            db_session.add(
+                DocumentDB(
+                    owner_id=user.id,
+                    filename=f"list{i}.txt",
+                    object_key=f"k/list{i}.txt",
+                    status=DocumentStatus.READY,
+                )
+            )
+        db_session.commit()
+
+        service = self._service(db_session)
+        first = service.list(owner_id=user.id, skip=0, limit=2)
+        second = service.list(owner_id=user.id, skip=0, limit=2)
+
+        assert [d.filename for d in first] == ["list2.txt", "list1.txt"]
+        # The second call is served from cache (FileResponse), same data.
+        assert [d.filename for d in second] == ["list2.txt", "list1.txt"]
+        assert second[0].id == first[0].id
+        assert fake_redis.get_json(f"doclist:{user.id}") is not None
+
+        # A different page is fetched from the database and merged in.
+        third = service.list(owner_id=user.id, skip=2, limit=2)
+        assert [d.filename for d in third] == ["list0.txt"]
+        pages = fake_redis.get_json(f"doclist:{user.id}")
+        assert "0:2" in pages and "2:2" in pages
+
+    def test_list_serves_cached_page_without_hitting_db(self, db_session, fake_redis):
+        user = UserDB(username="doc6", hashed_password="x")  # noqa: S106
+        db_session.add(user)
+        db_session.flush()
+        service = self._service(db_session)
+        # If the cached page is used, the repository is never consulted;
+        # a call would raise and fail the test.
+        service.repository.get_by_owner = MagicMock(side_effect=AssertionError("DB hit"))
+        cached_files = [
+            FileResponse(
+                id=uuid4(),
+                owner_id=user.id,
+                filename="cached.txt",
+                object_key="k/cached.txt",
+                mime_type=None,
+                status=DocumentStatus.READY,
+                error_message=None,
+                created_at="2024-01-01T00:00:00Z",
+                updated_at="2024-01-01T00:00:00Z",
+            )
+        ]
+        redis_client.set_json(
+            f"doclist:{user.id}",
+            {"0:20": [f.model_dump(mode="json") for f in cached_files]},
+            ex=60,
+        )
+
+        result = service.list(owner_id=user.id, skip=0, limit=20)
+
+        assert len(result) == 1
+        assert result[0].filename == "cached.txt"
+
+    def test_upload_invalidates_list_cache(self, db_session, fake_redis, monkeypatch):
+        from app.services import document as document_module
+
+        monkeypatch.setattr(
+            document_module, "process_document_task", lambda _document_id: None
+        )
+        user = UserDB(username="doc7", hashed_password="x")  # noqa: S106
+        db_session.add(user)
+        db_session.commit()
+
+        # Simulate a previously cached listing page.
+        redis_client.set_json(f"doclist:{user.id}", {"0:20": []}, ex=60)
+
+        upload_file = MagicMock()
+        upload_file.filename = "up2.txt"
+        upload_file.content_type = "text/plain"
+        upload_file.file = MagicMock()
+        upload_file.file.read.return_value = b"hello"
+
+        service = self._service(db_session)
+        service.upload(owner_id=user.id, upload_file=upload_file)
+
+        assert f"doclist:{user.id}" not in fake_redis.store
+
+    def test_delete_invalidates_list_cache(self, db_session, fake_redis):
+        user = UserDB(username="doc8", hashed_password="x")  # noqa: S106
+        db_session.add(user)
+        db_session.flush()
+        doc = DocumentDB(
+            owner_id=user.id,
+            filename="d.txt",
+            object_key="k/d.txt",
+            status=DocumentStatus.READY,
+        )
+        db_session.add(doc)
+        db_session.commit()
+
+        redis_client.set_json(f"doclist:{user.id}", {"0:20": []}, ex=60)
+
+        service = self._service(db_session)
+        service.delete(document_id=doc.id, owner_id=user.id)
+
+        assert f"doclist:{user.id}" not in fake_redis.store
+
+
+class TestRedisClientAtomicIncrement:
+    def test_increment_with_ttl_round_trip(self):
+        """Atomic INCR+EXPIRE against a real Redis (skipped when unavailable)."""
+        try:
+            if not redis_client.ping():
+                pytest.skip("Redis unavailable")
+        except Exception:
+            pytest.skip("Redis unavailable")
+
+        key = f"test:incr:{uuid4()}"
+        try:
+            assert redis_client.increment_with_ttl(key, ttl=30) == 1
+            assert redis_client.increment_with_ttl(key, ttl=30) == 2
+            ttl = redis_client.client.ttl(key)
+            assert 0 < ttl <= 30
+        finally:
+            redis_client.client.delete(key)
+
 
 class TestWorkerCacheInvalidation:
     def test_status_transition_invalidates_caches(self, fake_redis):

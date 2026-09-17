@@ -29,8 +29,13 @@ ALLOWED_MIME_TYPES = {
     "application/json",
 }
 
-DOCUMENT_CACHE_TTL_SECONDS = 60
+DOCUMENT_CACHE_TTL_SECONDS = 300  # individual document metadata
+DOCUMENT_LIST_CACHE_TTL_SECONDS = 60  # paginated listings
 _DOCUMENT_KEY = "document:{owner_id}:{document_id}"
+# One cached object per owner holding every recently-requested page:
+# {"<skip>:<limit>": [FileResponse, ...], ...}. A single key per owner
+# lets invalidation delete one entry instead of scanning page keys.
+_DOCUMENT_LIST_KEY = "doclist:{owner_id}"
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -55,6 +60,18 @@ def invalidate_document_cache(owner_id: UUID, document_id: UUID) -> None:
         redis_client.delete(_DOCUMENT_KEY.format(owner_id=owner_id, document_id=document_id))
     except Exception as e:  # noqa: BLE001 - cache must never break the caller
         logger.warning(f"Document cache invalidation failed: {e}")
+
+
+def invalidate_document_list_cache(owner_id: UUID) -> None:
+    """Drop all cached listing pages for a user's documents.
+
+    Called after uploads and deletes so a fresh page is served next
+    request. The short TTL is a second line of defense.
+    """
+    try:
+        redis_client.delete(_DOCUMENT_LIST_KEY.format(owner_id=owner_id))
+    except Exception as e:  # noqa: BLE001 - cache must never break the caller
+        logger.warning(f"Document list cache invalidation failed: {e}")
 
 class DocumentService:
     def __init__(
@@ -166,11 +183,12 @@ class DocumentService:
                 detail="Failed to save document metadata. Please try again.",
             ) from e
 
-        # The document set changed: any cached search results for this
-        # user are now stale (the new document is not included) and the
+        # The document set changed: any cached search results and any
+        # cached listing pages for this user are now stale. The new
         # document's own metadata is not cached yet, so only invalidate
-        # the search cache.
+        # the search and list caches here.
         invalidate_user_search_cache(owner_id)
+        invalidate_document_list_cache(owner_id)
 
         try:
             process_document_task(document_id)
@@ -221,7 +239,17 @@ class DocumentService:
         )
 
     def list(self, owner_id: UUID, skip: int = 0, limit: int = 20):
-        return self.repository.get_by_owner(owner_id=owner_id, skip=skip, limit=limit)
+        cached = self._get_cached_document_list(owner_id, skip, limit)
+        if cached is not None:
+            return cached
+
+        documents = self.repository.get_by_owner(
+            owner_id=owner_id,
+            skip=skip,
+            limit=limit,
+        )
+        self._cache_document_list(owner_id, skip, limit, documents)
+        return documents
 
     def get_download_url(self, document_id: UUID, owner_id: UUID):
         document = self.get(document_id=document_id, owner_id=owner_id)
@@ -251,7 +279,52 @@ class DocumentService:
         self.repository.delete(document)
         invalidate_document_cache(owner_id, document_id)
         invalidate_user_search_cache(owner_id)
+        invalidate_document_list_cache(owner_id)
         return document
+
+    def _get_cached_document_list(
+        self,
+        owner_id: UUID,
+        skip: int,
+        limit: int,
+    ) -> list[FileResponse] | None:
+        try:
+            payload = redis_client.get_json(
+                _DOCUMENT_LIST_KEY.format(owner_id=owner_id)
+            )
+            if not isinstance(payload, dict):
+                return None
+            page = payload.get(f"{skip}:{limit}")
+            if page is None:
+                return None
+            return [FileResponse.model_validate(item) for item in page]
+        except Exception as e:  # noqa: BLE001 - fall back to the database
+            logger.warning(f"Document list cache read failed: {e}")
+            return None
+
+    def _cache_document_list(
+        self,
+        owner_id: UUID,
+        skip: int,
+        limit: int,
+        documents,
+    ) -> None:
+        try:
+            key = _DOCUMENT_LIST_KEY.format(owner_id=owner_id)
+            # Merge into the existing cached pages so requesting a new
+            # page does not evict pages the client already loaded.
+            payload: dict = redis_client.get_json(key) or {}
+            payload[f"{skip}:{limit}"] = [
+                FileResponse.model_validate(doc).model_dump(mode="json")
+                for doc in documents
+            ]
+            redis_client.set_json(
+                key,
+                payload,
+                ex=DOCUMENT_LIST_CACHE_TTL_SECONDS,
+            )
+        except Exception as e:  # noqa: BLE001 - cache write must never break reads
+            logger.warning(f"Document list cache write failed: {e}")
 
     def _get_cached_document(self, owner_id: UUID, document_id: UUID) -> FileResponse | None:
         try:
