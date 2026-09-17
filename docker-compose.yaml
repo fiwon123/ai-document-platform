@@ -18,7 +18,9 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      # Host port 63790 avoids conflicts with other local Redis instances /
+      # Docker projects binding 6379. Internal container port stays 6379.
+      - "63790:6379"
     volumes:
       - redis_data:/data
     healthcheck:
