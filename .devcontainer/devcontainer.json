@@ -12,7 +12,7 @@
     },
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "forwardPorts": [8000, 5173],
+  "forwardPorts": [8001, 5175],
   "postCreateCommand": "npm install -g opencode-ai && cd backend && uv sync && cd ../frontend && npm install",
   "customizations": {
     "vscode": {
