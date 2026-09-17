@@ -128,6 +128,7 @@ def login(
 
     return TokenResponse(
         access_token=token,
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         user=UserResponse.model_validate(user),
     )
 

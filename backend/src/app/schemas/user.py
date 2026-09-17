@@ -26,6 +26,9 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"  # noqa: S105  # OAuth2 token-type literal, not a secret
+    expires_in: int = Field(
+        description="Access token lifetime in seconds",
+    )
     user: UserResponse
 
 
