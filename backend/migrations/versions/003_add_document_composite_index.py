@@ -23,7 +23,7 @@ def upgrade() -> None:
     op.create_index(
         'ix_documents_owner_created',
         'documents',
-        [sa.text('owner_id'), sa.text('created_at DESC')],
+        ['owner_id', sa.text('created_at DESC')],
     )
 
 

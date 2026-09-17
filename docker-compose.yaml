@@ -136,8 +136,13 @@ services:
       sh -c "uv sync && uv run arq app.worker.WorkerSettings"
     healthcheck:
       # The worker's core dependency is Redis (job queue); verify it can
-      # reach it. A crashed arq process would fail this check.
-      test: ["CMD-SHELL", "python -c \"import redis; redis.Redis(host='redis', port=6379, db=0).ping()\""]
+      # reach it (via the app's uv venv — system python has no redis). A
+      # crashed arq process would fail this check.
+      test:
+        [
+          "CMD-SHELL",
+          "cd /workspace/backend && uv run python -c \"import redis; redis.Redis(host='redis', port=6379, db=0).ping()\"",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5

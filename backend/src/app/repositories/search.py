@@ -132,9 +132,9 @@ class SearchRepository:
 
         ``query.count()`` on the vector query materializes each row's
         cosine distance (and the ORDER BY) just to count it. This count
-        only selects the matching rows' ids, so the database skips the
-        distance computation entirely. This matters most for paginated
-        vector searches over large corpora.
+        selects only ``count(*)`` over the joined, filtered rows, so the
+        database skips the distance computation entirely. This matters
+        most for paginated vector searches over large corpora.
         """
         count_query = (
             self.db.query(func.count(DocumentChunk.id))

@@ -14,8 +14,9 @@ REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "20"))
 class RedisClient:
     def __init__(self):
         # A shared connection pool bounds the number of sockets the app
-        # opens against Redis. Under heavy load, queueing on a full pool
-        # is preferable to exhausting the server's connection limit.
+        # opens against Redis. Calls raise when the pool is exhausted;
+        # callers such as the rate limiter catch those errors and degrade
+        # gracefully instead of exhausting Redis' connection limit.
         self._pool = redis.ConnectionPool(
             host=REDIS_HOST,
             port=REDIS_PORT,

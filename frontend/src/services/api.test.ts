@@ -117,6 +117,7 @@ describe("api client request paths", () => {
         JSON.stringify({
           access_token: "token",
           token_type: "bearer",
+          expires_in: 1800,
           user: { id: "u1", username: "alice" },
         }),
         { status: 200 },
