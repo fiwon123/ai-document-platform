@@ -1,6 +1,7 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
+    restart: unless-stopped
     ports:
       # Host port 5434 avoids conflicts with other local PostgreSQL instances /
       # Docker projects binding 5432. Internal container port stays 5432.
@@ -19,6 +20,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       # Host port 63790 avoids conflicts with other local Redis instances /
       # Docker projects binding 6379. Internal container port stays 6379.
@@ -33,6 +35,7 @@ services:
 
   minio:
     image: minio/minio:latest
+    restart: unless-stopped
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -52,6 +55,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       # Host port 8001 avoids conflicts with other local projects' containers
       # binding 8000. Internal container port stays 8000.
@@ -86,11 +90,25 @@ services:
     working_dir: /workspace/backend
     command: >
       sh -c "uv sync && uv run python -m alembic upgrade head && uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    healthcheck:
+      # The API is the only reliable signal the app finished starting
+      # (alembic migrations + uvicorn). Uses the stdlib client so no
+      # curl/wget dependency is needed in the image.
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=3)\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
@@ -116,11 +134,20 @@ services:
     working_dir: /workspace/backend
     command: >
       sh -c "uv sync && uv run arq app.worker.WorkerSettings"
+    healthcheck:
+      # The worker's core dependency is Redis (job queue); verify it can
+      # reach it. A crashed arq process would fail this check.
+      test: ["CMD-SHELL", "python -c \"import redis; redis.Redis(host='redis', port=6379, db=0).ping()\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       # Host port 5175 avoids conflicts with other local projects' containers
       # binding 5173. Internal container port stays 5173.
@@ -130,12 +157,21 @@ services:
       # service name, not localhost, so point the Vite proxy at it.
       VITE_PROXY_TARGET: http://backend:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     volumes:
       - .:/workspace
       - /workspace/frontend/node_modules
     working_dir: /workspace/frontend
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    healthcheck:
+      # Node 22 ships a global fetch; 200 from the Vite dev server means
+      # the frontend is ready to serve.
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:5173').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   postgres_data:
