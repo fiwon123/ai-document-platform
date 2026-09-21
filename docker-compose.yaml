@@ -16,6 +16,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          # Cap each service so a single container can never exhaust the host
+          # memory and trigger the OOM killer (exit code 137) during startup.
+          memory: 512M
 
   redis:
     image: redis:7-alpine
@@ -30,6 +36,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   minio:
     image: minio/minio:latest
@@ -47,6 +57,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   backend:
     build:
@@ -83,9 +97,29 @@ services:
       # interactive devcontainer terminal typically runs as vscode.
       - gh_cli_config:/root/.config/gh
       - gh_cli_config:/home/vscode/.config/gh
+      # Persist the Python venv and uv download cache so `uv sync` on every
+      # container start is a fast no-op instead of a full dependency install
+      # (the main contributor to the startup memory spike / OOM kill).
+      - backend_venv:/workspace/backend/.venv
+      - uv_cache:/root/.cache/uv
     working_dir: /workspace/backend
     command: >
       sh -c "uv sync && uv run python -m alembic upgrade head && uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    healthcheck:
+      # python:3.14-slim ships no curl; urllib is stdlib and always present.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health', timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      # uv sync + alembic + uvicorn on a cold start can take a while;
+      # failures during start_period do not count against retries.
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          # Hosts the VS Code server, devcontainer features (node, uv, gh),
+          # uv sync, alembic and uvicorn — give it the most headroom.
+          memory: 3G
 
   worker:
     build:
@@ -111,11 +145,25 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      # Wait for backend to finish `uv sync` + migration + startup first.
+      # The worker's `uv sync` then reuses the already-populated venv instead
+      # of triggering a second full dependency install at the same time as
+      # backend/frontend (avoids the startup memory spike).
+      backend:
+        condition: service_healthy
     volumes:
       - .:/workspace
+      # Share the same venv and uv cache as the backend container: same image,
+      # same lockfile, so dependencies are installed exactly once.
+      - backend_venv:/workspace/backend/.venv
+      - uv_cache:/root/.cache/uv
     working_dir: /workspace/backend
     command: >
       sh -c "uv sync && uv run arq app.worker.WorkerSettings"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
   frontend:
     build:
@@ -130,12 +178,23 @@ services:
       # service name, not localhost, so point the Vite proxy at it.
       VITE_PROXY_TARGET: http://backend:8000
     depends_on:
-      - backend
+      # Only run `npm install` / boot Vite once backend is healthy so installs
+      # don't overlap with backend's `uv sync` memory spike.
+      backend:
+        condition: service_healthy
     volumes:
       - .:/workspace
-      - /workspace/frontend/node_modules
+      # Named volume (instead of anonymous) so node_modules survives rebuilds
+      # and `npm install` is fast on subsequent starts.
+      - frontend_node_modules:/workspace/frontend/node_modules
+      # Persist the npm cache so repeated installs are fast and low-memory.
+      - npm_cache:/root/.npm
     working_dir: /workspace/frontend
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
 volumes:
   postgres_data:
@@ -144,3 +203,10 @@ volumes:
   # Persists gh CLI credentials across devcontainer rebuilds (see backend
   # service mounts). Remove with `docker compose down -v` to clear auth.
   gh_cli_config:
+  # Persist the Python venv and uv cache across restarts so the dependency
+  # install only happens once (see backend/worker mounts).
+  backend_venv:
+  uv_cache:
+  # Persist node_modules and the npm cache across restarts.
+  frontend_node_modules:
+  npm_cache:
