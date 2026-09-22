@@ -10,6 +10,9 @@ import { useToast } from "../context/ToastContext";
 /** How often to re-check documents that are still processing. */
 const POLL_INTERVAL_MS = 3000;
 
+/** Maximum files the backend accepts per bulk request. */
+const MAX_BULK_UPLOAD_FILES = 20;
+
 function isProcessing(status: Document["status"]): boolean {
   return status === "pending" || status === "processing";
 }
@@ -80,7 +83,11 @@ export function DocumentsPage() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [preview]);
 
-  /** Uploads one or more files sequentially; continues after individual failures. */
+  /**
+   * Uploads files via the bulk endpoint. Batches larger than the backend
+   * limit are split into sequential bulk requests. Per-file failures from
+   * the response are reported individually; successful files still appear.
+   */
   async function uploadFiles(files: File[]) {
     if (files.length === 0) return;
 
@@ -88,21 +95,37 @@ export function DocumentsPage() {
     setError(null);
     let failed = 0;
 
-for (const file of files) {
+    const batches: File[][] = [];
+    for (let i = 0; i < files.length; i += MAX_BULK_UPLOAD_FILES) {
+      batches.push(files.slice(i, i + MAX_BULK_UPLOAD_FILES));
+    }
+
+    for (const batch of batches) {
       try {
-        const doc = await documents.upload(file);
-        setDocs((prev) => [doc, ...prev]);
-        toast.success(`Uploaded "${file.name}" — processing started`);
+        const { uploaded, failed: failures } = await documents.uploadMany(batch);
+        if (uploaded.length > 0) {
+          setDocs((prev) => [...uploaded, ...prev]);
+        }
+        for (const failure of failures) {
+          failed += 1;
+          const message = `Upload of "${failure.filename}" failed: ${failure.error}`;
+          setError(message);
+          toast.error(message);
+        }
       } catch (err) {
-        failed += 1;
-        const message =
-          err instanceof Error ? err.message : "unknown error";
-        setError(`Upload of "${file.name}" failed: ${message}`);
-        toast.error(`Upload of "${file.name}" failed: ${message}`);
+        failed += batch.length;
+        const message = err instanceof Error ? err.message : "unknown error";
+        setError(`Batch upload failed: ${message}`);
+        toast.error(`Batch upload failed: ${message}`);
       }
     }
 
-    if (failed === 0) toast.success("All documents uploaded");
+    const uploadedCount = files.length - failed;
+    if (uploadedCount > 0) {
+      toast.success(
+        `${uploadedCount} document${uploadedCount === 1 ? "" : "s"} uploaded — processing started`,
+      );
+    }
     setIsUploading(false);
   }
 
@@ -209,7 +232,7 @@ for (const file of files) {
             {isUploading ? "Uploading…" : "Drop documents here"}
           </strong>
           <span>or choose one or more files from your device</span>
-<small>PDF, TXT, JSON, CSV up to 25 MB each</small>
+<small>PDF, TXT, JSON, CSV up to 25 MB each (20 files per batch)</small>
         </label>
       </div>
 

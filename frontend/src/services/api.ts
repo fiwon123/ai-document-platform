@@ -1,5 +1,6 @@
 import type {
   AdminStatisticsResponse,
+  BulkUploadResponse,
   Document,
   DocumentPreview,
   DocumentStatusResponse,
@@ -181,6 +182,15 @@ export const documents = {
     const formData = new FormData();
     formData.append("upload_file", file);
     return request<Document>("/documents/", { method: "POST", body: formData });
+  },
+
+  /** Upload several files in one request. Returns per-file results (partial success is normal). */
+  async uploadMany(files: File[]): Promise<BulkUploadResponse> {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append("files", file);
+    }
+    return request<BulkUploadResponse>("/documents/bulk", { method: "POST", body: formData });
   },
 
   async delete(id: string): Promise<void> {
