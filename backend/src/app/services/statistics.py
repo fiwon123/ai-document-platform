@@ -47,5 +47,5 @@ class StatisticsService:
             ready_documents=documents.get(DocumentStatus.READY, 0),
             failed_documents=documents.get(DocumentStatus.FAILED, 0),
             total_chunks=self.repository.all_chunk_count(),
-            total_searches=self.repository.search_count(),
+            total_searches=self.repository.all_search_count(),
         )

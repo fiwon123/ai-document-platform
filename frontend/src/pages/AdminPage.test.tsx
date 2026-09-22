@@ -206,20 +206,34 @@ describe("AdminPage", () => {
     await renderPage();
 
     expect(mockedGetAdmin).toHaveBeenCalled();
-    expect(screen.getByLabelText("System statistics")).toBeTruthy();
-    expect(screen.getByText("12")).toBeTruthy(); // total users
-    expect(screen.getByText("10")).toBeTruthy(); // active users
-    expect(screen.getAllByText("2").length).toBe(2); // disabled + processing
-    expect(screen.getByText("34")).toBeTruthy(); // total documents
-    expect(screen.getByText("30")).toBeTruthy(); // ready documents
-    expect(screen.getByText("250")).toBeTruthy(); // chunks
-    expect(screen.getByText("99")).toBeTruthy(); // searches
+    const region = screen.getByRole("region", {
+      name: "System statistics",
+    });
+    const cardValue = (label: string) =>
+      Array.from(region.querySelectorAll(".stat-card")).find((card) =>
+        card.textContent?.includes(label),
+      )?.textContent;
+
+    expect(cardValue("Users")?.includes("12")).toBe(true);
+    expect(cardValue("Active")?.includes("10")).toBe(true);
+    expect(cardValue("Disabled")?.includes("2")).toBe(true);
+    expect(cardValue("Documents")?.includes("34")).toBe(true);
+    expect(cardValue("Ready")?.includes("30")).toBe(true);
+    expect(cardValue("Pending")?.includes("1")).toBe(true);
+    expect(cardValue("Processing")?.includes("2")).toBe(true);
+    expect(cardValue("Failed")?.includes("1")).toBe(true);
+    expect(cardValue("Chunks indexed")?.includes("250")).toBe(true);
+    expect(cardValue("Searches")?.includes("99")).toBe(true);
   });
 
-  it("still renders the user table when statistics fail to load", async () => {
+  it("resolves the spinner and shows a message when statistics fail", async () => {
     mockedGetAdmin.mockRejectedValue(new Error("stats down"));
     await renderPage();
 
+    expect(
+      screen.getByText("System statistics are currently unavailable."),
+    ).toBeTruthy();
+    // The user table still renders — statistics are non-blocking.
     expect(screen.getByText("alice")).toBeTruthy();
     expect(mockedListUsers).toHaveBeenCalled();
   });
@@ -239,23 +253,6 @@ describe("AdminPage", () => {
 
     expect(screen.getByText("Admin privileges required.")).toBeTruthy();
     expect(mockedGetAdmin).not.toHaveBeenCalled();
-    expect(mockedListUsers).not.toHaveBeenCalled();
-  });
-
-  it("shows an access-denied message for non-admin users", async () => {
-    mockedUseAuth.mockReturnValue({
-      user: alice,
-      token: "t",
-      isLoading: false,
-      login: vi.fn(),
-      register: vi.fn(),
-      logout: vi.fn(),
-      updateUser: vi.fn(),
-    });
-
-    render(<AdminPage />);
-
-    expect(screen.getByText("Admin privileges required.")).toBeTruthy();
     expect(mockedListUsers).not.toHaveBeenCalled();
   });
 });

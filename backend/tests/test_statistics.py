@@ -106,16 +106,22 @@ def _seed_admin(db_session) -> UserDB:
     return admin
 
 
-def _make_admin_token(admin: UserDB) -> str:
+def _make_token(user: UserDB) -> str:
+    """Issue a signed JWT claiming the given user is an admin.
+
+    The JWT role claim is ignored by the API (the role is read from the
+    database), so this helper is also used to prove that a customer with
+    a forged "admin" claim still receives 403.
+    """
     from app.routes.auth import create_access_token
 
-    return create_access_token(str(admin.id), admin.username, "admin")
+    return create_access_token(str(user.id), user.username, "admin")
 
 
 class TestAdminStatisticsEndpoint:
     def test_empty_system_returns_zeros(self, client, db_session):
         admin = _seed_admin(db_session)
-        headers = {"Authorization": f"Bearer {_make_admin_token(admin)}"}
+        headers = {"Authorization": f"Bearer {_make_token(admin)}"}
 
         resp = client.get("/v1/statistics/admin", headers=headers)
 
@@ -130,7 +136,7 @@ class TestAdminStatisticsEndpoint:
 
     def test_aggregates_across_all_users(self, client, db_session):
         admin = _seed_admin(db_session)
-        headers = {"Authorization": f"Bearer {_make_admin_token(admin)}"}
+        headers = {"Authorization": f"Bearer {_make_token(admin)}"}
 
         # A regular customer with documents and searches.
         customer = UserDB(
@@ -201,7 +207,7 @@ class TestAdminStatisticsEndpoint:
         db_session.commit()
         db_session.refresh(customer)
 
-        headers = {"Authorization": f"Bearer {_make_admin_token(customer)}"}
+        headers = {"Authorization": f"Bearer {_make_token(customer)}"}
 
         resp = client.get("/v1/statistics/admin", headers=headers)
 

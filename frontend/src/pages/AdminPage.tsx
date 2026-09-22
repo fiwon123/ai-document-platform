@@ -15,6 +15,7 @@ export function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [stats, setStats] = useState<AdminStatisticsResponse | null>(null);
+  const [statsFailed, setStatsFailed] = useState(false);
 
   const isAdmin = currentUser?.role === "admin";
 
@@ -33,10 +34,12 @@ export function AdminPage() {
     try {
       const data = await statistics.getAdmin();
       setStats(data);
-    } catch {
+    } catch (err) {
       // Statistics are supplementary — a failure should not block the
-      // user management table below.
-      setStats(null);
+      // user management table below, but it must resolve the spinner so
+      // the section does not spin forever.
+      console.error("Failed to load admin statistics", err);
+      setStatsFailed(true);
     }
   }, []);
 
@@ -161,6 +164,10 @@ export function AdminPage() {
               <span className="stat-label">Searches</span>
             </div>
           </div>
+        ) : statsFailed ? (
+          <p className="error-message" role="alert" aria-label="Statistics unavailable">
+            System statistics are currently unavailable.
+          </p>
         ) : (
           <div className="loading">
             <Spinner size={18} label="Loading system statistics" />

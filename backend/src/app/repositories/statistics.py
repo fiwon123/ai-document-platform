@@ -59,7 +59,7 @@ class StatisticsRepository:
                 UserDB.is_active
             )
         ).all()
-        return Counter(dict(rows))
+        return dict(rows)
 
     def all_status_counts(self) -> dict[DocumentStatus, int]:
         """Count documents per status across all users."""
@@ -68,12 +68,12 @@ class StatisticsRepository:
                 DocumentDB.status
             )
         ).all()
-        return Counter(dict(rows))
+        return dict(rows)
 
     def all_chunk_count(self) -> int:
         """Total number of indexed chunks in the system."""
         return self.db.scalar(select(func.count(DocumentChunk.id))) or 0
 
-    def search_count(self) -> int:
+    def all_search_count(self) -> int:
         """Total number of recorded searches across all users."""
         return self.db.scalar(select(func.count(SearchHistory.id))) or 0
