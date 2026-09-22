@@ -1,41 +1,49 @@
 # Kind cluster configuration for local Kubernetes development.
 #
-# Creates a single-node cluster plus a local container registry so images
-# can be loaded without pushing to a remote registry.
+# The cluster name is passed via `kind create cluster --name ai-platform`
+# (see infra/scripts/setup-kind.sh) — the Cluster schema has no `name` field.
 #
-# Usage:
-#   kind create cluster --config infra/kind/kind-config.yaml
+# NodePort -> Service mapping (extraPortMappings.containerPort equals the
+# Kubernetes Service nodePort; hostPort is where the host listens):
 #
-# The registry runs as a container named "kind-registry" on port 5000 and is
-# attached to the host network namespace used by Kind's control-plane
-# container (see infra/scripts/setup-kind.sh for the full wiring).
+#   host:18080 -> node:30080 -> svc:30080 -> pod targetPort:8080 (frontend)
+#   host:18001 -> node:30081 -> svc:30081 -> pod targetPort:8000 (backend)
 
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
-name: ai-platform
 
 nodes:
   - role: control-plane
     extraPortMappings:
-      # Frontend nginx (NodePort 30080 -> container port 8080)
+      # Frontend nginx-unprivileged listens on 8080 in the pod.
       - containerPort: 30080
-        hostPort: 8080
+        hostPort: 18080
+        listenAddress: "127.0.0.1"
         protocol: TCP
-      # Backend API (NodePort 30081 -> container port 8000)
+      # Backend uvicorn listens on 8000 in the pod.
       - containerPort: 30081
-        hostPort: 8001
+        hostPort: 18001
+        listenAddress: "127.0.0.1"
         protocol: TCP
 
 # Allow scheduling workloads on the control-plane node (single-node cluster).
+# apiVersion must match the kubeadm version bundled with the Kind Kubernetes
+# version (kubeadm.k8s.io/v1beta3 for K8s 1.25+).
 kubeadmConfigPatches:
   - |
     kind: InitConfiguration
+    apiVersion: kubeadm.k8s.io/v1beta3
     nodeRegistration:
       kubeletExtraArgs:
         node-labels: "ingress-ready=true"
 
-# The containers that run on the cluster need hostname resolution for the
-# local registry (kind-registry -> host registry on 127.0.0.1:5000).
+# The cluster nodes need to resolve the local registry (kind-registry) so
+# they can pull images from it. The setup script attaches the registry
+# container to the "kind" bridge network; the container name resolves via
+# Docker DNS on that network.
+#
+# NOTE: containerd plugin-path layout varies between containerd 1.x and 2.x;
+# verify the mirror is active with `crictl info` after setup if pulls fail.
 containerdConfigPatches:
   - |-
     [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5000"]
