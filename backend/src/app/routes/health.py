@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -30,6 +31,9 @@ def health_check(db: Annotated[Session, Depends(get_db)]):
 
     if not all_healthy:
         checks["status"] = "degraded"
+        # Return 503 so orchestration (K8s probes, load balancers,
+        # uptime monitors) can act on the degraded state.
+        return JSONResponse(status_code=503, content=checks)
 
     return checks
 

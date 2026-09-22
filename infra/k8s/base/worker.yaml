@@ -18,6 +18,45 @@ spec:
       labels:
         app.kubernetes.io/component: worker
     spec:
+      serviceAccountName: app
+      # Worker image runs as non-root 'app' user; enforce it at the pod level.
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      # The worker needs the schema in place before consuming jobs.
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534 # nobody
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command:
+            - sh
+            - -c
+            - >
+              until nc -z postgres 5432; do
+                echo "waiting for postgres...";
+                sleep 2;
+              done
+        - name: wait-for-migrate
+          image: bitnami/kubectl:1.30
+          securityContext:
+            runAsNonRoot: true # image default uid 1001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command:
+            - sh
+            - -c
+            - >
+              until kubectl get job migrate -n ai-platform -o jsonpath='{.status.succeeded}' | grep -q "1"; do
+                echo "waiting for migrate job to complete...";
+                sleep 3;
+              done
       containers:
         - name: worker
           image: ai-platform/worker:latest

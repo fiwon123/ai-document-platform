@@ -8,14 +8,18 @@ resources:
   - networkpolicy.yaml
   - pdb.yaml
 
+# Apply the environment label to metadata only — do NOT touch selectors
+# (they are immutable on existing workloads; adding labels there would make
+# re-apply or overlay switches fail).
 labels:
   - pairs:
       environment: production
-    includeSelectors: true
 
-# Production images: override with your real registry via
-#   kustomize edit set image ...
-# e.g. ghcr.io/fiwon123/ai-platform.
+# Production images: PLACEHOLDER registry. Override with your real registry
+# before deploying, e.g.:
+#   kustomize edit set image \
+#     ai-platform/backend=ghcr.io/<owner>/ai-platform/backend:1.2.3
+#   (and the same for worker/frontend)
 images:
   - name: ai-platform/backend
     newName: ghcr.io/EXAMPLE/ai-platform/backend

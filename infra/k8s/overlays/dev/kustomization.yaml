@@ -25,7 +25,7 @@ patches:
       kind: Service
       name: frontend
     patch: |-
-      - op: replace
+      - op: add
         path: /spec/type
         value: NodePort
       - op: add
@@ -36,13 +36,22 @@ patches:
       kind: Service
       name: backend
     patch: |-
-      - op: replace
+      - op: add
         path: /spec/type
         value: NodePort
       - op: add
         path: /spec/ports/0/nodePort
         value: 30081
   # Dev resources are modest.
+  - target:
+      kind: ConfigMap
+      name: app-config
+    patch: |-
+      # Dev runs over plain HTTP (Kind NodePort): Secure cookies would never
+      # be sent by browsers, breaking the refresh-token flow.
+      - op: replace
+        path: /data/REFRESH_COOKIE_SECURE
+        value: "false"
   - target:
       kind: Deployment
       name: backend

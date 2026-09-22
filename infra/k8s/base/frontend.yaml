@@ -18,6 +18,10 @@ spec:
       labels:
         app.kubernetes.io/component: frontend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
           image: ai-platform/frontend:latest

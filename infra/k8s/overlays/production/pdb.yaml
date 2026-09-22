@@ -21,3 +21,14 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/component: frontend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: worker
+  namespace: ai-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: worker
