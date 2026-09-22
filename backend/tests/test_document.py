@@ -442,3 +442,133 @@ def _create_document(client, headers, filename=UPLOAD_FILENAME, content=b"hello 
     resp = _post_upload(client, headers, content=content, filename=filename)
     assert resp.status_code == 201, f"upload failed: {resp.text}"
     return resp.json()
+
+
+def _post_bulk_upload(client, headers, files):
+    """Post a bulk upload where ``files`` is a list of (filename, content, mime)."""
+    payload = [
+        ("files", (filename, content, content_type))
+        for filename, content, content_type in files
+    ]
+    return client.post("/v1/documents/bulk", files=payload, headers=headers)
+
+
+class TestBulkUpload:
+    def test_requires_auth(self, client):
+        resp = client.post("/v1/documents/bulk")
+        assert resp.status_code == 401
+        assert resp.json()["error"]["code"] == "unauthorized"
+
+    def test_rejects_empty_batch(self, client, auth_headers):
+        resp = client.post("/v1/documents/bulk", files=[], headers=auth_headers)
+        assert resp.status_code == 400
+        assert "No files provided" in resp.json()["error"]["message"]
+
+    def test_all_files_uploaded(self, client, auth_headers, monkeypatch):
+        _mock_upload_ok(monkeypatch)
+
+        resp = _post_bulk_upload(
+            client,
+            auth_headers,
+            [
+                ("a.txt", b"alpha", "text/plain"),
+                ("b.txt", b"beta", "text/plain"),
+            ],
+        )
+
+        assert resp.status_code == 201
+        body = resp.json()
+        assert len(body["uploaded"]) == 2
+        assert len(body["failed"]) == 0
+        filenames = {doc["filename"] for doc in body["uploaded"]}
+        assert filenames == {"a.txt", "b.txt"}
+        assert all(doc["status"] == "pending" for doc in body["uploaded"])
+
+    def test_partial_success_reports_per_file_failures(
+        self, client, auth_headers, monkeypatch
+    ):
+        _mock_upload_ok(monkeypatch)
+
+        resp = _post_bulk_upload(
+            client,
+            auth_headers,
+            [
+                ("ok.txt", b"good", "text/plain"),
+                ("virus.exe", b"bad", "application/octet-stream"),
+                ("empty.txt", b"", "text/plain"),
+            ],
+        )
+
+        assert resp.status_code == 201
+        body = resp.json()
+        assert len(body["uploaded"]) == 1
+        assert body["uploaded"][0]["filename"] == "ok.txt"
+        assert len(body["failed"]) == 2
+        errors_by_file = {item["filename"]: item["error"] for item in body["failed"]}
+        assert "virus.exe" in errors_by_file
+        assert "Unsupported file type" in errors_by_file["virus.exe"]
+        assert "empty.txt" in errors_by_file
+        assert "empty" in errors_by_file["empty.txt"].lower()
+
+    def test_storage_failure_isolated_to_one_file(
+        self, client, auth_headers, monkeypatch
+    ):
+        from app.services import document as document_module
+        from app.storage.storage import storage as app_storage
+
+        calls = {"count": 0}
+        original_upload = app_storage.upload
+
+        def flaky_upload(**kwargs):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise RuntimeError("s3 hiccup")
+            return original_upload(**kwargs)
+
+        monkeypatch.setattr(app_storage, "upload", flaky_upload)
+        monkeypatch.setattr(document_module, "process_document_task", lambda _id: None)
+
+        resp = _post_bulk_upload(
+            client,
+            auth_headers,
+            [
+                ("first.txt", b"one", "text/plain"),
+                ("second.txt", b"two", "text/plain"),
+            ],
+        )
+
+        assert resp.status_code == 201
+        body = resp.json()
+        assert len(body["uploaded"]) == 1
+        assert body["uploaded"][0]["filename"] == "second.txt"
+        assert len(body["failed"]) == 1
+        assert body["failed"][0]["filename"] == "first.txt"
+        assert "temporarily unavailable" in body["failed"][0]["error"]
+
+    def test_exceeding_batch_limit_returns_400(self, client, auth_headers, monkeypatch):
+        _mock_upload_ok(monkeypatch)
+
+        files = [(f"doc{i}.txt", b"x", "text/plain") for i in range(21)]
+
+        resp = _post_bulk_upload(client, auth_headers, files)
+
+        assert resp.status_code == 400
+        assert "Too many files" in resp.json()["error"]["message"]
+
+    def test_all_failed_still_returns_201_with_empty_uploaded(
+        self, client, auth_headers, monkeypatch
+    ):
+        # Every file is invalid; the batch still completes with per-file errors.
+        resp = _post_bulk_upload(
+            client,
+            auth_headers,
+            [
+                ("bad1.exe", b"x", "application/octet-stream"),
+                ("bad2.exe", b"y", "application/octet-stream"),
+            ],
+        )
+
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["uploaded"] == []
+        assert len(body["failed"]) == 2
