@@ -6,6 +6,10 @@ metadata:
   labels:
     {{- include "ai-platform.labels" . | nindent 4 }}
   annotations:
+    {{- if .Values.certManager.enabled }}
+    # Automatic TLS issuance/renewal via cert-manager (see certmanager.yaml).
+    cert-manager.io/cluster-issuer: {{ .Values.certManager.clusterIssuer | quote }}
+    {{- end }}
     {{- range $key, $value := .Values.ingress.annotations }}
     {{ $key }}: {{ $value | quote }}
     {{- end }}

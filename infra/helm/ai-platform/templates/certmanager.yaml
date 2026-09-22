@@ -1,0 +1,49 @@
+{{- if .Values.certManager.enabled }}
+{{- $email := .Values.certManager.acmeEmail }}
+{{- $class := .Values.certManager.ingressClass }}
+# cert-manager ClusterIssuers. Prerequisite: cert-manager installed in the
+# cluster. The Ingress gets the cert-manager.io/cluster-issuer annotation
+# (see ingress.yaml) and cert-manager creates/renews the tls secret.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    # Staging server: generous rate limits, certificates are NOT publicly
+    # trusted. Use for testing the ACME flow end-to-end.
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: {{ $email | quote }}
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: {{ $class }}
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    # Production server: publicly trusted certificates.
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: {{ $email | quote }}
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: {{ $class }}
+---
+# Self-signed issuer for LOCAL TESTING ONLY (e.g. Kind): issue certificates
+# with no external ACME server. Point certManager.clusterIssuer at
+# `selfsigned` and the stack gets functional TLS (browser warning expected).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}
+{{- end }}

@@ -1,0 +1,55 @@
+# cert-manager ClusterIssuers for the production overlay.
+#
+# Prerequisite: cert-manager installed in the cluster:
+#   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+#
+# The Ingress (ingress.yaml) is annotated with
+#   cert-manager.io/cluster-issuer: letsencrypt-prod
+# and cert-manager creates/renews the tls.secretName automatically.
+#
+# NOTE: replace `ops@example.com` with the real ops email for ACME account
+# registration and expiry notifications.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    # Staging server: generous rate limits, certificates are NOT publicly
+    # trusted. Use for testing the ACME flow end-to-end.
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: ops@example.com
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    # Production server: publicly trusted certificates.
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ops@example.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+---
+# Self-signed issuer for LOCAL TESTING ONLY (e.g. a Kind cluster): issues a
+# certificate with no external ACME server. Point the Ingress annotation at
+# this issuer (`cert-manager.io/cluster-issuer: selfsigned`) and the stack
+# gets functional TLS end-to-end; browsers will warn about the self-signed
+# certificate, which is expected.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}

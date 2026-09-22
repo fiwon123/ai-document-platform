@@ -1,6 +1,7 @@
 # Ingress for production traffic. Frontend serves the SPA; /v1 is proxied
 # by the frontend nginx to the backend Service — so a single Host rule works.
-# Requires an Ingress controller (e.g. ingress-nginx, AWS ALB, GKE Ingress).
+# Requires an Ingress controller (e.g. ingress-nginx, AWS ALB, GKE Ingress)
+# and cert-manager (cert-manager.yaml in this overlay).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -9,12 +10,16 @@ metadata:
   annotations:
     # Common defaults; override per cloud provider.
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    # Issue + auto-renew the TLS certificate via cert-manager (see
+    # cert-manager.yaml). For local testing switch to `selfsigned`.
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: nginx
   tls:
     - hosts:
         - ai-platform.example.com
-      secretName: ai-platform-tls # TLS cert secret (create via cert-manager or cloud LB)
+      # cert-manager creates/renews this secret from the ClusterIssuer above.
+      secretName: ai-platform-tls
   rules:
     - host: ai-platform.example.com
       http:

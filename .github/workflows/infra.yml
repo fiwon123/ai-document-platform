@@ -72,9 +72,12 @@ jobs:
           kustomize build infra/k8s/overlays/production > /tmp/prod-rendered.yaml
           helm lint infra/helm/ai-platform
           helm template ai-platform infra/helm/ai-platform > /tmp/helm-rendered.yaml
-          kubeconform -strict -summary /tmp/dev-rendered.yaml
-          kubeconform -strict -summary /tmp/prod-rendered.yaml
-          kubeconform -strict -summary /tmp/helm-rendered.yaml
+          # `-ignore-missing-schemas`: cluster-scoped CRDs (cert-manager,
+          # External Secrets, Prometheus CRDs, ArgoCD, ...) have no schema in
+          # the bundled set; they are reported as Skipped instead of failing.
+          kubeconform -strict -ignore-missing-schemas -summary /tmp/dev-rendered.yaml
+          kubeconform -strict -ignore-missing-schemas -summary /tmp/prod-rendered.yaml
+          kubeconform -strict -ignore-missing-schemas -summary /tmp/helm-rendered.yaml
           echo "all manifests valid"
 
   build-images:
