@@ -1,9 +1,40 @@
 from datetime import datetime
+from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 from app.models.document import DocumentStatus
+
+
+class SearchExportFormat(StrEnum):
+    """Supported export serialization formats for search results."""
+
+    csv = "csv"
+    json = "json"
+
+
+class SearchExportRequest(BaseModel):
+    """Request to export search results as a downloadable file."""
+
+    query: str = Field(min_length=1, max_length=1000, description="Search query")
+    top_k: int = Field(default=5, ge=1, le=20, description="Number of results")
+    offset: int = Field(
+        default=0,
+        ge=0,
+        description="Number of results to skip (pagination cursor)",
+    )
+    document_ids: list[UUID] | None = Field(
+        default=None,
+        description=(
+            "Optional document IDs to restrict the search to. "
+            "None (default) searches all of the user's documents."
+        ),
+    )
+    format: SearchExportFormat = Field(
+        default=SearchExportFormat.csv,
+        description="Output format: csv or json",
+    )
 
 
 class FileResponse(BaseModel):

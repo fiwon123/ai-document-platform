@@ -7,12 +7,13 @@ vi.mock("../components/DocumentFilter", () => ({
 }));
 
 vi.mock("../services/api", () => ({
-  search: { search: vi.fn() },
+  search: { search: vi.fn(), exportResults: vi.fn() },
 }));
 
 import { search } from "../services/api";
 
 const mockedSearch = vi.mocked(search.search);
+const mockedExportResults = vi.mocked(search.exportResults);
 
 const result = {
   chunk_id: "c-1",
@@ -117,5 +118,43 @@ describe("SearchPage", () => {
     expect(
       screen.queryByRole("button", { name: "Load more results" }),
     ).toBeNull();
+  });
+
+  it("exports results as CSV with the current query and filters", async () => {
+    mockedExportResults.mockResolvedValue(undefined);
+    await runSearch("q3 planning");
+
+    fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+    await act(async () => {});
+
+    expect(mockedExportResults).toHaveBeenCalledWith(
+      "q3 planning",
+      "csv",
+      [],
+    );
+  });
+
+  it("exports results as JSON with the current query and filters", async () => {
+    mockedExportResults.mockResolvedValue(undefined);
+    await runSearch("q3 planning");
+
+    fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
+    await act(async () => {});
+
+    expect(mockedExportResults).toHaveBeenCalledWith(
+      "q3 planning",
+      "json",
+      [],
+    );
+  });
+
+  it("shows an error when the export fails", async () => {
+    mockedExportResults.mockRejectedValue(new Error("Export backend down"));
+    await runSearch("q3 planning");
+
+    fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+    await act(async () => {});
+
+    expect(screen.getByText("Export backend down")).toBeTruthy();
   });
 });

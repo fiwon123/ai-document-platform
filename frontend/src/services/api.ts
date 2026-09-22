@@ -263,6 +263,53 @@ export const search = {
       }),
     });
   },
+
+  /** Download a search's results as a CSV or JSON file. */
+  async exportResults(
+    query: string,
+    format: "csv" | "json",
+    documentIds: string[] = [],
+    topK = 5,
+  ): Promise<void> {
+    const response = await fetch(`${API_BASE}/search/export`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(localStorage.getItem("token")
+          ? { Authorization: `Bearer ${localStorage.getItem("token")}` }
+          : {}),
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        query,
+        top_k: topK,
+        offset: 0,
+        document_ids: documentIds.length > 0 ? documentIds : null,
+        format,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: "Export failed" }));
+      const message =
+        error?.detail ?? error?.error?.message ?? `Export failed (${response.status})`;
+      throw new ApiError(response.status, message);
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    const filename =
+      disposition.match(/filename="?([^";]+)"?/)?.[1] ??
+      `search_results.${format}`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  },
 };
 
 export interface QAModels {

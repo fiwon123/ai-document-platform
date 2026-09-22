@@ -475,6 +475,47 @@ describe("search.search", () => {
       document_ids: null,
     });
   });
+
+  it("exports search results to CSV and triggers a download", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response("a,b,c", {
+        status: 200,
+        headers: {
+          "Content-Type": "text/csv",
+          "Content-Disposition": 'attachment; filename="search_results.csv"',
+        },
+      }),
+    );
+    const click = vi.fn();
+    HTMLAnchorElement.prototype.click = click;
+
+    await search.exportResults("quarterly", "csv", ["doc-a"], 5);
+
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(String(url)).toBe("/v1/search/export");
+    expect(options?.method).toBe("POST");
+    expect(JSON.parse(String(options?.body))).toEqual({
+      query: "quarterly",
+      top_k: 5,
+      offset: 0,
+      document_ids: ["doc-a"],
+      format: "csv",
+    });
+    expect(click).toHaveBeenCalled();
+  });
+
+  it("throws ApiError when the export request fails", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Export backend down" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(search.exportResults("q", "json")).rejects.toThrow(
+      "Export backend down",
+    );
+  });
 });import type { StatisticsResponse } from "../types";
 
 const sampleStats: StatisticsResponse = {

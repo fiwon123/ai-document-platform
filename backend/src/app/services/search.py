@@ -108,6 +108,7 @@ class SearchService:
         top_k: int = 5,
         offset: int = 0,
         document_ids: list[UUID] | None = None,
+        record_history: bool = True,
     ) -> SearchResponse:
         cached = _get_cached_search(user_id, query, top_k, offset, document_ids)
         if cached is not None:
@@ -134,12 +135,13 @@ class SearchService:
             document_ids=document_ids,
         )
 
-        search_history = SearchHistory(
-            user_id=user_id,
-            query=query,
-            results_count=total_count,
-        )
-        self.repository.save_search_history(search_history)
+        if record_history:
+            search_history = SearchHistory(
+                user_id=user_id,
+                query=query,
+                results_count=total_count,
+            )
+            self.repository.save_search_history(search_history)
 
         response = SearchResponse(
             query=query,

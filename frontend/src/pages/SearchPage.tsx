@@ -15,6 +15,7 @@ export function SearchPage() {
   const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isExporting, setIsExporting] = useState<"csv" | "json" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -56,6 +57,18 @@ export function SearchPage() {
   async function loadMore() {
     setIsLoadingMore(true);
     await runSearch(query, selectedIds, resultsRef.current.length);
+  }
+
+  async function handleExport(format: "csv" | "json") {
+    setIsExporting(format);
+    setError(null);
+    try {
+      await search.exportResults(query, format, selectedIds);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setIsExporting(null);
+    }
   }
 
   // Debounced auto-search as the user types or changes the document filter.
@@ -134,7 +147,27 @@ export function SearchPage() {
 
       {results.length > 0 && (
         <div className="search-results">
-          <h2>Results ({totalCount})</h2>
+          <div className="search-results-header">
+            <h2>Results ({totalCount})</h2>
+            <div className="search-export-actions">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => void handleExport("csv")}
+                disabled={isExporting !== null}
+              >
+                {isExporting === "csv" ? "Exporting…" : "Export CSV"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => void handleExport("json")}
+                disabled={isExporting !== null}
+              >
+                {isExporting === "json" ? "Exporting…" : "Export JSON"}
+              </button>
+            </div>
+          </div>
           {results.map((result) => (
             <div key={result.chunk_id} className="search-result-card">
               <div className="result-header">

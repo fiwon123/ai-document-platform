@@ -1,13 +1,20 @@
+import csv
+import io
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.database.db import get_db
 from app.repositories.search import SearchRepository
 from app.routes.auth import get_current_user_id
-from app.schemas.document import SearchRequest, SearchResponse
+from app.schemas.document import (
+    SearchExportFormat,
+    SearchExportRequest,
+    SearchRequest,
+    SearchResponse,
+)
 from app.services.search import SearchService
 
 router = APIRouter(prefix="/search", tags=["search"])
@@ -33,3 +40,78 @@ def search_documents(
         offset=request.offset,
         document_ids=request.document_ids,
     )
+
+
+@router.post("/export")
+def export_search_results(
+    request: SearchExportRequest,
+    service: Annotated[SearchService, Depends(get_search_service)],
+    owner_id: Annotated[UUID, Depends(get_current_user_id)],
+) -> Response:
+    """Run a search and return the results as a downloadable CSV or JSON file.
+
+    Reuses the same service path as the regular search endpoint so filtering,
+    user isolation, and text-search fallback behave identically. Exports are
+    intentionally not cached and do not write search-history rows.
+    """
+    response = service.search(
+        user_id=owner_id,
+        query=request.query,
+        top_k=request.top_k,
+        offset=request.offset,
+        document_ids=request.document_ids,
+        record_history=False,
+    )
+
+    if request.format == SearchExportFormat.json:
+        payload = response.model_dump_json()
+        return Response(
+            content=payload,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": 'attachment; filename="search_results.json"'
+            },
+        )
+
+    return Response(
+        content=_to_csv(response),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="search_results.csv"'},
+    )
+
+
+def _to_csv(response: SearchResponse) -> str:
+    """Serialize a SearchResponse into CSV (RFC 4180 via the csv module)."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "document_filename",
+            "chunk_id",
+            "document_id",
+            "score",
+            "content",
+            "metadata",
+        ]
+    )
+    for result in response.results:
+        writer.writerow(
+            [
+                result.document_filename,
+                str(result.chunk_id),
+                str(result.document_id),
+                f"{result.score:.6f}",
+                result.content,
+                _json_or_empty(result.metadata_),
+            ]
+        )
+    return output.getvalue()
+
+
+def _json_or_empty(value: dict | None) -> str:
+    """Serialize metadata to a compact JSON string (empty string when null)."""
+    import json
+
+    if value is None:
+        return ""
+    return json.dumps(value, separators=(",", ":"))
