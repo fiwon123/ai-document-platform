@@ -61,6 +61,32 @@ secrets:
   # DATABASE_URL. Configure the corresponding values below anyway so the
   # ConfigMap/initContainers resolve the right hosts.
   external: false
+  # -- Render an ExternalSecret + ClusterSecretStore (External Secrets
+  # Operator). Implies external: the bundled dev Secret is not rendered and
+  # ESO materializes the secrets.name Secret from the provider.
+  eso:
+    enabled: false
+    # -- Refresh interval for pulling updates from the provider
+    refreshInterval: 1h
+    # -- SecretStore provider (aws / gcp / vault / ...)
+    provider: aws
+    # -- AWS region (aws provider)
+    awsRegion: us-east-1
+    # -- AWS Secrets Manager secret id containing the app keys below
+    awsSecretId: ai-platform/production/backend
+    # -- Name of the Secret holding the AWS credentials (access-key-id /
+    # secret-access-key); create it manually in the release namespace. Omit
+    # auth via IRSA by leaving the credential keys empty.
+    awsCredsSecret: eso-aws-creds
+    # -- Secret keys synced from the provider (must exist on the remote side)
+    keys:
+      - SECRET_KEY
+      - POSTGRES_PASSWORD
+      - MINIO_ACCESS_KEY
+      - MINIO_SECRET_KEY
+      - DATABASE_URL
+      - OPENAI_API_KEY
+      - GROQ_API_KEY
   # -- JWT signing key (dev placeholder; MUST be changed in real envs)
   jwtSecretKey: "change-me-jwt-secret"
   # -- PostgreSQL password (dev placeholder; used for both the bundled Secret

@@ -112,6 +112,14 @@ kustomize build infra/k8s/overlays/production | kubectl apply -f -
 - Local Kind testing: point the ingress annotation (or chart value
   `certManager.clusterIssuer`) at `selfsigned` for functional TLS.
 
+### Production secrets (External Secrets Operator)
+
+The production overlay and Helm chart (with `secrets.eso.enabled=true`)
+materialize the `app-secrets` Secret from a cloud secret manager via
+[External Secrets Operator](https://external-secrets.io) — the plaintext dev
+placeholder is never deployed. See `infra/README.md` for the provider setup,
+secret layout, and rotation workflow.
+
 ## API
 
 | Method | Endpoint | Description |
