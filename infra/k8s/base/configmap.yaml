@@ -1,0 +1,36 @@
+# Non-secret configuration shared by backend/worker/frontend pods.
+# Secrets (passwords, API keys) live in secret.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: ai-platform
+  labels:
+    app.kubernetes.io/part-of: ai-platform
+data:
+  # --- Database ---
+  POSTGRES_DB: "mydb"
+  POSTGRES_USER: "postgres"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  # --- Redis ---
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  # --- MinIO ---
+  MINIO_ENDPOINT: "minio:9000"
+  MINIO_PUBLIC_ENDPOINT: "minio:9000"
+  MINIO_BUCKET: "documents"
+  MINIO_SECURE: "false"
+  MINIO_REGION: "us-east-1"
+  # --- Auth ---
+  ALGORITHM: "HS256"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+  REFRESH_TOKEN_EXPIRE_DAYS: "7"
+  REFRESH_COOKIE_SECURE: "true"
+  # --- AI ---
+  OPENAI_MODEL: "gpt-4"
+  EMBEDDING_MODEL: "text-embedding-ada-002"
+  # --- Rate limiting ---
+  RATE_LIMIT_REQUESTS: "100"
+  RATE_LIMIT_WINDOW: "60"
