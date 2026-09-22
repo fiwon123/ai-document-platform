@@ -20,7 +20,7 @@ class DocumentChunk(Base):
             "embedding",
             postgresql_using="ivfflat",
             postgresql_ops={"embedding": "vector_cosine_ops"},
-            postgresql_with={"lists": "100"},
+            postgresql_with={"lists": 100},
         ),
     )
 

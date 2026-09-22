@@ -28,12 +28,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Any legacy rows with NULL is_active would block the NOT NULL alter;
+    # inserts always set it (Python default True), so backfill defensively
+    # for databases that predate the default.
+    op.execute(sa.text("UPDATE users SET is_active = true WHERE is_active IS NULL"))
+
+    # TIMESTAMP -> TIMESTAMPTZ rewrites the table (ACCESS EXCLUSIVE lock;
+    # acceptable at current scale). Pre-005 code wrote UTC datetimes into
+    # the naive column, so pin the interpretation explicitly instead of
+    # letting PostgreSQL apply the session TimeZone.
     op.alter_column(
         'documents',
         'created_at',
         existing_type=sa.DateTime(timezone=False),
         type_=sa.DateTime(timezone=True),
         existing_nullable=False,
+        postgresql_using="created_at AT TIME ZONE 'UTC'",
     )
     op.alter_column(
         'documents',
@@ -41,11 +51,13 @@ def upgrade() -> None:
         existing_type=sa.DateTime(timezone=False),
         type_=sa.DateTime(timezone=True),
         existing_nullable=False,
+        postgresql_using="updated_at AT TIME ZONE 'UTC'",
     )
     op.alter_column(
         'users',
         'is_active',
         existing_type=sa.BOOLEAN(),
+        existing_nullable=True,
         nullable=False,
     )
 
