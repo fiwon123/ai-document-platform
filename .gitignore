@@ -224,3 +224,5 @@ result-*
 
 # OpenCode
 .opencode/node_modules/
+# DevSpace (local Kubernetes dev — caches local, not committed)
+.devspace/

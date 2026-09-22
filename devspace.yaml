@@ -1,0 +1,99 @@
+# DevSpace configuration — local Kubernetes development against the Kind
+# cluster (see infra/scripts/setup-kind.sh, infra/kind/kind-config.yaml).
+#
+# Prerequisites (run on the HOST, not inside the dev container):
+#   - Docker, Kind, kubectl and DevSpace >= 6.x installed
+#   - infra/scripts/setup-kind.sh   (creates kind-registry + cluster)
+#
+# Workflows:
+#   devspace dev      # build+push images, deploy the stack, hot-reload
+#   devspace build    # build + push images to the local registry only
+#   devspace deploy   # build + deploy without starting the dev containers
+#   devspace purge    # remove the deployed resources
+#
+# The dev overlay (infra/k8s/overlays/dev) targets the Kind local registry
+# (localhost:5000) and namespace ai-platform — everything here matches that.
+
+version: v2beta1
+name: ai-platform
+
+images:
+  backend:
+    image: localhost:5000/backend:latest
+    dockerfile: infra/docker/Dockerfile.backend
+    context: backend
+  worker:
+    image: localhost:5000/worker:latest
+    dockerfile: infra/docker/Dockerfile.worker
+    context: backend
+  frontend:
+    image: localhost:5000/frontend:latest
+    dockerfile: infra/docker/Dockerfile.frontend
+    context: frontend
+
+deployments:
+  platform:
+    namespace: ai-platform
+    kubectl:
+      kustomize: true
+      manifests:
+        - infra/k8s/overlays/dev
+
+dev:
+  # Backend: replace the deployed backend pod with a dev container that runs
+  # uvicorn with --reload and syncs the Python sources into /app/src/app.
+  backend:
+    namespace: ai-platform
+    imageSelector: localhost:5000/backend:latest
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+    sync:
+      - path: ./backend/src/app:./src/app
+    ports:
+      - port: "8000:8000"
+
+  # Frontend: replace the nginx pod with a node dev container running the
+  # Vite dev server (hot reload). npm install runs on every container start;
+  # node_modules stays inside the container (excluded from sync/download).
+  frontend:
+    namespace: ai-platform
+    imageSelector: localhost:5000/frontend:latest
+    devImage: node:22-alpine
+    workingDir: /app
+    command:
+      - sh
+      - -c
+      - npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173
+    sync:
+      - path: ./frontend:./
+        disableDownload: true
+        excludePaths:
+          - node_modules
+          - dist
+          - .vite
+    ports:
+      - port: "5173:5173"
+
+pipelines:
+  dev:
+    run: |
+      build_images --all --push
+      create_deployments --all
+      start_dev --all
+  build:
+    run: |
+      build_images --all --push
+  deploy:
+    run: |
+      build_images --all --push
+      create_deployments --all
+  purge:
+    run: |
+      stop_dev --all || true
+      purge_deployments --all
