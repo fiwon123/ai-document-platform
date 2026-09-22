@@ -122,6 +122,25 @@ The AI agent (opencode) runs **inside a Dev Container**, not on a bare machine.
 - Run git commands: `git`, `gh`
 - Access services at forwarded ports (see below)
 
+### gh CLI Authentication
+
+- `gh` authenticates automatically on container start using the host's
+  `GITHUB_TOKEN` (forwarded via `remoteEnv` in `.devcontainer/devcontainer.json`)
+- `postStartCommand` runs `gh auth login --with-token` when `gh auth status`
+  fails, so auth is refreshed on every start without manual login
+- The auth config persists across container rebuilds via the `gh_cli_config`
+  named volume (mounted at `/root/.config/gh` and `/home/vscode/.config/gh`)
+- **One-time host setup**: set `GITHUB_TOKEN` in the host shell profile:
+  ```bash
+  export GITHUB_TOKEN="ghp_..."  # scopes: repo, read:org, workflow
+  ```
+  Generate a token at https://github.com/settings/tokens
+- After changing the token on the host, reload the VS Code window
+  (Developer: Reload Window) — no container rebuild needed
+- If `GITHUB_TOKEN` is not set on the host, `postStartCommand` prints a warning
+  and `gh` falls back to unauthenticated (rate-limited) mode; run
+  `gh auth login` manually in that case
+
 ### Service ports (forwarded from host)
 
 Host ports of the Docker Compose stack (container-internal ports stay at the
