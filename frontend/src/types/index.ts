@@ -52,6 +52,8 @@ export interface SearchResult {
 export interface SearchResponse {
   query: string;
   results: SearchResult[];
+  total_count: number;
+  has_more: boolean;
 }
 
 export interface QAResponse {

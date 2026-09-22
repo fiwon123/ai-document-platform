@@ -1519,6 +1519,13 @@ body {
   font: 500 10px "DM Mono", monospace;
 }
 
+/* Load-more pagination for search results. */
+.search-load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
 /* QA Page */
 .qa-page {
   display: flex;

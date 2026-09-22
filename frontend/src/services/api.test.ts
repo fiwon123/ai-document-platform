@@ -268,6 +268,7 @@ describe("api client request paths", () => {
     expect(JSON.parse(options.body as string)).toEqual({
       query: "quarterly report",
       top_k: 7,
+      offset: 0,
       document_ids: null,
     });
   });
@@ -445,12 +446,13 @@ describe("search.search", () => {
       }),
     );
 
-    await search.search("hello", 5, ["doc-a", "doc-b"]);
+    await search.search("hello", 5, ["doc-a", "doc-b"], 10);
 
     const [, options] = vi.mocked(globalThis.fetch).mock.calls[0];
     expect(JSON.parse(String(options?.body))).toEqual({
       query: "hello",
       top_k: 5,
+      offset: 10,
       document_ids: ["doc-a", "doc-b"],
     });
   });
@@ -469,6 +471,7 @@ describe("search.search", () => {
     expect(JSON.parse(String(options?.body))).toEqual({
       query: "hello",
       top_k: 5,
+      offset: 0,
       document_ids: null,
     });
   });

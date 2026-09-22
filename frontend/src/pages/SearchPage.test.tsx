@@ -37,12 +37,14 @@ describe("SearchPage", () => {
     mockedSearch.mockResolvedValue({
       query: "",
       results: [result],
+      total_count: 1,
+      has_more: false,
     });
   });
 
   it("searches with the typed query and renders results", async () => {
     await runSearch("q3 planning");
-    expect(mockedSearch).toHaveBeenCalledWith("q3 planning", 5, []);
+    expect(mockedSearch).toHaveBeenCalledWith("q3 planning", 5, [], 0);
     expect(screen.getByText("meeting minutes about Q3 planning")).toBeTruthy();
     expect(screen.getByText("Results (1)")).toBeTruthy();
   });
@@ -54,7 +56,12 @@ describe("SearchPage", () => {
   });
 
   it("shows a styled empty state when no results match", async () => {
-    mockedSearch.mockResolvedValue({ query: "q3 planning", results: [] });
+    mockedSearch.mockResolvedValue({
+      query: "q3 planning",
+      results: [],
+      total_count: 0,
+      has_more: false,
+    });
     await runSearch("q3 planning");
 
     expect(screen.getByText("No results found")).toBeTruthy();
@@ -66,5 +73,49 @@ describe("SearchPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
     expect(screen.queryByText("No results found")).toBeNull();
+  });
+
+  it("loads more results when has_more is true", async () => {
+    const firstPage = {
+      query: "q3 planning",
+      results: [result],
+      total_count: 3,
+      has_more: true,
+    };
+    const secondResult = {
+      chunk_id: "c-2",
+      document_id: "d-2",
+      document_filename: "report.pdf",
+      content: "Q3 planning notes",
+      score: 0.31,
+      metadata_: null,
+    };
+    const secondPage = {
+      query: "q3 planning",
+      results: [secondResult],
+      total_count: 3,
+      has_more: false,
+    };
+    mockedSearch
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce(secondPage);
+
+    await runSearch("q3 planning");
+    expect(screen.getByText("Results (3)")).toBeTruthy();
+
+    const loadMore = screen.getByRole("button", { name: "Load more results" });
+    fireEvent.click(loadMore);
+    await act(async () => {});
+
+    expect(mockedSearch).toHaveBeenLastCalledWith("q3 planning", 5, [], 1);
+    expect(screen.getByText("Q3 planning notes")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Load more results" })).toBeNull();
+  });
+
+  it("does not show a load-more button when has_more is false", async () => {
+    await runSearch("q3 planning");
+    expect(
+      screen.queryByRole("button", { name: "Load more results" }),
+    ).toBeNull();
   });
 });
