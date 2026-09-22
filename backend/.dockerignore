@@ -1,0 +1,35 @@
+# Build context for Dockerfile.backend / Dockerfile.worker is ./backend.
+# Keep the image small and secrets out of layers.
+
+# VCS
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Tests & dev tooling
+tests/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Docs
+*.md
+!README.md
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
