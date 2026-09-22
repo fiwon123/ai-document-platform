@@ -227,3 +227,17 @@ podSecurityContext:
   runAsNonRoot: true
   seccompProfile:
     type: RuntimeDefault
+monitoring:
+  # -- Render a ServiceMonitor (backend /metrics), PrometheusRule,
+  # AlertmanagerConfig and a Grafana dashboard for kube-prometheus-stack
+  enabled: false
+  # -- Namespace where kube-prometheus-stack is installed
+  namespace: monitoring
+  # -- Namespace of this release to scrape (defaults to release namespace)
+  scrapeNamespace: ""
+  # -- Alertmanager receiver email / relay placeholders (replace before use)
+  alertEmailTo: ops@example.com
+  alertEmailFrom: alertmanager@example.com
+  smarthost: smtp.example.com:587
+  # -- Secret holding the SMTP password (key: password) in the monitoring namespace
+  smtpAuthSecret: smtp-auth

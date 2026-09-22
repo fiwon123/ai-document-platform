@@ -102,5 +102,8 @@ spec:
   selector:
     app.kubernetes.io/component: backend
   ports:
-    - port: 8000
+    # Named so the monitoring ServiceMonitor can reference the scrape port
+    # (targetPort: http = the container port name).
+    - name: http
+      port: 8000
       targetPort: http

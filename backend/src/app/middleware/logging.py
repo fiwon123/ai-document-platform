@@ -1,11 +1,36 @@
 import logging
+import re
 import time
 from collections.abc import Callable
 
 from fastapi import Request, Response
+from prometheus_client import Counter, Histogram
 from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger("app.access")
+
+# Prometheus metrics exposed on the /metrics endpoint (scraped by the
+# ServiceMonitor in the monitoring stack; see
+# infra/k8s/overlays/production/monitoring.yaml).
+HTTP_REQUESTS_TOTAL = Counter(
+    "http_requests_total",
+    "Total HTTP requests by method, path and status code",
+    ["method", "path", "status"],
+)
+HTTP_REQUEST_DURATION_SECONDS = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request latency by method and path",
+    ["method", "path"],
+)
+
+# Collapse variable path segments (UUIDs, numeric ids) into a fixed label so
+# the metrics cardinality stays bounded:
+#   /v1/documents/<uuid>  -> /v1/documents/{id}
+_PATH_PARAM_RE = re.compile(r"/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|/\d+")
+
+
+def _metric_path(path: str) -> str:
+    return _PATH_PARAM_RE.sub("/{id}", path)
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -16,6 +41,12 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         process_time = time.time() - start_time
         status_code = response.status_code
+
+        # Instrumenting the scrape endpoint itself would just add noise.
+        if request.url.path != "/metrics":
+            metric_path = _metric_path(request.url.path)
+            HTTP_REQUESTS_TOTAL.labels(request.method, metric_path, str(status_code)).inc()
+            HTTP_REQUEST_DURATION_SECONDS.labels(request.method, metric_path).observe(process_time)
 
         log_data = {
             "method": request.method,

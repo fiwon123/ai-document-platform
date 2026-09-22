@@ -1,0 +1,199 @@
+# Platform monitoring for kube-prometheus-stack (production overlay).
+#
+# Prerequisite: kube-prometheus-stack installed in the `monitoring` namespace
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm install prometheus-stack prometheus-community/kube-prometheus-stack \
+#     -n monitoring --create-namespace
+# with the default selectors (ServiceMonitors/PrometheusRules in any
+# namespace, AlertmanagerConfigs in any namespace). If you scope the
+# selectors, add the matching labels here.
+#
+# The backend exposes /metrics (process + HTTP metrics, see
+# backend/src/app/main.py and middleware/logging.py).
+
+---
+# Scrape the backend /metrics endpoint
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: ai-platform
+spec:
+  selector:
+    matchLabels:
+      # Present on the backend Service in the base and the Helm chart.
+      app.kubernetes.io/component: backend
+  namespaceSelector:
+    matchNames:
+      - ai-platform
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      honorLabels: true
+
+---
+# Platform alerting rules
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ai-platform
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: ai-platform
+spec:
+  groups:
+    - name: ai-platform
+      rules:
+        - alert: BackendDown
+          expr: min_over_time(up{namespace="ai-platform"}[5m]) == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Backend is not scrapeable"
+            description: "Prometheus could not scrape the backend for 5 minutes. Check the backend Deployment (CrashLoopBackOff, image pull failure, network policy)."
+        - alert: BackendHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{namespace="ai-platform", status=~"5.."}[5m]))
+              by (pod)
+              / clamp_min(sum(rate(http_requests_total{namespace="ai-platform"}[5m])) by (pod), 1)
+              > 0.05
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Backend 5xx rate above 5%"
+            description: "Pod {{ $labels.pod }} served more than 5% 5xx responses over the last 10 minutes."
+        - alert: BackendLatencyHigh
+          expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="ai-platform"}[5m])) by (le, pod)) > 2
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Backend p95 latency above 2s"
+            description: "Pod {{ $labels.pod }} p95 request latency exceeded 2s for 10 minutes."
+
+---
+# Alert routing (example: email via SMTP)
+# Create the referenced SMTP credentials Secret before this becomes
+# effective, e.g.:
+#   kubectl -n monitoring create secret generic smtp-auth \
+#     --from-literal=password='...'
+# See infra/README.md for the notification-path setup.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: ai-platform
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: ai-platform
+spec:
+  route:
+    groupBy: [namespace, alertname]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+    matchers:
+      - name: severity
+        matchType: =~
+        value: warning|critical
+    receiver: platform-email
+  receivers:
+    - name: platform-email
+      emailConfigs:
+        - to: ops@example.com
+          from: alertmanager@example.com
+          smarthost: smtp.example.com:587
+          authUsername: alertmanager
+          authIdentity: alertmanager
+          authPassword:
+            name: smtp-auth
+            key: password
+            optional: false
+
+---
+# Grafana dashboard (loaded by the kube-prometheus-stack sidecar)
+# Requires the Grafana dashboard sidecar (default: enabled with label
+# grafana_dashboard: "1").
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-platform-grafana-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: ai-platform
+data:
+  ai-platform-dashboard.json: |-
+    {
+      "annotations": { "list": [{ "builtIn": 1, "datasource": { "type": "grafana", "uid": "-- Grafana --" }, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard" }] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }, "unit": "reqps" }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "id": 1,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(http_requests_total{namespace=\"ai-platform\"}[5m])) by (method)", "legendFormat": "{{ method }}", "refId": "A" }
+          ],
+          "title": "HTTP request rate by method",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }, "unit": "s" }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "id": 2,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"ai-platform\"}[5m])) by (le, method))", "legendFormat": "p95 {{ method }}", "refId": "A" }
+          ],
+          "title": "HTTP p95 latency by method",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }, "unit": "percentunit" }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "id": 3,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(http_requests_total{namespace=\"ai-platform\",status=~\"5..\"}[5m])) by (method) / clamp_min(sum(rate(http_requests_total{namespace=\"ai-platform\"}[5m])) by (method), 1)", "legendFormat": "5xx {{ method }}", "refId": "A" }
+          ],
+          "title": "5xx error rate by method",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }, "unit": "short" }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "id": 4,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "process_resident_memory_bytes{namespace=\"ai-platform\"}", "legendFormat": "{{ pod }} RSS", "refId": "A" }
+          ],
+          "title": "Backend RSS memory",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "tags": ["ai-platform"],
+      "templating": { "list": [] },
+      "time": { "from": "now-1h", "to": "now" },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "AI Platform",
+      "uid": "ai-platform",
+      "version": 1,
+      "weekStart": ""
+    }

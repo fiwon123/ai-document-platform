@@ -358,6 +358,7 @@ LLM and Embedding APIs
 - [x] Infra CI: kustomize/helm/kubeconform validation + production image builds pushed to ghcr.io on dev merges
 - [x] Production TLS: cert-manager ClusterIssuers (Let's Encrypt staging/prod + self-signed) with automatic ingress issuance
 - [x] Production secrets: External Secrets Operator (ExternalSecret + ClusterSecretStore) replacing the dev placeholder Secret
+- [x] Production monitoring: Prometheus + Grafana (kube-prometheus-stack) with a backend /metrics endpoint, ServiceMonitor, alert rules, AlertmanagerConfig email routing, and a Grafana dashboard; metrics-server support for HPAs
 
 ### Backlog (not yet started)
 - [ ] Advanced caching strategies (e.g., semantic search result caching)

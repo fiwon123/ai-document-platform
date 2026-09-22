@@ -120,6 +120,34 @@ materialize the `app-secrets` Secret from a cloud secret manager via
 placeholder is never deployed. See `infra/README.md` for the provider setup,
 secret layout, and rotation workflow.
 
+### Production monitoring (Prometheus + Grafana)
+
+The production overlay and Helm chart (with `monitoring.enabled=true`) ship
+kube-prometheus-stack integration: a ServiceMonitor scraping the backend
+`/metrics` endpoint (process + HTTP metrics), alert rules (down / high 5xx /
+high latency), an AlertmanagerConfig email route, and an auto-loaded Grafana
+dashboard.
+
+```bash
+# 1. Install metrics-server (Kind only — enables HPA autoscaling locally)
+./infra/scripts/install-metrics-server.sh
+
+# 2. Install kube-prometheus-stack (once per cluster)
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm install prometheus-stack prometheus-community/kube-prometheus-stack \
+  -n monitoring --create-namespace
+
+# 3. Deploy the production overlay (or render the Helm chart with
+#    monitoring.enabled=true) — metrics and alerts go live automatically.
+kustomize build infra/k8s/overlays/production | kubectl apply -f -
+```
+
+- Grafana: `kubectl -n monitoring port-forward svc/prometheus-stack-grafana 3000:80`
+  (default admin/admin).
+- Alerts route to `ops@example.com` via SMTP — replace with real values and
+  create the `smtp-auth` Secret in `monitoring` before enabling the route.
+  See `infra/README.md`.
+
 ## API
 
 | Method | Endpoint | Description |
