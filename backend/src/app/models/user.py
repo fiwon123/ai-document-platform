@@ -19,7 +19,7 @@ class UserDB(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     username: Mapped[str] = mapped_column(nullable=False, unique=True)
     hashed_password: Mapped[str] = mapped_column(nullable=False)
-    is_active: Mapped[bool] = mapped_column(default=True)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     role: Mapped[Role] = mapped_column(
         default=Role.customer, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
