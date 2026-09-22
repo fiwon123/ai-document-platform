@@ -7,6 +7,7 @@ unreachable, as usual).
 """
 
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -18,13 +19,15 @@ from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
 from app.repositories.document import DocumentRepository
 from app.repositories.search import SearchRepository
-from app.schemas.document import FileResponse, SearchResponse, SearchResult
+from app.schemas.document import FileResponse, QAResponse, SearchResponse, SearchResult
 from app.services.document import DocumentService
+from app.services.qa import QAService
 from app.services.search import (
     _SEARCH_VERSION_KEY,
     SearchService,
     invalidate_user_search_cache,
 )
+from app.services.statistics import StatisticsService
 from app.worker import _invalidate_caches
 
 DIM = 1536
@@ -322,3 +325,187 @@ class TestWorkerCacheInvalidation:
 
         assert fake_redis.counters[_SEARCH_VERSION_KEY.format(user_id=user_id)] == 1
         assert f"document:{user_id}:{doc_id}" not in fake_redis.store
+
+
+class TestQAServiceCaching:
+    """Repeated identical questions must be served from cache (no LLM call)."""
+
+    def _service(self, monkeypatch, answer="Cached LLM answer"):
+        from app.services import qa as qa_module
+
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=answer))]
+        )
+        monkeypatch.setattr(qa_module, "_openai_client", fake_client)
+
+        fake_search = MagicMock()
+        fake_search.search.return_value = MagicMock(
+            results=[
+                SearchResult(
+                    chunk_id=uuid4(),
+                    document_id=uuid4(),
+                    document_filename="a.txt",
+                    content="context",
+                    score=0.5,
+                )
+            ]
+        )
+        return QAService(search_service=fake_search), fake_client, fake_search
+
+    def test_second_identical_ask_served_from_cache(self, fake_redis, monkeypatch):
+        service, fake_client, fake_search = self._service(monkeypatch)
+        user_id = uuid4()
+
+        first = service.ask(user_id=user_id, question="what is revenue?")
+        second = service.ask(user_id=user_id, question="what is revenue?")
+
+        assert fake_client.chat.completions.create.call_count == 1
+        # The cache hit skips the search too.
+        assert fake_search.search.call_count == 1
+        assert first.answer == second.answer == "Cached LLM answer"
+        assert first.question == second.question == "what is revenue?"
+
+    def test_cache_entries_keyed_by_model(self, fake_redis, monkeypatch):
+        service, fake_client, _ = self._service(monkeypatch)
+        user_id = uuid4()
+
+        service.ask(user_id=user_id, question="q", model="gpt-4o-mini")
+        service.ask(user_id=user_id, question="q", model="gpt-4o")
+
+        assert fake_client.chat.completions.create.call_count == 2
+
+    def test_invalidation_forces_fresh_answer(self, fake_redis, monkeypatch):
+        service, fake_client, _ = self._service(monkeypatch)
+        user_id = uuid4()
+
+        service.ask(user_id=user_id, question="q")
+        assert fake_client.chat.completions.create.call_count == 1
+
+        # Document set changed (upload/delete/processing) → cached answer is stale.
+        invalidate_user_search_cache(user_id)
+        service.ask(user_id=user_id, question="q")
+
+        assert fake_client.chat.completions.create.call_count == 2
+
+    def test_byok_never_cached(self, fake_redis, monkeypatch):
+        from app.services import qa as qa_module
+
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="BYOK answer"))]
+        )
+        # BYOK builds a throwaway client through the OpenAI factory.
+        monkeypatch.setattr(
+            qa_module,
+            "OpenAI",
+            lambda api_key=None, base_url=None: fake_client,
+        )
+
+        service = QAService(search_service=MagicMock())
+        user_id = uuid4()
+
+        service.ask(user_id=user_id, question="q", api_key="sk-user-secret")
+        service.ask(user_id=user_id, question="q", api_key="sk-user-secret")
+
+        # BYOK answers are never written to or read from the cache.
+        assert fake_client.chat.completions.create.call_count == 2
+
+    def test_uncacheable_error_answer_not_cached(self, fake_redis, monkeypatch):
+        from app.services import qa as qa_module
+
+        failing_client = MagicMock()
+        failing_client.chat.completions.create.side_effect = RuntimeError("boom")
+        monkeypatch.setattr(qa_module, "_openai_client", failing_client)
+
+        service = QAService(search_service=MagicMock())
+        user_id = uuid4()
+
+        first = service.ask(user_id=user_id, question="q")
+        second = service.ask(user_id=user_id, question="q")
+
+        assert failing_client.chat.completions.create.call_count == 2
+        assert first.answer == second.answer
+        assert "Could not generate an answer" in first.answer
+
+    def test_cached_response_round_trips_via_json(self, fake_redis):
+        """QA answers with sources must survive JSON serialization."""
+        result = _make_result()
+        response = QAResponse(
+            question="q",
+            answer="a",
+            sources=[result],
+            model="gpt-4o-mini",
+        )
+        redis_client.set_json("qa:1", response.model_dump(mode="json"))
+
+        restored = QAResponse.model_validate(redis_client.get_json("qa:1"))
+
+        assert restored.sources[0].chunk_id == result.chunk_id
+        assert restored.answer == "a"
+        assert restored.model == "gpt-4o-mini"
+
+
+class TestStatisticsCaching:
+    def test_user_summary_served_from_cache(self, fake_redis):
+        repo = MagicMock()
+        repo.status_counts.return_value = {DocumentStatus.READY: 2}
+        repo.recent_documents.return_value = []
+        repo.chunk_count.return_value = 5
+        service = StatisticsService(repository=repo)
+        user_id = uuid4()
+
+        first = service.get_summary(user_id)
+        second = service.get_summary(user_id)
+
+        assert repo.status_counts.call_count == 1
+        assert repo.chunk_count.call_count == 1
+        assert first == second
+        assert first.total_documents == 2
+        assert first.total_chunks == 5
+
+    def test_user_summary_invalidation_forces_fresh(self, fake_redis):
+        repo = MagicMock()
+        repo.status_counts.return_value = {DocumentStatus.READY: 1}
+        repo.recent_documents.return_value = []
+        repo.chunk_count.return_value = 1
+        service = StatisticsService(repository=repo)
+        user_id = uuid4()
+
+        service.get_summary(user_id)
+        invalidate_user_search_cache(user_id)
+        service.get_summary(user_id)
+
+        assert repo.status_counts.call_count == 2
+
+    def test_admin_summary_served_from_cache(self, fake_redis):
+        repo = MagicMock()
+        repo.user_status_counts.return_value = {True: 2, False: 1}
+        repo.all_status_counts.return_value = {DocumentStatus.READY: 1}
+        repo.all_chunk_count.return_value = 3
+        repo.all_search_count.return_value = 7
+        service = StatisticsService(repository=repo)
+
+        first = service.get_admin_summary()
+        second = service.get_admin_summary()
+
+        assert repo.user_status_counts.call_count == 1
+        assert repo.all_chunk_count.call_count == 1
+        assert first == second
+        assert first.total_users == 3
+        assert first.total_searches == 7
+
+    def test_cache_failures_fall_back_to_database(self, monkeypatch):
+        def boom_read(key):
+            raise RuntimeError("redis down")
+
+        monkeypatch.setattr(redis_client, "get_json", boom_read)
+        repo = MagicMock()
+        repo.status_counts.return_value = {DocumentStatus.READY: 1}
+        repo.recent_documents.return_value = []
+        repo.chunk_count.return_value = 1
+        service = StatisticsService(repository=repo)
+
+        response = service.get_summary(uuid4())
+
+        assert response.total_documents == 1

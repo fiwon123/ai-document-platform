@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import re
@@ -5,14 +6,29 @@ from uuid import UUID
 
 from openai import OpenAI
 
+from app.cache.redis import redis_client
 from app.schemas.document import QAResponse, SearchResult
-from app.services.search import SearchService
+from app.services.search import SearchService, user_cache_version
 
 logger = logging.getLogger(__name__)
 
 # Redact anything that looks like an API key inside logged provider errors
 # (OpenAI/Groq messages may echo the key prefix).
 _KEY_PATTERN = re.compile(r"sk-[A-Za-z0-9_-]+")
+
+# Cached answers are served for QA_TTL_SECONDS seconds; the user's cache
+# version (bumped on document upload/delete/processing) invalidates them
+# earlier when the document set changes.
+QA_CACHE_TTL_SECONDS = 900  # 15 minutes
+_QA_CACHE_KEY = "qa:{user_id}:{version}:{cache_id}"
+
+# Fallback strings that must never be cached: they indicate a transient
+# provider problem or missing configuration, and caching them would hide
+# the recovery for the whole TTL.
+_UNCACHEABLE_ANSWER_PREFIXES = (
+    "AI service is not configured.",
+    "Could not generate an answer with the AI provider.",
+)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
@@ -123,6 +139,69 @@ def _client_for_api_key(api_key: str, provider: str) -> OpenAI:
     return OpenAI(api_key=api_key, base_url=_provider_base_url(provider))
 
 
+def _qa_cache_key(
+    user_id: UUID,
+    question: str,
+    document_ids: list[UUID] | None,
+    model: str,
+) -> str | None:
+    """Build the QA cache key: user, document-set version, and a hash of
+    the question + filters + model. None when Redis is unavailable."""
+    try:
+        version = user_cache_version(user_id) or "0"
+        cache_id = hashlib.sha256(
+            f"{question}|{sorted(map(str, document_ids or []))}|{model}".encode()
+        ).hexdigest()[:16]
+        return _QA_CACHE_KEY.format(user_id=user_id, version=version, cache_id=cache_id)
+    except Exception as e:  # noqa: BLE001 - cache must never break QA
+        logger.warning(f"QA cache key generation failed: {e}")
+        return None
+
+
+def _get_cached_qa(
+    user_id: UUID,
+    question: str,
+    document_ids: list[UUID] | None,
+    model: str,
+) -> QAResponse | None:
+    key = _qa_cache_key(user_id, question, document_ids, model)
+    if key is None:
+        return None
+    try:
+        payload = redis_client.get_json(key)
+        if payload is None:
+            return None
+        return QAResponse.model_validate(payload)
+    except Exception as e:  # noqa: BLE001 - fall back to a live answer
+        logger.warning(f"QA cache read failed: {e}")
+        return None
+
+
+def _cache_qa(
+    user_id: UUID,
+    question: str,
+    document_ids: list[UUID] | None,
+    model: str,
+    response: QAResponse,
+) -> None:
+    key = _qa_cache_key(user_id, question, document_ids, model)
+    if key is None:
+        return
+    try:
+        redis_client.set_json(
+            key,
+            response.model_dump(mode="json"),
+            ex=QA_CACHE_TTL_SECONDS,
+        )
+    except Exception as e:  # noqa: BLE001 - cache write must never break QA
+        logger.warning(f"QA cache write failed: {e}")
+
+
+def _is_uncacheable_answer(answer: str) -> bool:
+    """True when the answer is a fallback that must never be cached."""
+    return answer.startswith(_UNCACHEABLE_ANSWER_PREFIXES)
+
+
 class QAService:
     def __init__(self, search_service: SearchService):
         self.search_service = search_service
@@ -135,6 +214,16 @@ class QAService:
         model: str | None = None,
         api_key: str | None = None,
     ) -> QAResponse:
+        effective_model = model or OPENAI_MODEL
+
+        # BYOK requests are never cached (key isolation + the answer may
+        # differ from the server-keyed one); everything else can be served
+        # from cache when the question + document set + model are identical.
+        if api_key is None:
+            cached = _get_cached_qa(user_id, question, document_ids, effective_model)
+            if cached is not None:
+                return cached
+
         search_response = self.search_service.search(
             user_id=user_id,
             query=question,
@@ -144,7 +233,6 @@ class QAService:
 
         context = self._build_context(search_response.results)
 
-        effective_model = model or OPENAI_MODEL
         answer = self._generate_answer(
             question=question,
             context=context,
@@ -152,12 +240,17 @@ class QAService:
             api_key=api_key,
         )
 
-        return QAResponse(
+        response = QAResponse(
             question=question,
             answer=answer,
             sources=search_response.results,
             model=effective_model,
         )
+
+        if api_key is None and not _is_uncacheable_answer(answer):
+            _cache_qa(user_id, question, document_ids, effective_model, response)
+
+        return response
 
     @staticmethod
     def list_models() -> dict:

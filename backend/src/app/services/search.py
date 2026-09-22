@@ -15,6 +15,24 @@ _SEARCH_VERSION_KEY = "search_version:{user_id}"
 _SEARCH_KEY = "search:{user_id}:{version}:{cache_id}"
 
 
+def user_cache_version(user_id: UUID) -> str | None:
+    """Return the user's current cache generation.
+
+    Every cache that depends on a user's document set (search results,
+    QA answers, dashboard statistics) includes this version in its key.
+    ``invalidate_user_search_cache`` bumps it, so a single version key
+    invalidates all of them together. Returns None when Redis is
+    unavailable — callers must then bypass the cache.
+    """
+    try:
+        return (
+            redis_client.get(_SEARCH_VERSION_KEY.format(user_id=user_id)) or "0"
+        )
+    except Exception as e:  # noqa: BLE001 - cache must never break callers
+        logger.warning(f"Cache version read failed: {e}")
+        return None
+
+
 def _search_cache_key(
     user_id: UUID,
     query: str,
@@ -28,7 +46,7 @@ def _search_cache_key(
     bypass the cache instead of failing the request.
     """
     try:
-        version = redis_client.get(_SEARCH_VERSION_KEY.format(user_id=user_id)) or "0"
+        version = user_cache_version(user_id) or "0"
         cache_id = hashlib.sha256(
             f"{query}|{top_k}|{offset}|{sorted(map(str, document_ids or []))}".encode()
         ).hexdigest()[:16]
