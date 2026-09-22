@@ -7,6 +7,7 @@ resources:
   - eso.yaml
   - hpa.yaml
   - ingress.yaml
+  - monitoring.yaml
   - networkpolicy.yaml
   - pdb.yaml
 

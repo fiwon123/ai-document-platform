@@ -89,7 +89,9 @@ spec:
     {{- include "ai-platform.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: backend
   ports:
-    - port: {{ .Values.service.backendPort }}
+    # Named so the monitoring ServiceMonitor can reference the scrape port.
+    - name: http
+      port: {{ .Values.service.backendPort }}
       targetPort: http
       {{- if eq .Values.service.type "NodePort" }}
       nodePort: {{ .Values.service.nodePorts.backend }}

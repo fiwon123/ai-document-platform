@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .middleware import LoggingMiddleware, RateLimitMiddleware
 from .middleware.rate_limit import RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW
@@ -168,3 +169,14 @@ app.include_router(users.router, prefix="/v1")
 @app.get("/")
 def root():
     return {"msg": "backend live on!"}
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    """Prometheus text exposition of process + HTTP metrics.
+
+    Scraped by the ServiceMonitor in the monitoring stack (see
+    infra/k8s/overlays/production/monitoring.yaml); intentionally not part
+    of the /v1 API schema.
+    """
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
