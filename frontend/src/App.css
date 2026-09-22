@@ -1842,6 +1842,37 @@ body {
   cursor: not-allowed;
 }
 
+/* Compact button variant (used in admin table rows). */
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+}
+
+/* User status label + activation toggle in the admin table. */
+.user-status-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-status {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font: 500 11px "DM Mono", monospace;
+}
+
+.user-status.is-active {
+  background: color-mix(in srgb, var(--success, #16a34a) 15%, transparent);
+  color: var(--success, #16a34a);
+}
+
+.user-status.is-disabled {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+}
+
 @media (max-width: 760px) {
   .main-content {
     padding: 16px 20px;

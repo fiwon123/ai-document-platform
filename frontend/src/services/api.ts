@@ -234,6 +234,13 @@ export const users = {
     });
   },
 
+  async updateUserActive(userId: string, isActive: boolean): Promise<User> {
+    return request<User>(`/users/${userId}/active`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_active: isActive }),
+    });
+  },
+
   async deleteUser(userId: string): Promise<void> {
     await request<void>(`/users/${userId}`, { method: "DELETE" });
   },

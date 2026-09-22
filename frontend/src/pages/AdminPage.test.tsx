@@ -36,6 +36,7 @@ vi.mock("../services/api", () => ({
   users: {
     listUsers: vi.fn(),
     updateUserRole: vi.fn(),
+    updateUserActive: vi.fn(),
     deleteUser: vi.fn(),
   },
 }));
@@ -45,6 +46,7 @@ import { users } from "../services/api";
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedListUsers = vi.mocked(users.listUsers);
 const mockedUpdateUserRole = vi.mocked(users.updateUserRole);
+const mockedUpdateUserActive = vi.mocked(users.updateUserActive);
 const mockedDeleteUser = vi.mocked(users.deleteUser);
 
 describe("AdminPage", () => {
@@ -60,6 +62,7 @@ describe("AdminPage", () => {
     });
     mockedListUsers.mockResolvedValue([adminSelf, alice]);
     mockedUpdateUserRole.mockResolvedValue({ ...alice, role: "admin" });
+    mockedUpdateUserActive.mockResolvedValue({ ...alice, is_active: false });
     mockedDeleteUser.mockResolvedValue(undefined);
     vi.spyOn(window, "confirm").mockReturnValue(true);
   });
@@ -126,6 +129,49 @@ describe("AdminPage", () => {
       s.closest("tr")?.textContent?.includes("root"),
     );
     expect((rootSelect as HTMLSelectElement).disabled).toBe(true);
+  });
+
+  it("disables a user via the activation toggle", async () => {
+    await renderPage();
+
+    const toggle = screen.getByRole("button", { name: "Disable alice" });
+    fireEvent.click(toggle);
+    await act(async () => {});
+
+    expect(mockedUpdateUserActive).toHaveBeenCalledWith("u-1", false);
+    expect(screen.getByText("disabled")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Enable alice" })).toBeTruthy();
+  });
+
+  it("enables a user via the activation toggle", async () => {
+    mockedListUsers.mockResolvedValue([adminSelf, { ...alice, is_active: false }]);
+    mockedUpdateUserActive.mockResolvedValue({ ...alice, is_active: true });
+    await renderPage();
+
+    const toggle = screen.getByRole("button", { name: "Enable alice" });
+    fireEvent.click(toggle);
+    await act(async () => {});
+
+    expect(mockedUpdateUserActive).toHaveBeenCalledWith("u-1", true);
+    expect(screen.getByRole("button", { name: "Disable alice" })).toBeTruthy();
+  });
+
+  it("does not let admins toggle their own active state", async () => {
+    await renderPage();
+
+    const toggle = screen.getByRole("button", { name: "Disable root" });
+    expect((toggle as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("shows an error when toggling fails", async () => {
+    mockedUpdateUserActive.mockRejectedValue(new Error("Cannot deactivate self"));
+    await renderPage();
+
+    const toggle = screen.getByRole("button", { name: "Disable alice" });
+    fireEvent.click(toggle);
+    await act(async () => {});
+
+    expect(screen.getByText("Cannot deactivate self")).toBeTruthy();
   });
 
   it("shows an empty state when there are no users", async () => {
