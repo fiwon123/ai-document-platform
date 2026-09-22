@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.chunk import DocumentChunk
@@ -36,6 +37,15 @@ class SearchRepository:
             document_ids=document_ids,
         )
 
+    @staticmethod
+    def _apply_user_filter(query, user_id: UUID, document_ids: list[UUID] | None):
+        """Restrict a search query to the user's own (optionally filtered)
+        documents."""
+        query = query.filter(DocumentDB.owner_id == user_id)
+        if document_ids:
+            query = query.filter(DocumentDB.id.in_(document_ids))
+        return query
+
     def _text_search(
         self,
         user_id: UUID,
@@ -43,15 +53,17 @@ class SearchRepository:
         offset: int = 0,
         document_ids: list[UUID] | None = None,
     ) -> tuple[list[SearchResult], int]:
+        # COUNT(*) OVER () computes the total matching rows in the same
+        # query that returns the page, avoiding a second round trip.
         query = (
-            self.db.query(DocumentChunk, DocumentDB.filename)
+            self.db.query(
+                DocumentChunk,
+                DocumentDB.filename,
+                func.count().over().label("total_count"),
+            )
             .join(DocumentDB, DocumentChunk.document_id == DocumentDB.id)
-            .filter(DocumentDB.owner_id == user_id)
         )
-        if document_ids:
-            query = query.filter(DocumentDB.id.in_(document_ids))
-
-        total_count = query.count()
+        query = self._apply_user_filter(query, user_id, document_ids)
 
         rows = (
             query.order_by(DocumentChunk.chunk_index, DocumentChunk.id)
@@ -59,6 +71,7 @@ class SearchRepository:
             .limit(top_k)
             .all()
         )
+        total_count = rows[0].total_count if rows else 0
 
         return (
             [
@@ -70,9 +83,9 @@ class SearchRepository:
                     score=0.0,
                     metadata_=chunk.metadata_,
                 )
-                for chunk, filename in rows
+                for chunk, filename, _ in rows
             ],
-            total_count,
+            int(total_count),
         )
 
     def _vector_search(
@@ -85,18 +98,17 @@ class SearchRepository:
     ) -> tuple[list[SearchResult], int]:
         distance = DocumentChunk.embedding.cosine_distance(query_embedding)
 
-        query = (
-            self.db.query(DocumentChunk, DocumentDB.filename, distance.label("score"))
-            .join(DocumentDB, DocumentChunk.document_id == DocumentDB.id)
-            .filter(DocumentDB.owner_id == user_id)
-            .filter(DocumentChunk.embedding.isnot(None))
-        )
-        if document_ids:
-            query = query.filter(DocumentDB.id.in_(document_ids))
-
-        total_count = query.count()
+        query = self.db.query(
+            DocumentChunk,
+            DocumentDB.filename,
+            distance.label("score"),
+            func.count().over().label("total_count"),
+        ).join(DocumentDB, DocumentChunk.document_id == DocumentDB.id)
+        query = query.filter(DocumentChunk.embedding.isnot(None))
+        query = self._apply_user_filter(query, user_id, document_ids)
 
         rows = query.order_by(distance).offset(offset).limit(top_k).all()
+        total_count = rows[0].total_count if rows else 0
 
         return (
             [
@@ -108,9 +120,9 @@ class SearchRepository:
                     score=float(score),
                     metadata_=chunk.metadata_,
                 )
-                for chunk, filename, score in rows
+                for chunk, filename, score, _ in rows
             ],
-            total_count,
+            int(total_count),
         )
 
     def save_search_history(self, history: SearchHistory):

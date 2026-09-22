@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, Enum, String
+from sqlalchemy import Boolean, DateTime, Enum, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +18,18 @@ class DocumentStatus(StrEnum):
 
 class DocumentDB(Base):
     __tablename__ = "documents"
+
+    # Mirrors migration 004: per-user document listing queries on
+    # WHERE owner_id = ? ORDER BY created_at DESC, which PostgreSQL serves
+    # with a backward scan of this composite index (the owner_id index
+    # alone would need a sort of every row of the user).
+    __table_args__ = (
+        Index(
+            "ix_documents_owner_id_created_at",
+            "owner_id",
+            "created_at",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

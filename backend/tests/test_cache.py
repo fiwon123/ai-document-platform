@@ -313,6 +313,19 @@ class TestDocumentServiceCaching:
         assert fake_redis.counters[_SEARCH_VERSION_KEY.format(user_id=user.id)] == 1
 
 
+class TestRedisClientConfig:
+    """Configuration of the Redis client itself (pool sizing)."""
+
+    def test_max_connections_applied_to_pool(self, monkeypatch):
+        import app.cache.redis as cache_redis
+
+        monkeypatch.setattr(cache_redis, "REDIS_MAX_CONNECTIONS", 7)
+        client = cache_redis.RedisClient()
+
+        # The pool is created eagerly; no connection is opened until first use.
+        assert client.client.connection_pool.max_connections == 7
+
+
 class TestWorkerCacheInvalidation:
     def test_status_transition_invalidates_caches(self, fake_redis):
         user_id = uuid4()

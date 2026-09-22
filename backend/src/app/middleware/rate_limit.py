@@ -12,10 +12,43 @@ from app.cache.redis import redis_client
 RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
 RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
 
+# Only trust proxy-provided headers when explicitly enabled. Off by default:
+# an untrusted client must never be able to rotate X-Forwarded-For and
+# bypass the limiter. Enable in production behind a proxy that overwrites
+# X-Forwarded-For (e.g. k8s ingress, nginx proxy_set_header).
+TRUST_PROXY_HEADERS = (
+    os.getenv("TRUST_PROXY_HEADERS", "").strip().lower() in {"1", "true", "yes", "on"}
+)
+
+# Upper bound on distinct client buckets held by the in-memory fallback so
+# an unreachable Redis can never grow the process memory without limit.
+MAX_IN_MEMORY_CLIENTS = 10_000
+
+# Anything longer than this is junk, not an IP. Bounds the size of derived
+# rate-limit keys even when proxy headers are trusted.
+_MAX_FORWARDED_TOKEN_LENGTH = 64
+
 # Probed once per process; None = not yet probed.
 _REDIS_AVAILABLE: bool | None = None
 
 _RATE_LIMIT_429_MESSAGE = "Too many requests. Please try again later."
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP.
+
+    When ``TRUST_PROXY_HEADERS`` is enabled the socket peer is the proxy
+    itself, so the real client is the leftmost entry of ``X-Forwarded-For``
+    (proxies append, never prepend). Falls back to the socket peer when the
+    header is absent, empty, or implausibly long.
+    """
+    if TRUST_PROXY_HEADERS:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            client = forwarded.split(",")[0].strip()
+            if client and len(client) <= _MAX_FORWARDED_TOKEN_LENGTH:
+                return client
+    return request.client.host if request.client else "unknown"
 
 
 def _redis_is_available() -> bool:
@@ -76,7 +109,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = _client_ip(request)
         now = time.time()
 
         if _redis_is_available():
@@ -85,15 +118,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if count > self.requests:
                 return self._too_many_response()
         else:
-            self.clients[client_ip] = [
-                t for t in self.clients[client_ip] if now - t < self.window
+            # Bound the fallback: evict the oldest bucket before inserting a
+            # new one (dicts preserve insertion order).
+            if client_ip not in self.clients and len(self.clients) >= MAX_IN_MEMORY_CLIENTS:
+                self.clients.pop(next(iter(self.clients)))
+
+            history = [
+                t for t in self.clients.get(client_ip, []) if now - t < self.window
             ]
 
-            if len(self.clients[client_ip]) >= self.requests:
+            if len(history) >= self.requests:
                 return self._too_many_response()
 
-            self.clients[client_ip].append(now)
-            remaining = max(0, self.requests - len(self.clients[client_ip]))
+            history.append(now)
+            self.clients[client_ip] = history
+            remaining = max(0, self.requests - len(history))
 
         response = await call_next(request)
         response.headers["X-RateLimit-Limit"] = str(self.requests)

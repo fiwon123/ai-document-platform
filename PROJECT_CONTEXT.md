@@ -266,6 +266,7 @@ LLM and Embedding APIs
 - `REDIS_PORT`: Redis port (default: 6379; dockerized dev host port: 63790)
 - `REDIS_DB`: Redis logical database (default: 0)
 - `REDIS_PASSWORD`: Redis password (default: none)
+- `REDIS_MAX_CONNECTIONS`: Redis connection pool size (default: 20)
 - `MINIO_ENDPOINT`: MinIO endpoint (default: localhost:9000)
 - `MINIO_PUBLIC_ENDPOINT`: Public MinIO endpoint for presigned URLs (default: same as `MINIO_ENDPOINT`)
 - `MINIO_ACCESS_KEY`: MinIO access key (default: minioadmin)
@@ -284,6 +285,9 @@ LLM and Embedding APIs
 - `EMBEDDING_MODEL`: Embedding model (default: text-embedding-ada-002)
 - `RATE_LIMIT_REQUESTS`: Rate limit requests (default: 100)
 - `RATE_LIMIT_WINDOW`: Rate limit window in seconds (default: 60)
+- `CORS_ORIGINS`: Comma-separated allowed CORS origins (defaults to the dev
+  ports 5173/5175/3000; `*` forces a wildcard — dev/testing only, and it
+  disables credentialed requests)
 
 ### Frontend
 - No additional environment variables required (uses proxy)
@@ -334,9 +338,12 @@ LLM and Embedding APIs
   via per-request `api_key`; per-user answer caching)
 - [x] PDF first-page thumbnails (PyMuPDF, best-effort in the worker)
 - [x] Semantic caching (QA answers, dashboard statistics)
-- [x] Rate limiting middleware
+- [x] Production-readiness hardening (CORS via env var with restricted
+  methods/headers, trusted X-Forwarded-For rate limiting, bounded Redis pool,
+  composite owner/created_at index, single-query search counting)
+- [x] Rate limiting middleware (per-user, Redis-backed, X-Forwarded-For aware)
 - [x] Logging middleware
-- [x] CORS configuration (dev ports 5173, 5175, 3000)
+- [x] CORS configuration (env-driven via `CORS_ORIGINS`; dev ports 5173, 5175, 3000)
 - [x] Frontend React app with routing (landing, login, register, documents, search, QA, dashboard, admin, profile, settings, demo)
 - [x] Frontend auth pages (login/register)
 - [x] Frontend document management page (upload incl. bulk, thumbnail previews, delete)
