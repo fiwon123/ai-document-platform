@@ -1,0 +1,38 @@
+# Build context for Dockerfile.frontend is ./frontend.
+# Keep the image small and secrets out of layers.
+
+# VCS
+.git
+.gitignore
+
+# Other Dockerfile variants (the compose/dev image)
+Dockerfile
+
+# Node
+node_modules/
+dist/
+coverage/
+
+# Tests & dev tooling
+src/**/*.test.ts
+src/**/*.test.tsx
+vitest.config.ts
+src/test/
+.oxlintrc.json
+
+# Environment & secrets
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Docs
+*.md
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/

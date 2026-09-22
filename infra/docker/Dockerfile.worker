@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1
+
+# Production worker image for the AI Document Intelligence Platform.
+# Build context: ./backend  (docker build -f infra/docker/Dockerfile.worker ./backend)
+#
+# Shares the exact same build/runtime layers as Dockerfile.backend; the only
+# difference is the entrypoint (arq job queue worker instead of uvicorn).
+
+# uv version, bump via --build-arg UV_VERSION=x.y.z
+ARG UV_VERSION=0.6.1
+
+# ---------- Build stage ----------
+FROM python:3.14-slim AS build
+
+# Re-declare ARG after FROM so it is in scope in this stage.
+ARG UV_VERSION=0.6.1
+
+WORKDIR /app
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+# System deps needed to compile native wheels (psycopg2 etc.).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv (pinned to avoid surprises).
+COPY --from=ghcr.io/astral-sh/uv:${UV_VERSION} /uv /usr/local/bin/uv
+
+# Copy project metadata + source, then install locked deps (no dev group).
+COPY pyproject.toml uv.lock README.md ./
+COPY src/ ./src/
+RUN uv sync --frozen --no-dev
+
+# ---------- Runtime stage ----------
+FROM python:3.14-slim AS runtime
+
+ARG UV_VERSION=0.6.1
+
+WORKDIR /app
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/app/src"
+
+# The worker runs as a non-root user in production.
+RUN groupadd --system app && useradd --system --gid app --create-home app
+
+# Copy the ready-made virtualenv and the worker source.
+COPY --from=build /app/.venv /app/.venv
+COPY --from=build /app/src /app/src
+
+USER app
+
+# arq consumes the WorkerSettings dict defined in app.worker.
+CMD ["arq", "app.worker.WorkerSettings"]
