@@ -1,0 +1,20 @@
+apiVersion: v2
+name: ai-platform
+description: >
+  AI Document Intelligence Platform — upload, process, semantically search,
+  and ask questions about documents. Self-contained chart: runs PostgreSQL
+  (pgvector), Redis, MinIO, FastAPI backend, arq worker, and the React SPA.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - documents
+  - embeddings
+  - semantic-search
+  - rag
+home: https://github.com/fiwon123/ai-document-platform
+sources:
+  - https://github.com/fiwon123/ai-document-platform
+maintainers:
+  - name: fiwon123
+    url: https://github.com/fiwon123

@@ -1,0 +1,160 @@
+# Default values for ai-platform.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# -- Override the base name used for resources
+nameOverride: ""
+# -- Override the full resource name
+fullnameOverride: ""
+
+# -- Number of backend replicas
+backendReplicas: 1
+# -- Number of worker replicas
+workerReplicas: 1
+# -- Number of frontend replicas
+frontendReplicas: 1
+
+image:
+  repository: ghcr.io/EXAMPLE/ai-platform
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  # -- Backend port exposed in-cluster
+  backendPort: 8000
+  # -- Frontend port exposed in-cluster
+  frontendPort: 8080
+  nodePorts:
+    # -- NodePort for frontend (optional; dev/kind)
+    frontend: 30080
+    # -- NodePort for backend (optional; dev/kind)
+    backend: 30081
+
+ingress:
+  enabled: false
+  className: nginx
+  host: ai-platform.example.com
+  tlsSecretName: ai-platform-tls
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+
+secrets:
+  # -- Name of the Kubernetes Secret containing app secrets
+  name: app-secrets
+  # -- Optional alternate secret names read by the app
+  external: false
+  # -- JWT signing key (base64); used only when secrets.create is true
+  existingSecretKey: SECRET_KEY
+
+config:
+  postgres:
+    db: mydb
+    user: postgres
+    # -- Leave empty to auto-derive from the release name
+    host: ""
+    port: "5432"
+  redis:
+    # -- Leave empty to auto-derive from the release name
+    host: ""
+    port: "6379"
+    db: "0"
+  minio:
+    # -- Leave empty to auto-derive from the release name
+    endpoint: ""
+    publicEndpoint: ""
+    bucket: documents
+    secure: "false"
+    region: us-east-1
+  auth:
+    algorithm: HS256
+    accessTokenExpireMinutes: "30"
+    refreshTokenExpireDays: "7"
+    # -- Set false when serving over plain HTTP (local/kind)
+    refreshCookieSecure: "true"
+  ai:
+    openaiModel: gpt-4
+    embeddingModel: text-embedding-ada-002
+  rateLimit:
+    requests: "100"
+    window: "60"
+
+migrate:
+  enabled: true
+  backoffLimit: 3
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+postgres:
+  enabled: true
+  image: pgvector/pgvector:pg16
+  storage: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  storage: 5Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 512Mi
+
+minio:
+  enabled: true
+  image: minio/minio:latest
+  storage: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 1Gi
+
+backend:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  # -- Extra env vars for the backend deployment
+  extraEnv: []
+
+worker:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+frontend:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault

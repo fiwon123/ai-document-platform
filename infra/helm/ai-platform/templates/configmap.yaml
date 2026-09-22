@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-platform.fullname" . }}-config
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+data:
+  POSTGRES_DB: {{ .Values.config.postgres.db | quote }}
+  POSTGRES_USER: {{ .Values.config.postgres.user | quote }}
+  POSTGRES_HOST: {{ default (printf "%s-postgres" (include "ai-platform.fullname" .)) .Values.config.postgres.host | quote }}
+  POSTGRES_PORT: {{ .Values.config.postgres.port | quote }}
+  REDIS_HOST: {{ default (printf "%s-redis" (include "ai-platform.fullname" .)) .Values.config.redis.host | quote }}
+  REDIS_PORT: {{ .Values.config.redis.port | quote }}
+  REDIS_DB: {{ .Values.config.redis.db | quote }}
+  MINIO_ENDPOINT: {{ default (printf "%s-minio:9000" (include "ai-platform.fullname" .)) .Values.config.minio.endpoint | quote }}
+  MINIO_PUBLIC_ENDPOINT: {{ default (printf "%s-minio:9000" (include "ai-platform.fullname" .)) .Values.config.minio.publicEndpoint | quote }}
+  MINIO_BUCKET: {{ .Values.config.minio.bucket | quote }}
+  MINIO_SECURE: {{ .Values.config.minio.secure | quote }}
+  MINIO_REGION: {{ .Values.config.minio.region | quote }}
+  ALGORITHM: {{ .Values.config.auth.algorithm | quote }}
+  ACCESS_TOKEN_EXPIRE_MINUTES: {{ .Values.config.auth.accessTokenExpireMinutes | quote }}
+  REFRESH_TOKEN_EXPIRE_DAYS: {{ .Values.config.auth.refreshTokenExpireDays | quote }}
+  REFRESH_COOKIE_SECURE: {{ .Values.config.auth.refreshCookieSecure | quote }}
+  OPENAI_MODEL: {{ .Values.config.ai.openaiModel | quote }}
+  EMBEDDING_MODEL: {{ .Values.config.ai.embeddingModel | quote }}
+  RATE_LIMIT_REQUESTS: {{ .Values.config.rateLimit.requests | quote }}
+  RATE_LIMIT_WINDOW: {{ .Values.config.rateLimit.window | quote }}
