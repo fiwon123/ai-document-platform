@@ -8,6 +8,9 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_DB = int(os.getenv("REDIS_DB", "0"))
 REDIS_PASSWORD: str | None = os.getenv("REDIS_PASSWORD")
+# Bounded connection pool so a traffic spike cannot exhaust file
+# descriptors or the Redis server's connection limit.
+REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "20"))
 
 
 class RedisClient:
@@ -18,6 +21,7 @@ class RedisClient:
             db=REDIS_DB,
             password=REDIS_PASSWORD,
             decode_responses=True,
+            max_connections=REDIS_MAX_CONNECTIONS,
         )
 
     def get(self, key: str) -> str | None:

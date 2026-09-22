@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -13,6 +14,17 @@ from .schemas.error import ErrorDetail, ErrorResponse
 from .storage.storage import storage
 
 logger = logging.getLogger(__name__)
+
+# Development defaults; override with the CORS_ORIGINS env var in
+# production (comma-separated, e.g. "https://app.example.com,https://admin.example.com").
+_DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:5175",
+    "http://localhost:3000",
+]
+
+_CORS_ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
+_CORS_ALLOWED_HEADERS = ["Content-Type", "Authorization", "Accept"]
 
 # Stable machine-readable codes for common HTTP statuses.
 _EXCEPTION_CODES: dict[int, str] = {
@@ -47,6 +59,24 @@ def _error_response(status_code: int, message: str, details: dict | None = None)
             )
         ).model_dump(),
     )
+
+
+def parse_cors_origins(raw: str | None) -> list[str]:
+    """Parse the CORS_ORIGINS env var (comma-separated origins).
+
+    Returns the development defaults when unset or empty. A literal "*"
+    is preserved so Starlette's wildcard handling applies; mixing a
+    wildcard with explicit origins would silently allow all origins
+    (Starlette treats any list containing "*" as allow-all), so any
+    explicit entries are dropped when a wildcard is present.
+    """
+    if raw:
+        origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+        if origins:
+            if "*" in origins:
+                return ["*"]
+            return origins
+    return list(_DEFAULT_CORS_ORIGINS)
 
 
 @asynccontextmanager
@@ -115,16 +145,15 @@ app.add_middleware(
     requests=RATE_LIMIT_REQUESTS,
     window=RATE_LIMIT_WINDOW,
 )
+_cors_origins = parse_cors_origins(os.getenv("CORS_ORIGINS"))
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5175",
-        "http://localhost:3000",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    # Starlette forbids allow_credentials=True together with a "*" wildcard;
+    # browsers never send stored credentials to a fully-wildcard origin anyway.
+    allow_credentials="*" not in _cors_origins,
+    allow_methods=_CORS_ALLOWED_METHODS,
+    allow_headers=_CORS_ALLOWED_HEADERS,
 )
 
 app.include_router(auth.router, prefix="/v1")
