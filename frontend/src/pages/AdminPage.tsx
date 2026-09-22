@@ -63,6 +63,23 @@ export function AdminPage() {
     }
   }
 
+  async function handleToggleActive(user: User) {
+    setBusyId(user.id);
+    setError(null);
+    try {
+      const updated = await users.updateUserActive(user.id, !user.is_active);
+      setUserList((prev) =>
+        prev.map((u) =>
+          u.id === user.id ? { ...u, is_active: updated.is_active } : u,
+        ),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update status");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (!isAdmin) {
     return (
       <div className="page">
@@ -123,7 +140,27 @@ export function AdminPage() {
                       <option value="admin">admin</option>
                     </select>
                   </td>
-                  <td>{user.is_active ? "active" : "disabled"}</td>
+                  <td>
+                    <div className="user-status-cell">
+                      <span
+                        className={`user-status ${
+                          user.is_active ? "is-active" : "is-disabled"
+                        }`}
+                      >
+                        {user.is_active ? "active" : "disabled"}
+                      </span>
+                      <button
+                        onClick={() => handleToggleActive(user)}
+                        className="btn btn-secondary btn-sm"
+                        disabled={
+                          busyId === user.id || user.id === currentUser?.id
+                        }
+                        aria-label={`${user.is_active ? "Disable" : "Enable"} ${user.username}`}
+                      >
+                        {user.is_active ? "Disable" : "Enable"}
+                      </button>
+                    </div>
+                  </td>
                   <td>
                     {user.created_at
                       ? new Date(user.created_at).toLocaleDateString()

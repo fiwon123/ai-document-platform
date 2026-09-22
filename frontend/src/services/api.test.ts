@@ -634,6 +634,24 @@ describe("users admin methods", () => {
     expect(JSON.parse(String(options?.body))).toEqual({ role: "admin" });
   });
 
+  it("patches a user active state via PATCH /v1/users/{id}/active", async () => {
+    const updated: User = { id: "u-1", username: "alice", is_active: false, role: "customer", created_at: null };
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify(updated), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await users.updateUserActive("u-1", false);
+
+    expect(result).toEqual(updated);
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(String(url)).toBe("/v1/users/u-1/active");
+    expect(options?.method).toBe("PATCH");
+    expect(JSON.parse(String(options?.body))).toEqual({ is_active: false });
+  });
+
   it("deletes a user via DELETE /v1/users/{id} and tolerates 204", async () => {
     vi.mocked(globalThis.fetch).mockResolvedValue(new Response(null, { status: 204 }));
 
