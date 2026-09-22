@@ -23,11 +23,12 @@ QA_CACHE_TTL_SECONDS = 900  # 15 minutes
 _QA_CACHE_KEY = "qa:{user_id}:{version}:{cache_id}"
 
 # Fallback strings that must never be cached: they indicate a transient
-# provider problem or missing configuration, and caching them would hide
-# the recovery for the whole TTL.
+# provider problem, missing configuration, or an empty model answer, and
+# caching them would hide the recovery for the whole TTL.
 _UNCACHEABLE_ANSWER_PREFIXES = (
     "AI service is not configured.",
     "Could not generate an answer with the AI provider.",
+    "No answer generated.",
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -144,13 +145,21 @@ def _qa_cache_key(
     question: str,
     document_ids: list[UUID] | None,
     model: str,
+    version: str | None = None,
 ) -> str | None:
     """Build the QA cache key: user, document-set version, and a hash of
-    the question + filters + model. None when Redis is unavailable."""
+    the normalized question + filters + model. None when Redis is
+    unavailable.
+
+    ``version`` is resolved once per request and threaded through the
+    cache read and write, so a cache invalidation that lands mid-request
+    cannot attach a stale answer to the *new* version key.
+    """
     try:
-        version = user_cache_version(user_id) or "0"
+        version = version or user_cache_version(user_id) or "0"
+        normalized_question = question.strip().casefold()
         cache_id = hashlib.sha256(
-            f"{question}|{sorted(map(str, document_ids or []))}|{model}".encode()
+            f"{normalized_question}|{sorted(map(str, document_ids or []))}|{model}".encode()
         ).hexdigest()[:16]
         return _QA_CACHE_KEY.format(user_id=user_id, version=version, cache_id=cache_id)
     except Exception as e:  # noqa: BLE001 - cache must never break QA
@@ -163,8 +172,9 @@ def _get_cached_qa(
     question: str,
     document_ids: list[UUID] | None,
     model: str,
+    version: str | None = None,
 ) -> QAResponse | None:
-    key = _qa_cache_key(user_id, question, document_ids, model)
+    key = _qa_cache_key(user_id, question, document_ids, model, version=version)
     if key is None:
         return None
     try:
@@ -183,8 +193,9 @@ def _cache_qa(
     document_ids: list[UUID] | None,
     model: str,
     response: QAResponse,
+    version: str | None = None,
 ) -> None:
-    key = _qa_cache_key(user_id, question, document_ids, model)
+    key = _qa_cache_key(user_id, question, document_ids, model, version=version)
     if key is None:
         return
     try:
@@ -199,7 +210,7 @@ def _cache_qa(
 
 def _is_uncacheable_answer(answer: str) -> bool:
     """True when the answer is a fallback that must never be cached."""
-    return answer.startswith(_UNCACHEABLE_ANSWER_PREFIXES)
+    return answer.lstrip().startswith(_UNCACHEABLE_ANSWER_PREFIXES)
 
 
 class QAService:
@@ -219,8 +230,20 @@ class QAService:
         # BYOK requests are never cached (key isolation + the answer may
         # differ from the server-keyed one); everything else can be served
         # from cache when the question + document set + model are identical.
-        if api_key is None:
-            cached = _get_cached_qa(user_id, question, document_ids, effective_model)
+        # The cache version is resolved ONCE so the read and write share a
+        # version — an invalidation landing mid-request then only ever
+        # orphanages the (already stale) old-version entry.
+        cache_version: str | None = (
+            user_cache_version(user_id) if api_key is None else None
+        )
+        if cache_version is not None:
+            cached = _get_cached_qa(
+                user_id,
+                question,
+                document_ids,
+                effective_model,
+                version=cache_version,
+            )
             if cached is not None:
                 return cached
 
@@ -247,8 +270,15 @@ class QAService:
             model=effective_model,
         )
 
-        if api_key is None and not _is_uncacheable_answer(answer):
-            _cache_qa(user_id, question, document_ids, effective_model, response)
+        if cache_version is not None and not _is_uncacheable_answer(answer):
+            _cache_qa(
+                user_id,
+                question,
+                document_ids,
+                effective_model,
+                response,
+                version=cache_version,
+            )
 
         return response
 

@@ -47,7 +47,13 @@ class StatisticsService:
         self.repository = repository
 
     def get_summary(self, owner_id: UUID) -> StatisticsResponse:
-        key = _me_cache_key(owner_id)
+        # The cache version is resolved ONCE so the cache read and write
+        # share a version — an invalidation landing mid-request only ever
+        # orphanages the already-stale old-version entry. When Redis is
+        # unavailable this is None and the cache is bypassed entirely.
+        version = user_cache_version(owner_id)
+        key = None if version is None else _ME_KEY.format(user_id=owner_id, version=version)
+
         cached = _get_cached_json(key) if key else None
         if cached is not None:
             return StatisticsResponse.model_validate(cached)
@@ -103,11 +109,3 @@ class StatisticsService:
             ex=ADMIN_STATS_CACHE_TTL_SECONDS,
         )
         return response
-
-
-def _me_cache_key(owner_id: UUID) -> str | None:
-    """Key for the user dashboard summary; None when Redis is unavailable."""
-    version = user_cache_version(owner_id)
-    if version is None:
-        return None
-    return _ME_KEY.format(user_id=owner_id, version=version)

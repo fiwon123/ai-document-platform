@@ -32,7 +32,9 @@ os.environ.setdefault("RATE_LIMIT_REQUESTS", "10000")
 os.environ.setdefault("REFRESH_COOKIE_SECURE", "false")
 # Run against a dedicated Redis database so the autouse flush fixture can
 # fully isolate tests from the development cache (and from each other).
-os.environ.setdefault("REDIS_DB", "15")
+# Forced (not setdefault) so a stray REDIS_DB in the environment cannot
+# point the flush at the developer's live cache database.
+os.environ["REDIS_DB"] = "15"
 
 from sqlalchemy import create_engine, text
 

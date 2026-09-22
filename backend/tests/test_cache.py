@@ -59,15 +59,18 @@ class FakeRedis:
     def __init__(self):
         self.store: dict[str, str] = {}
         self.counters: dict[str, int] = {}
+        self.ttls: dict[str, int | None] = {}
 
     def get(self, key):
         return self.store.get(key)
 
     def set(self, key, value, ex=None):
         self.store[key] = value
+        self.ttls[key] = ex
         return True
 
     def delete(self, key):
+        self.ttls.pop(key, None)
         return self.store.pop(key, None) is not None
 
     def get_json(self, key):
@@ -81,6 +84,7 @@ class FakeRedis:
 
     def set_json(self, key, value, ex=None):
         self.store[key] = json.dumps(value)
+        self.ttls[key] = ex
         return True
 
     def increment(self, key):
@@ -445,6 +449,28 @@ class TestQAServiceCaching:
         assert restored.answer == "a"
         assert restored.model == "gpt-4o-mini"
 
+    def test_cached_answer_uses_expected_ttl(self, fake_redis, monkeypatch):
+        from app.services.qa import QA_CACHE_TTL_SECONDS
+
+        service, _, _ = self._service(monkeypatch)
+        user_id = uuid4()
+
+        service.ask(user_id=user_id, question="q")
+
+        qa_keys = [key for key in fake_redis.ttls if key.startswith("qa:")]
+        assert len(qa_keys) == 1
+        assert fake_redis.ttls[qa_keys[0]] == QA_CACHE_TTL_SECONDS
+
+    def test_question_normalization_dedupes_cache_entries(self, fake_redis, monkeypatch):
+        service, fake_client, _ = self._service(monkeypatch)
+        user_id = uuid4()
+
+        service.ask(user_id=user_id, question="What is revenue?")
+        service.ask(user_id=user_id, question="  what is revenue? ")
+
+        # Case and surrounding whitespace must hit the same cache entry.
+        assert fake_client.chat.completions.create.call_count == 1
+
 
 class TestStatisticsCaching:
     def test_user_summary_served_from_cache(self, fake_redis):
@@ -478,6 +504,30 @@ class TestStatisticsCaching:
 
         assert repo.status_counts.call_count == 2
 
+    def test_stats_entries_use_expected_ttls(self, fake_redis):
+        from app.services.statistics import (
+            ADMIN_STATS_CACHE_TTL_SECONDS,
+            USER_STATS_CACHE_TTL_SECONDS,
+        )
+
+        repo = MagicMock()
+        repo.status_counts.return_value = {DocumentStatus.READY: 1}
+        repo.recent_documents.return_value = []
+        repo.chunk_count.return_value = 1
+        repo.user_status_counts.return_value = {True: 1}
+        repo.all_status_counts.return_value = {DocumentStatus.READY: 1}
+        repo.all_chunk_count.return_value = 1
+        repo.all_search_count.return_value = 1
+        service = StatisticsService(repository=repo)
+
+        service.get_summary(uuid4())
+        service.get_admin_summary()
+
+        assert fake_redis.ttls["stats:admin"] == ADMIN_STATS_CACHE_TTL_SECONDS
+        me_keys = [key for key in fake_redis.ttls if key.startswith("stats:me:")]
+        assert len(me_keys) == 1
+        assert fake_redis.ttls[me_keys[0]] == USER_STATS_CACHE_TTL_SECONDS
+
     def test_admin_summary_served_from_cache(self, fake_redis):
         repo = MagicMock()
         repo.user_status_counts.return_value = {True: 2, False: 1}
@@ -496,10 +546,18 @@ class TestStatisticsCaching:
         assert first.total_searches == 7
 
     def test_cache_failures_fall_back_to_database(self, monkeypatch):
-        def boom_read(key):
-            raise RuntimeError("redis down")
-
-        monkeypatch.setattr(redis_client, "get_json", boom_read)
+        """A Redis outage mid-request must never break the dashboard query."""
+        monkeypatch.setattr(redis_client, "get", lambda key: "0")
+        monkeypatch.setattr(
+            redis_client,
+            "get_json",
+            lambda key: (_ for _ in ()).throw(RuntimeError("redis down")),
+        )
+        monkeypatch.setattr(
+            redis_client,
+            "set_json",
+            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("redis down")),
+        )
         repo = MagicMock()
         repo.status_counts.return_value = {DocumentStatus.READY: 1}
         repo.recent_documents.return_value = []
@@ -509,3 +567,4 @@ class TestStatisticsCaching:
         response = service.get_summary(uuid4())
 
         assert response.total_documents == 1
+        assert repo.status_counts.call_count == 1
