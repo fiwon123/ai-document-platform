@@ -249,14 +249,43 @@ export function DocumentsPage() {
     }
   }, [docs]);
 
-  // Close the preview modal on Escape (matches the overlay click handler).
+  // Focus management for the preview modal: move focus into the dialog on
+  // open, trap Tab inside it, close on Escape, and restore focus to the
+  // triggering element on close (WCAG 2.4.3 / 2.1.2).
+  const previewCloseRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!preview) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    previewCloseRef.current?.focus();
+
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPreview(null);
+      if (event.key === "Escape") {
+        setPreview(null);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const modal = previewCloseRef.current?.closest(".modal");
+      if (!modal) return;
+      const focusables = modal.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      // Restore focus after the dialog unmounts.
+      previouslyFocused?.focus?.();
+    };
   }, [preview]);
 
   /**
@@ -465,13 +494,14 @@ export function DocumentsPage() {
           className="modal-overlay"
           role="dialog"
           aria-modal="true"
-          aria-label={`Preview of ${preview.filename}`}
+          aria-labelledby="preview-modal-title"
           onClick={() => setPreview(null)}
         >
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>{preview.filename}</h2>
+              <h2 id="preview-modal-title">{preview.filename}</h2>
               <button
+                ref={previewCloseRef}
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => setPreview(null)}

@@ -88,4 +88,24 @@ describe("Navbar", () => {
     fireEvent.click(screen.getAllByText("Logout")[0]);
     expect(logout).toHaveBeenCalled();
   });
+
+  it("moves focus into the menu when opened and restores it on Escape", () => {
+    renderNavbar();
+    const toggle = screen.getByRole("button", {
+      name: "Open navigation menu",
+    });
+
+    fireEvent.click(toggle);
+    // Focus lands on the first menu link.
+    expect(document.activeElement).toBe(
+      screen.getByRole("link", { name: "Dashboard" }),
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("button", {
+      name: "Open navigation menu",
+    })).toBeTruthy();
+    // Focus returns to the toggle button.
+    expect(document.activeElement).toBe(toggle);
+  });
 });

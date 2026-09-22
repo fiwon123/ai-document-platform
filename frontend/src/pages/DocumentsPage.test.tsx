@@ -237,6 +237,35 @@ describe("DocumentsPage preview", () => {
     ).toBeTruthy();
   });
 
+  it("moves focus into the modal on open and restores it on Escape", async () => {
+    mockedPreview.mockResolvedValue({
+      id: "doc-ready",
+      filename: "notes.txt",
+      preview: "x",
+      truncated: false,
+    });
+
+    render(<DocumentsPage />);
+    await settle();
+
+    const previewButton = screen.getByRole("button", { name: "Preview" });
+    // Simulate real browser behavior where clicking a button focuses it.
+    previewButton.focus();
+    fireEvent.click(previewButton);
+    await settle();
+
+    // Focus lands on the modal's Close button (first focusable inside).
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Close" }),
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await settle();
+
+    // Focus is restored to the closing trigger.
+    expect(document.activeElement).toBe(previewButton);
+  });
+
   it("closes the modal when the Close button is clicked", async () => {
     mockedPreview.mockResolvedValue({
       id: "doc-ready",

@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
@@ -13,6 +13,8 @@ export const Navbar = memo(function Navbar() {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = () => setMenuOpen(false);
 
@@ -21,6 +23,45 @@ export const Navbar = memo(function Navbar() {
     logout();
     navigate("/login");
   };
+
+  // Mobile menu key handling: focus moves to the first link on open,
+  // Tab cycles within the open menu, Escape closes it and returns focus
+  // to the toggle button (WCAG 2.1.2 / 2.4.3).
+  useEffect(() => {
+    if (!menuOpen) return;
+    const menu = menuRef.current;
+    const focusables = () =>
+      Array.from(
+        menu?.querySelectorAll<HTMLElement>("a[href], button:not([disabled])") ??
+          [],
+      );
+
+    const firstLink = focusables()[0];
+    firstLink?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        toggleRef.current?.focus();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [menuOpen]);
 
   return (
     <nav className="navbar">
@@ -31,6 +72,7 @@ export const Navbar = memo(function Navbar() {
       </div>
 
       <button
+        ref={toggleRef}
         type="button"
         className="navbar-toggle"
         aria-expanded={menuOpen}
@@ -44,6 +86,7 @@ export const Navbar = memo(function Navbar() {
       </button>
 
       <div
+        ref={menuRef}
         className={`navbar-links${menuOpen ? " navbar-links-open" : ""}`}
         id="navbar-links"
       >
