@@ -137,6 +137,40 @@ kubectl -n monitoring create secret generic smtp-auth \
   --from-literal=password='...'
 ```
 
+## Logging (Loki + Promtail)
+
+The production overlay (`logging.yaml`) and the Helm chart (with
+`logging.enabled=true`) ship centralized logging in the `monitoring`
+namespace:
+
+| Resource | Purpose |
+|----------|---------|
+| Loki StatefulSet + PVC (10Gi) | single-binary, filesystem storage, retention 7d (`limits_config.retention_period`) |
+| Promtail DaemonSet | tails `/var/log/pods` on every node (Kubernetes pod discovery), pushes to `http://loki:3100/loki/api/v1/push` |
+| Loki datasource ConfigMap | auto-loaded by Grafana (`grafana_datasource: "1"`) |
+
+Promtail needs cluster-wide read access to pods — it ships a
+ServiceAccount + ClusterRole(`pods get/list/watch`)/ClusterRoleBinding.
+
+Log labels: `namespace`, `pod`, `container`, `component`
+(`app.kubernetes.io/component`), `image`, `uid`.
+
+Query in Grafana → Explore → datasource **Loki**, e.g.:
+
+```text
+{namespace="ai-platform"} |= "error"
+{namespace="monitoring", component="loki"}
+```
+
+Retention: change `limits_config.retention_period` (overlay) or
+`logging.retentionPeriod` (chart) — e.g. `720h` = 30 days. Storage: the
+PVC is `logging.storageSize` (chart) / 10Gi (overlay); Loki runs as a
+single replica — scale out by switching the storage backend for larger
+deployments.
+
+Kind: Loki/Promtail run fine on the local cluster; the Promtail DaemonSet
+reads the kubelet's `/var/log` hostPath.
+
 ## TLS (cert-manager)
 
 `cert-manager.yaml` (production overlay) / `certManager.enabled` (chart):

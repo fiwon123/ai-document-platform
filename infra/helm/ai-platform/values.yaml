@@ -241,3 +241,16 @@ monitoring:
   smarthost: smtp.example.com:587
   # -- Secret holding the SMTP password (key: password) in the monitoring namespace
   smtpAuthSecret: smtp-auth
+
+logging:
+  # -- Render Loki + Promtail + a Grafana Loki datasource (centralized logs)
+  enabled: false
+  # -- Namespace where Loki/Promtail are deployed and the datasource lands
+  namespace: monitoring
+  # -- Log retention period (Loki limits_config.retention_period)
+  retentionPeriod: 168h
+  # -- Persistent storage per Loki replica
+  storageSize: 10Gi
+  # -- Image tags (pinned, Loki 3.x single-binary TSDB schema)
+  lokiImage: grafana/loki:3.3.2
+  promtailImage: grafana/promtail:3.3.2

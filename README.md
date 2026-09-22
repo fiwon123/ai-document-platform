@@ -148,6 +148,23 @@ kustomize build infra/k8s/overlays/production | kubectl apply -f -
   create the `smtp-auth` Secret in `monitoring` before enabling the route.
   See `infra/README.md`.
 
+### Production logging (Loki + Promtail)
+
+The production overlay and Helm chart (with `logging.enabled=true`) ship
+centralized logging: a Loki StatefulSet (filesystem storage, 7-day retention)
+and a Promtail DaemonSet tailing pod logs on every node. Grafana picks up the
+Loki datasource automatically:
+
+```bash
+kustomize build infra/k8s/overlays/production | kubectl apply -f -
+# then in Grafana → Explore → Loki:
+#   {namespace="ai-platform"} |= "error"
+```
+
+Tune retention (`logging.retentionPeriod` / `limits_config.retention_period`)
+and storage size (`logging.storageSize`) via chart values. See
+`infra/README.md`.
+
 ## API
 
 | Method | Endpoint | Description |
