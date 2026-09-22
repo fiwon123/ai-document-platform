@@ -244,12 +244,14 @@ export const search = {
     query: string,
     topK = 5,
     documentIds: string[] = [],
+    offset = 0,
   ): Promise<SearchResponse> {
     return request<SearchResponse>("/search/", {
       method: "POST",
       body: JSON.stringify({
         query,
         top_k: topK,
+        offset,
         document_ids: documentIds.length > 0 ? documentIds : null,
       }),
     });
