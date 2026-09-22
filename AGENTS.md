@@ -152,6 +152,46 @@ standard values: 5432, 6379, 8000, 5173):
 - Backend API: `localhost:8001`
 - Frontend Dev: `localhost:5175`
 
+### Devcontainer recovery
+
+If the backend container exits with code 1 on every devcontainer reopen and
+`docker compose logs backend` shows
+`could not translate host name "postgres" to address: Name or service not known`,
+the infrastructure containers have lost their network attachment
+(`docker inspect <project>-postgres-1 --format '{{json .NetworkSettings.Networks}}'`
+returns `{}`). The Dev Containers CLI always runs `up -d --no-recreate`, so it
+never repairs detached containers — the failure repeats until the network is
+recreated on the host.
+
+Diagnose / repair from the **host** (the agent cannot run these inside the
+container):
+
+```bash
+# Check-only: prints OK or the containers missing the network
+./scripts/fix-compose-network.sh
+
+# Repair: recreates the stack (volumes are preserved — NEVER uses -v)
+./scripts/fix-compose-network.sh --repair
+```
+
+Manual equivalent:
+
+```bash
+docker compose down        # no -v: keeps all volumes/data
+docker compose up -d postgres redis minio
+# then reopen the devcontainer
+```
+
+Mitigations baked into `docker-compose.yaml`:
+
+- The project network is pinned by name (`ai-document-platform_default`), so
+  host-side `docker compose` runs and the CLI's `up -d --no-recreate` always
+  target the same physical network.
+- Every service declares `networks: [default]` explicitly.
+- `backend` and `worker` wait (bounded, ~90 s) until the `postgres` hostname
+  resolves before running migrations, instead of failing instantly on a
+  detached network.
+
 ### What the agent CANNOT do
 
 - Run `docker` or `docker compose` commands

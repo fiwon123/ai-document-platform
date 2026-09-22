@@ -22,6 +22,8 @@ services:
           # Cap each service so a single container can never exhaust the host
           # memory and trigger the OOM killer (exit code 137) during startup.
           memory: 512M
+    networks:
+      - default
 
   redis:
     image: redis:7-alpine
@@ -40,6 +42,8 @@ services:
       resources:
         limits:
           memory: 256M
+    networks:
+      - default
 
   minio:
     image: minio/minio:latest
@@ -61,6 +65,8 @@ services:
       resources:
         limits:
           memory: 512M
+    networks:
+      - default
 
   backend:
     build:
@@ -104,7 +110,7 @@ services:
       - uv_cache:/root/.cache/uv
     working_dir: /workspace/backend
     command: >
-      sh -c "uv sync && uv run python -m alembic upgrade head && uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "uv sync --frozen && { count=0; until uv run python -c \"import socket; socket.getaddrinfo('postgres', 5432)\" >/dev/null 2>&1 || [ $$count -ge 45 ]; do echo 'waiting for postgres...'; sleep 2; count=$$((count+1)); done; } && uv run python -m alembic upgrade head && exec uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     healthcheck:
       # python:3.14-slim ships no curl; urllib is stdlib and always present.
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health', timeout=5)"]
@@ -120,6 +126,8 @@ services:
           # Hosts the VS Code server, devcontainer features (node, uv, gh),
           # uv sync, alembic and uvicorn — give it the most headroom.
           memory: 3G
+    networks:
+      - default
 
   worker:
     build:
@@ -159,11 +167,13 @@ services:
       - uv_cache:/root/.cache/uv
     working_dir: /workspace/backend
     command: >
-      sh -c "uv sync && uv run arq app.worker.WorkerSettings"
+      sh -c "uv sync --frozen && { count=0; until uv run python -c \"import socket; socket.getaddrinfo('postgres', 5432)\" >/dev/null 2>&1 || [ $$count -ge 45 ]; do echo 'waiting for postgres...'; sleep 2; count=$$((count+1)); done; } && exec uv run arq app.worker.WorkerSettings"
     deploy:
       resources:
         limits:
           memory: 1G
+    networks:
+      - default
 
   frontend:
     build:
@@ -195,6 +205,17 @@ services:
       resources:
         limits:
           memory: 1G
+    networks:
+      - default
+
+networks:
+  # Pin the project network by name so host-side `docker compose up` runs and
+  # the Dev Containers CLI's `up -d --no-recreate` always target the SAME
+  # physical network. Prevents the drift where infrastructure containers end
+  # up with no network attachment, which bricks backend DNS resolution for
+  # the "postgres" service name.
+  default:
+    name: ai-document-platform_default
 
 volumes:
   postgres_data:
