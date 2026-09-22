@@ -14,7 +14,8 @@
   },
   "forwardPorts": [8001, 5175],
   "remoteEnv": {
-    "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}"
+    "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}",
+    "GH_TOKEN": "${localEnv:GH_TOKEN}"
   },
   "postStartCommand": "sh -c 'gh auth status >/dev/null 2>&1 || { if [ -n \"$GITHUB_TOKEN\" ]; then echo \"$GITHUB_TOKEN\" | gh auth login --with-token && echo \"gh: authenticated via GITHUB_TOKEN\" || echo \"gh: GITHUB_TOKEN auth failed - run gh auth login manually\"; else echo \"gh: GITHUB_TOKEN not set on host - run gh auth login manually\"; fi; }'",
   "postCreateCommand": "npm install -g opencode-ai && cd backend && uv sync && cd ../frontend && npm install",
