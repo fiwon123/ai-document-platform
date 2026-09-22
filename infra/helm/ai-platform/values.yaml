@@ -42,10 +42,20 @@ ingress:
 secrets:
   # -- Name of the Kubernetes Secret containing app secrets
   name: app-secrets
-  # -- Optional alternate secret names read by the app
+  # -- true: do NOT render the bundled Secret; provide your own (External
+  # Secrets / sealed-secrets etc.) named secrets.name with the keys
+  # SECRET_KEY, POSTGRES_PASSWORD, MINIO_ACCESS_KEY, MINIO_SECRET_KEY,
+  # DATABASE_URL. Configure the corresponding values below anyway so the
+  # ConfigMap/initContainers resolve the right hosts.
   external: false
-  # -- JWT signing key (base64); used only when secrets.create is true
-  existingSecretKey: SECRET_KEY
+  # -- JWT signing key (dev placeholder; MUST be changed in real envs)
+  jwtSecretKey: "change-me-jwt-secret"
+  # -- PostgreSQL password (dev placeholder; used for both the bundled Secret
+  # and the DATABASE_URL it generates)
+  postgresPassword: "mysecretpassword"
+  # -- MinIO root credentials (dev placeholders; match docker-compose defaults)
+  minioAccessKey: "minioadmin"
+  minioSecretKey: "minioadmin"
 
 config:
   postgres:
@@ -139,6 +149,8 @@ worker:
       memory: 256Mi
     limits:
       memory: 1Gi
+  # -- Extra env vars for the worker deployment
+  extraEnv: []
 
 frontend:
   resources:
@@ -150,9 +162,27 @@ frontend:
 
 autoscaling:
   enabled: false
-  minReplicas: 1
-  maxReplicas: 3
-  targetCPUUtilizationPercentage: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+  backend:
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  worker:
+    minReplicas: 1
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+pdb:
+  # -- Render PodDisruptionBudgets for backend/worker/frontend
+  enabled: false
+
+networkPolicy:
+  # -- Render default-deny + explicit allow NetworkPolicies
+  enabled: false
+  # -- Namespace of the ingress controller the frontend accepts traffic from
+  ingressControllerNamespace: ingress-nginx
 
 podSecurityContext:
   runAsNonRoot: true

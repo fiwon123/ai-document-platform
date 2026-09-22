@@ -7,13 +7,13 @@ metadata:
 data:
   POSTGRES_DB: {{ .Values.config.postgres.db | quote }}
   POSTGRES_USER: {{ .Values.config.postgres.user | quote }}
-  POSTGRES_HOST: {{ default (printf "%s-postgres" (include "ai-platform.fullname" .)) .Values.config.postgres.host | quote }}
+  POSTGRES_HOST: {{ include "ai-platform.postgresHost" . | quote }}
   POSTGRES_PORT: {{ .Values.config.postgres.port | quote }}
-  REDIS_HOST: {{ default (printf "%s-redis" (include "ai-platform.fullname" .)) .Values.config.redis.host | quote }}
+  REDIS_HOST: {{ include "ai-platform.redisHost" . | quote }}
   REDIS_PORT: {{ .Values.config.redis.port | quote }}
   REDIS_DB: {{ .Values.config.redis.db | quote }}
-  MINIO_ENDPOINT: {{ default (printf "%s-minio:9000" (include "ai-platform.fullname" .)) .Values.config.minio.endpoint | quote }}
-  MINIO_PUBLIC_ENDPOINT: {{ default (printf "%s-minio:9000" (include "ai-platform.fullname" .)) .Values.config.minio.publicEndpoint | quote }}
+  MINIO_ENDPOINT: {{ include "ai-platform.minioEndpoint" . | quote }}
+  MINIO_PUBLIC_ENDPOINT: {{ .Values.config.minio.publicEndpoint | default (include "ai-platform.minioEndpoint" .) | quote }}
   MINIO_BUCKET: {{ .Values.config.minio.bucket | quote }}
   MINIO_SECURE: {{ .Values.config.minio.secure | quote }}
   MINIO_REGION: {{ .Values.config.minio.region | quote }}

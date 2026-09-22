@@ -1,0 +1,87 @@
+{{- if .Values.networkPolicy.enabled }}
+# NetworkPolicy: default-deny ingress/egress for the release namespace,
+# with explicit allows between app components and toward the internet.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ai-platform.fullname" . }}-default-deny
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Allow intra-namespace traffic (app pods talking to postgres/redis/minio,
+# frontend -> backend) plus DNS resolution.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ai-platform.fullname" . }}-allow-intra-namespace
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+    # DNS
+    - to:
+        - namespaceSelector: {} # any namespace (matches kube-system coredns)
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Ingress controllers (ingress-nginx etc.) live in their own namespace;
+# allow them to reach the frontend.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ai-platform.fullname" . }}-allow-ingress-controller
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "ai-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressControllerNamespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.frontendPort }}
+---
+# backend and worker call external LLM/embedding APIs over HTTPS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ai-platform.fullname" . }}-allow-egress-internet
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [backend, worker]
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 443
+{{- end }}

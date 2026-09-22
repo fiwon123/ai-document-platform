@@ -40,3 +40,38 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
+
+{{/*
+Resolve the PostgreSQL host: auto-derived from the release name when the
+in-cluster postgres is enabled, otherwise the explicitly configured host
+(required when postgres.enabled=false, i.e. an external database).
+*/}}
+{{- define "ai-platform.postgresHost" -}}
+{{- if .Values.postgres.enabled -}}
+{{- default (printf "%s-postgres" (include "ai-platform.fullname" .)) .Values.config.postgres.host -}}
+{{- else -}}
+{{- required "config.postgres.host must be set when postgres.enabled=false (external database)" .Values.config.postgres.host -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Resolve the Redis host: auto-derived unless redis.enabled=false.
+*/}}
+{{- define "ai-platform.redisHost" -}}
+{{- if .Values.redis.enabled -}}
+{{- default (printf "%s-redis" (include "ai-platform.fullname" .)) .Values.config.redis.host -}}
+{{- else -}}
+{{- required "config.redis.host must be set when redis.enabled=false (external Redis)" .Values.config.redis.host -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Resolve the MinIO endpoint: auto-derived unless minio.enabled=false.
+*/}}
+{{- define "ai-platform.minioEndpoint" -}}
+{{- if .Values.minio.enabled -}}
+{{- default (printf "%s-minio:9000" (include "ai-platform.fullname" .)) .Values.config.minio.endpoint -}}
+{{- else -}}
+{{- required "config.minio.endpoint must be set when minio.enabled=false (external object storage)" .Values.config.minio.endpoint -}}
+{{- end -}}
+{{- end }}

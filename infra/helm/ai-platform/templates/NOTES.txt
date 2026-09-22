@@ -22,13 +22,19 @@ Components:
   - minio               -> svc/{{ include "ai-platform.fullname" . }}-minio
 
 Notes:
-  - Migrations run automatically via the pre-install hook Job
-    ({{ include "ai-platform.fullname" . }}-migrate).
-  - Backend and worker gate startup on the migrate Job completing.
-  - The bundled Secret contains DEV placeholder credentials
-    (docker-compose defaults). For real environments, create your own
-    Secret and point .Values.secrets.name at it, then set the values in
-    values.yaml (SECRET_KEY, POSTGRES_PASSWORD, MINIO_*, DATABASE_URL).
+  - Migrations run automatically via the one-shot Job
+    ({{ include "ai-platform.fullname" . }}-migrate); backend and worker
+    gate startup on it completing.
+  - The bundled Secret ({{ .Values.secrets.name }}) contains DEV placeholder
+    credentials (docker-compose defaults). For real environments either
+    - set the value-based secrets.subkeys (jwtSecretKey, postgresPassword,
+      minioAccessKey, minioSecretKey) via --set / user-supplied values, or
+    - set secrets.external=true, create your own Secret named
+      {{ .Values.secrets.name }} with the keys SECRET_KEY, POSTGRES_PASSWORD,
+      MINIO_ACCESS_KEY, MINIO_SECRET_KEY, DATABASE_URL (e.g. via External
+      Secrets), and helm will not render the bundled one.
+  - OPENAI_API_KEY / GROQ_API_KEY are NOT bundled; provide them through
+    secrets.external or backend.extraEnv / worker.extraEnv.
   - Health check: curl http://<endpoint>/v1/health
 
 Upgrade:

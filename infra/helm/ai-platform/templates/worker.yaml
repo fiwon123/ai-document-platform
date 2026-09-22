@@ -6,7 +6,9 @@ metadata:
     {{- include "ai-platform.labels" . | nindent 4 }}
     app.kubernetes.io/component: worker
 spec:
+  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.workerReplicas }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "ai-platform.selectorLabels" . | nindent 6 }}
@@ -29,7 +31,7 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-          command: ["sh", "-c", "until nc -z {{ .Values.config.postgres.host }} {{ .Values.config.postgres.port }}; do echo waiting for postgres; sleep 2; done"]
+          command: ["sh", "-c", "until nc -z {{ include "ai-platform.postgresHost" . }} {{ .Values.config.postgres.port }}; do echo waiting for postgres; sleep 2; done"]
         - name: wait-for-migrate
           image: bitnami/kubectl:1.30
           securityContext:
@@ -51,5 +53,9 @@ spec:
                 name: {{ include "ai-platform.fullname" . }}-config
             - secretRef:
                 name: {{ .Values.secrets.name }}
+          {{- with .Values.worker.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
