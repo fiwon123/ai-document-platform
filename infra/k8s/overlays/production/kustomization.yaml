@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - ../../base
   - cert-manager.yaml
+  - eso.yaml
   - hpa.yaml
   - ingress.yaml
   - networkpolicy.yaml
@@ -32,6 +33,12 @@ images:
     newTag: latest
 
 patches:
+  # Production secrets come from External Secrets Operator (eso.yaml); drop
+  # the plaintext dev placeholder Secret shipped in the base.
+  - path: delete-app-secrets.yaml
+    target:
+      kind: Secret
+      name: app-secrets
   # Production replicas.
   - target:
       kind: Deployment

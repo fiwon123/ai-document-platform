@@ -356,6 +356,8 @@ LLM and Embedding APIs
 - [x] Production Docker images (backend, worker, frontend with nginx)
 - [x] Kubernetes deployment (Kustomize base + dev/production overlays, standalone Helm chart, Kind cluster scripts)
 - [x] Infra CI: kustomize/helm/kubeconform validation + production image builds pushed to ghcr.io on dev merges
+- [x] Production TLS: cert-manager ClusterIssuers (Let's Encrypt staging/prod + self-signed) with automatic ingress issuance
+- [x] Production secrets: External Secrets Operator (ExternalSecret + ClusterSecretStore) replacing the dev placeholder Secret
 
 ### Backlog (not yet started)
 - [ ] Advanced caching strategies (e.g., semantic search result caching)
