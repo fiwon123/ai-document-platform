@@ -16,13 +16,14 @@ from app.database.db import get_db
 from app.repositories.document import DocumentRepository
 from app.routes.auth import get_current_user_id
 from app.schemas.document import (
+    BulkUploadResponse,
     DeleteDocumentResponse,
     DocumentPreviewResponse,
     DocumentStatusResponse,
     DownloadUrlResponse,
     FileResponse,
 )
-from app.services.document import DocumentService
+from app.services.document import MAX_BULK_UPLOAD_FILES, DocumentService
 from app.storage.storage import storage
 
 router = APIRouter(
@@ -45,6 +46,25 @@ def upload_document(
     owner_id: Annotated[UUID, Depends(get_current_user_id)],
 ):
     return service.upload(owner_id=owner_id, upload_file=upload_file)
+
+
+@router.post("/bulk", status_code=status.HTTP_201_CREATED, response_model=BulkUploadResponse)
+def upload_documents_bulk(
+    service: Annotated[DocumentService, Depends(get_document_service)],
+    owner_id: Annotated[UUID, Depends(get_current_user_id)],
+    files: Annotated[list[UploadFile] | None, File()] = None,
+):
+    if not files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No files provided. Send at least one file.",
+        )
+    if len(files) > MAX_BULK_UPLOAD_FILES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Too many files. Maximum is {MAX_BULK_UPLOAD_FILES} per request.",
+        )
+    return service.upload_bulk(owner_id=owner_id, upload_files=files)
 
 
 @router.get("/", response_model=list[FileResponse])
