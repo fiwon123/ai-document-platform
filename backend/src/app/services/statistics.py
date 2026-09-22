@@ -1,5 +1,7 @@
+import logging
 from uuid import UUID
 
+from app.cache.redis import redis_client
 from app.models.document import DocumentStatus
 from app.repositories.statistics import StatisticsRepository
 from app.schemas.statistics import (
@@ -7,6 +9,35 @@ from app.schemas.statistics import (
     RecentDocument,
     StatisticsResponse,
 )
+from app.services.search import user_cache_version
+
+logger = logging.getLogger(__name__)
+
+# The dashboard polls these endpoints, and re-running the aggregate
+# queries on every poll is wasteful. User statistics are version-keyed
+# (invalidated on document changes like the rest of the user caches);
+# the admin statistics span all users, so a short TTL is their
+# invalidation mechanism.
+USER_STATS_CACHE_TTL_SECONDS = 60
+ADMIN_STATS_CACHE_TTL_SECONDS = 30
+_ME_KEY = "stats:me:{user_id}:{version}"
+_ADMIN_KEY = "stats:admin"
+
+
+def _get_cached_json(key: str):
+    """Fetch and JSON-decode a cached payload; None on miss or failure."""
+    try:
+        return redis_client.get_json(key)
+    except Exception as e:  # noqa: BLE001 - cache must never break stats
+        logger.warning(f"Statistics cache read failed: {e}")
+        return None
+
+
+def _set_cached_json(key: str, value, ex: int) -> None:
+    try:
+        redis_client.set_json(key, value, ex=ex)
+    except Exception as e:  # noqa: BLE001 - cache write must never break stats
+        logger.warning(f"Statistics cache write failed: {e}")
 
 
 class StatisticsService:
@@ -16,11 +47,22 @@ class StatisticsService:
         self.repository = repository
 
     def get_summary(self, owner_id: UUID) -> StatisticsResponse:
+        # The cache version is resolved ONCE so the cache read and write
+        # share a version — an invalidation landing mid-request only ever
+        # orphanages the already-stale old-version entry. When Redis is
+        # unavailable this is None and the cache is bypassed entirely.
+        version = user_cache_version(owner_id)
+        key = None if version is None else _ME_KEY.format(user_id=owner_id, version=version)
+
+        cached = _get_cached_json(key) if key else None
+        if cached is not None:
+            return StatisticsResponse.model_validate(cached)
+
         counts = self.repository.status_counts(owner_id)
 
         recent = self.repository.recent_documents(owner_id)
 
-        return StatisticsResponse(
+        response = StatisticsResponse(
             total_documents=sum(counts.values()),
             pending_documents=counts.get(DocumentStatus.PENDING, 0),
             processing_documents=counts.get(DocumentStatus.PROCESSING, 0),
@@ -32,12 +74,24 @@ class StatisticsService:
             ],
         )
 
+        if key is not None:
+            _set_cached_json(
+                key,
+                response.model_dump(mode="json"),
+                ex=USER_STATS_CACHE_TTL_SECONDS,
+            )
+        return response
+
     def get_admin_summary(self) -> AdminStatisticsResponse:
         """System-wide aggregates for admins (all users, all documents)."""
+        cached = _get_cached_json(_ADMIN_KEY)
+        if cached is not None:
+            return AdminStatisticsResponse.model_validate(cached)
+
         users = self.repository.user_status_counts()
         documents = self.repository.all_status_counts()
 
-        return AdminStatisticsResponse(
+        response = AdminStatisticsResponse(
             total_users=sum(users.values()),
             active_users=users.get(True, 0),
             disabled_users=users.get(False, 0),
@@ -49,3 +103,9 @@ class StatisticsService:
             total_chunks=self.repository.all_chunk_count(),
             total_searches=self.repository.all_search_count(),
         )
+        _set_cached_json(
+            _ADMIN_KEY,
+            response.model_dump(mode="json"),
+            ex=ADMIN_STATS_CACHE_TTL_SECONDS,
+        )
+        return response

@@ -30,6 +30,11 @@ os.environ.setdefault("RATE_LIMIT_REQUESTS", "10000")
 # httpx (TestClient) never sends Secure cookies over plain http:// — disable
 # the Secure flag in tests so the refresh-cookie flow is exercised end-to-end.
 os.environ.setdefault("REFRESH_COOKIE_SECURE", "false")
+# Run against a dedicated Redis database so the autouse flush fixture can
+# fully isolate tests from the development cache (and from each other).
+# Forced (not setdefault) so a stray REDIS_DB in the environment cannot
+# point the flush at the developer's live cache database.
+os.environ["REDIS_DB"] = "15"
 
 from sqlalchemy import create_engine, text
 
@@ -89,6 +94,24 @@ def _truncate_all(engine) -> None:
     with engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             conn.execute(table.delete())
+
+
+@pytest.fixture(autouse=True)
+def flush_test_redis():
+    """Wipe the dedicated test Redis database before every test.
+
+    Caching tests that do not use the in-memory ``fake_redis`` fixture
+    (e.g. statistics route tests) must never observe keys left behind by
+    an earlier test. When Redis is unreachable this is a no-op — the
+    caching code paths already fall back gracefully.
+    """
+    from app.cache.redis import redis_client
+
+    try:
+        redis_client.client.flushdb()
+    except Exception:  # noqa: BLE001, S110 - Redis is optional in tests
+        pass
+    yield
 
 
 @pytest.fixture()
