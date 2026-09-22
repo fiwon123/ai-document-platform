@@ -11,11 +11,20 @@ const pendingDoc: Document = {
   mime_type: "application/pdf",
   status: "pending",
   error_message: null,
+  has_thumbnail: false,
   created_at: "2026-09-08T00:00:00Z",
   updated_at: "2026-09-08T00:00:00Z",
 };
 
 const readyDoc: Document = { ...pendingDoc, id: "doc-ready", filename: "notes.txt", status: "ready" };
+
+const thumbDoc: Document = {
+  ...pendingDoc,
+  id: "doc-thumb",
+  filename: "report.pdf",
+  status: "ready",
+  has_thumbnail: true,
+};
 
 vi.mock("../services/api", () => ({
   documents: {
@@ -25,6 +34,7 @@ vi.mock("../services/api", () => ({
     uploadMany: vi.fn(),
     delete: vi.fn(),
     getDownloadUrl: vi.fn(),
+    getThumbnailUrl: vi.fn(),
     preview: vi.fn(),
   },
 }));
@@ -36,6 +46,7 @@ const mockedGetStatus = vi.mocked(documents.getStatus);
 const mockedUploadMany = vi.mocked(documents.uploadMany);
 const mockedDelete = vi.mocked(documents.delete);
 const mockedGetDownloadUrl = vi.mocked(documents.getDownloadUrl);
+const mockedGetThumbnailUrl = vi.mocked(documents.getThumbnailUrl);
 const mockedPreview = vi.mocked(documents.preview);
 
 /** Flush pending microtasks inside act so React applies queued state updates. */
@@ -212,6 +223,51 @@ describe("DocumentsPage preview", () => {
     await settle();
 
     expect(screen.getByRole("alert")).toHaveTextContent("Preview failed");
+  });
+});
+
+describe("DocumentsPage thumbnails", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("fetches and renders the thumbnail image when a document has one", async () => {
+    mockedList.mockResolvedValue([thumbDoc]);
+    mockedGetThumbnailUrl.mockResolvedValue({
+      id: "doc-thumb",
+      thumbnail_url: "https://minio.example/thumb.png",
+    });
+
+    render(<DocumentsPage />);
+
+    expect(await screen.findByAltText("Preview of report.pdf")).toHaveAttribute(
+      "src",
+      "https://minio.example/thumb.png",
+    );
+    expect(mockedGetThumbnailUrl).toHaveBeenCalledWith("doc-thumb");
+  });
+
+  it("keeps the generic placeholder for documents without a thumbnail", async () => {
+    mockedList.mockResolvedValue([readyDoc]);
+
+    const { container } = render(<DocumentsPage />);
+    await settle();
+
+    expect(mockedGetThumbnailUrl).not.toHaveBeenCalled();
+    expect(container.querySelector(".document-thumbnail")).toBeNull();
+    expect(container.querySelector(".file-icon")).toBeTruthy();
+  });
+
+  it("falls back to the placeholder when the thumbnail URL request fails", async () => {
+    mockedList.mockResolvedValue([thumbDoc]);
+    mockedGetThumbnailUrl.mockRejectedValue(new Error("not found"));
+
+    const { container } = render(<DocumentsPage />);
+    await settle();
+
+    expect(mockedGetThumbnailUrl).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".document-thumbnail")).toBeNull();
+    expect(container.querySelector(".file-icon")).toBeTruthy();
   });
 });
 

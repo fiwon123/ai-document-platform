@@ -1187,6 +1187,18 @@ body {
   flex-shrink: 0;
 }
 
+/* Rendered first-page preview of PDF documents. Matches the .file-icon
+   footprint so cards keep a stable header height. */
+.document-thumbnail {
+  width: 48px;
+  height: 58px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  flex-shrink: 0;
+  background-color: var(--panel);
+}
+
 .document-info h3 {
   margin: 0 0 4px;
   font-size: 1rem;

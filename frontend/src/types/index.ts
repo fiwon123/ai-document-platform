@@ -16,8 +16,14 @@ export interface Document {
   mime_type: string | null;
   status: DocumentStatus;
   error_message: string | null;
+  has_thumbnail: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface ThumbnailUrlResponse {
+  id: string;
+  thumbnail_url: string;
 }
 
 export interface DocumentStatusResponse {

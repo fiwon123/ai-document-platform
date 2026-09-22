@@ -19,6 +19,7 @@ function isProcessing(status: Document["status"]): boolean {
 
 export function DocumentsPage() {
   const [docs, setDocs] = useState<Document[]>([]);
+  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -30,6 +31,8 @@ export function DocumentsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Ids we already asked for a thumbnail URL (avoid refetch loops). */
+  const thumbnailFetched = useRef<Set<string>>(new Set());
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -71,6 +74,32 @@ export function DocumentsPage() {
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
+  }, [docs]);
+
+  // Fetch presigned thumbnail URLs for documents that have one (PDFs that
+  // finished processing). Failures are silent — the card keeps its generic
+  // icon. Each id is requested at most once per page visit.
+  useEffect(() => {
+    let cancelled = false;
+    const toFetch = docs.filter(
+      (d) => d.has_thumbnail && !thumbnailFetched.current.has(d.id),
+    );
+    for (const doc of toFetch) {
+      thumbnailFetched.current.add(doc.id);
+      documents
+        .getThumbnailUrl(doc.id)
+        .then(({ thumbnail_url }) => {
+          if (!cancelled) {
+            setThumbnailUrls((prev) => ({ ...prev, [doc.id]: thumbnail_url }));
+          }
+        })
+        .catch(() => {
+          // 404 (no thumbnail) or a transient network error — keep placeholder.
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
   }, [docs]);
 
   // Close the preview modal on Escape (matches the overlay click handler).
@@ -259,7 +288,16 @@ export function DocumentsPage() {
           {docs.map((doc) => (
             <div key={doc.id} className="document-card">
               <div className="document-card-header">
-                <div className="file-icon" aria-hidden="true">FILE</div>
+                {thumbnailUrls[doc.id] ? (
+                  <img
+                    className="document-thumbnail"
+                    src={thumbnailUrls[doc.id]}
+                    alt={`Preview of ${doc.filename}`}
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="file-icon" aria-hidden="true">FILE</div>
+                )}
                 <div className="document-info">
                   <h3>{doc.filename}</h3>
                   <p>{doc.mime_type || "Unknown type"}</p>
