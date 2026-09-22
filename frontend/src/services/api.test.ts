@@ -79,6 +79,38 @@ describe("api client request paths", () => {
     expect(options.body).toBeInstanceOf(FormData);
   });
 
+  it("should send documents.uploadMany to /v1/documents/bulk with all files in one FormData", async () => {
+    const bulkResponse = {
+      uploaded: [
+        {
+          id: "doc-3",
+          owner_id: "user-1",
+          filename: "a.txt",
+          object_key: "key",
+          mime_type: "text/plain",
+          status: "pending",
+          error_message: null,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+      failed: [{ filename: "b.exe", error: "Unsupported file type." }],
+    };
+    mockFetch.mockResolvedValue(new Response(JSON.stringify(bulkResponse), { status: 201 }));
+
+    const fileA = new File(["a"], "a.txt", { type: "text/plain" });
+    const fileB = new File(["b"], "b.exe", { type: "application/octet-stream" });
+    const result = await documents.uploadMany([fileA, fileB]);
+
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe("/v1/documents/bulk");
+    expect(options.method).toBe("POST");
+    expect(options.body).toBeInstanceOf(FormData);
+    expect(result.uploaded).toHaveLength(1);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].filename).toBe("b.exe");
+  });
+
   it("should send documents.delete to /v1/documents/{id} with DELETE", async () => {
     mockFetch.mockResolvedValue(
       new Response(JSON.stringify({ message: "deleted" }), { status: 200 }),

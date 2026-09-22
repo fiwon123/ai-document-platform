@@ -10,6 +10,8 @@ from app.cache.redis import redis_client
 from app.models.document import DocumentDB, DocumentStatus
 from app.repositories.document import DocumentRepository
 from app.schemas.document import (
+    BulkUploadFailure,
+    BulkUploadResponse,
     DocumentPreviewResponse,
     DocumentStatusResponse,
     FileResponse,
@@ -38,6 +40,9 @@ ALLOWED_MIME_TYPES = {
 
 DOCUMENT_CACHE_TTL_SECONDS = 60
 _DOCUMENT_KEY = "document:{owner_id}:{document_id}"
+
+# Maximum number of files accepted in a single bulk upload request.
+MAX_BULK_UPLOAD_FILES = 20
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -77,6 +82,73 @@ class DocumentService:
         owner_id: UUID,
         upload_file: UploadFile,
     ):
+        document = self._upload_one(owner_id=owner_id, upload_file=upload_file)
+
+        # The document set changed: any cached search results for this
+        # user are now stale (the new document is not included) and the
+        # document's own metadata is not cached yet, so only invalidate
+        # the search cache.
+        invalidate_user_search_cache(owner_id)
+
+        return document
+
+    def upload_bulk(
+        self,
+        owner_id: UUID,
+        upload_files: list[UploadFile],
+    ) -> BulkUploadResponse:
+        uploaded: list[FileResponse] = []
+        failed: list[BulkUploadFailure] = []
+        any_uploaded = False
+
+        for upload_file in upload_files:
+            try:
+                document = self._upload_one(
+                    owner_id=owner_id,
+                    upload_file=upload_file,
+                )
+            except HTTPException as e:
+                # FastAPI HTTPException detail is the human-readable message.
+                detail = e.detail
+                if isinstance(detail, str):
+                    message = detail
+                else:
+                    message = "Upload failed"
+                failed.append(
+                    BulkUploadFailure(
+                        filename=_sanitize_filename(
+                            upload_file.filename or "unknown-file"
+                        ),
+                        error=message,
+                    )
+                )
+                continue
+            except Exception as e:  # noqa: BLE001 - per-file isolation
+                safe_name = _sanitize_filename(upload_file.filename or "unknown-file")
+                logger.warning(f"Bulk upload failed for {safe_name}: {e}")
+                failed.append(
+                    BulkUploadFailure(
+                        filename=safe_name,
+                        error="Upload failed. Please try again.",
+                    )
+                )
+                continue
+
+            uploaded.append(FileResponse.model_validate(document))
+            any_uploaded = True
+
+        if any_uploaded:
+            invalidate_user_search_cache(owner_id)
+
+        return BulkUploadResponse(uploaded=uploaded, failed=failed)
+
+    def _upload_one(self, owner_id: UUID, upload_file: UploadFile) -> DocumentDB:
+        """Validate, store, persist, and queue a single file.
+
+        Raises ``HTTPException`` with the same messages as the single-file
+        endpoint. Callers that need per-file error isolation (bulk upload)
+        wrap this in try/except.
+        """
         document_id = uuid4()
         filename = _sanitize_filename(upload_file.filename or "unknown-file")
 
@@ -172,12 +244,6 @@ class DocumentService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to save document metadata. Please try again.",
             ) from e
-
-        # The document set changed: any cached search results for this
-        # user are now stale (the new document is not included) and the
-        # document's own metadata is not cached yet, so only invalidate
-        # the search cache.
-        invalidate_user_search_cache(owner_id)
 
         try:
             process_document_task(document_id)

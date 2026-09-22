@@ -157,3 +157,17 @@ class DeleteDocumentResponse(BaseModel):
 
     message: str
     document_id: UUID
+
+
+class BulkUploadFailure(BaseModel):
+    """Per-file error entry for a bulk upload."""
+
+    filename: str
+    error: str
+
+
+class BulkUploadResponse(BaseModel):
+    """Result of a bulk upload: successfully stored files and per-file failures."""
+
+    uploaded: list[FileResponse]
+    failed: list[BulkUploadFailure]

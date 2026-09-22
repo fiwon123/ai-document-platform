@@ -22,6 +22,7 @@ vi.mock("../services/api", () => ({
     list: vi.fn(),
     getStatus: vi.fn(),
     upload: vi.fn(),
+    uploadMany: vi.fn(),
     delete: vi.fn(),
     getDownloadUrl: vi.fn(),
     preview: vi.fn(),
@@ -32,7 +33,7 @@ import { documents } from "../services/api";
 
 const mockedList = vi.mocked(documents.list);
 const mockedGetStatus = vi.mocked(documents.getStatus);
-const mockedUpload = vi.mocked(documents.upload);
+const mockedUploadMany = vi.mocked(documents.uploadMany);
 const mockedDelete = vi.mocked(documents.delete);
 const mockedGetDownloadUrl = vi.mocked(documents.getDownloadUrl);
 const mockedPreview = vi.mocked(documents.preview);
@@ -296,9 +297,9 @@ describe("DocumentsPage busy states", () => {
   });
 
   it("dims and disables the dropzone while uploading", async () => {
-    let resolveUpload!: (doc: Document) => void;
-    mockedUpload.mockReturnValue(
-      new Promise<Document>((resolve) => {
+    let resolveUpload!: (value: { uploaded: Document[]; failed: { filename: string; error: string }[] }) => void;
+    mockedUploadMany.mockReturnValue(
+      new Promise((resolve) => {
         resolveUpload = resolve;
       }),
     );
@@ -316,12 +317,85 @@ describe("DocumentsPage busy states", () => {
     expect(screen.getByText("Uploading…")).toBeTruthy();
 
     await act(async () => {
-      resolveUpload({ ...readyDoc, id: "doc-new", filename: "guide.pdf" });
+      resolveUpload({
+        uploaded: [{ ...readyDoc, id: "doc-new", filename: "guide.pdf" }],
+        failed: [],
+      });
     });
     await settle();
 
-    expect(mockedUpload).toHaveBeenCalledWith(file);
+    expect(mockedUploadMany).toHaveBeenCalledWith([file]);
     expect(container.querySelector(".dropzone")?.classList.contains("is-uploading")).toBe(false);
     expect(screen.getByText("guide.pdf")).toBeTruthy();
+  });
+
+  it("prepends all successfully uploaded documents from a bulk response", async () => {
+    mockedUploadMany.mockResolvedValue({
+      uploaded: [
+        { ...readyDoc, id: "doc-a", filename: "a.txt" },
+        { ...readyDoc, id: "doc-b", filename: "b.txt" },
+      ],
+      failed: [],
+    });
+
+    const { container } = render(<DocumentsPage />);
+    await settle();
+
+    const fileA = new File(["a"], "a.txt", { type: "text/plain" });
+    const fileB = new File(["b"], "b.txt", { type: "text/plain" });
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [fileA, fileB] } });
+    await settle();
+
+    expect(mockedUploadMany).toHaveBeenCalledWith([fileA, fileB]);
+    expect(screen.getByText("a.txt")).toBeTruthy();
+    expect(screen.getByText("b.txt")).toBeTruthy();
+  });
+
+  it("reports per-file failures while still showing successful uploads", async () => {
+    mockedUploadMany.mockResolvedValue({
+      uploaded: [{ ...readyDoc, id: "doc-ok", filename: "ok.txt" }],
+      failed: [{ filename: "virus.exe", error: "Unsupported file type." }],
+    });
+
+    const { container } = render(<DocumentsPage />);
+    await settle();
+
+    const fileOk = new File(["ok"], "ok.txt", { type: "text/plain" });
+    const fileBad = new File(["bad"], "virus.exe", { type: "application/octet-stream" });
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [fileOk, fileBad] } });
+    await settle();
+
+    // Successful file appears in the list; the failed one is surfaced as an alert.
+    expect(screen.getByText("ok.txt")).toBeTruthy();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      'Upload of "virus.exe" failed: Unsupported file type.',
+    );
+    expect(screen.queryByText("virus.exe")).toBeNull();
+  });
+
+  it("splits batches larger than the backend limit into multiple requests", async () => {
+    // Each resolved batch echoes its own files as successfully uploaded.
+    mockedUploadMany.mockImplementation(async (batch) => ({
+      uploaded: batch.map((f) => ({ ...readyDoc, id: `doc-${f.name}`, filename: f.name })),
+      failed: [],
+    }));
+
+    const { container } = render(<DocumentsPage />);
+    await settle();
+
+    // 25 files > the 20-file per-request backend cap => 2 bulk requests.
+    const files = Array.from({ length: 25 }, (_, i) => new File(["x"], `f${i}.txt`, { type: "text/plain" }));
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files } });
+    await settle();
+
+    expect(mockedUploadMany).toHaveBeenCalledTimes(2);
+    expect(mockedUploadMany.mock.calls[0][0]).toHaveLength(20);
+    expect(mockedUploadMany.mock.calls[1][0]).toHaveLength(5);
+    // Results from both batches are merged into the document list.
+    expect(screen.getByText("f0.txt")).toBeTruthy();
+    expect(screen.getByText("f24.txt")).toBeTruthy();
   });
 });

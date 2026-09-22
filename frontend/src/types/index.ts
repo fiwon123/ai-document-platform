@@ -40,6 +40,16 @@ export interface DocumentPreview {
   truncated: boolean;
 }
 
+export interface BulkUploadFailure {
+  filename: string;
+  error: string;
+}
+
+export interface BulkUploadResponse {
+  uploaded: Document[];
+  failed: BulkUploadFailure[];
+}
+
 export interface SearchResult {
   chunk_id: string;
   document_id: string;
