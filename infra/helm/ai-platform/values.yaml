@@ -39,6 +39,19 @@ ingress:
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
 
+certManager:
+  # -- Render cert-manager ClusterIssuers (staging, prod, selfsigned) and
+  # annotate the Ingress for automatic TLS issuance. Requires cert-manager
+  # installed in the cluster.
+  enabled: false
+  # -- ClusterIssuer used by the Ingress annotation. Let's Encrypt for real
+  # environments; switch to `selfsigned` for plain local testing.
+  clusterIssuer: letsencrypt-prod
+  # -- Email for ACME account registration and expiry notifications
+  acmeEmail: ops@example.com
+  # -- Ingress class the ACME HTTP-01 solver targets
+  ingressClass: nginx
+
 secrets:
   # -- Name of the Kubernetes Secret containing app secrets
   name: app-secrets

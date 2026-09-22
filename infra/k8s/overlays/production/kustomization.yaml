@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - ../../base
+  - cert-manager.yaml
   - hpa.yaml
   - ingress.yaml
   - networkpolicy.yaml

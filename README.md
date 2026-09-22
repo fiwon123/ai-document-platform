@@ -91,6 +91,27 @@ devspace purge
 - The stack deploys to the `ai-platform` namespace from the dev Kustomize
   overlay (`infra/k8s/overlays/dev`).
 
+### Production TLS (cert-manager)
+
+The production overlay and Helm chart ship with cert-manager ClusterIssuers
+(Let's Encrypt staging + production, plus a self-signed one for local
+testing). Install cert-manager, then deploy:
+
+```bash
+# 1. Install cert-manager (once per cluster)
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+
+# 2. Deploy the production overlay — the Ingress is annotated
+#    cert-manager.io/cluster-issuer: letsencrypt-prod and cert-manager
+#    creates/renews the TLS secret automatically.
+kustomize build infra/k8s/overlays/production | kubectl apply -f -
+```
+
+- Replace `ops@example.com` in `cert-manager.yaml` / chart values with the
+  real ops email before going live.
+- Local Kind testing: point the ingress annotation (or chart value
+  `certManager.clusterIssuer`) at `selfsigned` for functional TLS.
+
 ## API
 
 | Method | Endpoint | Description |
