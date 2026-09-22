@@ -20,3 +20,30 @@ def test_imports_app_modules():
 
     assert app.title == "AI Document Intelligence Platform"
     assert all(hasattr(module, "router") for module in (auth, document, health, qa, search))
+
+
+class TestCORS:
+    """CORS must allow every origin the frontend can be served from."""
+
+    def _preflight(self, client, origin: str):
+        return client.options(
+            "/v1/health",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+    def test_allows_dev_server_ports(self, client):
+        for origin in (
+            "http://localhost:5173",
+            "http://localhost:5175",
+            "http://localhost:3000",
+        ):
+            resp = self._preflight(client, origin)
+            assert resp.status_code == 200, origin
+            assert resp.headers.get("access-control-allow-origin") == origin
+
+    def test_rejects_unknown_origin(self, client):
+        resp = self._preflight(client, "http://evil.example.com")
+        assert resp.headers.get("access-control-allow-origin") is None
