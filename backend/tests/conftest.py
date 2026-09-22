@@ -176,3 +176,21 @@ def auth_headers(client):
 
     token = login.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
+def pdf_bytes() -> bytes:
+    """A real, valid PDF built in memory (used by thumbnail rendering tests).
+
+    PyMuPDF is a hard dependency, so importing it here is safe; no external
+    services or fixture files are involved.
+    """
+    import fitz
+
+    document = fitz.open()
+    try:
+        page = document.new_page()
+        page.insert_text((72, 72), "Hello thumbnail")
+        return document.tobytes()
+    finally:
+        document.close()

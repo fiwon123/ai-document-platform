@@ -263,7 +263,10 @@ class TestDeleteDocument:
 
         assert resp.status_code == 200
         assert resp.json()["document_id"] == doc_id
-        assert len(deleted) == 1
+        # Original object + thumbnail object are both removed.
+        assert len(deleted) == 2
+        assert deleted[0].endswith(UPLOAD_FILENAME)
+        assert deleted[1].endswith("thumbnail.png")
         # The row is gone from the database too.
         assert client.get(f"/v1/documents/{doc_id}", headers=auth_headers).status_code == 404
 
@@ -352,6 +355,79 @@ class TestDownloadDocument:
 
         monkeypatch.setattr(app_storage, "create_download_url", lambda *a, **k: "https://x")
         resp = client.get(f"/v1/documents/{created['id']}/download", headers=other_headers)
+
+        assert resp.status_code == 404
+
+
+class TestDocumentThumbnail:
+    """GET /documents/{id}/thumbnail serves a presigned URL for the PNG."""
+
+    @staticmethod
+    def _mark_has_thumbnail(client, db_session, document_id):
+        """Simulate the worker having generated a thumbnail for the doc."""
+        from uuid import UUID
+
+        from app.models.document import DocumentDB
+
+        row = (
+            db_session.query(DocumentDB)
+            .filter(DocumentDB.id == UUID(document_id))
+            .one()
+        )
+        row.has_thumbnail = True
+        db_session.commit()
+        return row
+
+    def test_file_response_includes_has_thumbnail(self, client, auth_headers, monkeypatch):
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+
+        assert created["has_thumbnail"] is False
+
+    def test_returns_404_when_no_thumbnail(self, client, auth_headers, monkeypatch):
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+
+        resp = client.get(f"/v1/documents/{created['id']}/thumbnail", headers=auth_headers)
+
+        assert resp.status_code == 404
+        assert resp.json()["error"]["code"] == "not_found"
+
+    def test_returns_presigned_url_when_thumbnail_exists(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
+        from app.storage.storage import storage as app_storage
+
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        doc = self._mark_has_thumbnail(client, db_session, created["id"])
+
+        monkeypatch.setattr(
+            app_storage,
+            "create_download_url",
+            lambda object_key, expires_in: f"https://storage.example/{object_key}",
+        )
+
+        resp = client.get(f"/v1/documents/{created['id']}/thumbnail", headers=auth_headers)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["id"] == created["id"]
+        # The presigned URL points at the thumbnail object next to the original.
+        assert body["thumbnail_url"] == (
+            f"https://storage.example/{doc.object_key.rsplit('/', 1)[0]}/thumbnail.png"
+        )
+
+    def test_ownership_isolation(self, client, auth_headers, db_session, monkeypatch):
+        from app.storage.storage import storage as app_storage
+
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        self._mark_has_thumbnail(client, db_session, created["id"])
+        other_headers = _register_second_user(client)
+
+        monkeypatch.setattr(app_storage, "create_download_url", lambda *a, **k: "https://x")
+        resp = client.get(f"/v1/documents/{created['id']}/thumbnail", headers=other_headers)
 
         assert resp.status_code == 404
 

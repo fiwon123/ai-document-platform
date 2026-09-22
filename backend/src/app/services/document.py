@@ -18,6 +18,7 @@ from app.schemas.document import (
 )
 from app.services.search import invalidate_user_search_cache
 from app.services.text_extraction import TextExtractionService
+from app.services.thumbnail import thumbnail_object_key
 from app.storage.storage import MinioStorage
 from app.worker import process_document_task
 
@@ -310,6 +311,24 @@ class DocumentService:
             ),
         }
 
+    def get_thumbnail_url(self, document_id: UUID, owner_id: UUID):
+        """Return a fresh presigned URL for the document's thumbnail.
+
+        None when the document is not found or has no thumbnail (still
+        pending, a non-PDF, or rendering failed).
+        """
+        document = self.get(document_id=document_id, owner_id=owner_id)
+        if document is None or not document.has_thumbnail:
+            return None
+
+        return {
+            "id": document.id,
+            "thumbnail_url": self.storage.create_download_url(
+                thumbnail_object_key(document.object_key),
+                expires_in=3600,
+            ),
+        }
+
     def preview(self, document_id: UUID, owner_id: UUID):
         """Return a truncated text preview of the stored document."""
         document = self.repository.get_by_id(
@@ -363,6 +382,14 @@ class DocumentService:
             return None
 
         self.storage.delete(document.object_key)
+        # The thumbnail lives in the document's storage folder; removing it
+        # keeps delete idempotent and prevents orphaned objects.
+        try:
+            self.storage.delete(thumbnail_object_key(document.object_key))
+        except Exception as e:  # noqa: BLE001 - delete is already in flight
+            logger.warning(
+                f"Thumbnail cleanup failed for {document.object_key}: {e}"
+            )
         self.repository.delete(document)
         invalidate_document_cache(owner_id, document_id)
         invalidate_user_search_cache(owner_id)

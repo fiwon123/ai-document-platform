@@ -45,6 +45,7 @@ class FileResponse(BaseModel):
     mime_type: str | None
     status: DocumentStatus
     error_message: str | None
+    has_thumbnail: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -150,6 +151,13 @@ class DownloadUrlResponse(BaseModel):
     id: UUID
     filename: str
     download_url: str
+
+
+class ThumbnailUrlResponse(BaseModel):
+    """Typed payload for the presigned thumbnail URL endpoint."""
+
+    id: UUID
+    thumbnail_url: str
 
 
 class DeleteDocumentResponse(BaseModel):

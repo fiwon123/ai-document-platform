@@ -19,6 +19,7 @@ dependencies = [
     "sqlalchemy>=2.0.51",
     "openai>=1.0.0",
     "arq>=0.28.0",
+    "pymupdf>=1.28.2",
 ]
 
 [dependency-groups]
