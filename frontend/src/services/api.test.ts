@@ -445,6 +445,7 @@ describe("documents.getStatus", () => {
       id: "doc-123",
       status: "ready",
       error_message: null,
+      has_thumbnail: true,
     };
     vi.mocked(globalThis.fetch).mockResolvedValue(
       new Response(JSON.stringify(status), {

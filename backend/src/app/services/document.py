@@ -292,6 +292,7 @@ class DocumentService:
             id=document.id,
             status=document.status,
             error_message=document.error_message,
+            has_thumbnail=document.has_thumbnail,
         )
 
     def list(self, owner_id: UUID, skip: int = 0, limit: int = 20):

@@ -68,6 +68,23 @@ class TestDocumentStatusEndpoint:
 
         assert resp.json()["status"] == "pending"
 
+    def test_reports_has_thumbnail_flag(self, client, auth_headers, db_session):
+        # Documents without a thumbnail report has_thumbnail=false so polling
+        # clients can start fetching previews the moment one exists.
+        owner_id = _current_user_id(client, auth_headers)
+        doc = _seed_doc(db_session, owner_id, DocumentStatus.READY)
+
+        resp = client.get(f"/v1/documents/{doc.id}/status", headers=auth_headers)
+
+        assert resp.status_code == 200
+        assert resp.json()["has_thumbnail"] is False
+
+        doc.has_thumbnail = True
+        db_session.commit()
+
+        resp = client.get(f"/v1/documents/{doc.id}/status", headers=auth_headers)
+        assert resp.json()["has_thumbnail"] is True
+
     def test_missing_document_returns_404(self, client, auth_headers, db_session):
         resp = client.get(f"/v1/documents/{uuid4()}/status", headers=auth_headers)
         assert resp.status_code == 404

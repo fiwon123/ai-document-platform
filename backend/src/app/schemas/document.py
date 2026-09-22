@@ -58,6 +58,7 @@ class DocumentStatusResponse(BaseModel):
     id: UUID
     status: DocumentStatus
     error_message: str | None = None
+    has_thumbnail: bool = False
 
 
 class DocumentChunkResponse(BaseModel):

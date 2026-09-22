@@ -68,7 +68,12 @@ describe("DocumentsPage polling", () => {
 
   it("polls pending documents and updates the status badge", async () => {
     mockedList.mockResolvedValue([pendingDoc, readyDoc]);
-    mockedGetStatus.mockResolvedValue({ id: "doc-pending", status: "ready", error_message: null });
+    mockedGetStatus.mockResolvedValue({
+      id: "doc-pending",
+      status: "ready",
+      error_message: null,
+      has_thumbnail: false,
+    });
 
     render(<DocumentsPage />);
     await settle();
@@ -88,9 +93,49 @@ describe("DocumentsPage polling", () => {
     expect(screen.queryByText("pending")).toBeNull();
   });
 
+  it("fetches the thumbnail once polling reports the document has one", async () => {
+    mockedList.mockResolvedValue([{ ...pendingDoc, id: "doc-new" }]);
+    mockedGetStatus.mockResolvedValue({
+      id: "doc-new",
+      status: "ready",
+      error_message: null,
+      has_thumbnail: true,
+    });
+    mockedGetThumbnailUrl.mockResolvedValue({
+      id: "doc-new",
+      thumbnail_url: "https://minio.example/thumb.png",
+    });
+
+    const { container } = render(<DocumentsPage />);
+    await settle();
+
+    // Still processing: no thumbnail lookup happens yet.
+    expect(mockedGetThumbnailUrl).not.toHaveBeenCalled();
+    expect(container.querySelector(".document-thumbnail")).toBeNull();
+
+    // The poll merges has_thumbnail=true, so the preview is fetched and
+    // rendered without a full page reload.
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    // Flush the poll merge, then the thumbnail fetch chain.
+    await settle();
+    await settle();
+
+    expect(mockedGetThumbnailUrl).toHaveBeenCalledWith("doc-new");
+    const img = container.querySelector(".document-thumbnail");
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute("src")).toBe("https://minio.example/thumb.png");
+  });
+
   it("stops polling once every document is ready", async () => {
     mockedList.mockResolvedValue([pendingDoc]);
-    mockedGetStatus.mockResolvedValue({ id: "doc-pending", status: "ready", error_message: null });
+    mockedGetStatus.mockResolvedValue({
+      id: "doc-pending",
+      status: "ready",
+      error_message: null,
+      has_thumbnail: false,
+    });
 
     render(<DocumentsPage />);
     await settle();
@@ -266,6 +311,77 @@ describe("DocumentsPage thumbnails", () => {
     await settle();
 
     expect(mockedGetThumbnailUrl).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".document-thumbnail")).toBeNull();
+    expect(container.querySelector(".file-icon")).toBeTruthy();
+  });
+
+  it("retries a failed thumbnail lookup after the backoff window", async () => {
+    vi.useFakeTimers();
+    try {
+      // doc-a finishes processing (has_thumbnail flips via polling); doc-b
+      // keeps polling alive so the docs array keeps changing.
+      const docA: Document = { ...pendingDoc, id: "doc-a", filename: "a.pdf", status: "processing" };
+      const docB: Document = { ...pendingDoc, id: "doc-b", filename: "b.pdf", status: "processing" };
+      mockedList.mockResolvedValue([docA, docB]);
+      mockedGetStatus.mockImplementation((id: string) => {
+        if (id === "doc-a") {
+          return Promise.resolve({
+            id: "doc-a",
+            status: "ready",
+            error_message: null,
+            has_thumbnail: true,
+          });
+        }
+        return Promise.resolve({
+          id: "doc-b",
+          status: "processing",
+          error_message: null,
+          has_thumbnail: false,
+        });
+      });
+      mockedGetThumbnailUrl
+        .mockRejectedValueOnce(new Error("boom"))
+        .mockResolvedValue({ id: "doc-a", thumbnail_url: "https://minio.example/thumb.png" });
+
+      const { container } = render(<DocumentsPage />);
+      await settle();
+
+      // First poll: doc-a becomes ready with a thumbnail, but the lookup fails.
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
+      await settle();
+
+      expect(mockedGetThumbnailUrl).toHaveBeenCalledTimes(1);
+      expect(container.querySelector(".document-thumbnail")).toBeNull();
+
+      // While doc-b keeps polling, the failed lookup is retried once the
+      // 30 s backoff has elapsed and the image appears.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(31_000);
+      });
+      await settle();
+
+      expect(mockedGetThumbnailUrl).toHaveBeenCalledTimes(2);
+      expect(container.querySelector(".document-thumbnail")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to the placeholder when the thumbnail image fails to load", async () => {
+    mockedList.mockResolvedValue([thumbDoc]);
+    mockedGetThumbnailUrl.mockResolvedValue({
+      id: "doc-thumb",
+      thumbnail_url: "https://minio.example/thumb.png",
+    });
+
+    const { container } = render(<DocumentsPage />);
+    const img = await screen.findByAltText("Preview of report.pdf");
+    expect(container.querySelector(".document-thumbnail")).not.toBeNull();
+
+    fireEvent.error(img);
+
     expect(container.querySelector(".document-thumbnail")).toBeNull();
     expect(container.querySelector(".file-icon")).toBeTruthy();
   });

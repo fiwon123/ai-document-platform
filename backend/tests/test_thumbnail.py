@@ -59,6 +59,27 @@ class TestRenderPng:
         finally:
             image.close()
 
+    def test_bounds_pathological_page_dimensions(self):
+        # A page that is extremely tall relative to its width must still
+        # yield a small pixmap: the zoom is clamped in both dimensions, so
+        # rendering can never explode memory usage (1x10000pt pages etc.).
+        document = fitz.open()
+        try:
+            page = document.new_page(width=10, height=10000)
+            page.insert_text((72, 72), "tall")
+            tall_pdf = document.tobytes()
+        finally:
+            document.close()
+
+        png = ThumbnailService().render_png(tall_pdf, max_width=400)
+
+        image = fitz.open(stream=png, filetype="png")
+        try:
+            assert image[0].rect.width <= 400
+            assert image[0].rect.height <= 800  # 400 * 2x upscale cap
+        finally:
+            image.close()
+
     def test_rejects_empty_bytes(self):
         with pytest.raises(ValueError):
             ThumbnailService().render_png(b"")

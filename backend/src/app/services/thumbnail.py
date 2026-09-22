@@ -47,9 +47,14 @@ class ThumbnailService:
                 raise ValueError("PDF has no pages")
 
             page = document[0]
-            # Cap the width: zoom to the page's native width and scale down.
-            zoom = max_width / max(page.rect.width, 1)
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+            # Fit the page into a square box capped at max_width px on either
+            # side, and never upscale beyond 2x. This bounds the pixmap even
+            # for pathological aspect ratios (e.g. a 1x10000pt page) instead
+            # of letting the taller dimension explode memory usage.
+            page_width = max(float(page.rect.width), 1.0)
+            page_height = max(float(page.rect.height), 1.0)
+            scale = min(max_width / page_width, max_width / page_height, 2.0)
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(scale, scale))
             return pixmap.tobytes("png")
         finally:
             document.close()
@@ -69,7 +74,7 @@ def thumbnail_object_key(object_key: str) -> str:
     enforcing per-document prefixes) keeps working unchanged:
     ``users/{owner}/{doc}/thumbnail.png``.
     """
-    folder, _ = os.path.split(object_key)
+    folder = object_key.rsplit("/", 1)[0]
     return f"{folder}/{THUMBNAIL_FILENAME}"
 
 

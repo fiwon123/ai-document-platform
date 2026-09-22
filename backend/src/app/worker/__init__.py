@@ -119,13 +119,21 @@ def _generate_thumbnail(
         return
 
     png_bytes = thumbnail_service.render_png(file_bytes)
+    object_key = thumbnail_object_key(document.object_key)
     storage.upload(
         file_object=io.BytesIO(png_bytes),
-        object_key=thumbnail_object_key(document.object_key),
+        object_key=object_key,
         content_type="image/png",
     )
-    document.has_thumbnail = True
-    db.commit()
+    try:
+        document.has_thumbnail = True
+        db.commit()
+    except Exception:
+        db.rollback()
+        # The flag was never persisted: remove the orphaned object so
+        # storage does not leak under a document that reports no thumbnail.
+        storage.delete(object_key)
+        raise
 
 
 async def _process_document_impl(document_id: UUID) -> None:

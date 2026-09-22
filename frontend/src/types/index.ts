@@ -30,6 +30,7 @@ export interface DocumentStatusResponse {
   id: string;
   status: DocumentStatus;
   error_message: string | null;
+  has_thumbnail: boolean;
 }
 
 export interface TokenResponse {
