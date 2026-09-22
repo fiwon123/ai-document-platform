@@ -388,6 +388,46 @@ class TestSearchExport:
         resp = self._export_response(client, auth_headers, "csv")
         assert ",0.123456," in resp.text
 
+    def test_export_csv_neutralizes_formula_injection(self, client, auth_headers):
+        """Cells starting with =, +, -, @ must be prefixed so spreadsheets
+        treat them as text instead of executing formulas (CSV injection)."""
+        from app.main import app
+        from app.routes.search import get_search_service
+
+        fake_service = MagicMock()
+        fake_service.search.return_value = SearchResponse(
+            query="q",
+            results=[
+                SearchResult(
+                    chunk_id=UUID("00000000-0000-0000-0000-000000000001"),
+                    document_id=UUID("00000000-0000-0000-0000-000000000002"),
+                    document_filename="=cmd|'/c calc'!A0",
+                    content="+SUM(A1:A2)",
+                    score=0.5,
+                    metadata_={"note": "@import"},
+                )
+            ],
+            total_count=1,
+            has_more=False,
+        )
+        app.dependency_overrides[get_search_service] = lambda: fake_service
+        try:
+            resp = client.post(
+                "/v1/search/export",
+                json={"query": "q", "format": "csv"},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        # Dangerous cells are neutralized with an apostrophe prefix.
+        assert "'=cmd|'/c calc'!A0" in resp.text
+        assert "'+SUM(A1:A2)" in resp.text
+        # Metadata serializes to a JSON object starting with "{", which
+        # spreadsheets never treat as a formula — no prefix needed.
+        assert '"{""note"":""@import""}"' in resp.text
+
     def test_export_json_success(self, client, auth_headers):
         resp = self._export_response(client, auth_headers, "json")
 

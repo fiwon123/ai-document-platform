@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 from typing import Annotated
 from uuid import UUID
 
@@ -51,8 +52,9 @@ def export_search_results(
     """Run a search and return the results as a downloadable CSV or JSON file.
 
     Reuses the same service path as the regular search endpoint so filtering,
-    user isolation, and text-search fallback behave identically. Exports are
-    intentionally not cached and do not write search-history rows.
+    user isolation, and text-search fallback behave identically. Exports do
+    not write search-history rows (``record_history=False``), but they still
+    go through the shared search cache like any other search.
     """
     response = service.search(
         user_id=owner_id,
@@ -80,6 +82,19 @@ def export_search_results(
     )
 
 
+# Characters that make a spreadsheet cell interpret its text as a formula
+# (OpenFormula / Excel). When untrusted document content starts with one of
+# these, we prefix the cell with an apostrophe so spreadsheets treat it as
+# plain text and do not execute it (CSV formula injection).
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value: str) -> str:
+    if value.startswith(_CSV_FORMULA_PREFIXES):
+        return f"'{value}"
+    return value
+
+
 def _to_csv(response: SearchResponse) -> str:
     """Serialize a SearchResponse into CSV (RFC 4180 via the csv module)."""
     output = io.StringIO()
@@ -97,21 +112,19 @@ def _to_csv(response: SearchResponse) -> str:
     for result in response.results:
         writer.writerow(
             [
-                result.document_filename,
+                _csv_safe(result.document_filename),
                 str(result.chunk_id),
                 str(result.document_id),
                 f"{result.score:.6f}",
-                result.content,
-                _json_or_empty(result.metadata_),
+                _csv_safe(result.content),
+                _csv_safe(_json_or_empty(result.metadata_)),
             ]
         )
     return output.getvalue()
 
 
 def _json_or_empty(value: dict | None) -> str:
-    """Serialize metadata to a compact JSON string (empty string when null)."""
-    import json
-
+    """Serialize metadata to a compact JSON string (empty string when None)."""
     if value is None:
         return ""
     return json.dumps(value, separators=(",", ":"))

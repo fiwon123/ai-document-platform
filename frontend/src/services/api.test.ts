@@ -486,22 +486,27 @@ describe("search.search", () => {
         },
       }),
     );
+    const originalClick = HTMLAnchorElement.prototype.click;
     const click = vi.fn();
     HTMLAnchorElement.prototype.click = click;
 
-    await search.exportResults("quarterly", "csv", ["doc-a"], 5);
+    try {
+      await search.exportResults("quarterly", "csv", ["doc-a"], 5);
 
-    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
-    expect(String(url)).toBe("/v1/search/export");
-    expect(options?.method).toBe("POST");
-    expect(JSON.parse(String(options?.body))).toEqual({
-      query: "quarterly",
-      top_k: 5,
-      offset: 0,
-      document_ids: ["doc-a"],
-      format: "csv",
-    });
-    expect(click).toHaveBeenCalled();
+      const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+      expect(String(url)).toBe("/v1/search/export");
+      expect(options?.method).toBe("POST");
+      expect(JSON.parse(String(options?.body))).toEqual({
+        query: "quarterly",
+        top_k: 5,
+        offset: 0,
+        document_ids: ["doc-a"],
+        format: "csv",
+      });
+      expect(click).toHaveBeenCalled();
+    } finally {
+      HTMLAnchorElement.prototype.click = originalClick;
+    }
   });
 
   it("throws ApiError when the export request fails", async () => {

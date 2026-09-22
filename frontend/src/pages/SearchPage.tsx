@@ -63,7 +63,10 @@ export function SearchPage() {
     setIsExporting(format);
     setError(null);
     try {
-      await search.exportResults(query, format, selectedIds);
+      // Backend caps top_k at 20 — export everything the user has loaded
+      // (the full result count), not just the current page.
+      const topK = Math.max(1, Math.min(totalCount, 20));
+      await search.exportResults(query, format, selectedIds, topK);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed");
     } finally {

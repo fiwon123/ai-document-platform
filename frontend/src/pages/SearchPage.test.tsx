@@ -127,10 +127,13 @@ describe("SearchPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
     await act(async () => {});
 
+    // topK matches total_count (capped at the backend's 20) so the whole
+    // result set is exported, not just the first page.
     expect(mockedExportResults).toHaveBeenCalledWith(
       "q3 planning",
       "csv",
       [],
+      1,
     );
   });
 
@@ -145,6 +148,7 @@ describe("SearchPage", () => {
       "q3 planning",
       "json",
       [],
+      1,
     );
   });
 
