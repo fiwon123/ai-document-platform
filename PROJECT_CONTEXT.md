@@ -355,9 +355,9 @@ LLM and Embedding APIs
 - [x] CI/CD pipeline (GitHub Actions: backend tests + ruff lint; frontend lint + build + tests)
 - [x] Production Docker images (backend, worker, frontend with nginx)
 - [x] Kubernetes deployment (Kustomize base + dev/production overlays, standalone Helm chart, Kind cluster scripts)
+- [x] Infra CI: kustomize/helm/kubeconform validation + production image builds pushed to ghcr.io on dev merges
 
 ### Backlog (not yet started)
-- [ ] Production image builds wired into CI
 - [ ] Advanced caching strategies (e.g., semantic search result caching)
 - [ ] Webhooks for document processing events
 
