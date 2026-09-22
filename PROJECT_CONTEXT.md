@@ -23,24 +23,26 @@ The platform allows users to:
 
 ## Main features
 
-- User authentication
-- JWT-based authorization
-- Document upload
+- User authentication (JWT with refresh-token rotation)
+- Document upload, including bulk upload
 - Asynchronous document processing
 - Text extraction and chunking
 - Embedding generation
-- Semantic search
-- Document question answering
+- Semantic search with pagination and per-document filtering
+- Search result export (CSV/JSON, formula-injection safe)
+- Document question answering (OpenAI or Groq, optional bring-your-own-key)
 - Document processing status
+- PDF first-page thumbnails
+- Semantic caching (QA answers, dashboard statistics)
+- User and admin dashboards with system-wide statistics
 - User-specific document isolation
 - Rate limiting
-- Caching
 - Error handling and retries
 - Monitoring and logging
 
 ## Technology stack
 
-- Frontend: React
+- Frontend: React 19, TypeScript, Vite
 - Backend: Python and FastAPI
 - Database: PostgreSQL
 - ORM: SQLAlchemy
@@ -49,7 +51,7 @@ The platform allows users to:
 - Background jobs: Redis-based worker system
 - Containers: Docker
 - Authentication: JWT
-- AI integration: OpenAI or another compatible LLM API
+- AI integration: OpenAI or another compatible LLM API (e.g. Groq)
 
 ## System architecture
 
@@ -73,100 +75,91 @@ LLM and Embedding APIs
 ├── backend/                    # FastAPI application
 │   ├── src/app/               # Application source code
 │   │   ├── main.py            # FastAPI app entry point
+│   │   ├── database/          # SQLAlchemy engine/session setup (db.py)
 │   │   ├── models/            # SQLAlchemy ORM models
-│   │   │   ├── __init__.py    # Model exports
 │   │   │   ├── user.py        # UserDB model
 │   │   │   ├── document.py    # DocumentDB model
 │   │   │   ├── chunk.py       # DocumentChunk model
 │   │   │   └── search.py      # SearchHistory model
 │   │   ├── routes/            # API route handlers
-│   │   │   ├── __init__.py    # Route exports
-│   │   │   ├── auth.py        # Authentication routes
-│   │   │   ├── document.py    # Document routes
-│   │   │   ├── search.py      # Search + export routes
-│   │   │   ├── qa.py          # Q&A routes
-│   │   │   ├── statistics.py  # Statistics routes (/me, /admin)
+│   │   │   ├── auth.py        # Authentication routes (register/login/refresh/logout/me)
 │   │   │   ├── users.py       # User admin + self-management routes
+│   │   │   ├── document.py    # Document routes (upload, bulk, CRUD, status, preview, download, thumbnail)
+│   │   │   ├── search.py      # Search + export routes
+│   │   │   ├── qa.py          # Q&A routes (ask, models)
+│   │   │   ├── statistics.py  # Statistics routes (/me, /admin)
 │   │   │   └── health.py      # Health check routes
 │   │   ├── schemas/           # Pydantic request/response models
-│   │   │   ├── __init__.py    # Schema exports
 │   │   │   ├── user.py        # User schemas
 │   │   │   ├── document.py    # Document/Search/QA schemas
-│   │   │   └── statistics.py  # Statistics schemas
+│   │   │   ├── statistics.py  # Statistics schemas
+│   │   │   └── error.py       # Error response schema
 │   │   ├── services/          # Business logic layer
-│   │   │   ├── __init__.py    # Service exports
 │   │   │   ├── user.py        # User service
 │   │   │   ├── document.py    # Document service
-│   │   │   ├── search.py      # Search service
-│   │   │   ├── qa.py          # Q&A service
-│   │   │   ├── statistics.py  # Statistics service
+│   │   │   ├── search.py      # Search service (incl. cache-version helpers)
+│   │   │   ├── qa.py          # Q&A service (OpenAI/Groq, BYOK, answer caching)
+│   │   │   ├── statistics.py  # Statistics service (cached summaries)
 │   │   │   ├── embedding.py   # Embedding generation
 │   │   │   ├── text_extraction.py  # Text extraction
-│   │   │   └── chunking.py    # Text chunking
+│   │   │   ├── chunking.py    # Text chunking
+│   │   │   └── thumbnail.py   # PDF first-page thumbnail rendering (PyMuPDF)
 │   │   ├── repositories/      # Database query layer
-│   │   │   ├── __init__.py    # Repository exports
 │   │   │   ├── user.py        # User repository
 │   │   │   ├── document.py    # Document repository
 │   │   │   ├── search.py      # Search repository
 │   │   │   └── statistics.py  # Statistics repository
 │   │   ├── storage/           # MinIO/S3 client
-│   │   │   ├── __init__.py    # Storage exports
 │   │   │   └── storage.py     # MinioStorage class
 │   │   ├── cache/             # Redis client
-│   │   │   ├── __init__.py    # Cache exports
 │   │   │   └── redis.py       # RedisClient class
-│   │   ├── middleware/         # FastAPI middleware
-│   │   │   ├── __init__.py    # Middleware exports
+│   │   ├── middleware/        # FastAPI middleware
 │   │   │   ├── rate_limit.py  # Rate limiting
 │   │   │   └── logging.py     # Request logging
-│   │   └── worker/            # Background job processing
-│   │       └── __init__.py    # Worker implementation
+│   │   └── worker/            # Arq background processor
+│   │       └── __init__.py    # WorkerSettings + document pipeline (chunking, embeddings, thumbnails)
 │   ├── migrations/            # Alembic migrations
 │   │   ├── env.py             # Migration environment
 │   │   └── versions/          # Migration versions
 │   │       ├── 001_initial_migration.py
-│   │       └── 002_add_chunks_search_pgvector.py
-│   └── pyproject.toml         # Python dependencies (uv)
-├── frontend/                   # React application
+│   │       ├── 002_add_chunks_search_pgvector.py
+│   │       └── 003_add_document_thumbnail.py
+│   ├── tests/                 # pytest suite (conftest fixtures; document, search, qa,
+│   │                          # user, worker, status, cache, thumbnail, statistics tests)
+│   ├── pyproject.toml         # Python dependencies (uv)
+│   └── uv.lock                # Locked dependency versions
+├── frontend/                   # React 19 / Vite / TypeScript SPA
 │   ├── src/                   # Source code
-│   │   ├── components/        # React components
-│   │   │   ├── Navbar.tsx     # Navigation bar
-│   │   │   ├── ProtectedRoute.tsx  # Auth route guard
-│   │   │   ├── DocumentFilter.tsx  # Search document filter
-│   │   │   ├── EmptyState.tsx  # Empty-state placeholder
-│   │   │   ├── LandingNavbar.tsx  # Landing page nav
-│   │   │   ├── Markdown.tsx   # Markdown renderer
-│   │   │   ├── Skeleton.tsx   # Loading skeletons
-│   │   │   └── Spinner.tsx    # Loading spinner
-│   │   ├── pages/             # Page components
-│   │   │   ├── LandingPage.tsx  # Landing page
-│   │   │   ├── LoginPage.tsx  # Login page
-│   │   │   ├── RegisterPage.tsx  # Registration page
-│   │   │   ├── DocumentsPage.tsx  # Document management
-│   │   │   ├── SearchPage.tsx # Search (pagination + CSV/JSON export)
-│   │   │   ├── QAPage.tsx     # Q&A chat interface
-│   │   │   ├── DashboardPage.tsx  # User workspace dashboard
-│   │   │   ├── AdminPage.tsx  # Admin user management + system stats
-│   │   │   ├── ProfilePage.tsx  # Profile settings
-│   │   │   ├── SettingsPage.tsx  # App settings
-│   │   │   └── NotFoundPage.tsx  # 404 page
-│   │   ├── hooks/             # Custom React hooks
-│   │   │   ├── useAuth.tsx    # Authentication hook
-│   │   │   └── useTheme.ts    # Theme hook
-│   │   ├── services/          # API client functions
-│   │   │   └── api.ts         # API client
-│   │   ├── types/             # TypeScript type definitions
-│   │   │   └── index.ts       # Type exports
-│   │   ├── App.tsx            # Main app with routing
-│   │   ├── App.css            # Global styles
-│   │   ├── index.css          # Base styles
-│   │   └── main.tsx           # Entry point
+│   │   ├── components/        # Navbar, ProtectedRoute, DocumentFilter, EmptyState,
+│   │   │                      # LandingNavbar, Markdown, Skeleton, Spinner
+│   │   ├── context/           # ToastContext (toast notifications)
+│   │   ├── pages/             # Landing, Login, Register, Documents, Search, QA,
+│   │   │                      # Dashboard, Admin, Profile, Settings, Demo, NotFound
+│   │   ├── hooks/             # useAuth, useTheme
+│   │   ├── services/api.ts    # Typed API client (auth, documents, search, qa, statistics, users)
+│   │   ├── types/index.ts     # Shared TypeScript types
+│   │   ├── App.tsx            # Main app with routing (+ LandingGate guard component)
+│   │   ├── App.css, index.css # Styles
+│   │   ├── main.tsx           # Entry point
+│   │   └── *.test.ts(x)       # Colocated Vitest tests
+│   ├── nginx.conf             # Production SPA config (serving + /v1 proxy) for the Docker image
 │   ├── index.html             # HTML entry point
-│   ├── vite.config.ts         # Vite configuration
+│   ├── vite.config.ts         # Vite configuration (proxies /v1 to the backend)
 │   ├── tsconfig.json          # TypeScript configuration
-│   └── package.json           # Node.js dependencies
-├── docker-compose.yml         # Docker Compose configuration
+│   └── package.json           # Node.js dependencies (+ package-lock.json)
+├── infra/                     # Production deployment (Docker + Kubernetes)
+│   ├── docker/                # Multi-stage production Dockerfiles (backend, worker, frontend)
+│   ├── k8s/                   # Kustomize base + dev/production overlays
+│   ├── helm/ai-platform/      # Standalone Helm chart
+│   ├── kind/                  # Local Kind cluster config
+│   └── scripts/               # build-images.sh, setup-kind.sh, kind-load-images.sh, teardown-kind.sh
+├── scripts/                   # Host helper scripts (fix-compose-network.sh)
+├── .github/                   # GitHub Actions CI (backend tests + ruff; frontend lint/build/tests)
+│   ├── workflows/ci.yml
+│   └── dependabot.yml
+├── docker-compose.yaml        # Local dev stack (postgres, redis, minio, backend, worker, frontend)
 ├── .devcontainer/             # Dev Container setup
+├── PROJECT_CONTEXT.md         # This document
 └── AGENTS.md                  # Development guidelines
 ```
 
@@ -189,6 +182,7 @@ LLM and Embedding APIs
 - `mime_type`: MIME type
 - `status`: processing status (pending/processing/ready/failed)
 - `error_message`: error details if processing failed
+- `has_thumbnail`: whether a rendered first-page PNG preview exists
 - `created_at`: upload timestamp
 - `updated_at`: last update timestamp
 
@@ -198,7 +192,7 @@ LLM and Embedding APIs
 - `content`: extracted text content
 - `chunk_index`: position in document
 - `embedding`: vector embedding (1536 dimensions for OpenAI)
-- `metadata`: JSON metadata (page number, section, etc.)
+- `metadata_`: JSON metadata (page number, section, etc.)
 - `created_at`: creation timestamp
 
 ### SearchHistory
@@ -216,16 +210,26 @@ LLM and Embedding APIs
 - `POST /v1/auth/refresh` - Refresh access token via cookie
 - `POST /v1/auth/logout` - Revoke refresh token
 - `GET /v1/auth/me` - Get current user profile
+
+### Users (self-service)
 - `PUT /v1/users/me` - Update own username/password
 - `DELETE /v1/users/me` - Delete own account
 
+### Users (admin only)
+- `GET /v1/users/` - List all users
+- `PATCH /v1/users/{id}/role` - Change a user's role (customer/admin)
+- `PATCH /v1/users/{id}/active` - Enable/disable a user account
+- `DELETE /v1/users/{id}` - Delete a user
+
 ### Documents
 - `POST /v1/documents/` - Upload document
+- `POST /v1/documents/bulk` - Bulk upload multiple documents (JSON error reporting per file)
 - `GET /v1/documents/` - List user documents
 - `GET /v1/documents/{id}` - Get document details
-- `GET /v1/documents/{id}/status` - Get processing status
+- `GET /v1/documents/{id}/status` - Get processing status (also reports `has_thumbnail`)
 - `GET /v1/documents/{id}/preview` - Get extracted text preview
 - `GET /v1/documents/{id}/download` - Get presigned download URL
+- `GET /v1/documents/{id}/thumbnail` - Get presigned thumbnail URL (404 when none)
 - `DELETE /v1/documents/{id}` - Delete document
 
 ### Search
@@ -233,10 +237,11 @@ LLM and Embedding APIs
   pagination, and `document_ids` filtering; returns `total_count` and
   `has_more`)
 - `POST /v1/search/export` - Export search results as CSV or JSON
-  (formula-injection safe; admin-neutral; skips history recording)
+  (formula-injection safe; skips search-history recording)
 
 ### Question Answering
-- `POST /v1/qa/ask` - Ask question about documents
+- `POST /v1/qa/ask` - Ask question about documents (OpenAI or Groq;
+  optional bring-your-own-key; answers are cached per user)
 - `GET /v1/qa/models` - List available QA models
 
 ### Statistics
@@ -244,12 +249,6 @@ LLM and Embedding APIs
   (documents by status, chunks, recent documents)
 - `GET /v1/statistics/admin` - System-wide aggregates (admin only):
   users active/disabled, documents by status, chunks, searches
-
-### User administration (admin only)
-- `GET /v1/users/` - List all users
-- `PATCH /v1/users/{id}/role` - Change a user's role (customer/admin)
-- `PATCH /v1/users/{id}/active` - Enable/disable a user account
-- `DELETE /v1/users/{id}` - Delete a user
 
 ### Health
 - `GET /v1/health` - Health check endpoint (checks PostgreSQL, Redis, MinIO)
@@ -265,14 +264,22 @@ LLM and Embedding APIs
 - `DATABASE_URL`: Full PostgreSQL connection string (used by Alembic)
 - `REDIS_HOST`: Redis hostname (default: localhost)
 - `REDIS_PORT`: Redis port (default: 6379; dockerized dev host port: 63790)
+- `REDIS_DB`: Redis logical database (default: 0)
+- `REDIS_PASSWORD`: Redis password (default: none)
 - `MINIO_ENDPOINT`: MinIO endpoint (default: localhost:9000)
+- `MINIO_PUBLIC_ENDPOINT`: Public MinIO endpoint for presigned URLs (default: same as `MINIO_ENDPOINT`)
 - `MINIO_ACCESS_KEY`: MinIO access key (default: minioadmin)
 - `MINIO_SECRET_KEY`: MinIO secret key (default: minioadmin)
 - `MINIO_BUCKET`: Bucket name (default: documents)
+- `MINIO_SECURE`: Use TLS for MinIO connections (default: false in dev)
+- `MINIO_REGION`: MinIO region (default: us-east-1)
 - `SECRET_KEY`: JWT signing key (required)
 - `ALGORITHM`: JWT algorithm (default: HS256)
-- `ACCESS_TOKEN_EXPIRE_MINUTES`: Token expiration (default: 30)
+- `ACCESS_TOKEN_EXPIRE_MINUTES`: Access-token expiration (default: 30)
+- `REFRESH_TOKEN_EXPIRE_DAYS`: Refresh-token expiration in days (default: 7)
+- `REFRESH_COOKIE_SECURE`: Send refresh cookie only over HTTPS (default: true)
 - `OPENAI_API_KEY`: OpenAI API key (for embeddings/LLM)
+- `GROQ_API_KEY`: Groq API key (alternative LLM provider for Q&A)
 - `OPENAI_MODEL`: Model name (default: gpt-4)
 - `EMBEDDING_MODEL`: Embedding model (default: text-embedding-ada-002)
 - `RATE_LIMIT_REQUESTS`: Rate limit requests (default: 100)
@@ -296,8 +303,14 @@ LLM and Embedding APIs
 - **Async processing**: Document processing handled in background workers to avoid blocking API
 - **Vector embeddings**: Stored in PostgreSQL with pgvector for semantic search
 - **Object storage**: MinIO/S3 for document file storage with user isolation
-- **JWT authentication**: Stateless authentication with access tokens
+- **JWT authentication**: Stateless authentication with access tokens and rotating refresh tokens (cookie-based)
 - **Pydantic schemas**: Strict request/response validation
+- **Semantic caching**: QA answers and dashboard statistics are cached in Redis with
+  per-user cache versions, so document changes invalidate stale cache entries
+- **PDF thumbnails**: First-page previews rendered with PyMuPDF in the background
+  worker (best-effort; `has_thumbnail` flag on the document)
+- **Production deployment**: Multi-stage production Docker images,
+  Kustomize overlays, and a standalone Helm chart for Kubernetes
 
 ## Current implementation status
 
@@ -307,8 +320,9 @@ LLM and Embedding APIs
 - [x] FastAPI application skeleton
 - [x] SQLAlchemy models (User, Document, DocumentChunk, SearchHistory)
 - [x] Database migrations (Alembic)
-- [x] User authentication (JWT with registration, login, refresh, logout)
-- [x] Document upload, list, status, preview, download, and delete endpoints
+- [x] User authentication (JWT with refresh-token rotation)
+- [x] Document upload, list, status, preview, download, thumbnail, and delete endpoints
+- [x] Bulk document upload (per-file JSON error reporting)
 - [x] MinIO storage integration
 - [x] Document processing worker (background jobs)
 - [x] Text extraction service (PDF, text, JSON)
@@ -316,23 +330,29 @@ LLM and Embedding APIs
 - [x] Embedding generation service (OpenAI)
 - [x] Semantic search with pgvector (top_k, offset pagination, document_ids filter)
 - [x] Search result export (CSV, formula-injection safe; JSON)
-- [x] Question answering with LLM
+- [x] Question answering with LLM (OpenAI or Groq, optional bring-your-own-key
+  via per-request `api_key`; per-user answer caching)
+- [x] PDF first-page thumbnails (PyMuPDF, best-effort in the worker)
+- [x] Semantic caching (QA answers, dashboard statistics)
 - [x] Rate limiting middleware
 - [x] Logging middleware
 - [x] CORS configuration (dev ports 5173, 5175, 3000)
-- [x] Frontend React app with routing (landing, login, register, documents, search, QA, dashboard, admin, profile, settings)
+- [x] Frontend React app with routing (landing, login, register, documents, search, QA, dashboard, admin, profile, settings, demo)
 - [x] Frontend auth pages (login/register)
-- [x] Frontend document management page
+- [x] Frontend document management page (upload incl. bulk, thumbnail previews, delete)
 - [x] Frontend search UI with pagination and CSV/JSON export
 - [x] Frontend Q&A chat interface
 - [x] User admin dashboard (role changes, activation toggle, user deletion, system statistics)
-- [x] Testing suite (157 backend tests, 118 frontend tests)
-- [x] CI/CD pipeline (GitHub Actions: backend tests + lint, frontend lint + build + tests)
+- [x] User dashboard (documents by status, chunks, recent documents)
+- [x] Testing suite (200 backend tests, 129 frontend tests)
+- [x] CI/CD pipeline (GitHub Actions: backend tests + ruff lint; frontend lint + build + tests)
+- [x] Production Docker images (backend, worker, frontend with nginx)
+- [x] Kubernetes deployment (Kustomize base + dev/production overlays, standalone Helm chart, Kind cluster scripts)
 
-### Planned
-- [ ] Advanced caching strategies
-- [ ] Document preview/thumbnails (text preview done; thumbnails remain)
-- [ ] Bulk document upload
+### Backlog (not yet started)
+- [ ] Production image builds wired into CI
+- [ ] Advanced caching strategies (e.g., semantic search result caching)
+- [ ] Webhooks for document processing events
 
 ## Contributing
 
@@ -372,6 +392,20 @@ LLM and Embedding APIs
 ```bash
 docker compose up -d
 ```
+
+### Production (Docker images + Kubernetes)
+
+Multi-stage production images live under `infra/docker/` and are built with
+`infra/scripts/build-images.sh [registry] [tag]` (defaults to
+`ai-platform/{backend,worker,frontend}:latest`; the worker reuses the
+`./backend` source tree as its build context and the frontend image serves the
+SPA via `frontend/nginx.conf`, which proxies `/v1` to the backend). Deploy
+with either:
+
+- **Kustomize**: `infra/k8s/` (base + dev/production overlays)
+- **Helm**: `infra/helm/ai-platform/` (standalone chart)
+- **Kind**: `infra/scripts/setup-kind.sh` + `kind-load-images.sh` for a local
+  cluster, `teardown-kind.sh` to remove it
 
 ### Accessing services (Docker Compose stack — host ports)
 
