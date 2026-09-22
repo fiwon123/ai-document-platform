@@ -1,0 +1,42 @@
+# Kind cluster configuration for local Kubernetes development.
+#
+# Creates a single-node cluster plus a local container registry so images
+# can be loaded without pushing to a remote registry.
+#
+# Usage:
+#   kind create cluster --config infra/kind/kind-config.yaml
+#
+# The registry runs as a container named "kind-registry" on port 5000 and is
+# attached to the host network namespace used by Kind's control-plane
+# container (see infra/scripts/setup-kind.sh for the full wiring).
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: ai-platform
+
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # Frontend nginx (NodePort 30080 -> container port 8080)
+      - containerPort: 30080
+        hostPort: 8080
+        protocol: TCP
+      # Backend API (NodePort 30081 -> container port 8000)
+      - containerPort: 30081
+        hostPort: 8001
+        protocol: TCP
+
+# Allow scheduling workloads on the control-plane node (single-node cluster).
+kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "ingress-ready=true"
+
+# The containers that run on the cluster need hostname resolution for the
+# local registry (kind-registry -> host registry on 127.0.0.1:5000).
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5000"]
+      endpoint = ["http://kind-registry:5000"]
