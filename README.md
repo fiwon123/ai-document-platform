@@ -165,6 +165,21 @@ Tune retention (`logging.retentionPeriod` / `limits_config.retention_period`)
 and storage size (`logging.storageSize`) via chart values. See
 `infra/README.md`.
 
+### GitOps deployment (ArgoCD)
+
+`infra/argo/` ships an app-of-apps GitOps setup: ArgoCD self-manages the
+Kustomize overlays from this repo — `ai-platform-dev` (branch `dev`) and
+`ai-platform-production` (branch `main`) — with automated sync, self-heal and
+prune. Rollouts follow the CI image pushes; rollback is a git revert.
+
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -f infra/argo/   # bootstrap root app + ApplicationSet
+```
+
+See `infra/README.md`.
+
 ## API
 
 | Method | Endpoint | Description |
