@@ -1,0 +1,74 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - hpa.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+  - pdb.yaml
+
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: true
+
+# Production images: override with your real registry via
+#   kustomize edit set image ...
+# e.g. ghcr.io/fiwon123/ai-platform.
+images:
+  - name: ai-platform/backend
+    newName: ghcr.io/EXAMPLE/ai-platform/backend
+    newTag: latest
+  - name: ai-platform/worker
+    newName: ghcr.io/EXAMPLE/ai-platform/worker
+    newTag: latest
+  - name: ai-platform/frontend
+    newName: ghcr.io/EXAMPLE/ai-platform/frontend
+    newTag: latest
+
+patches:
+  # Production replicas.
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+  - target:
+      kind: Deployment
+      name: worker
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: Deployment
+      name: frontend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  # Always re-pull the tagged image in production.
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
+  - target:
+      kind: Deployment
+      name: worker
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
+  - target:
+      kind: Deployment
+      name: frontend
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always

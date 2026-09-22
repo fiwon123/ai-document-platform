@@ -1,0 +1,66 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# Dev overlay: match the Kind cluster (localhost:5000 registry, NodePorts).
+# The frontend Service becomes NodePort 30080 -> pod 8080 and the backend
+# Service NodePort 30081 -> pod 8000, as declared in kind-config.yaml.
+
+images:
+  - name: ai-platform/backend
+    newName: localhost:5000/backend
+    newTag: latest
+  - name: ai-platform/worker
+    newName: localhost:5000/worker
+    newTag: latest
+  - name: ai-platform/frontend
+    newName: localhost:5000/frontend
+    newTag: latest
+
+patches:
+  # Expose frontend on NodePort 30080 (host: 18080 via Kind).
+  - target:
+      kind: Service
+      name: frontend
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30080
+  # Expose backend on NodePort 30081 (host: 18001 via Kind).
+  - target:
+      kind: Service
+      name: backend
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30081
+  # Dev resources are modest.
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: Deployment
+      name: worker
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: Deployment
+      name: frontend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
