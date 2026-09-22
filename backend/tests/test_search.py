@@ -7,7 +7,7 @@ from app.models.chunk import DocumentChunk
 from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
 from app.repositories.search import SearchRepository
-from app.schemas.document import SearchResponse
+from app.schemas.document import SearchResponse, SearchResult
 from app.services.search import SearchService
 
 DIM = 1536
@@ -328,3 +328,169 @@ class TestSearchRoute:
         body = resp.json()
         assert body == {"query": "q", "results": [], "total_count": 0, "has_more": False}
         fake_service.search.assert_called_once()
+
+
+class TestSearchExport:
+    """Export endpoint: CSV and JSON rendering of search results."""
+
+    def _export_response(
+        self, client, auth_headers, fmt: str, query: str = "hello"
+    ):
+        from app.main import app
+        from app.routes.search import get_search_service
+
+        fake_service = MagicMock()
+        fake_service.search.return_value = SearchResponse(
+            query=query,
+            results=[
+                SearchResult(
+                    chunk_id=UUID("00000000-0000-0000-0000-000000000001"),
+                    document_id=UUID("00000000-0000-0000-0000-000000000002"),
+                    document_filename="notes.txt",
+                    content='contains "quoted, text" and newline\nline2',
+                    score=0.123456,
+                    metadata_={"page": 2},
+                )
+            ],
+            total_count=1,
+            has_more=False,
+        )
+        app.dependency_overrides[get_search_service] = lambda: fake_service
+        try:
+            resp = client.post(
+                "/v1/search/export",
+                json={"query": query, "top_k": 5, "format": fmt},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+        return resp
+
+    def test_export_csv_success(self, client, auth_headers):
+        resp = self._export_response(client, auth_headers, "csv")
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/csv")
+        assert 'attachment; filename="search_results.csv"' in resp.headers[
+            "content-disposition"
+        ]
+        lines = resp.text.splitlines()
+        assert lines[0] == (
+            "document_filename,chunk_id,document_id,score,content,metadata"
+        )
+        # CSV quoting must handle commas, quotes, and newlines in content.
+        assert lines[1].startswith('notes.txt,00000000-0000-0000-0000-000000000001,')
+        assert '"contains ""quoted, text"" and newline\nline2"' in resp.text
+        assert ",0.123456," in resp.text
+        assert '"{""page"":2}"' in resp.text
+
+    def test_export_csv_uses_correct_score_precision(self, client, auth_headers):
+        resp = self._export_response(client, auth_headers, "csv")
+        assert ",0.123456," in resp.text
+
+    def test_export_csv_neutralizes_formula_injection(self, client, auth_headers):
+        """Cells starting with =, +, -, @ must be prefixed so spreadsheets
+        treat them as text instead of executing formulas (CSV injection)."""
+        from app.main import app
+        from app.routes.search import get_search_service
+
+        fake_service = MagicMock()
+        fake_service.search.return_value = SearchResponse(
+            query="q",
+            results=[
+                SearchResult(
+                    chunk_id=UUID("00000000-0000-0000-0000-000000000001"),
+                    document_id=UUID("00000000-0000-0000-0000-000000000002"),
+                    document_filename="=cmd|'/c calc'!A0",
+                    content="+SUM(A1:A2)",
+                    score=0.5,
+                    metadata_={"note": "@import"},
+                )
+            ],
+            total_count=1,
+            has_more=False,
+        )
+        app.dependency_overrides[get_search_service] = lambda: fake_service
+        try:
+            resp = client.post(
+                "/v1/search/export",
+                json={"query": "q", "format": "csv"},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        # Dangerous cells are neutralized with an apostrophe prefix.
+        assert "'=cmd|'/c calc'!A0" in resp.text
+        assert "'+SUM(A1:A2)" in resp.text
+        # Metadata serializes to a JSON object starting with "{", which
+        # spreadsheets never treat as a formula — no prefix needed.
+        assert '"{""note"":""@import""}"' in resp.text
+
+    def test_export_json_success(self, client, auth_headers):
+        resp = self._export_response(client, auth_headers, "json")
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("application/json")
+        assert 'attachment; filename="search_results.json"' in resp.headers[
+            "content-disposition"
+        ]
+        body = resp.json()
+        assert body["query"] == "hello"
+        assert body["total_count"] == 1
+        assert body["has_more"] is False
+        result = body["results"][0]
+        assert result["document_filename"] == "notes.txt"
+        assert result["metadata_"] == {"page": 2}
+        assert result["score"] == 0.123456
+
+    def test_export_forwards_document_ids_and_skips_history(
+        self, client, auth_headers
+    ):
+        from app.main import app
+        from app.routes.search import get_search_service
+
+        fake_service = MagicMock()
+        fake_service.search.return_value = SearchResponse(
+            query="hello", results=[], total_count=0, has_more=False
+        )
+        app.dependency_overrides[get_search_service] = lambda: fake_service
+        doc_ids = [str(UUID("00000000-0000-0000-0000-000000000002"))]
+        try:
+            resp = client.post(
+                "/v1/search/export",
+                json={
+                    "query": "hello",
+                    "top_k": 5,
+                    "offset": 10,
+                    "document_ids": doc_ids,
+                    "format": "json",
+                },
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        fake_service.search.assert_called_once()
+        kwargs = fake_service.search.call_args.kwargs
+        assert kwargs["document_ids"] == [UUID("00000000-0000-0000-0000-000000000002")]
+        assert kwargs["offset"] == 10
+        # Exports must not be recorded as search history.
+        assert kwargs["record_history"] is False
+
+    def test_export_requires_auth(self, client):
+        resp = client.post(
+            "/v1/search/export",
+            json={"query": "hello", "format": "csv"},
+        )
+        assert resp.status_code == 401
+
+    def test_export_rejects_invalid_format(self, client, auth_headers):
+        resp = client.post(
+            "/v1/search/export",
+            json={"query": "hello", "format": "xml"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422
