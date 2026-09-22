@@ -161,6 +161,26 @@ describe("api client request paths", () => {
     );
   });
 
+  it("should send documents.getThumbnailUrl to /v1/documents/{id}/thumbnail", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "doc-6",
+          thumbnail_url: "http://localhost:9000/.../thumbnail.png",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await documents.getThumbnailUrl("doc-6");
+
+    expect(result.thumbnail_url).toContain("thumbnail.png");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/v1/documents/doc-6/thumbnail",
+      expect.anything(),
+    );
+  });
+
   it("should send auth.login to /v1/auth/login with form-urlencoded body", async () => {
     mockFetch.mockResolvedValue(
       new Response(
@@ -425,6 +445,7 @@ describe("documents.getStatus", () => {
       id: "doc-123",
       status: "ready",
       error_message: null,
+      has_thumbnail: true,
     };
     vi.mocked(globalThis.fetch).mockResolvedValue(
       new Response(JSON.stringify(status), {

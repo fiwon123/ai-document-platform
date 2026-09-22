@@ -246,6 +246,96 @@ class TestEnqueueFacade:
             process_document_task(uuid4())
 
 
+class TestThumbnailGeneration:
+    """Thumbnails are generated during processing — best-effort, PDFs only."""
+
+    def _seed_pdf_document(self, db_session) -> DocumentDB:
+        user = UserDB(
+            username=f"thumb_{uuid4().hex[:8]}",
+            hashed_password="x",  # noqa: S106
+        )
+        db_session.add(user)
+        db_session.flush()
+        doc = DocumentDB(
+            owner_id=user.id,
+            filename="report.pdf",
+            object_key=f"users/{user.id}/documents/x/report.pdf",
+            mime_type="application/pdf",
+            status=DocumentStatus.PENDING,
+        )
+        db_session.add(doc)
+        db_session.commit()
+        return doc
+
+    def test_pdf_document_gets_thumbnail(self, db_session, monkeypatch, pdf_bytes):
+        """A renderable PDF upload ends READY with a stored thumbnail."""
+        from app.worker import storage as worker_storage
+
+        doc = self._seed_pdf_document(db_session)
+        _patch_worker_deps(monkeypatch)
+        monkeypatch.setattr(worker_storage, "download", lambda key: io.BytesIO(pdf_bytes))
+
+        uploads: dict[str, bytes] = {}
+        monkeypatch.setattr(
+            worker_storage,
+            "upload",
+            lambda file_object, object_key, content_type=None: uploads.setdefault(
+                object_key, file_object.read()
+            ),
+        )
+
+        asyncio.run(process_document({}, str(doc.id)))
+
+        db_session.refresh(doc)
+        assert doc.status == DocumentStatus.READY
+        assert doc.has_thumbnail is True
+
+        folder, _ = os.path.split(doc.object_key)
+        expected_key = f"{folder}/thumbnail.png"
+        assert expected_key in uploads
+        assert uploads[expected_key].startswith(b"\x89PNG")
+
+    def test_text_document_gets_no_thumbnail(self, db_session, monkeypatch):
+        """Non-PDF documents are never sent to the thumbnail pipeline."""
+        from app.worker import storage as worker_storage
+
+        doc = _seed_pending_document(db_session)  # notes.txt, text/plain
+        _patch_worker_deps(monkeypatch)
+
+        uploaded: list[str] = []
+        monkeypatch.setattr(
+            worker_storage,
+            "upload",
+            lambda file_object, object_key, content_type=None: uploaded.append(
+                object_key
+            ),
+        )
+
+        asyncio.run(process_document({}, str(doc.id)))
+
+        db_session.refresh(doc)
+        assert doc.status == DocumentStatus.READY
+        assert doc.has_thumbnail is False
+        assert uploaded == []
+
+    def test_thumbnail_failure_does_not_fail_document(self, db_session, monkeypatch):
+        """A corrupt/unrenderable PDF still becomes READY — no thumbnail."""
+        from app.worker import storage as worker_storage
+
+        doc = self._seed_pdf_document(db_session)
+        _patch_worker_deps(monkeypatch)
+        # download returns garbage: rendering raises, worker must swallow it.
+        monkeypatch.setattr(
+            worker_storage, "download", lambda key: io.BytesIO(b"not a real pdf")
+        )
+
+        asyncio.run(process_document({}, str(doc.id)))
+
+        db_session.refresh(doc)
+        assert doc.status == DocumentStatus.READY
+        assert doc.has_thumbnail is False
+
+
 class TestWorkerSettings:
     def test_settings_expose_task_and_limits(self):
         assert process_document in WorkerSettings["functions"]

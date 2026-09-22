@@ -1,4 +1,5 @@
 import asyncio
+import io
 import logging
 import os
 from datetime import UTC, datetime, timedelta
@@ -16,6 +17,11 @@ from app.repositories.document import DocumentRepository
 from app.services.chunking import ChunkingService
 from app.services.embedding import EmbeddingService
 from app.services.text_extraction import TextExtractionService
+from app.services.thumbnail import (
+    can_render_thumbnail,
+    thumbnail_object_key,
+    thumbnail_service,
+)
 from app.storage.storage import storage
 
 logger = logging.getLogger(__name__)
@@ -96,6 +102,40 @@ def _mark_failed(document_id: UUID, error_message: str) -> None:
         db.close()
 
 
+def _generate_thumbnail(
+    db: Session,
+    document: DocumentDB,
+    file_bytes: bytes,
+) -> None:
+    """Render and store a visual thumbnail for a PDF document.
+
+    Best-effort by design: a corrupt or encrypted PDF (or a storage
+    hiccup) must never fail the document — the text pipeline already
+    succeeded and the document should still become READY. Callers keep
+    ``document`` attached to ``db`` so the flag update commits together
+    with the processing transaction.
+    """
+    if not can_render_thumbnail(document.mime_type, document.filename):
+        return
+
+    png_bytes = thumbnail_service.render_png(file_bytes)
+    object_key = thumbnail_object_key(document.object_key)
+    storage.upload(
+        file_object=io.BytesIO(png_bytes),
+        object_key=object_key,
+        content_type="image/png",
+    )
+    try:
+        document.has_thumbnail = True
+        db.commit()
+    except Exception:
+        db.rollback()
+        # The flag was never persisted: remove the orphaned object so
+        # storage does not leak under a document that reports no thumbnail.
+        storage.delete(object_key)
+        raise
+
+
 async def _process_document_impl(document_id: UUID) -> None:
     """Run the full processing pipeline once for a document.
 
@@ -116,8 +156,6 @@ async def _process_document_impl(document_id: UUID) -> None:
 
         file_content = storage.download(document.object_key)
         file_bytes = file_content.read()
-
-        import io
 
         file_object = io.BytesIO(file_bytes)
 
@@ -170,6 +208,15 @@ async def _process_document_impl(document_id: UUID) -> None:
             )
 
         db.commit()
+
+        # Visual thumbnails are strictly optional: a render or storage
+        # failure must not fail the whole document (it stays READY, just
+        # without a thumbnail).
+        try:
+            _generate_thumbnail(db, document, file_bytes)
+        except Exception as e:  # noqa: BLE001 - thumbnails are best-effort
+            logger.warning(f"Thumbnail generation failed for {document_id}: {e}")
+            db.rollback()
 
         repository.update_status(document_id, DocumentStatus.READY)
         _invalidate_caches(document)

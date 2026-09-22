@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, String
+from sqlalchemy import Boolean, DateTime, Enum, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -59,6 +59,14 @@ class DocumentDB(Base):
     error_message: Mapped[str | None] = mapped_column(
         String,
         nullable=True,
+    )
+
+    # True once the worker rendered a visual thumbnail (PDFs only) and
+    # stored it next to the original in object storage.
+    has_thumbnail: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
     )
 
     created_at: Mapped[datetime] = mapped_column(

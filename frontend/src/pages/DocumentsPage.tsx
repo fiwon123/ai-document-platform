@@ -17,8 +17,12 @@ function isProcessing(status: Document["status"]): boolean {
   return status === "pending" || status === "processing";
 }
 
+/** Delay before a failed thumbnail lookup is retried (prevents hammering). */
+const THUMBNAIL_RETRY_MS = 30_000;
+
 export function DocumentsPage() {
   const [docs, setDocs] = useState<Document[]>([]);
+  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -30,6 +34,10 @@ export function DocumentsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Ids whose thumbnail URL was fetched successfully (avoids refetching). */
+  const thumbnailFetched = useRef<Set<string>>(new Set());
+  /** Ids whose last thumbnail lookup failed, timestamped for backoff. */
+  const thumbnailFailedAt = useRef<Map<string, number>>(new Map());
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -64,13 +72,49 @@ export function DocumentsPage() {
         prev.map((doc) => {
           const next = statuses.find((s) => s.id === doc.id);
           return next
-            ? { ...doc, status: next.status, error_message: next.error_message }
+            ? {
+                ...doc,
+                status: next.status,
+                error_message: next.error_message,
+                has_thumbnail: next.has_thumbnail,
+              }
             : doc;
         }),
       );
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
+  }, [docs]);
+
+  // Fetch presigned thumbnail URLs for documents that have one (PDFs that
+  // finished processing). Failures are silent — the card keeps its generic
+  // icon — and are retried after a short backoff. Polling merges the
+  // has_thumbnail flag live, so documents that finish while the page is
+  // open are picked up without a full reload.
+  useEffect(() => {
+    const now = Date.now();
+    const toFetch = docs.filter((d) => {
+      if (!d.has_thumbnail || thumbnailFetched.current.has(d.id)) return false;
+      const failedAt = thumbnailFailedAt.current.get(d.id);
+      return failedAt === undefined || now - failedAt >= THUMBNAIL_RETRY_MS;
+    });
+    for (const doc of toFetch) {
+      documents
+        .getThumbnailUrl(doc.id)
+        .then(({ thumbnail_url }) => {
+          // Mark on success so a fulfilled request is never re-issued, even
+          // when this effect run was superseded by a polling update. URLs
+          // are idempotent per document id, so a late write is harmless
+          // (and a post-unmount setState is a no-op in React 19).
+          thumbnailFetched.current.add(doc.id);
+          setThumbnailUrls((prev) => ({ ...prev, [doc.id]: thumbnail_url }));
+        })
+        .catch(() => {
+          // 404 (no thumbnail) or a transient network error — keep the
+          // placeholder until the next retry window.
+          thumbnailFailedAt.current.set(doc.id, Date.now());
+        });
+    }
   }, [docs]);
 
   // Close the preview modal on Escape (matches the overlay click handler).
@@ -157,6 +201,13 @@ export function DocumentsPage() {
     try {
       await documents.delete(id);
       setDocs((prev) => prev.filter((d) => d.id !== id));
+      // Drop any cached thumbnail URL so a re-uploaded document with the
+      // same id (never happens today, but cheap) cannot show a stale image.
+      setThumbnailUrls((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
       toast.success("Document deleted");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
@@ -259,7 +310,25 @@ export function DocumentsPage() {
           {docs.map((doc) => (
             <div key={doc.id} className="document-card">
               <div className="document-card-header">
-                <div className="file-icon" aria-hidden="true">FILE</div>
+                {thumbnailUrls[doc.id] ? (
+                  <img
+                    className="document-thumbnail"
+                    src={thumbnailUrls[doc.id]}
+                    alt={`Preview of ${doc.filename}`}
+                    loading="lazy"
+                    onError={() => {
+                      // Expired presigned URL or deleted object: drop the
+                      // URL so the card falls back to the generic icon.
+                      setThumbnailUrls((prev) => {
+                        const next = { ...prev };
+                        delete next[doc.id];
+                        return next;
+                      });
+                    }}
+                  />
+                ) : (
+                  <div className="file-icon" aria-hidden="true">FILE</div>
+                )}
                 <div className="document-info">
                   <h3>{doc.filename}</h3>
                   <p>{doc.mime_type || "Unknown type"}</p>

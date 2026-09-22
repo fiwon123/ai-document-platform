@@ -22,6 +22,7 @@ from app.schemas.document import (
     DocumentStatusResponse,
     DownloadUrlResponse,
     FileResponse,
+    ThumbnailUrlResponse,
 )
 from app.services.document import MAX_BULK_UPLOAD_FILES, DocumentService
 from app.storage.storage import storage
@@ -133,6 +134,21 @@ def get_download_url(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found",
+        )
+    return result
+
+
+@router.get("/{document_id}/thumbnail", response_model=ThumbnailUrlResponse)
+def get_document_thumbnail(
+    document_id: UUID,
+    service: Annotated[DocumentService, Depends(get_document_service)],
+    owner_id: Annotated[UUID, Depends(get_current_user_id)],
+):
+    result = service.get_thumbnail_url(document_id=document_id, owner_id=owner_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Thumbnail not available for this document",
         )
     return result
 

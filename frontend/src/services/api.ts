@@ -7,6 +7,7 @@ import type {
   QAResponse,
   SearchResponse,
   StatisticsResponse,
+  ThumbnailUrlResponse,
   TokenResponse,
   User,
 } from "../types";
@@ -199,6 +200,11 @@ export const documents = {
 
   async getDownloadUrl(id: string): Promise<{ id: string; filename: string; download_url: string }> {
     return request(`/documents/${id}/download`);
+  },
+
+  /** Presigned URL of the document's rendered thumbnail (404 when none). */
+  async getThumbnailUrl(id: string): Promise<ThumbnailUrlResponse> {
+    return request<ThumbnailUrlResponse>(`/documents/${id}/thumbnail`);
   },
 
   async preview(id: string): Promise<DocumentPreview> {
