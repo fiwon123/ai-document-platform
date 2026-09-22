@@ -12,6 +12,9 @@ ARG UV_VERSION=0.6.1
 # ---------- Build stage ----------
 FROM python:3.14-slim AS build
 
+# Re-declare ARG after FROM so it is in scope in this stage.
+ARG UV_VERSION=0.6.1
+
 WORKDIR /app
 
 ENV UV_COMPILE_BYTECODE=1 \
@@ -33,11 +36,14 @@ RUN uv sync --frozen --no-dev
 # ---------- Runtime stage ----------
 FROM python:3.14-slim AS runtime
 
+ARG UV_VERSION=0.6.1
+
 WORKDIR /app
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/app/src"
 
 # The worker runs as a non-root user in production.
 RUN groupadd --system app && useradd --system --gid app --create-home app

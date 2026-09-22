@@ -5,6 +5,9 @@
 .git
 .gitignore
 
+# Other Dockerfile variants (the compose/dev image)
+Dockerfile
+
 # Node
 node_modules/
 dist/
@@ -20,7 +23,10 @@ src/test/
 # Environment & secrets
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
+!**/.env.example
 
 # Docs
 *.md

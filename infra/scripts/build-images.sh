@@ -20,18 +20,20 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DOCKER_DIR="${ROOT_DIR}/infra/docker"
 
 image() {
-  local name="$1"
-  shift
-  echo "==> Building ${REGISTRY}/${name}:${TAG}"
+  local img="$1"
+  local ctx="$2"
+  shift 2
+  echo "==> Building ${REGISTRY}/${img}:${TAG}"
   docker build "$@" \
-    -f "${DOCKER_DIR}/Dockerfile.${name}" \
-    -t "${REGISTRY}/${name}:${TAG}" \
-    "${ROOT_DIR}/${name}"
+    -f "${DOCKER_DIR}/Dockerfile.${img}" \
+    -t "${REGISTRY}/${img}:${TAG}" \
+    "${ROOT_DIR}/${ctx}"
 }
 
-image backend
-image worker
-image frontend
+# NOTE: worker reuses the backend source tree as its build context.
+image backend backend
+image worker backend
+image frontend frontend
 
 echo "==> Done. Images:"
 for img in backend worker frontend; do

@@ -5,6 +5,10 @@
 .git
 .gitignore
 
+# Other Dockerfile variants (the compose/dev image)
+Dockerfile
+.python-version
+
 # Python
 __pycache__/
 *.py[cod]
@@ -22,7 +26,10 @@ htmlcov/
 # Environment & secrets
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
+!**/.env.example
 
 # Docs
 *.md
