@@ -47,6 +47,13 @@ class SearchRequest(BaseModel):
         ge=0,
         description="Number of results to skip (pagination cursor)",
     )
+    document_ids: list[UUID] | None = Field(
+        default=None,
+        description=(
+            "Optional document IDs to restrict the search to. "
+            "None (default) searches all of the user's documents."
+        ),
+    )
 
 
 class SearchResult(BaseModel):

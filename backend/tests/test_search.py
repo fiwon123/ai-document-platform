@@ -1,7 +1,7 @@
 """Tests for the search service and route (query embedding generation)."""
 
 from unittest.mock import MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.models.chunk import DocumentChunk
 from app.models.document import DocumentDB, DocumentStatus
@@ -257,6 +257,52 @@ class TestSearchPagination:
         assert resp.status_code == 200
         fake_service.search.assert_called_once()
         assert fake_service.search.call_args.kwargs["offset"] == 10
+
+    def test_search_route_forwards_document_ids(self, client, auth_headers):
+        from app.main import app
+        from app.routes.search import get_search_service
+
+        fake_service = MagicMock()
+        fake_service.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
+        app.dependency_overrides[get_search_service] = lambda: fake_service
+        doc_ids = [str(uuid4()), str(uuid4())]
+        try:
+            resp = client.post(
+                "/v1/search/",
+                json={"query": "hello", "top_k": 5, "document_ids": doc_ids},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        fake_service.search.assert_called_once()
+        forwarded = fake_service.search.call_args.kwargs["document_ids"]
+        assert forwarded == [UUID(d) for d in doc_ids]
+
+    def test_search_route_defaults_document_ids_to_none(self, client, auth_headers):
+        from app.main import app
+        from app.routes.search import get_search_service
+
+        fake_service = MagicMock()
+        fake_service.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
+        app.dependency_overrides[get_search_service] = lambda: fake_service
+        try:
+            resp = client.post(
+                "/v1/search/",
+                json={"query": "hello"},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        fake_service.search.assert_called_once()
+        assert fake_service.search.call_args.kwargs["document_ids"] is None
 
 
 class TestSearchRoute:
