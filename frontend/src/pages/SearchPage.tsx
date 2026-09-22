@@ -1,10 +1,50 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { DocumentFilter } from "../components/DocumentFilter";
 import { EmptyState } from "../components/EmptyState";
 import { HighlightedText } from "../components/HighlightedText";
 import { search } from "../services/api";
 import type { SearchResult } from "../types";
 import { Spinner } from "../components/Spinner";
+
+interface SearchResultCardProps {
+  result: SearchResult;
+  query: string;
+}
+
+/**
+ * Memoized result card. During typing the query prop changes so the
+ * highlighted snippet re-renders, but unrelated page state (export toggles,
+ * filters) does not force every card to rebuild.
+ */
+const SearchResultCard = memo(function SearchResultCard({
+  result,
+  query,
+}: SearchResultCardProps) {
+  return (
+    <div className="search-result-card">
+      <div className="result-header">
+        <span className="result-document">
+          {result.document_filename}
+        </span>
+        <span className="result-score">
+          Similarity: {Math.max(0, (1 - result.score) * 100).toFixed(1)}%
+        </span>
+      </div>
+      <p className="result-content">
+        <HighlightedText text={result.content} query={query} />
+      </p>
+      {result.metadata_ && (
+        <div className="result-metadata">
+          {Object.entries(result.metadata_).map(([key, value]) => (
+            <span key={key} className="metadata-tag">
+              {key}: {String(value)}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
 
 const DEBOUNCE_MS = 300;
 const PAGE_SIZE = 5;
@@ -172,29 +212,12 @@ export function SearchPage() {
               </button>
             </div>
           </div>
-          {results.map((result) => (
-            <div key={result.chunk_id} className="search-result-card">
-              <div className="result-header">
-                <span className="result-document">
-                  {result.document_filename}
-                </span>
-                <span className="result-score">
-                  Similarity: {Math.max(0, (1 - result.score) * 100).toFixed(1)}%
-                </span>
-              </div>
-              <p className="result-content">
-                <HighlightedText text={result.content} query={query} />
-              </p>
-              {result.metadata_ && (
-                <div className="result-metadata">
-                  {Object.entries(result.metadata_).map(([key, value]) => (
-                    <span key={key} className="metadata-tag">
-                      {key}: {String(value)}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
+{results.map((result) => (
+            <SearchResultCard
+              key={result.chunk_id}
+              result={result}
+              query={query}
+            />
           ))}
           {hasMore && (
             <div className="search-load-more">

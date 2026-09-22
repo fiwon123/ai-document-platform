@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { documents } from "../services/api";
 import type { Document } from "../types";
 import { Spinner } from "./Spinner";
@@ -12,8 +12,15 @@ interface DocumentFilterProps {
 /**
  * Lets the user scope search/Q&A to a subset of their documents.
  * No selection means "all documents".
+ *
+ * Memoized: its props are state-sourced (stable array identity) and a
+ * setState function, so parent re-renders (e.g. every search query
+ * keystroke) skip re-rendering the whole option list.
  */
-export function DocumentFilter({ selected, onChange }: DocumentFilterProps) {
+export const DocumentFilter = memo(function DocumentFilter({
+  selected,
+  onChange,
+}: DocumentFilterProps) {
   const [docs, setDocs] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,4 +90,4 @@ export function DocumentFilter({ selected, onChange }: DocumentFilterProps) {
       ))}
     </div>
   );
-}
+});

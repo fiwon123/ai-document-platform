@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import { documents } from "../services/api";
 import type { Document, DocumentPreview, DocumentStatusResponse } from "../types";
@@ -19,6 +19,130 @@ function isProcessing(status: Document["status"]): boolean {
 
 /** Delay before a failed thumbnail lookup is retried (prevents hammering). */
 const THUMBNAIL_RETRY_MS = 30_000;
+
+const statusColors: Record<string, string> = {
+  // -600 weight shades keep white text WCAG AA (>= 4.5:1) in both themes.
+  pending: "#b45309",
+  processing: "#2563eb",
+  ready: "#16a34a",
+  failed: "#dc2626",
+};
+
+interface DocumentCardProps {
+  doc: Document;
+  thumbnailUrl: string | undefined;
+  isPreviewLoading: boolean;
+  isDownloading: boolean;
+  isDeleting: boolean;
+  onPreview: (doc: Document) => void;
+  onDownload: (doc: Document) => void;
+  onDelete: (id: string) => void;
+  onThumbnailError: (id: string) => void;
+}
+
+/**
+ * Memoized per-document card. During status polling only the documents
+ * whose status changed receive new object identities, so unchanged cards
+ * skip re-rendering entirely instead of re-rendering the whole grid.
+ */
+const DocumentCard = memo(function DocumentCard({
+  doc,
+  thumbnailUrl,
+  isPreviewLoading,
+  isDownloading,
+  isDeleting,
+  onPreview,
+  onDownload,
+  onDelete,
+  onThumbnailError,
+}: DocumentCardProps) {
+  return (
+    <div className="document-card">
+      <div className="document-card-header">
+        {thumbnailUrl ? (
+          <img
+            className="document-thumbnail"
+            src={thumbnailUrl}
+            alt={`Preview of ${doc.filename}`}
+            loading="lazy"
+            onError={() => {
+              // Expired presigned URL or deleted object: drop the URL so
+              // the card falls back to the generic icon.
+              onThumbnailError(doc.id);
+            }}
+          />
+        ) : (
+          <div className="file-icon" aria-hidden="true">FILE</div>
+        )}
+        <div className="document-info">
+          <h3>{doc.filename}</h3>
+          <p>{doc.mime_type || "Unknown type"}</p>
+        </div>
+      </div>
+      <div className="document-card-body">
+        <div className="status-row">
+          <span>Status:</span>
+          <span
+            className="status-badge"
+            style={{ backgroundColor: statusColors[doc.status] || "#6b7280" }}
+          >
+            {doc.status}
+          </span>
+        </div>
+        {doc.error_message && (
+          <p className="error-detail">{doc.error_message}</p>
+        )}
+        <p className="date">
+          Uploaded: {new Date(doc.created_at).toLocaleDateString()}
+        </p>
+      </div>
+      <div className="document-card-footer">
+        <button
+          onClick={() => onPreview(doc)}
+          disabled={isPreviewLoading}
+          className="btn btn-secondary"
+        >
+          {isPreviewLoading ? (
+            <>
+              <Spinner size={14} label="Loading preview" />
+              Loading…
+            </>
+          ) : (
+            "Preview"
+          )}
+        </button>
+        <button
+          onClick={() => onDownload(doc)}
+          disabled={doc.status !== "ready" || isDownloading}
+          className="btn btn-secondary"
+        >
+          {isDownloading ? (
+            <>
+              <Spinner size={14} label="Downloading" />
+              Downloading…
+            </>
+          ) : (
+            "Download"
+          )}
+        </button>
+        <button
+          onClick={() => onDelete(doc.id)}
+          disabled={isDeleting}
+          className="btn btn-danger"
+        >
+          {isDeleting ? (
+            <>
+              <Spinner size={14} label="Deleting" />
+              Deleting…
+            </>
+          ) : (
+            "Delete"
+          )}
+        </button>
+      </div>
+    </div>
+  );
+});
 
 export function DocumentsPage() {
   const [docs, setDocs] = useState<Document[]>([]);
@@ -193,7 +317,7 @@ export function DocumentsPage() {
     void uploadFiles(files);
   }
 
-  async function handleDelete(id: string) {
+  const handleDelete = useCallback(async (id: string) => {
     if (!confirm("Are you sure you want to delete this document?")) return;
 
     setDeletingId(id);
@@ -215,9 +339,13 @@ export function DocumentsPage() {
     } finally {
       setDeletingId(null);
     }
-  }
+  }, []);
 
-  async function handleDownload(doc: Document) {
+  // All handlers use only stable references (settiers, the API client,
+  // toast), so they keep their identity across renders and memoized cards
+  // are not invalidated by parent re-renders.
+
+  const handleDownload = useCallback(async (doc: Document) => {
     setDownloadingId(doc.id);
     setError(null);
     try {
@@ -233,9 +361,9 @@ export function DocumentsPage() {
     } finally {
       setDownloadingId(null);
     }
-  }
+  }, []);
 
-  async function handlePreview(doc: Document) {
+  const handlePreview = useCallback(async (doc: Document) => {
     setPreviewLoadingId(doc.id);
     setPreviewError(null);
     try {
@@ -246,15 +374,15 @@ export function DocumentsPage() {
     } finally {
       setPreviewLoadingId(null);
     }
-  }
+  }, []);
 
-  const statusColors: Record<string, string> = {
-    // -600 weight shades keep white text WCAG AA (>= 4.5:1) in both themes.
-    pending: "#b45309",
-    processing: "#2563eb",
-    ready: "#16a34a",
-    failed: "#dc2626",
-  };
+  const clearThumbnailUrl = useCallback((id: string) => {
+    setThumbnailUrls((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
 
   return (
     <div className="page">
@@ -308,94 +436,18 @@ export function DocumentsPage() {
       ) : (
         <div className="document-grid">
           {docs.map((doc) => (
-            <div key={doc.id} className="document-card">
-              <div className="document-card-header">
-                {thumbnailUrls[doc.id] ? (
-                  <img
-                    className="document-thumbnail"
-                    src={thumbnailUrls[doc.id]}
-                    alt={`Preview of ${doc.filename}`}
-                    loading="lazy"
-                    onError={() => {
-                      // Expired presigned URL or deleted object: drop the
-                      // URL so the card falls back to the generic icon.
-                      setThumbnailUrls((prev) => {
-                        const next = { ...prev };
-                        delete next[doc.id];
-                        return next;
-                      });
-                    }}
-                  />
-                ) : (
-                  <div className="file-icon" aria-hidden="true">FILE</div>
-                )}
-                <div className="document-info">
-                  <h3>{doc.filename}</h3>
-                  <p>{doc.mime_type || "Unknown type"}</p>
-                </div>
-              </div>
-              <div className="document-card-body">
-                <div className="status-row">
-                  <span>Status:</span>
-                  <span
-                    className="status-badge"
-                    style={{ backgroundColor: statusColors[doc.status] || "#6b7280" }}
-                  >
-                    {doc.status}
-                  </span>
-                </div>
-                {doc.error_message && (
-                  <p className="error-detail">{doc.error_message}</p>
-                )}
-                <p className="date">
-                  Uploaded: {new Date(doc.created_at).toLocaleDateString()}
-                </p>
-              </div>
-              <div className="document-card-footer">
-                <button
-                  onClick={() => handlePreview(doc)}
-                  disabled={previewLoadingId === doc.id}
-                  className="btn btn-secondary"
-                >
-                  {previewLoadingId === doc.id ? (
-                    <>
-                      <Spinner size={14} label="Loading preview" />
-                      Loading…
-                    </>
-                  ) : (
-                    "Preview"
-                  )}
-                </button>
-                <button
-                  onClick={() => handleDownload(doc)}
-                  disabled={doc.status !== "ready" || downloadingId === doc.id}
-                  className="btn btn-secondary"
-                >
-                  {downloadingId === doc.id ? (
-                    <>
-                      <Spinner size={14} label="Downloading" />
-                      Downloading…
-                    </>
-                  ) : (
-                    "Download"
-                  )}
-                </button>
-                <button
-                  onClick={() => handleDelete(doc.id)}
-                  disabled={deletingId === doc.id}
-                  className="btn btn-danger"
-                >
-                  {deletingId === doc.id ? (
-                    <>
-                      <Spinner size={14} label="Deleting" />
-                      Deleting…
-                    </>
-                  ) : (
-                    "Delete"
-                  )}
-                </button>
-              </div>
-            </div>
+            <DocumentCard
+              key={doc.id}
+              doc={doc}
+              thumbnailUrl={thumbnailUrls[doc.id]}
+              isPreviewLoading={previewLoadingId === doc.id}
+              isDownloading={downloadingId === doc.id}
+              isDeleting={deletingId === doc.id}
+              onPreview={handlePreview}
+              onDownload={handleDownload}
+              onDelete={handleDelete}
+              onThumbnailError={clearThumbnailUrl}
+            />
           ))}
         </div>
       )}
