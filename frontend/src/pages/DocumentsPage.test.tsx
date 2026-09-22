@@ -376,7 +376,11 @@ describe("DocumentsPage busy states", () => {
   });
 
   it("splits batches larger than the backend limit into multiple requests", async () => {
-    mockedUploadMany.mockResolvedValue({ uploaded: [], failed: [] });
+    // Each resolved batch echoes its own files as successfully uploaded.
+    mockedUploadMany.mockImplementation(async (batch) => ({
+      uploaded: batch.map((f) => ({ ...readyDoc, id: `doc-${f.name}`, filename: f.name })),
+      failed: [],
+    }));
 
     const { container } = render(<DocumentsPage />);
     await settle();
@@ -390,5 +394,8 @@ describe("DocumentsPage busy states", () => {
     expect(mockedUploadMany).toHaveBeenCalledTimes(2);
     expect(mockedUploadMany.mock.calls[0][0]).toHaveLength(20);
     expect(mockedUploadMany.mock.calls[1][0]).toHaveLength(5);
+    // Results from both batches are merged into the document list.
+    expect(screen.getByText("f0.txt")).toBeTruthy();
+    expect(screen.getByText("f24.txt")).toBeTruthy();
   });
 });

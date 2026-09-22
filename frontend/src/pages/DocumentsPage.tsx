@@ -89,44 +89,47 @@ export function DocumentsPage() {
    * the response are reported individually; successful files still appear.
    */
   async function uploadFiles(files: File[]) {
-    if (files.length === 0) return;
+    if (files.length === 0 || isUploading) return;
 
     setIsUploading(true);
     setError(null);
-    let failed = 0;
+    const errors: string[] = [];
+    let uploadedCount = 0;
 
     const batches: File[][] = [];
     for (let i = 0; i < files.length; i += MAX_BULK_UPLOAD_FILES) {
       batches.push(files.slice(i, i + MAX_BULK_UPLOAD_FILES));
     }
 
-    for (const batch of batches) {
-      try {
-        const { uploaded, failed: failures } = await documents.uploadMany(batch);
-        if (uploaded.length > 0) {
-          setDocs((prev) => [...uploaded, ...prev]);
+    try {
+      for (const batch of batches) {
+        try {
+          const { uploaded, failed: failures } = await documents.uploadMany(batch);
+          if (uploaded.length > 0) {
+            setDocs((prev) => [...uploaded, ...prev]);
+            uploadedCount += uploaded.length;
+          }
+          for (const failure of failures) {
+            const message = `Upload of "${failure.filename}" failed: ${failure.error}`;
+            errors.push(message);
+            toast.error(message);
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "unknown error";
+          errors.push(`Batch upload failed: ${message}`);
+          toast.error(`Batch upload failed: ${message}`);
         }
-        for (const failure of failures) {
-          failed += 1;
-          const message = `Upload of "${failure.filename}" failed: ${failure.error}`;
-          setError(message);
-          toast.error(message);
-        }
-      } catch (err) {
-        failed += batch.length;
-        const message = err instanceof Error ? err.message : "unknown error";
-        setError(`Batch upload failed: ${message}`);
-        toast.error(`Batch upload failed: ${message}`);
       }
+    } finally {
+      setIsUploading(false);
     }
 
-    const uploadedCount = files.length - failed;
+    if (errors.length > 0) setError(errors.join(" "));
     if (uploadedCount > 0) {
       toast.success(
         `${uploadedCount} document${uploadedCount === 1 ? "" : "s"} uploaded — processing started`,
       );
     }
-    setIsUploading(false);
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {

@@ -517,13 +517,12 @@ class TestBulkUpload:
         from app.storage.storage import storage as app_storage
 
         calls = {"count": 0}
-        original_upload = app_storage.upload
 
         def flaky_upload(**kwargs):
             calls["count"] += 1
             if calls["count"] == 1:
                 raise RuntimeError("s3 hiccup")
-            return original_upload(**kwargs)
+            return None
 
         monkeypatch.setattr(app_storage, "upload", flaky_upload)
         monkeypatch.setattr(document_module, "process_document_task", lambda _id: None)

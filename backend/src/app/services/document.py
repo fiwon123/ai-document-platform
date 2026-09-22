@@ -116,16 +116,19 @@ class DocumentService:
                     message = "Upload failed"
                 failed.append(
                     BulkUploadFailure(
-                        filename=upload_file.filename or "unknown-file",
+                        filename=_sanitize_filename(
+                            upload_file.filename or "unknown-file"
+                        ),
                         error=message,
                     )
                 )
                 continue
             except Exception as e:  # noqa: BLE001 - per-file isolation
-                logger.warning(f"Bulk upload failed for {upload_file.filename}: {e}")
+                safe_name = _sanitize_filename(upload_file.filename or "unknown-file")
+                logger.warning(f"Bulk upload failed for {safe_name}: {e}")
                 failed.append(
                     BulkUploadFailure(
-                        filename=upload_file.filename or "unknown-file",
+                        filename=safe_name,
                         error="Upload failed. Please try again.",
                     )
                 )
