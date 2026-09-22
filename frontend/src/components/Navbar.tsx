@@ -24,41 +24,23 @@ export const Navbar = memo(function Navbar() {
     navigate("/login");
   };
 
-  // Mobile menu key handling: focus moves to the first link on open,
-  // Tab cycles within the open menu, Escape closes it and returns focus
-  // to the toggle button (WCAG 2.1.2 / 2.4.3).
+  // Mobile menu key handling (ARIA disclosure pattern, APG "Navigation Menu
+  // Button"): focus moves to the first link when the menu opens, and Escape
+  // closes it and returns focus to the toggle. Tab follows the natural DOM
+  // order — a disclosure menu is not a modal dialog, so it must not trap
+  // focus (trapping would strand keyboard users from the toggle).
   useEffect(() => {
     if (!menuOpen) return;
-    const menu = menuRef.current;
-    const focusables = () =>
-      Array.from(
-        menu?.querySelectorAll<HTMLElement>("a[href], button:not([disabled])") ??
-          [],
-      );
-
-    const firstLink = focusables()[0];
-    firstLink?.focus();
+    menuRef.current
+      ?.querySelector<HTMLElement>("a[href], button:not([disabled])")
+      ?.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setMenuOpen(false);
         toggleRef.current?.focus();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const items = focusables();
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
       }
     };
-
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [menuOpen]);

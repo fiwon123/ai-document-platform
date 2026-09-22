@@ -267,7 +267,7 @@ export function DocumentsPage() {
       const modal = previewCloseRef.current?.closest(".modal");
       if (!modal) return;
       const focusables = modal.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        'button:not([disabled]):not([aria-hidden="true"]), [href], input:not([disabled]):not([aria-hidden="true"]), select:not([disabled]):not([aria-hidden="true"]), textarea:not([disabled]):not([aria-hidden="true"]), [tabindex]:not([tabindex="-1"])',
       );
       if (focusables.length === 0) return;
       const first = focusables[0];
@@ -423,6 +423,10 @@ export function DocumentsPage() {
 
   return (
     <div className="page">
+      {/* Content wrapper: the preview modal is its own sibling so the rest
+          of the page can be made inert (screen-reader isolation) while the
+          dialog is open, without inerting the dialog itself. */}
+      <div inert={preview ? true : undefined}>
       <header className="page-header">
         <h1>Documents</h1>
         <p>Upload and manage your documents</p>
@@ -488,16 +492,17 @@ export function DocumentsPage() {
           ))}
         </div>
       )}
+      </div>
 
       {preview && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="preview-modal-title"
-          onClick={() => setPreview(null)}
-        >
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={() => setPreview(null)}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="preview-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <h2 id="preview-modal-title">{preview.filename}</h2>
               <button

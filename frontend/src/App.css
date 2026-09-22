@@ -2066,6 +2066,12 @@ body {
   outline-offset: 2px;
 }
 
+/* The search input shows a soft glow on :focus; for keyboard focus the
+   solid ring above replaces it (avoid a double indicator). */
+.search-input:focus-visible {
+  box-shadow: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
