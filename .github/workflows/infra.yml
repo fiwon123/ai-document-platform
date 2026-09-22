@@ -78,6 +78,12 @@ jobs:
           kubeconform -strict -ignore-missing-schemas -summary /tmp/dev-rendered.yaml
           kubeconform -strict -ignore-missing-schemas -summary /tmp/prod-rendered.yaml
           kubeconform -strict -ignore-missing-schemas -summary /tmp/helm-rendered.yaml
+          # ArgoCD GitOps manifests (infra/argo): Application/ApplicationSet
+          # CRDs are Skipped via -ignore-missing-schemas, but the YAML must
+          # parse and render.
+          for manifest in infra/argo/*.yaml; do
+            kubeconform -strict -ignore-missing-schemas -summary "$manifest"
+          done
           echo "all manifests valid"
 
   build-images:

@@ -171,6 +171,42 @@ deployments.
 Kind: Loki/Promtail run fine on the local cluster; the Promtail DaemonSet
 reads the kubelet's `/var/log` hostPath.
 
+## GitOps (ArgoCD)
+
+`infra/argo/` holds the GitOps manifests (app-of-apps):
+
+| File | Resource | Manages |
+|------|----------|---------|
+| `apps.yaml` | ApplicationSet `ai-platform` | one Application per env — `ai-platform-dev` → `infra/k8s/overlays/dev` (branch `dev`), `ai-platform-production` → `infra/k8s/overlays/production` (branch `main`) |
+| `app-of-apps.yaml` | Application `ai-platform-apps` | the `infra/argo` directory itself (self-managing) |
+
+Install ArgoCD (once per cluster):
+
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+# or: helm install argo-cd argo/argo-cd -n argocd
+
+# Bootstrap the GitOps config (root app + ApplicationSet):
+kubectl apply -f infra/argo/
+```
+
+Both Applications use the default `automated` sync with `prune: true` +
+`selfHeal: true` and `CreateNamespace=true`, so the stack deploys itself from
+git with no manual `kubectl apply` of the overlays.
+
+**CD flow with CI**: the Infra CI workflow builds and pushes
+`ghcr.io/fiwon123/ai-platform/{backend,worker,frontend}` (SHA + `latest`) on
+every dev merge. The production overlay's images are `latest`-pinned, so a
+merged manifest change triggers an automatic ArgoCD sync. For **controlled
+rollouts**, pin a SHA tag in the overlay (`kustomize edit set image
+ai-platform/backend=ghcr.io/fiwon123/ai-platform/backend:<sha>`); **rollback**
+is then a git revert of the pinned commit (or `argocd app rollback
+ai-platform-production`).
+
+Kind/DevSpace is unaffected — the dev Application points at the dev overlay
+(images `localhost:5000/*:latest`, DevSpace hot reload).
+
 ## TLS (cert-manager)
 
 `cert-manager.yaml` (production overlay) / `certManager.enabled` (chart):

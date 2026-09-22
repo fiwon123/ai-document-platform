@@ -360,6 +360,7 @@ LLM and Embedding APIs
 - [x] Production secrets: External Secrets Operator (ExternalSecret + ClusterSecretStore) replacing the dev placeholder Secret
 - [x] Production monitoring: Prometheus + Grafana (kube-prometheus-stack) with a backend /metrics endpoint, ServiceMonitor, alert rules, AlertmanagerConfig email routing, and a Grafana dashboard; metrics-server support for HPAs
 - [x] Production logging: Loki (single-binary, filesystem storage, retention) + Promtail DaemonSet collecting pod logs from all namespaces, with a Grafana Loki datasource
+- [x] GitOps deployment: ArgoCD app-of-apps (ApplicationSet per environment tracking the dev/production Kustomize overlays, automated sync + self-heal + prune) validated in the Infra CI
 
 ### Backlog (not yet started)
 - [ ] Advanced caching strategies (e.g., semantic search result caching)

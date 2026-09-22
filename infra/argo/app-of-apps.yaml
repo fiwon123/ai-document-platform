@@ -1,0 +1,41 @@
+# ArgoCD GitOps deployment (app-of-apps bootstrap).
+#
+# Bootstrap (once per cluster, from the argocd namespace-ready cluster):
+#   kubectl apply -f infra/argo/
+#
+# Layout:
+#   app-of-apps.yaml  — root Application; ArgoCD self-manages this directory
+#   apps.yaml         — ApplicationSet generating one Application per env,
+#                       pointing at the Kustomize overlays in this repo
+#
+# Application CRDs are cluster-scoped; install ArgoCD first:
+#   kubectl create namespace argocd
+#   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#   # (or `helm install argo-cd argo/argo-cd -n argocd`)
+#
+# The production Application uses targetRevision `main` so deploys are
+# git-revert rollbacks; dev uses `dev`.
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ai-platform-apps
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: ai-platform
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/fiwon123/ai-document-platform.git
+    path: infra/argo
+    targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
