@@ -1,0 +1,29 @@
+# Staging TLS issuers (cert-manager).
+#
+# Staging uses the Let's Encrypt STAGING issuer: real ACME flow and
+# certificate lifecycle, but rate limits are far more forgiving and the
+# issued certificates are NOT publicly trusted — browsers warn, which is
+# fine for staging. The self-signed issuer is for local testing.
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    # ACME staging endpoint (higher rate limits, untrusted certs).
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: ops@example.com
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}

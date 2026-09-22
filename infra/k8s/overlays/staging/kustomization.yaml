@@ -1,0 +1,74 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - cert-manager.yaml
+  - ingress.yaml
+
+# Staging is a pre-production environment: real registry images (ghcr.io),
+# ingress + TLS (Let's Encrypt staging issuer), moderate replicas and
+# smaller resource limits.
+labels:
+  - pairs:
+      environment: staging
+
+# Staging images: ghcr.io registry (built + pushed by the Infra CI workflow
+# on every dev merge). Pin to an exact SHA tag for a controlled rollout:
+#   kustomize edit set image ai-platform/backend=ghcr.io/fiwon123/ai-platform/backend:abc1234
+images:
+  - name: ai-platform/backend
+    newName: ghcr.io/fiwon123/ai-platform/backend
+    newTag: latest
+  - name: ai-platform/worker
+    newName: ghcr.io/fiwon123/ai-platform/worker
+    newTag: latest
+  - name: ai-platform/frontend
+    newName: ghcr.io/fiwon123/ai-platform/frontend
+    newTag: latest
+
+patches:
+  # Moderate replicas: 2 backend, 1 worker, 1 frontend.
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: Deployment
+      name: worker
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: Deployment
+      name: frontend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  # Smaller resource limits than production (base: 1Gi backend/worker).
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 512Mi
+  - target:
+      kind: Deployment
+      name: worker
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 512Mi
+  - target:
+      kind: Deployment
+      name: frontend
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 128Mi

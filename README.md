@@ -146,7 +146,27 @@ kustomize build infra/k8s/overlays/production | kubectl apply -f -
   (default admin/admin).
 - Alerts route to `ops@example.com` via SMTP — replace with real values and
   create the `smtp-auth` Secret in `monitoring` before enabling the route.
-  See `infra/README.md`.
+See `infra/README.md`.
+
+### Staging environment
+
+`infra/k8s/overlays/staging` is a production-like pre-production environment:
+real registry images (ghcr.io), ingress + TLS via the Let's Encrypt **staging**
+ClusterIssuer, moderate replicas (2/1/1) and smaller resource limits.
+Deployed by ArgoCD (`ai-platform-staging`) like production — see
+`infra/README.md`.
+
+### End-to-end smoke test (Kind)
+
+`infra/scripts/smoke-test.sh` boots the whole stack on a local Kind cluster
+(reusing `setup-kind.sh` + `kind-load-images.sh`), applies the dev overlay and
+asserts backend health (200), frontend reachability (200) and an API
+round-trip (register → login → upload → status → search). Runs on every dev
+push in the Infra CI (`smoke` job).
+
+```bash
+./infra/scripts/smoke-test.sh
+```
 
 ### Production logging (Loki + Promtail)
 

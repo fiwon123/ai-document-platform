@@ -69,6 +69,7 @@ jobs:
           set -euo pipefail
           # Render once, schema-check the same output.
           kustomize build infra/k8s/overlays/dev > /tmp/dev-rendered.yaml
+          kustomize build infra/k8s/overlays/staging > /tmp/staging-rendered.yaml
           kustomize build infra/k8s/overlays/production > /tmp/prod-rendered.yaml
           helm lint infra/helm/ai-platform
           helm template ai-platform infra/helm/ai-platform > /tmp/helm-rendered.yaml
@@ -76,6 +77,7 @@ jobs:
           # External Secrets, Prometheus CRDs, ArgoCD, ...) have no schema in
           # the bundled set; they are reported as Skipped instead of failing.
           kubeconform -strict -ignore-missing-schemas -summary /tmp/dev-rendered.yaml
+          kubeconform -strict -ignore-missing-schemas -summary /tmp/staging-rendered.yaml
           kubeconform -strict -ignore-missing-schemas -summary /tmp/prod-rendered.yaml
           kubeconform -strict -ignore-missing-schemas -summary /tmp/helm-rendered.yaml
           # ArgoCD GitOps manifests (infra/argo): Application/ApplicationSet
@@ -120,3 +122,29 @@ jobs:
             docker tag "${image}:${TAG}" "${image}:latest"
             docker push "${image}:latest"
           done
+
+  smoke:
+    name: Smoke test (Kind)
+    # End-to-end check on a real Kind cluster: deploy the dev overlay and
+    # assert backend health, frontend reachability and an API round-trip.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install kustomize
+        run: |
+          curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.5.0/kustomize_v5.5.0_linux_amd64.tar.gz" -o /tmp/kustomize.tgz
+          tar -xzf /tmp/kustomize.tgz -C /tmp
+          sudo mv /tmp/kustomize /usr/local/bin/kustomize
+
+      - name: Install kind
+        run: |
+          curl -sSLo /tmp/kind "https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64"
+          chmod +x /tmp/kind
+          sudo mv /tmp/kind /usr/local/bin/kind
+
+      - name: Run smoke test
+        run: ./infra/scripts/smoke-test.sh
