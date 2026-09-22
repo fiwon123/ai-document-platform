@@ -1375,6 +1375,17 @@ body {
   background: #7c3aed;
 }
 
+/* User-related metrics on the admin dashboard; teal-600 (#0d9488) holds
+   white text at ~4.6:1 in both themes. */
+.stat-users {
+  background: #0d9488;
+}
+
+/* Admin statistics section keeps a consistent gap above the user table. */
+.admin-stats {
+  margin-bottom: 28px;
+}
+
 /* The total card inverts in dark mode (like the navbar): slate-900 blends
    into the page background, so it becomes a light card with dark text. */
 :root[data-theme="dark"] .stat-total,

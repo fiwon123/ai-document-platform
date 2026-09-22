@@ -33,6 +33,9 @@ vi.mock("../hooks/useAuth", () => ({
 }));
 
 vi.mock("../services/api", () => ({
+  statistics: {
+    getAdmin: vi.fn(),
+  },
   users: {
     listUsers: vi.fn(),
     updateUserRole: vi.fn(),
@@ -41,13 +44,27 @@ vi.mock("../services/api", () => ({
   },
 }));
 
-import { users } from "../services/api";
+import { statistics, users } from "../services/api";
 
 const mockedUseAuth = vi.mocked(useAuth);
+const mockedGetAdmin = vi.mocked(statistics.getAdmin);
 const mockedListUsers = vi.mocked(users.listUsers);
 const mockedUpdateUserRole = vi.mocked(users.updateUserRole);
 const mockedUpdateUserActive = vi.mocked(users.updateUserActive);
 const mockedDeleteUser = vi.mocked(users.deleteUser);
+
+const sampleAdminStats = {
+  total_users: 12,
+  active_users: 10,
+  disabled_users: 2,
+  total_documents: 34,
+  pending_documents: 1,
+  processing_documents: 2,
+  ready_documents: 30,
+  failed_documents: 1,
+  total_chunks: 250,
+  total_searches: 99,
+};
 
 describe("AdminPage", () => {
   beforeEach(() => {
@@ -61,6 +78,7 @@ describe("AdminPage", () => {
       updateUser: vi.fn(),
     });
     mockedListUsers.mockResolvedValue([adminSelf, alice]);
+    mockedGetAdmin.mockResolvedValue(sampleAdminStats);
     mockedUpdateUserRole.mockResolvedValue({ ...alice, role: "admin" });
     mockedUpdateUserActive.mockResolvedValue({ ...alice, is_active: false });
     mockedDeleteUser.mockResolvedValue(undefined);
@@ -182,6 +200,46 @@ describe("AdminPage", () => {
     expect(
       screen.getByText("There are no user accounts yet."),
     ).toBeTruthy();
+  });
+
+  it("shows system-wide statistics from the admin endpoint", async () => {
+    await renderPage();
+
+    expect(mockedGetAdmin).toHaveBeenCalled();
+    expect(screen.getByLabelText("System statistics")).toBeTruthy();
+    expect(screen.getByText("12")).toBeTruthy(); // total users
+    expect(screen.getByText("10")).toBeTruthy(); // active users
+    expect(screen.getAllByText("2").length).toBe(2); // disabled + processing
+    expect(screen.getByText("34")).toBeTruthy(); // total documents
+    expect(screen.getByText("30")).toBeTruthy(); // ready documents
+    expect(screen.getByText("250")).toBeTruthy(); // chunks
+    expect(screen.getByText("99")).toBeTruthy(); // searches
+  });
+
+  it("still renders the user table when statistics fail to load", async () => {
+    mockedGetAdmin.mockRejectedValue(new Error("stats down"));
+    await renderPage();
+
+    expect(screen.getByText("alice")).toBeTruthy();
+    expect(mockedListUsers).toHaveBeenCalled();
+  });
+
+  it("does not fetch system statistics for non-admin users", async () => {
+    mockedUseAuth.mockReturnValue({
+      user: alice,
+      token: "t",
+      isLoading: false,
+      login: vi.fn(),
+      register: vi.fn(),
+      logout: vi.fn(),
+      updateUser: vi.fn(),
+    });
+
+    render(<AdminPage />);
+
+    expect(screen.getByText("Admin privileges required.")).toBeTruthy();
+    expect(mockedGetAdmin).not.toHaveBeenCalled();
+    expect(mockedListUsers).not.toHaveBeenCalled();
   });
 
   it("shows an access-denied message for non-admin users", async () => {

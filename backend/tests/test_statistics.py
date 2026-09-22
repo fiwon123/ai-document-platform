@@ -1,9 +1,12 @@
 """Tests for the dashboard statistics endpoint (GET /v1/statistics/me)."""
 
+import uuid
 from uuid import UUID, uuid4
 
 from app.models.chunk import DocumentChunk
 from app.models.document import DocumentDB, DocumentStatus
+from app.models.search import SearchHistory
+from app.models.user import Role, UserDB
 
 
 def _seed_doc(db_session, owner_id, status: DocumentStatus, days_ago=0):
@@ -87,4 +90,124 @@ class TestStatisticsEndpoint:
 
     def test_requires_authentication(self, client):
         resp = client.get("/v1/statistics/me")
+        assert resp.status_code == 401
+
+
+def _seed_admin(db_session) -> UserDB:
+    """Create an admin user directly in the DB (no admin reg endpoint)."""
+    admin = UserDB(
+        username=f"admin_{uuid.uuid4().hex[:8]}",
+        hashed_password="x",  # noqa: S106
+        role=Role.admin,
+    )
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+    return admin
+
+
+def _make_admin_token(admin: UserDB) -> str:
+    from app.routes.auth import create_access_token
+
+    return create_access_token(str(admin.id), admin.username, "admin")
+
+
+class TestAdminStatisticsEndpoint:
+    def test_empty_system_returns_zeros(self, client, db_session):
+        admin = _seed_admin(db_session)
+        headers = {"Authorization": f"Bearer {_make_admin_token(admin)}"}
+
+        resp = client.get("/v1/statistics/admin", headers=headers)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total_users"] == 1
+        assert body["active_users"] == 1
+        assert body["disabled_users"] == 0
+        assert body["total_documents"] == 0
+        assert body["total_chunks"] == 0
+        assert body["total_searches"] == 0
+
+    def test_aggregates_across_all_users(self, client, db_session):
+        admin = _seed_admin(db_session)
+        headers = {"Authorization": f"Bearer {_make_admin_token(admin)}"}
+
+        # A regular customer with documents and searches.
+        customer = UserDB(
+            username=f"cust_{uuid.uuid4().hex[:8]}",
+            hashed_password="x",  # noqa: S106
+            role=Role.customer,
+            is_active=True,
+        )
+        db_session.add(customer)
+        db_session.commit()
+        db_session.refresh(customer)
+
+        ready = _seed_doc(db_session, customer.id, DocumentStatus.READY)
+        _seed_doc(db_session, customer.id, DocumentStatus.PENDING)
+        failed = _seed_doc(db_session, customer.id, DocumentStatus.FAILED)
+        for doc, n_chunks in [(ready, 3), (failed, 1)]:
+            for index in range(n_chunks):
+                db_session.add(
+                    DocumentChunk(
+                        document_id=doc.id,
+                        content=f"chunk {index}",
+                        chunk_index=index,
+                        embedding=None,
+                    )
+                )
+        db_session.add(
+            SearchHistory(user_id=customer.id, query="q1", results_count=2)
+        )
+        db_session.add(
+            SearchHistory(user_id=customer.id, query="q2", results_count=0)
+        )
+
+        # A disabled user with one document.
+        disabled = UserDB(
+            username=f"disabled_{uuid.uuid4().hex[:6]}",
+            hashed_password="x",  # noqa: S106
+            role=Role.customer,
+            is_active=False,
+        )
+        db_session.add(disabled)
+        db_session.commit()
+        db_session.refresh(disabled)
+        _seed_doc(db_session, disabled.id, DocumentStatus.READY)
+
+        resp = client.get("/v1/statistics/admin", headers=headers)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total_users"] == 3
+        assert body["active_users"] == 2
+        assert body["disabled_users"] == 1
+        assert body["total_documents"] == 4
+        assert body["ready_documents"] == 2
+        assert body["pending_documents"] == 1
+        assert body["processing_documents"] == 0
+        assert body["failed_documents"] == 1
+        assert body["total_chunks"] == 4
+        assert body["total_searches"] == 2
+
+    def test_customer_gets_forbidden(self, client, db_session):
+        _seed_admin(db_session)
+        customer = UserDB(
+            username=f"cust_{uuid.uuid4().hex[:8]}",
+            hashed_password="x",  # noqa: S106
+            role=Role.customer,
+        )
+        db_session.add(customer)
+        db_session.commit()
+        db_session.refresh(customer)
+
+        headers = {"Authorization": f"Bearer {_make_admin_token(customer)}"}
+
+        resp = client.get("/v1/statistics/admin", headers=headers)
+
+        assert resp.status_code == 403
+        assert resp.json()["error"]["message"] == "Admin privileges required"
+
+    def test_requires_authentication(self, client):
+        resp = client.get("/v1/statistics/admin")
         assert resp.status_code == 401

@@ -79,3 +79,16 @@ export interface StatisticsResponse {
   total_chunks: number;
   recent_documents: RecentDocument[];
 }
+
+export interface AdminStatisticsResponse {
+  total_users: number;
+  active_users: number;
+  disabled_users: number;
+  total_documents: number;
+  pending_documents: number;
+  processing_documents: number;
+  ready_documents: number;
+  failed_documents: number;
+  total_chunks: number;
+  total_searches: number;
+}
