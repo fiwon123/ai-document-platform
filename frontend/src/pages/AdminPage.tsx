@@ -10,7 +10,7 @@ type Role = "customer" | "admin";
 
 interface AdminUserRowProps {
   user: User;
-  busyId: string | null;
+  isBusy: boolean;
   isCurrentUser: boolean;
   onRoleChange: (userId: string, role: Role) => void;
   onDelete: (userId: string, username: string) => void;
@@ -19,17 +19,16 @@ interface AdminUserRowProps {
 
 /**
  * Memoized admin table row: re-renders only when the user's data or the
- * in-flight action id changes, not on every parent re-render.
+ * in-flight action for THIS row changes, not on every parent re-render.
  */
 const AdminUserRow = memo(function AdminUserRow({
   user,
-  busyId,
+  isBusy,
   isCurrentUser,
   onRoleChange,
   onDelete,
   onToggleActive,
 }: AdminUserRowProps) {
-  const rowBusy = busyId === user.id;
   return (
     <tr>
       <td>{user.username}</td>
@@ -39,7 +38,7 @@ const AdminUserRow = memo(function AdminUserRow({
           onChange={(e) =>
             onRoleChange(user.id, e.target.value as Role)
           }
-          disabled={rowBusy || isCurrentUser}
+          disabled={isBusy || isCurrentUser}
           aria-label={`Role for ${user.username}`}
         >
           <option value="customer">customer</option>
@@ -58,7 +57,7 @@ const AdminUserRow = memo(function AdminUserRow({
           <button
             onClick={() => onToggleActive(user)}
             className="btn btn-secondary btn-sm"
-            disabled={rowBusy || isCurrentUser}
+            disabled={isBusy || isCurrentUser}
             aria-label={`${user.is_active ? "Disable" : "Enable"} ${user.username}`}
           >
             {user.is_active ? "Disable" : "Enable"}
@@ -74,7 +73,7 @@ const AdminUserRow = memo(function AdminUserRow({
         <button
           onClick={() => onDelete(user.id, user.username)}
           className="btn btn-danger"
-          disabled={rowBusy || isCurrentUser}
+          disabled={isBusy || isCurrentUser}
         >
           Delete
         </button>
@@ -276,7 +275,7 @@ export function AdminPage() {
                 <AdminUserRow
                   key={user.id}
                   user={user}
-                  busyId={busyId}
+                  isBusy={busyId === user.id}
                   isCurrentUser={user.id === currentUser?.id}
                   onRoleChange={handleRoleChange}
                   onDelete={handleDelete}

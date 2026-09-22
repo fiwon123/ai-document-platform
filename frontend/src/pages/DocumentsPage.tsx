@@ -195,14 +195,22 @@ export function DocumentsPage() {
       setDocs((prev) =>
         prev.map((doc) => {
           const next = statuses.find((s) => s.id === doc.id);
-          return next
-            ? {
-                ...doc,
-                status: next.status,
-                error_message: next.error_message,
-                has_thumbnail: next.has_thumbnail,
-              }
-            : doc;
+          if (
+            !next ||
+            (next.status === doc.status &&
+              next.error_message === doc.error_message &&
+              next.has_thumbnail === doc.has_thumbnail)
+          ) {
+            // Keep the object identity for unchanged documents so their
+            // memoized cards skip re-rendering on this poll tick.
+            return doc;
+          }
+          return {
+            ...doc,
+            status: next.status,
+            error_message: next.error_message,
+            has_thumbnail: next.has_thumbnail,
+          };
         }),
       );
     }, POLL_INTERVAL_MS);
@@ -339,7 +347,7 @@ export function DocumentsPage() {
     } finally {
       setDeletingId(null);
     }
-  }, []);
+  }, [toast]);
 
   // All handlers use only stable references (settiers, the API client,
   // toast), so they keep their identity across renders and memoized cards

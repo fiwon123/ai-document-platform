@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 export type ToastKind = "success" | "error" | "info";
@@ -51,15 +51,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [dismiss],
   );
 
+  // Stable API object: `push` and `dismiss` are useCallback-stable, so the
+  // value keeps its identity across provider re-renders. Consumers can then
+  // depend on `toast` in their own useCallback deps safely.
+  const api = useMemo<ToastAPI>(
+    () => ({
+      success: (m) => push("success", m),
+      error: (m) => push("error", m),
+      info: (m) => push("info", m),
+      dismiss,
+    }),
+    [push, dismiss],
+  );
+
   return (
-    <ToastContext.Provider
-      value={{
-        success: (m) => push("success", m),
-        error: (m) => push("error", m),
-        info: (m) => push("info", m),
-        dismiss,
-      }}
-    >
+    <ToastContext.Provider value={api}>
       {children}
       {toasts.length > 0 && (
         <div className="toast-container" aria-live="polite">

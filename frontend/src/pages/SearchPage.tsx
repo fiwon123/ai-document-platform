@@ -212,7 +212,7 @@ export function SearchPage() {
               </button>
             </div>
           </div>
-{results.map((result) => (
+          {results.map((result) => (
             <SearchResultCard
               key={result.chunk_id}
               result={result}
