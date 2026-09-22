@@ -1,4 +1,5 @@
 import type {
+  AdminStatisticsResponse,
   Document,
   DocumentPreview,
   DocumentStatusResponse,
@@ -198,6 +199,11 @@ export const documents = {
 export const statistics = {
   async getMe(): Promise<StatisticsResponse> {
     return request<StatisticsResponse>("/statistics/me");
+  },
+
+  /** System-wide aggregates — admin only (403 for customers). */
+  async getAdmin(): Promise<AdminStatisticsResponse> {
+    return request<AdminStatisticsResponse>("/statistics/admin");
   },
 };
 

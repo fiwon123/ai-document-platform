@@ -570,6 +570,64 @@ describe("statistics.getMe", () => {
     expect(options?.headers).toMatchObject({ Authorization: "Bearer test-token" });
   });
 });
+
+describe("statistics.getAdmin", () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn();
+    localStorage.setItem("token", "test-token");
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("requests the admin statistics endpoint with auth header", async () => {
+    const adminStats = {
+      total_users: 12,
+      active_users: 10,
+      disabled_users: 2,
+      total_documents: 34,
+      pending_documents: 1,
+      processing_documents: 2,
+      ready_documents: 30,
+      failed_documents: 1,
+      total_chunks: 250,
+      total_searches: 99,
+    };
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify(adminStats), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await statistics.getAdmin();
+
+    expect(result).toEqual(adminStats);
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(String(url)).toBe("/v1/statistics/admin");
+    expect(options?.headers).toMatchObject({ Authorization: "Bearer test-token" });
+  });
+
+  it("surfaces 403 as an ApiError for non-admin users", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: { code: "forbidden", message: "Admin privileges required" },
+        }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(statistics.getAdmin()).rejects.toThrow(
+      "Admin privileges required",
+    );
+  });
+});
 import type { User } from "../types";
 
 describe("users.updateMe", () => {

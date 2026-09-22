@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { users } from "../services/api";
-import type { User } from "../types";
+import { statistics, users } from "../services/api";
+import type { AdminStatisticsResponse, User } from "../types";
 import { useAuth } from "../hooks/useAuth";
 import { SkeletonList } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
+import { Spinner } from "../components/Spinner";
 
 type Role = "customer" | "admin";
 
@@ -13,6 +14,8 @@ export function AdminPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [stats, setStats] = useState<AdminStatisticsResponse | null>(null);
+  const [statsFailed, setStatsFailed] = useState(false);
 
   const isAdmin = currentUser?.role === "admin";
 
@@ -27,9 +30,25 @@ export function AdminPage() {
     }
   }, []);
 
+  const loadStats = useCallback(async () => {
+    try {
+      const data = await statistics.getAdmin();
+      setStats(data);
+    } catch (err) {
+      // Statistics are supplementary — a failure should not block the
+      // user management table below, but it must resolve the spinner so
+      // the section does not spin forever.
+      console.error("Failed to load admin statistics", err);
+      setStatsFailed(true);
+    }
+  }, []);
+
   useEffect(() => {
-    if (isAdmin) void loadUsers();
-  }, [isAdmin, loadUsers]);
+    if (isAdmin) {
+      void loadUsers();
+      void loadStats();
+    }
+  }, [isAdmin, loadUsers, loadStats]);
 
   async function handleRoleChange(userId: string, role: Role) {
     setBusyId(userId);
@@ -100,6 +119,61 @@ export function AdminPage() {
       </header>
 
       {error && <p className="error-message" role="alert">{error}</p>}
+
+      <section aria-label="System statistics" className="admin-stats">
+        {stats ? (
+          <div className="stats-grid">
+            <div className="stat-card stat-users">
+              <span className="stat-value">{stats.total_users}</span>
+              <span className="stat-label">Users</span>
+            </div>
+            <div className="stat-card stat-users">
+              <span className="stat-value">{stats.active_users}</span>
+              <span className="stat-label">Active</span>
+            </div>
+            <div className="stat-card stat-users">
+              <span className="stat-value">{stats.disabled_users}</span>
+              <span className="stat-label">Disabled</span>
+            </div>
+            <div className="stat-card stat-total">
+              <span className="stat-value">{stats.total_documents}</span>
+              <span className="stat-label">Documents</span>
+            </div>
+            <div className="stat-card stat-ready">
+              <span className="stat-value">{stats.ready_documents}</span>
+              <span className="stat-label">Ready</span>
+            </div>
+            <div className="stat-card stat-pending">
+              <span className="stat-value">{stats.pending_documents}</span>
+              <span className="stat-label">Pending</span>
+            </div>
+            <div className="stat-card stat-processing">
+              <span className="stat-value">{stats.processing_documents}</span>
+              <span className="stat-label">Processing</span>
+            </div>
+            <div className="stat-card stat-failed">
+              <span className="stat-value">{stats.failed_documents}</span>
+              <span className="stat-label">Failed</span>
+            </div>
+            <div className="stat-card stat-chunks">
+              <span className="stat-value">{stats.total_chunks}</span>
+              <span className="stat-label">Chunks indexed</span>
+            </div>
+            <div className="stat-card stat-chunks">
+              <span className="stat-value">{stats.total_searches}</span>
+              <span className="stat-label">Searches</span>
+            </div>
+          </div>
+        ) : statsFailed ? (
+          <p className="error-message" role="alert" aria-label="Statistics unavailable">
+            System statistics are currently unavailable.
+          </p>
+        ) : (
+          <div className="loading">
+            <Spinner size={18} label="Loading system statistics" />
+          </div>
+        )}
+      </section>
 
       {isLoading ? (
         <SkeletonList rows={4} />

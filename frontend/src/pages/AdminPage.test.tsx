@@ -33,6 +33,9 @@ vi.mock("../hooks/useAuth", () => ({
 }));
 
 vi.mock("../services/api", () => ({
+  statistics: {
+    getAdmin: vi.fn(),
+  },
   users: {
     listUsers: vi.fn(),
     updateUserRole: vi.fn(),
@@ -41,13 +44,27 @@ vi.mock("../services/api", () => ({
   },
 }));
 
-import { users } from "../services/api";
+import { statistics, users } from "../services/api";
 
 const mockedUseAuth = vi.mocked(useAuth);
+const mockedGetAdmin = vi.mocked(statistics.getAdmin);
 const mockedListUsers = vi.mocked(users.listUsers);
 const mockedUpdateUserRole = vi.mocked(users.updateUserRole);
 const mockedUpdateUserActive = vi.mocked(users.updateUserActive);
 const mockedDeleteUser = vi.mocked(users.deleteUser);
+
+const sampleAdminStats = {
+  total_users: 12,
+  active_users: 10,
+  disabled_users: 2,
+  total_documents: 34,
+  pending_documents: 1,
+  processing_documents: 2,
+  ready_documents: 30,
+  failed_documents: 1,
+  total_chunks: 250,
+  total_searches: 99,
+};
 
 describe("AdminPage", () => {
   beforeEach(() => {
@@ -61,6 +78,7 @@ describe("AdminPage", () => {
       updateUser: vi.fn(),
     });
     mockedListUsers.mockResolvedValue([adminSelf, alice]);
+    mockedGetAdmin.mockResolvedValue(sampleAdminStats);
     mockedUpdateUserRole.mockResolvedValue({ ...alice, role: "admin" });
     mockedUpdateUserActive.mockResolvedValue({ ...alice, is_active: false });
     mockedDeleteUser.mockResolvedValue(undefined);
@@ -184,7 +202,43 @@ describe("AdminPage", () => {
     ).toBeTruthy();
   });
 
-  it("shows an access-denied message for non-admin users", async () => {
+  it("shows system-wide statistics from the admin endpoint", async () => {
+    await renderPage();
+
+    expect(mockedGetAdmin).toHaveBeenCalled();
+    const region = screen.getByRole("region", {
+      name: "System statistics",
+    });
+    const cardValue = (label: string) =>
+      Array.from(region.querySelectorAll(".stat-card")).find((card) =>
+        card.textContent?.includes(label),
+      )?.textContent;
+
+    expect(cardValue("Users")?.includes("12")).toBe(true);
+    expect(cardValue("Active")?.includes("10")).toBe(true);
+    expect(cardValue("Disabled")?.includes("2")).toBe(true);
+    expect(cardValue("Documents")?.includes("34")).toBe(true);
+    expect(cardValue("Ready")?.includes("30")).toBe(true);
+    expect(cardValue("Pending")?.includes("1")).toBe(true);
+    expect(cardValue("Processing")?.includes("2")).toBe(true);
+    expect(cardValue("Failed")?.includes("1")).toBe(true);
+    expect(cardValue("Chunks indexed")?.includes("250")).toBe(true);
+    expect(cardValue("Searches")?.includes("99")).toBe(true);
+  });
+
+  it("resolves the spinner and shows a message when statistics fail", async () => {
+    mockedGetAdmin.mockRejectedValue(new Error("stats down"));
+    await renderPage();
+
+    expect(
+      screen.getByText("System statistics are currently unavailable."),
+    ).toBeTruthy();
+    // The user table still renders — statistics are non-blocking.
+    expect(screen.getByText("alice")).toBeTruthy();
+    expect(mockedListUsers).toHaveBeenCalled();
+  });
+
+  it("does not fetch system statistics for non-admin users", async () => {
     mockedUseAuth.mockReturnValue({
       user: alice,
       token: "t",
@@ -198,6 +252,7 @@ describe("AdminPage", () => {
     render(<AdminPage />);
 
     expect(screen.getByText("Admin privileges required.")).toBeTruthy();
+    expect(mockedGetAdmin).not.toHaveBeenCalled();
     expect(mockedListUsers).not.toHaveBeenCalled();
   });
 });
