@@ -92,7 +92,6 @@ export function DocumentsPage() {
   // has_thumbnail flag live, so documents that finish while the page is
   // open are picked up without a full reload.
   useEffect(() => {
-    let cancelled = false;
     const now = Date.now();
     const toFetch = docs.filter((d) => {
       if (!d.has_thumbnail || thumbnailFetched.current.has(d.id)) return false;
@@ -103,12 +102,12 @@ export function DocumentsPage() {
       documents
         .getThumbnailUrl(doc.id)
         .then(({ thumbnail_url }) => {
-          // Mark success even when this effect run was cancelled so an
-          // in-flight (but fulfilled) request is not re-issued next cycle.
+          // Mark on success so a fulfilled request is never re-issued, even
+          // when this effect run was superseded by a polling update. URLs
+          // are idempotent per document id, so a late write is harmless
+          // (and a post-unmount setState is a no-op in React 19).
           thumbnailFetched.current.add(doc.id);
-          if (!cancelled) {
-            setThumbnailUrls((prev) => ({ ...prev, [doc.id]: thumbnail_url }));
-          }
+          setThumbnailUrls((prev) => ({ ...prev, [doc.id]: thumbnail_url }));
         })
         .catch(() => {
           // 404 (no thumbnail) or a transient network error — keep the
@@ -116,9 +115,6 @@ export function DocumentsPage() {
           thumbnailFailedAt.current.set(doc.id, Date.now());
         });
     }
-    return () => {
-      cancelled = true;
-    };
   }, [docs]);
 
   // Close the preview modal on Escape (matches the overlay click handler).
