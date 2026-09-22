@@ -361,6 +361,8 @@ LLM and Embedding APIs
 - [x] Production monitoring: Prometheus + Grafana (kube-prometheus-stack) with a backend /metrics endpoint, ServiceMonitor, alert rules, AlertmanagerConfig email routing, and a Grafana dashboard; metrics-server support for HPAs
 - [x] Production logging: Loki (single-binary, filesystem storage, retention) + Promtail DaemonSet collecting pod logs from all namespaces, with a Grafana Loki datasource
 - [x] GitOps deployment: ArgoCD app-of-apps (ApplicationSet per environment tracking the dev/production Kustomize overlays, automated sync + self-heal + prune) validated in the Infra CI
+- [x] Staging overlay: production-like pre-production environment (ghcr.io images, cert-manager staging TLS, moderate replicas, smaller limits) managed by ArgoCD
+- [x] Kind E2E smoke tests: infra/scripts/smoke-test.sh bootstraps the dev stack on a Kind cluster and asserts backend health, frontend reachability and an API round-trip (register → login → upload → status → search); runs on every dev push in the Infra CI
 
 ### Backlog (not yet started)
 - [ ] Advanced caching strategies (e.g., semantic search result caching)

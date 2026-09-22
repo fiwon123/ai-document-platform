@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# End-to-end smoke test against a local Kind cluster.
+#
+# Bootstraps the full stack from the dev overlay (build images → push to the
+# local registry → apply manifests) and asserts:
+#   1. backend /v1/health returns 200
+#   2. frontend serves the SPA (HTTP 200)
+#   3. one API round-trip succeeds: register → login → upload → status → search
+#
+# Usage:
+#   ./infra/scripts/smoke-test.sh
+#
+# Requires (host or CI, NOT the dev container): docker, kind, kubectl,
+# curl, python3 (JSON parsing) and network access for image builds.
+# Reuses setup-kind.sh + kind-load-images.sh as the bootstrap.
+
+set -euo pipefail
+
+CLUSTER_NAME="ai-platform"
+BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:18001}"   # Kind hostPort -> backend NodePort
+FRONTEND_URL="${FRONTEND_URL:-http://127.0.0.1:18080}" # Kind hostPort -> frontend NodePort
+NAMESPACE="ai-platform"
+SMOKE_USER="smoke-$(date +%s)"
+SMOKE_PASS="SmokeTest-$(date +%s)!"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+FAILED=0
+fail() { echo "FAIL: $*" >&2; FAILED=1; }
+ok()   { echo "ok:   $*"; }
+
+for cmd in docker kind kubectl kustomize curl python3; do
+  command -v "${cmd}" >/dev/null 2>&1 || { echo "ERROR: '${cmd}' is required but not installed"; exit 1; }
+done
+
+# --- Bootstrap ------------------------------------------------------------
+if ! kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
+  echo "==> Creating Kind cluster + local registry"
+  "${SCRIPT_DIR}/setup-kind.sh"
+else
+  echo "==> Kind cluster '${CLUSTER_NAME}' already exists"
+fi
+
+echo "==> Building + loading images into the cluster"
+"${SCRIPT_DIR}/kind-load-images.sh"
+
+echo "==> Applying the dev overlay"
+kubectl config use-context "kind-${CLUSTER_NAME}" >/dev/null
+kustomize build "${ROOT_DIR}/infra/k8s/overlays/dev" | kubectl apply -f -
+
+echo "==> Waiting for backend/frontend rollouts"
+kubectl -n "${NAMESPACE}" rollout status deploy/backend --timeout=300s
+kubectl -n "${NAMESPACE}" rollout status deploy/worker --timeout=300s
+kubectl -n "${NAMESPACE}" rollout status deploy/frontend --timeout=300s
+kubectl -n "${NAMESPACE}" rollout status job/migrate --timeout=300s 2>/dev/null || true
+
+echo "==> Smoke: backend health"
+BACKEND_HEALTH=$(curl -sS -o /dev/null -w '%{http_code}' --retry 20 --retry-delay 3 \
+  --retry-all-errors "${BACKEND_URL}/v1/health" || echo 000)
+if [ "${BACKEND_HEALTH}" = "200" ]; then ok "GET /v1/health -> 200";
+else fail "GET /v1/health -> ${BACKEND_HEALTH} (expected 200)"; fi
+
+echo "==> Smoke: frontend reachability"
+FRONTEND_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --retry 20 --retry-delay 3 \
+  --retry-all-errors "${FRONTEND_URL}/" || echo 000)
+if [ "${FRONTEND_CODE}" = "200" ]; then ok "GET / -> 200";
+else fail "GET / -> ${FRONTEND_CODE} (expected 200)"; fi
+
+echo "==> Smoke: API round-trip (register -> login -> upload -> status -> search)"
+# 1. Register
+REGISTER_CODE=$(curl -sS -o /tmp/smoke-register.json -w '%{http_code}' \
+  -X POST "${BACKEND_URL}/v1/auth/register" \
+  -H "Content-Type: application/json" \
+  -d "{\"username\":\"${SMOKE_USER}\",\"password\":\"${SMOKE_PASS}\"}" || echo 000)
+if [ "${REGISTER_CODE}" = "200" ] || [ "${REGISTER_CODE}" = "201" ]; then
+  ok "register -> ${REGISTER_CODE}"
+else fail "register -> ${REGISTER_CODE}"; fi
+
+# 2. Login (OAuth2 form) -> access token
+LOGIN_CODE=$(curl -sS -o /tmp/smoke-login.json -w '%{http_code}' \
+  -X POST "${BACKEND_URL}/v1/auth/login" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "username=${SMOKE_USER}" \
+  --data-urlencode "password=${SMOKE_PASS}" || echo 000)
+TOKEN=$(python3 -c "import json,sys;print(json.load(open('/tmp/smoke-login.json')).get('access_token',''))" 2>/dev/null || true)
+if [ "${LOGIN_CODE}" = "200" ] && [ -n "${TOKEN}" ]; then ok "login -> ${LOGIN_CODE} (token acquired)";
+else fail "login -> ${LOGIN_CODE} (token: ${TOKEN:+present}${TOKEN:-missing})"; fi
+
+# 3. Upload a tiny document
+printf 'smoke test document content\n' > /tmp/smoke.txt
+UPLOAD_CODE=$(curl -sS -o /tmp/smoke-upload.json -w '%{http_code}' \
+  -X POST "${BACKEND_URL}/v1/documents/" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F "file=@/tmp/smoke.txt" || echo 000)
+DOC_ID=$(python3 -c "import json;print(json.load(open('/tmp/smoke-upload.json')).get('id',''))" 2>/dev/null || true)
+if [ "${UPLOAD_CODE}" = "201" ] && [ -n "${DOC_ID}" ]; then ok "upload -> ${UPLOAD_CODE} (id ${DOC_ID})";
+else fail "upload -> ${UPLOAD_CODE} (id: ${DOC_ID:-none})"; fi
+
+# 4. Status (processing may end in ready OR failed without an embedding key —
+#    the API surface is what we assert here)
+STATUS_CODE=$(curl -sS -o /tmp/smoke-status.json -w '%{http_code}' \
+  "${BACKEND_URL}/v1/documents/${DOC_ID}/status" \
+  -H "Authorization: Bearer ${TOKEN}" || echo 000)
+STATUS=$(python3 -c "import json;print(json.load(open('/tmp/smoke-status.json')).get('status',''))" 2>/dev/null || true)
+if [ "${STATUS_CODE}" = "200" ] && [ -n "${STATUS}" ]; then ok "status -> ${STATUS_CODE} (status: ${STATUS})";
+else fail "status -> ${STATUS_CODE} (status: ${STATUS:-none})"; fi
+
+# 5. Search (works with 0 results too — asserts the endpoint round-trip)
+SEARCH_CODE=$(curl -sS -o /tmp/smoke-search.json -w '%{http_code}' \
+  -X POST "${BACKEND_URL}/v1/search/" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"smoke"}' || echo 000)
+TOTAL=$(python3 -c "import json;print(json.load(open('/tmp/smoke-search.json')).get('total_count',''))" 2>/dev/null || true)
+if [ "${SEARCH_CODE}" = "200" ]; then ok "search -> ${SEARCH_CODE} (total_count: ${TOTAL:-n/a})";
+else fail "search -> ${SEARCH_CODE}"; fi
+
+# --- Result ----------------------------------------------------------------
+echo
+if [ "${FAILED}" = "0" ]; then
+  echo "SMOKE TEST PASSED ✔"
+  echo "  backend  ${BACKEND_URL}/v1/health"
+  echo "  frontend ${FRONTEND_URL}/"
+  echo "  user     ${SMOKE_USER}"
+  exit 0
+else
+  echo "SMOKE TEST FAILED ✘"
+  exit 1
+fi

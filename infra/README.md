@@ -171,13 +171,49 @@ deployments.
 Kind: Loki/Promtail run fine on the local cluster; the Promtail DaemonSet
 reads the kubelet's `/var/log` hostPath.
 
+## Environments
+
+| Overlay | Images | Replicas | Ingress/TLS | Use |
+|---------|--------|----------|-------------|-----|
+| `infra/k8s/overlays/dev` | `localhost:5000/*:latest` (Kind registry) | 1/1/1 | NodePorts | local Kind, DevSpace hot reload |
+| `infra/k8s/overlays/staging` | `ghcr.io/fiwon123/ai-platform/*:latest` | 2/1/1 | yes — Let's Encrypt **staging** issuer | pre-production validation |
+| `infra/k8s/overlays/production` | `ghcr.io/fiwon123/ai-platform/*:latest` | 3/2/2 + HPAs | yes — Let's Encrypt **prod** issuer | live |
+
+Staging mirrors production (cert-manager + ingress + real registry) with
+moderate replicas and smaller resource limits, so a production-like deploy
+can be validated before going live. Hostnames/issuers are placeholders
+(`staging.example.com`, `ops@example.com`) — replace before use.
+
+## End-to-end smoke test (Kind)
+
+`infra/scripts/smoke-test.sh` runs the full stack on a Kind cluster (host or
+CI — Docker/kind required) and asserts:
+
+1. backend · `GET /v1/health` → 200
+2. frontend · `GET /` → 200 (SPA serves)
+3. API round-trip · register → login → upload → status → search → 200
+
+It reuses `setup-kind.sh` (cluster + local registry) and
+`kind-load-images.sh` (build + load images) as the bootstrap, applies the
+dev overlay, waits for rollouts, and checks the services through the Kind
+host ports (`127.0.0.1:18001` backend, `127.0.0.1:18080` frontend).
+
+```bash
+./infra/scripts/smoke-test.sh
+```
+
+The Infra CI workflow runs this job (`smoke`) on every dev push. Note:
+without an `OPENAI_API_KEY`, document processing ends in `failed` (no
+embeddings) — the smoke test asserts the API surface (upload/status/search
+respond correctly), not processing success.
+
 ## GitOps (ArgoCD)
 
 `infra/argo/` holds the GitOps manifests (app-of-apps):
 
 | File | Resource | Manages |
 |------|----------|---------|
-| `apps.yaml` | ApplicationSet `ai-platform` | one Application per env — `ai-platform-dev` → `infra/k8s/overlays/dev` (branch `dev`), `ai-platform-production` → `infra/k8s/overlays/production` (branch `main`) |
+| `apps.yaml` | ApplicationSet `ai-platform` | one Application per env — `ai-platform-dev` → `infra/k8s/overlays/dev` (branch `dev`), `ai-platform-staging` → `infra/k8s/overlays/staging` (branch `main`), `ai-platform-production` → `infra/k8s/overlays/production` (branch `main`) |
 | `app-of-apps.yaml` | Application `ai-platform-apps` | the `infra/argo` directory itself (self-managing) |
 
 Install ArgoCD (once per cluster):

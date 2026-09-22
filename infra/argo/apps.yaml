@@ -3,6 +3,7 @@
 # environment and syncs automatically (prune + self-heal).
 #
 # - dev:         overlay infra/k8s/overlays/dev,         tracks branch `dev`
+# - staging:     overlay infra/k8s/overlays/staging,     tracks branch `main`
 # - production:  overlay infra/k8s/overlays/production,  tracks branch `main`
 #
 # Image rollout: the Infra CI workflow builds and pushes
@@ -26,6 +27,9 @@ spec:
           - name: dev
             overlay: infra/k8s/overlays/dev
             targetRevision: dev
+          - name: staging
+            overlay: infra/k8s/overlays/staging
+            targetRevision: main
           - name: production
             overlay: infra/k8s/overlays/production
             targetRevision: main
