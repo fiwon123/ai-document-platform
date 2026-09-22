@@ -67,6 +67,30 @@ Upload documents, search them semantically, and ask questions powered by AI.
    npm run dev
    ```
 
+### Kubernetes (Kind + DevSpace)
+
+Local development *inside* a Kind cluster with hot reload (run on the host —
+Docker and Kind are required, see `infra/scripts/setup-kind.sh`):
+
+```bash
+# 1. Create the Kind cluster + local registry (localhost:5000)
+./infra/scripts/setup-kind.sh
+
+# 2. Build, deploy and start the dev containers (backend uvicorn --reload,
+#    frontend Vite dev server) with live source sync
+devspace dev
+
+# 3. Stop dev containers / tear down
+devspace dev --stop
+devspace purge
+```
+
+- Backend sources sync into the running pod (`backend/src/app` → `/app/src/app`);
+  uvicorn reloads on save — API on `http://localhost:8000`.
+- Frontend runs the Vite dev server inside the cluster — `http://localhost:5173`.
+- The stack deploys to the `ai-platform` namespace from the dev Kustomize
+  overlay (`infra/k8s/overlays/dev`).
+
 ## API
 
 | Method | Endpoint | Description |
