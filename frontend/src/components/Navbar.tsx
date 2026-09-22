@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 
-export function Navbar() {
+/**
+ * Memoized app navbar: it takes no props, so parent re-renders (route
+ * changes, page state) are skipped entirely; only the auth/theme contexts
+ * it consumes can trigger a re-render.
+ */
+export const Navbar = memo(function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
@@ -105,4 +110,4 @@ export function Navbar() {
       </div>
     </nav>
   );
-}
+});

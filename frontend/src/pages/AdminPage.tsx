@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { statistics, users } from "../services/api";
 import type { AdminStatisticsResponse, User } from "../types";
 import { useAuth } from "../hooks/useAuth";
@@ -7,6 +7,80 @@ import { EmptyState } from "../components/EmptyState";
 import { Spinner } from "../components/Spinner";
 
 type Role = "customer" | "admin";
+
+interface AdminUserRowProps {
+  user: User;
+  isBusy: boolean;
+  isCurrentUser: boolean;
+  onRoleChange: (userId: string, role: Role) => void;
+  onDelete: (userId: string, username: string) => void;
+  onToggleActive: (user: User) => void;
+}
+
+/**
+ * Memoized admin table row: re-renders only when the user's data or the
+ * in-flight action for THIS row changes, not on every parent re-render.
+ */
+const AdminUserRow = memo(function AdminUserRow({
+  user,
+  isBusy,
+  isCurrentUser,
+  onRoleChange,
+  onDelete,
+  onToggleActive,
+}: AdminUserRowProps) {
+  return (
+    <tr>
+      <td>{user.username}</td>
+      <td>
+        <select
+          value={user.role === "admin" ? "admin" : "customer"}
+          onChange={(e) =>
+            onRoleChange(user.id, e.target.value as Role)
+          }
+          disabled={isBusy || isCurrentUser}
+          aria-label={`Role for ${user.username}`}
+        >
+          <option value="customer">customer</option>
+          <option value="admin">admin</option>
+        </select>
+      </td>
+      <td>
+        <div className="user-status-cell">
+          <span
+            className={`user-status ${
+              user.is_active ? "is-active" : "is-disabled"
+            }`}
+          >
+            {user.is_active ? "active" : "disabled"}
+          </span>
+          <button
+            onClick={() => onToggleActive(user)}
+            className="btn btn-secondary btn-sm"
+            disabled={isBusy || isCurrentUser}
+            aria-label={`${user.is_active ? "Disable" : "Enable"} ${user.username}`}
+          >
+            {user.is_active ? "Disable" : "Enable"}
+          </button>
+        </div>
+      </td>
+      <td>
+        {user.created_at
+          ? new Date(user.created_at).toLocaleDateString()
+          : "—"}
+      </td>
+      <td>
+        <button
+          onClick={() => onDelete(user.id, user.username)}
+          className="btn btn-danger"
+          disabled={isBusy || isCurrentUser}
+        >
+          Delete
+        </button>
+      </td>
+    </tr>
+  );
+});
 
 export function AdminPage() {
   const { user: currentUser } = useAuth();
@@ -50,7 +124,9 @@ export function AdminPage() {
     }
   }, [isAdmin, loadUsers, loadStats]);
 
-  async function handleRoleChange(userId: string, role: Role) {
+  // Handlers use functional setState only, so they are stable across renders
+  // and memoized rows are not invalidated by parent re-renders.
+  const handleRoleChange = useCallback(async (userId: string, role: Role) => {
     setBusyId(userId);
     setError(null);
     try {
@@ -65,9 +141,9 @@ export function AdminPage() {
     } finally {
       setBusyId(null);
     }
-  }
+  }, []);
 
-  async function handleDelete(userId: string, username: string) {
+  const handleDelete = useCallback(async (userId: string, username: string) => {
     if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
 
     setBusyId(userId);
@@ -80,9 +156,9 @@ export function AdminPage() {
     } finally {
       setBusyId(null);
     }
-  }
+  }, []);
 
-  async function handleToggleActive(user: User) {
+  const handleToggleActive = useCallback(async (user: User) => {
     setBusyId(user.id);
     setError(null);
     try {
@@ -97,7 +173,7 @@ export function AdminPage() {
     } finally {
       setBusyId(null);
     }
-  }
+  }, []);
 
   if (!isAdmin) {
     return (
@@ -196,60 +272,15 @@ export function AdminPage() {
             </thead>
             <tbody>
               {userList.map((user) => (
-                <tr key={user.id}>
-                  <td>{user.username}</td>
-                  <td>
-                    <select
-                      value={user.role === "admin" ? "admin" : "customer"}
-                      onChange={(e) =>
-                        handleRoleChange(
-                          user.id,
-                          e.target.value as Role,
-                        )
-                      }
-                      disabled={busyId === user.id || user.id === currentUser?.id}
-                      aria-label={`Role for ${user.username}`}
-                    >
-                      <option value="customer">customer</option>
-                      <option value="admin">admin</option>
-                    </select>
-                  </td>
-                  <td>
-                    <div className="user-status-cell">
-                      <span
-                        className={`user-status ${
-                          user.is_active ? "is-active" : "is-disabled"
-                        }`}
-                      >
-                        {user.is_active ? "active" : "disabled"}
-                      </span>
-                      <button
-                        onClick={() => handleToggleActive(user)}
-                        className="btn btn-secondary btn-sm"
-                        disabled={
-                          busyId === user.id || user.id === currentUser?.id
-                        }
-                        aria-label={`${user.is_active ? "Disable" : "Enable"} ${user.username}`}
-                      >
-                        {user.is_active ? "Disable" : "Enable"}
-                      </button>
-                    </div>
-                  </td>
-                  <td>
-                    {user.created_at
-                      ? new Date(user.created_at).toLocaleDateString()
-                      : "—"}
-                  </td>
-                  <td>
-                    <button
-                      onClick={() => handleDelete(user.id, user.username)}
-                      className="btn btn-danger"
-                      disabled={busyId === user.id || user.id === currentUser?.id}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
+                <AdminUserRow
+                  key={user.id}
+                  user={user}
+                  isBusy={busyId === user.id}
+                  isCurrentUser={user.id === currentUser?.id}
+                  onRoleChange={handleRoleChange}
+                  onDelete={handleDelete}
+                  onToggleActive={handleToggleActive}
+                />
               ))}
             </tbody>
           </table>
