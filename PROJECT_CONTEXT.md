@@ -83,19 +83,23 @@ LLM and Embedding APIs
 │   │   │   ├── __init__.py    # Route exports
 │   │   │   ├── auth.py        # Authentication routes
 │   │   │   ├── document.py    # Document routes
-│   │   │   ├── search.py      # Search routes
+│   │   │   ├── search.py      # Search + export routes
 │   │   │   ├── qa.py          # Q&A routes
+│   │   │   ├── statistics.py  # Statistics routes (/me, /admin)
+│   │   │   ├── users.py       # User admin + self-management routes
 │   │   │   └── health.py      # Health check routes
 │   │   ├── schemas/           # Pydantic request/response models
 │   │   │   ├── __init__.py    # Schema exports
 │   │   │   ├── user.py        # User schemas
-│   │   │   └── document.py    # Document/Search/QA schemas
+│   │   │   ├── document.py    # Document/Search/QA schemas
+│   │   │   └── statistics.py  # Statistics schemas
 │   │   ├── services/          # Business logic layer
 │   │   │   ├── __init__.py    # Service exports
 │   │   │   ├── user.py        # User service
 │   │   │   ├── document.py    # Document service
 │   │   │   ├── search.py      # Search service
 │   │   │   ├── qa.py          # Q&A service
+│   │   │   ├── statistics.py  # Statistics service
 │   │   │   ├── embedding.py   # Embedding generation
 │   │   │   ├── text_extraction.py  # Text extraction
 │   │   │   └── chunking.py    # Text chunking
@@ -103,7 +107,8 @@ LLM and Embedding APIs
 │   │   │   ├── __init__.py    # Repository exports
 │   │   │   ├── user.py        # User repository
 │   │   │   ├── document.py    # Document repository
-│   │   │   └── search.py      # Search repository
+│   │   │   ├── search.py      # Search repository
+│   │   │   └── statistics.py  # Statistics repository
 │   │   ├── storage/           # MinIO/S3 client
 │   │   │   ├── __init__.py    # Storage exports
 │   │   │   └── storage.py     # MinioStorage class
@@ -126,15 +131,28 @@ LLM and Embedding APIs
 │   ├── src/                   # Source code
 │   │   ├── components/        # React components
 │   │   │   ├── Navbar.tsx     # Navigation bar
-│   │   │   └── ProtectedRoute.tsx  # Auth route guard
+│   │   │   ├── ProtectedRoute.tsx  # Auth route guard
+│   │   │   ├── DocumentFilter.tsx  # Search document filter
+│   │   │   ├── EmptyState.tsx  # Empty-state placeholder
+│   │   │   ├── LandingNavbar.tsx  # Landing page nav
+│   │   │   ├── Markdown.tsx   # Markdown renderer
+│   │   │   ├── Skeleton.tsx   # Loading skeletons
+│   │   │   └── Spinner.tsx    # Loading spinner
 │   │   ├── pages/             # Page components
+│   │   │   ├── LandingPage.tsx  # Landing page
 │   │   │   ├── LoginPage.tsx  # Login page
 │   │   │   ├── RegisterPage.tsx  # Registration page
 │   │   │   ├── DocumentsPage.tsx  # Document management
-│   │   │   ├── SearchPage.tsx # Search page
-│   │   │   └── QAPage.tsx     # Q&A chat interface
+│   │   │   ├── SearchPage.tsx # Search (pagination + CSV/JSON export)
+│   │   │   ├── QAPage.tsx     # Q&A chat interface
+│   │   │   ├── DashboardPage.tsx  # User workspace dashboard
+│   │   │   ├── AdminPage.tsx  # Admin user management + system stats
+│   │   │   ├── ProfilePage.tsx  # Profile settings
+│   │   │   ├── SettingsPage.tsx  # App settings
+│   │   │   └── NotFoundPage.tsx  # 404 page
 │   │   ├── hooks/             # Custom React hooks
-│   │   │   └── useAuth.tsx    # Authentication hook
+│   │   │   ├── useAuth.tsx    # Authentication hook
+│   │   │   └── useTheme.ts    # Theme hook
 │   │   ├── services/          # API client functions
 │   │   │   └── api.ts         # API client
 │   │   ├── types/             # TypeScript type definitions
@@ -195,23 +213,46 @@ LLM and Embedding APIs
 ### Authentication
 - `POST /v1/auth/register` - User registration
 - `POST /v1/auth/login` - User login (OAuth2 form)
+- `POST /v1/auth/refresh` - Refresh access token via cookie
+- `POST /v1/auth/logout` - Revoke refresh token
 - `GET /v1/auth/me` - Get current user profile
+- `PUT /v1/users/me` - Update own username/password
+- `DELETE /v1/users/me` - Delete own account
 
 ### Documents
 - `POST /v1/documents/` - Upload document
 - `GET /v1/documents/` - List user documents
 - `GET /v1/documents/{id}` - Get document details
+- `GET /v1/documents/{id}/status` - Get processing status
+- `GET /v1/documents/{id}/preview` - Get extracted text preview
 - `GET /v1/documents/{id}/download` - Get presigned download URL
 - `DELETE /v1/documents/{id}` - Delete document
 
 ### Search
-- `POST /v1/search/` - Semantic search
+- `POST /v1/search/` - Semantic search (supports `top_k`, `offset` for
+  pagination, and `document_ids` filtering; returns `total_count` and
+  `has_more`)
+- `POST /v1/search/export` - Export search results as CSV or JSON
+  (formula-injection safe; admin-neutral; skips history recording)
 
 ### Question Answering
 - `POST /v1/qa/ask` - Ask question about documents
+- `GET /v1/qa/models` - List available QA models
+
+### Statistics
+- `GET /v1/statistics/me` - Dashboard summary for the current user
+  (documents by status, chunks, recent documents)
+- `GET /v1/statistics/admin` - System-wide aggregates (admin only):
+  users active/disabled, documents by status, chunks, searches
+
+### User administration (admin only)
+- `GET /v1/users/` - List all users
+- `PATCH /v1/users/{id}/role` - Change a user's role (customer/admin)
+- `PATCH /v1/users/{id}/active` - Enable/disable a user account
+- `DELETE /v1/users/{id}` - Delete a user
 
 ### Health
-- `GET /v1/health` - Health check endpoint
+- `GET /v1/health` - Health check endpoint (checks PostgreSQL, Redis, MinIO)
 
 ## Environment configuration
 
@@ -266,33 +307,32 @@ LLM and Embedding APIs
 - [x] FastAPI application skeleton
 - [x] SQLAlchemy models (User, Document, DocumentChunk, SearchHistory)
 - [x] Database migrations (Alembic)
-- [x] User authentication (JWT with registration and login)
-- [x] Document upload, list, download, and delete endpoints
+- [x] User authentication (JWT with registration, login, refresh, logout)
+- [x] Document upload, list, status, preview, download, and delete endpoints
 - [x] MinIO storage integration
 - [x] Document processing worker (background jobs)
 - [x] Text extraction service (PDF, text, JSON)
 - [x] Document chunking service
 - [x] Embedding generation service (OpenAI)
-- [x] Semantic search with pgvector
+- [x] Semantic search with pgvector (top_k, offset pagination, document_ids filter)
+- [x] Search result export (CSV, formula-injection safe; JSON)
 - [x] Question answering with LLM
 - [x] Rate limiting middleware
 - [x] Logging middleware
-- [x] CORS configuration
-- [x] Frontend React app with routing
+- [x] CORS configuration (dev ports 5173, 5175, 3000)
+- [x] Frontend React app with routing (landing, login, register, documents, search, QA, dashboard, admin, profile, settings)
 - [x] Frontend auth pages (login/register)
 - [x] Frontend document management page
-- [x] Frontend search UI
+- [x] Frontend search UI with pagination and CSV/JSON export
 - [x] Frontend Q&A chat interface
-- [x] Testing suite (127 backend tests, 93 frontend tests)
+- [x] User admin dashboard (role changes, activation toggle, user deletion, system statistics)
+- [x] Testing suite (157 backend tests, 118 frontend tests)
 - [x] CI/CD pipeline (GitHub Actions: backend tests + lint, frontend lint + build + tests)
-- [x] Rate limiting and logging middleware
 
 ### Planned
 - [ ] Advanced caching strategies
-- [ ] Document preview/thumbnails
+- [ ] Document preview/thumbnails (text preview done; thumbnails remain)
 - [ ] Bulk document upload
-- [ ] Export search results
-- [ ] User admin dashboard
 
 ## Contributing
 
