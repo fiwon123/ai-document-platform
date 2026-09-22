@@ -33,6 +33,13 @@ async function runSearch(query: string) {
   await act(async () => {});
 }
 
+function byFullText(text: string) {
+  // getByText with a string cannot match text split across <mark>/<span>
+  // children (query-term highlighting), so match on full textContent.
+  return (_content: string, element: Element | null) =>
+    element?.textContent === text;
+}
+
 describe("SearchPage", () => {
   beforeEach(() => {
     mockedSearch.mockResolvedValue({
@@ -46,7 +53,7 @@ describe("SearchPage", () => {
   it("searches with the typed query and renders results", async () => {
     await runSearch("q3 planning");
     expect(mockedSearch).toHaveBeenCalledWith("q3 planning", 5, [], 0);
-    expect(screen.getByText("meeting minutes about Q3 planning")).toBeTruthy();
+    expect(screen.getByText(byFullText("meeting minutes about Q3 planning"))).toBeTruthy();
     expect(screen.getByText("Results (1)")).toBeTruthy();
   });
 
@@ -109,7 +116,7 @@ describe("SearchPage", () => {
     await act(async () => {});
 
     expect(mockedSearch).toHaveBeenLastCalledWith("q3 planning", 5, [], 1);
-    expect(screen.getByText("Q3 planning notes")).toBeTruthy();
+    expect(screen.getByText(byFullText("Q3 planning notes"))).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Load more results" })).toBeNull();
   });
 

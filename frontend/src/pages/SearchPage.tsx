@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DocumentFilter } from "../components/DocumentFilter";
 import { EmptyState } from "../components/EmptyState";
+import { HighlightedText } from "../components/HighlightedText";
 import { search } from "../services/api";
 import type { SearchResult } from "../types";
 import { Spinner } from "../components/Spinner";
@@ -181,7 +182,9 @@ export function SearchPage() {
                   Similarity: {Math.max(0, (1 - result.score) * 100).toFixed(1)}%
                 </span>
               </div>
-              <p className="result-content">{result.content}</p>
+              <p className="result-content">
+                <HighlightedText text={result.content} query={query} />
+              </p>
               {result.metadata_ && (
                 <div className="result-metadata">
                   {Object.entries(result.metadata_).map(([key, value]) => (

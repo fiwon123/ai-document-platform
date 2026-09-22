@@ -1539,6 +1539,15 @@ body {
   white-space: pre-wrap;
 }
 
+/* Query-term highlight inside search result snippets. */
+.result-highlight {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+  font-weight: 600;
+}
+
 .result-metadata {
   display: flex;
   flex-wrap: wrap;
