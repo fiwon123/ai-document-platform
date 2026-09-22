@@ -2055,6 +2055,23 @@ body {
   outline-offset: 2px;
 }
 
+/* Inputs that declare `outline: none` on :focus (relying on a border-color
+   change alone) must still show a visible ring for keyboard users
+   (WCAG 2.4.7 Focus Visible). Placed after those :focus rules so this
+   equal-specificity rule wins for keyboard focus. */
+.form-group input:focus-visible,
+.search-input:focus-visible,
+.chat-input:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* The search input shows a soft glow on :focus; for keyboard focus the
+   solid ring above replaces it (avoid a double indicator). */
+.search-input:focus-visible {
+  box-shadow: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

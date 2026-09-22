@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
@@ -13,6 +13,8 @@ export const Navbar = memo(function Navbar() {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = () => setMenuOpen(false);
 
@@ -21,6 +23,27 @@ export const Navbar = memo(function Navbar() {
     logout();
     navigate("/login");
   };
+
+  // Mobile menu key handling (ARIA disclosure pattern, APG "Navigation Menu
+  // Button"): focus moves to the first link when the menu opens, and Escape
+  // closes it and returns focus to the toggle. Tab follows the natural DOM
+  // order — a disclosure menu is not a modal dialog, so it must not trap
+  // focus (trapping would strand keyboard users from the toggle).
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuRef.current
+      ?.querySelector<HTMLElement>("a[href], button:not([disabled])")
+      ?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        toggleRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [menuOpen]);
 
   return (
     <nav className="navbar">
@@ -31,6 +54,7 @@ export const Navbar = memo(function Navbar() {
       </div>
 
       <button
+        ref={toggleRef}
         type="button"
         className="navbar-toggle"
         aria-expanded={menuOpen}
@@ -44,6 +68,7 @@ export const Navbar = memo(function Navbar() {
       </button>
 
       <div
+        ref={menuRef}
         className={`navbar-links${menuOpen ? " navbar-links-open" : ""}`}
         id="navbar-links"
       >
