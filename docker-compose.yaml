@@ -51,6 +51,17 @@ services:
         condition: service_healthy
     volumes:
       - .:/workspace:cached
+      # Sandboxed AI coding agent (trusted-agent model — see DEVELOPMENT.md):
+      # mount the host Docker socket so opencode INSIDE the dev container can
+      # drive Docker/compose, and share the host gh auth, opencode binary +
+      # config, and git identity read-only. `make dev-up` pre-creates
+      # ${HOME}/.config/opencode and ${HOME}/.gitconfig so these mounts never
+      # fail on a fresh machine. The `worker` service gets none of these.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.config/gh:/root/.config/gh:ro
+      - ${HOME}/.opencode/bin/opencode:/usr/local/bin/opencode:ro
+      - ${HOME}/.config/opencode:/root/.config/opencode:ro
+      - ${HOME}/.gitconfig:/root/.gitconfig:ro
     healthcheck:
       # python:3.14-slim ships no curl; urllib is stdlib and always present.
       # /v1/health returns 503 when degraded (e.g. no worker heartbeat yet).
