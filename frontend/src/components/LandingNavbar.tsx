@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { ThemeToggle } from "./ThemeToggle";
 
 /** Marketing navigation shown on the public landing page (no auth needed). */
 export function LandingNavbar() {
@@ -15,6 +16,7 @@ export function LandingNavbar() {
       </div>
 
       <div className="landing-nav-actions">
+        <ThemeToggle />
         <Link to="/demo" className="btn btn-secondary">
           Try the demo
         </Link>
