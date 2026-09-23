@@ -10,7 +10,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .middleware import LoggingMiddleware, RateLimitMiddleware
 from .middleware.rate_limit import RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW
-from .routes import auth, document, health, qa, search, statistics, users
+from .routes import auth, document, health, qa, search, statistics, users, webhook
 from .schemas.error import ErrorDetail, ErrorResponse
 from .storage.storage import storage
 
@@ -164,6 +164,7 @@ app.include_router(search.router, prefix="/v1")
 app.include_router(qa.router, prefix="/v1")
 app.include_router(statistics.router, prefix="/v1")
 app.include_router(users.router, prefix="/v1")
+app.include_router(webhook.router, prefix="/v1")
 
 
 @app.get("/")
