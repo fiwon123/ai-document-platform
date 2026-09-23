@@ -109,3 +109,31 @@ export interface AdminStatisticsResponse {
   total_chunks: number;
   total_searches: number;
 }
+
+export type WebhookEvent =
+  | "document.processing"
+  | "document.ready"
+  | "document.failed"
+  | "document.deleted";
+
+export interface WebhookSubscription {
+  id: string;
+  url: string;
+  events: WebhookEvent[];
+  is_active: boolean;
+  /** HMAC signing secret — share it with your receiver to verify payloads. */
+  secret: string;
+  last_status: "success" | "failed" | null;
+  last_status_code: number | null;
+  last_delivered_at: string | null;
+  failure_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookTestResult {
+  delivered: boolean;
+  event: string;
+  status_code: number | null;
+  message: string;
+}

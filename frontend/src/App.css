@@ -2240,3 +2240,147 @@ body {
   display: flex;
   gap: 10px;
 }
+
+/* Webhooks page */
+.webhook-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.webhook-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.webhook-field input {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--foreground);
+  font-size: 0.95rem;
+}
+
+.webhook-events {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.webhook-events legend {
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0 4px;
+}
+
+.webhook-event-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.webhook-event-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+}
+
+.webhook-event-option input {
+  accent-color: var(--blue);
+}
+
+.webhook-list {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.webhook-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.webhook-url {
+  word-break: break-all;
+  font-size: 0.9rem;
+}
+
+.webhook-events-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.webhook-event-tag {
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-family: var(--font-mono, monospace);
+}
+
+.webhook-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+  font-size: 0.85rem;
+}
+
+.webhook-meta dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.webhook-meta dd {
+  margin: 2px 0 0;
+}
+
+.webhook-delivery-failed {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.webhook-secret {
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+
+.webhook-secret summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.webhook-secret code {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--surface-alt);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  word-break: break-all;
+}
+
+.webhook-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.webhook-notice-success {
+  color: var(--success, #16a34a);
+}

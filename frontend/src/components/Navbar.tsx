@@ -87,6 +87,9 @@ export const Navbar = memo(function Navbar() {
         <Link to="/app/settings" onClick={closeMenu}>
           Settings
         </Link>
+        <Link to="/app/webhooks" onClick={closeMenu}>
+          Webhooks
+        </Link>
         {user?.role === "admin" && (
           <Link to="/app/admin" onClick={closeMenu}>
             Users

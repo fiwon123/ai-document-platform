@@ -10,6 +10,9 @@ import type {
   ThumbnailUrlResponse,
   TokenResponse,
   User,
+  WebhookEvent,
+  WebhookSubscription,
+  WebhookTestResult,
 } from "../types";
 
 const API_BASE = "/v1";
@@ -265,6 +268,41 @@ export const users = {
 
   async deleteUser(userId: string): Promise<void> {
     await request<void>(`/users/${userId}`, { method: "DELETE" });
+  },
+};
+
+export interface UpdateWebhookInput {
+  url?: string;
+  events?: WebhookEvent[];
+  is_active?: boolean;
+}
+
+export const webhooks = {
+  async list(): Promise<WebhookSubscription[]> {
+    return request<WebhookSubscription[]>("/webhooks/");
+  },
+
+  async create(url: string, events: WebhookEvent[]): Promise<WebhookSubscription> {
+    return request<WebhookSubscription>("/webhooks/", {
+      method: "POST",
+      body: JSON.stringify({ url, events }),
+    });
+  },
+
+  async update(id: string, input: UpdateWebhookInput): Promise<WebhookSubscription> {
+    return request<WebhookSubscription>(`/webhooks/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async remove(id: string): Promise<void> {
+    await request<void>(`/webhooks/${id}`, { method: "DELETE" });
+  },
+
+  /** Deliver a one-off ping to verify the receiver endpoint. */
+  async test(id: string): Promise<WebhookTestResult> {
+    return request<WebhookTestResult>(`/webhooks/${id}/test`, { method: "POST" });
   },
 };
 
