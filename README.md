@@ -271,3 +271,9 @@ See [AGENTS.md](AGENTS.md) for development guidelines and workflow, and
 [DEVELOPMENT.md](DEVELOPMENT.md) for the daily-loop cheatsheet (golden rules:
 `make dev-up` → `make dev-log` → `make dev-down`; `make check` before every
 push; only `dev-up` requires opencode).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute — setup, branch
+strategy, commit conventions, and the PR workflow. Security vulnerabilities
+should be reported privately per [SECURITY.md](SECURITY.md).
