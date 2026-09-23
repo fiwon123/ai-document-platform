@@ -80,6 +80,7 @@ LLM and Embedding APIs
 │   │   │   ├── user.py        # UserDB model
 │   │   │   ├── document.py    # DocumentDB model
 │   │   │   ├── chunk.py       # DocumentChunk model
+│   │   │   ├── webhook.py     # WebhookSubscription model
 │   │   │   └── search.py      # SearchHistory model
 │   │   ├── routes/            # API route handlers
 │   │   │   ├── auth.py        # Authentication routes (register/login/refresh/logout/me)
@@ -88,11 +89,13 @@ LLM and Embedding APIs
 │   │   │   ├── search.py      # Search + export routes
 │   │   │   ├── qa.py          # Q&A routes (ask, models)
 │   │   │   ├── statistics.py  # Statistics routes (/me, /admin)
+│   │   │   ├── webhook.py     # Webhook routes (list, create, update, delete, test)
 │   │   │   └── health.py      # Health check routes
 │   │   ├── schemas/           # Pydantic request/response models
 │   │   │   ├── user.py        # User schemas
 │   │   │   ├── document.py    # Document/Search/QA schemas
 │   │   │   ├── statistics.py  # Statistics schemas
+│   │   │   ├── webhook.py     # Webhook schemas
 │   │   │   └── error.py       # Error response schema
 │   │   ├── services/          # Business logic layer
 │   │   │   ├── user.py        # User service
@@ -100,6 +103,7 @@ LLM and Embedding APIs
 │   │   │   ├── search.py      # Search service (incl. cache-version helpers)
 │   │   │   ├── qa.py          # Q&A service (OpenAI/Groq, BYOK, answer caching)
 │   │   │   ├── statistics.py  # Statistics service (cached summaries)
+│   │   │   ├── webhook.py     # Webhook signing, delivery, retries
 │   │   │   ├── embedding.py   # Embedding generation
 │   │   │   ├── text_extraction.py  # Text extraction
 │   │   │   ├── chunking.py    # Text chunking
@@ -108,7 +112,8 @@ LLM and Embedding APIs
 │   │   │   ├── user.py        # User repository
 │   │   │   ├── document.py    # Document repository
 │   │   │   ├── search.py      # Search repository
-│   │   │   └── statistics.py  # Statistics repository
+│   │   │   ├── statistics.py  # Statistics repository
+│   │   │   └── webhook.py     # Webhook repository
 │   │   ├── storage/           # MinIO/S3 client
 │   │   │   └── storage.py     # MinioStorage class
 │   │   ├── cache/             # Redis client
@@ -125,7 +130,8 @@ LLM and Embedding APIs
 │   │       ├── 002_add_chunks_search_pgvector.py
 │   │       └── 003_add_document_thumbnail.py
 │   ├── tests/                 # pytest suite (conftest fixtures; document, search, qa,
-│   │                          # user, worker, status, cache, thumbnail, statistics tests)
+│   │                          # user, worker, status, cache, webhook, thumbnail,
+│   │                          # statistics tests)
 │   ├── pyproject.toml         # Python dependencies (uv)
 │   └── uv.lock                # Locked dependency versions
 ├── frontend/                   # React 19 / Vite / TypeScript SPA
@@ -134,7 +140,8 @@ LLM and Embedding APIs
 │   │   │                      # LandingNavbar, Markdown, Skeleton, Spinner
 │   │   ├── context/           # ToastContext (toast notifications)
 │   │   ├── pages/             # Landing, Login, Register, Documents, Search, QA,
-│   │   │                      # Dashboard, Admin, Profile, Settings, Demo, NotFound
+│   │   │                      # Dashboard, Admin, Profile, Settings, Webhooks,
+│   │   │                      # Demo, NotFound
 │   │   ├── hooks/             # useAuth, useTheme
 │   │   ├── services/api.ts    # Typed API client (auth, documents, search, qa, statistics, users)
 │   │   ├── types/index.ts     # Shared TypeScript types
@@ -202,6 +209,22 @@ LLM and Embedding APIs
 - `results_count`: number of results returned
 - `created_at`: search timestamp
 
+### WebhookSubscription
+- `id`: UUID primary key
+- `user_id`: UUID of the owning user (foreign key to User, cascade delete)
+- `url`: receiver endpoint (http/https only)
+- `events`: JSONB list of subscribed event names (document.processing,
+  document.ready, document.failed, document.deleted)
+- `secret`: HMAC-SHA256 signing secret (shown once in the UI, used to verify
+  `X-Webhook-Signature` payload signatures)
+- `is_active`: whether deliveries are currently sent
+- `last_status`: outcome of the most recent delivery attempt (success/failed)
+- `last_status_code`: HTTP status returned by the receiver
+- `last_delivered_at`: timestamp of the most recent delivery
+- `failure_count`: consecutive failed deliveries (3 attempts with exponential
+  backoff are made per event)
+- `created_at`, `updated_at`: timestamps
+
 ## API endpoints
 
 ### Authentication
@@ -238,6 +261,13 @@ LLM and Embedding APIs
   `has_more`)
 - `POST /v1/search/export` - Export search results as CSV or JSON
   (formula-injection safe; skips search-history recording)
+
+### Webhooks
+- `GET /v1/webhooks/` - List the current user's webhook subscriptions
+- `POST /v1/webhooks/` - Create a subscription (validates URL + non-empty events)
+- `PUT /v1/webhooks/{id}` - Update URL, events, or active state
+- `DELETE /v1/webhooks/{id}` - Delete a subscription
+- `POST /v1/webhooks/{id}/test` - Deliver a one-off ping and report the outcome
 
 ### Question Answering
 - `POST /v1/qa/ask` - Ask question about documents (OpenAI or Groq;
@@ -338,6 +368,11 @@ LLM and Embedding APIs
   via per-request `api_key`; per-user answer caching)
 - [x] PDF first-page thumbnails (PyMuPDF, best-effort in the worker)
 - [x] Semantic caching (QA answers, dashboard statistics)
+- [x] Semantic search result caching (per-user cache versions; search results and
+  document metadata cached in Redis, invalidated on upload/delete/processing)
+- [x] Webhooks for document processing events (HMAC-SHA256 signed payloads with
+  `X-Webhook-Signature`/`X-Webhook-Event` headers, 3 attempts with exponential
+  backoff, per-subscription delivery status, one-off test pings, backend + frontend UI)
 - [x] Production-readiness hardening (CORS via env var with restricted
   methods/headers, trusted X-Forwarded-For rate limiting, bounded Redis pool,
   composite owner/created_at index, single-query search counting)
@@ -365,8 +400,9 @@ LLM and Embedding APIs
 - [x] Kind E2E smoke tests: infra/scripts/smoke-test.sh bootstraps the dev stack on a Kind cluster and asserts backend health, frontend reachability and an API round-trip (register → login → upload → status → search); runs on every dev push in the Infra CI
 
 ### Backlog (not yet started)
-- [ ] Advanced caching strategies (e.g., semantic search result caching)
-- [ ] Webhooks for document processing events
+
+None — all previously planned items (semantic search result caching, webhooks for
+document processing events) are implemented.
 
 ## Contributing
 
