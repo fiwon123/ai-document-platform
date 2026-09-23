@@ -126,12 +126,24 @@ docker compose down
 docker compose down -v
 ```
 
+### Golden rules
+
+1. `make dev-up` to start → `make dev-log` (2nd terminal) → `make dev-down` when done
+2. `make check` before every push — always green before PR
+3. Only `dev-up` requires opencode; `infra-up` + host loop (`make check`) don't
+
 ## Runtime Environment
 
-The AI agent (opencode) runs **natively on the host**, not inside a container.
-The `docker compose` dev sandbox provides the isolated runtime for the app
-(uvicorn + vite + worker + infra); the agent edits the repo on the host and
-drives the sandbox via `make`/`docker compose`.
+Two equivalent loops, same files (bind-mounted workspace):
+
+- **Sandboxed (recommended)**: opencode runs INSIDE the `dev` container —
+  `make opencode` (agent TUI), `make sandbox` (plain shell) or
+  `scripts/open-in-sandbox.sh`. The container mounts the host opencode binary
+  + config, git identity, gh auth, and the Docker socket (trusted-agent
+  model — see `DEVELOPMENT.md`); it has `make`, git, node/uv/gh, the baked
+  `/opt/backend-venv`, and the running stack at `:8000`/`:5173`.
+- **Host-native (fallback)**: the agent runs natively on the host, edits the
+  repo directly, and drives the sandbox via `make`/`docker compose`.
 
 ### Docker CLI availability
 
@@ -140,6 +152,9 @@ drives the sandbox via `make`/`docker compose`.
   forwarded-port indirection, and no network-pinning workarounds.
 - Infrastructure services (PostgreSQL, Redis, MinIO) run as compose services
   and are reachable on `localhost` via their host ports (see below).
+- The `dev` image ships the static Docker CLI + compose plugin, and the
+  `dev` service mounts the host Docker socket — so the sandboxed agent can
+  drive Docker/compose from inside. The `worker` service gets neither.
 
 ### What the agent CAN do
 
@@ -147,6 +162,8 @@ drives the sandbox via `make`/`docker compose`.
 - Run frontend commands: `npm`, `npx`, `node`
 - Run git commands: `git`, `gh`
 - Drive the dev sandbox: `make dev-up`, `make dev-log`, `docker compose exec dev bash`, ...
+- Run sandboxed coding sessions: `make opencode` (agent inside the dev
+  container — same files via the bind mount, stack at `:8000`/`:5173`)
 - Run the host-native loop: `make infra-up`, then uvicorn/vite directly
 
 ### gh CLI Authentication
@@ -154,6 +171,8 @@ drives the sandbox via `make`/`docker compose`.
 - `gh` authenticates via the host's default credential flow (`gh auth login`
   or `gh auth login --with-token`), because the agent runs natively on the
   host — no `remoteEnv` forwarding or config volumes needed.
+- The `dev` container mounts `~/.config/gh` read-only, so the sandboxed agent
+  has the same gh auth (issues/PRs land on the host tree via the bind mount).
 - **One-time setup** (already done on this machine): `gh auth login` or set a
   `GITHUB_TOKEN` with scopes `repo, read:org, workflow`. Use
   `gh auth status` to verify.
@@ -176,10 +195,12 @@ host uvicorn.
 
 ### What the agent CANNOT do
 
-- Nothing container-related is off-limits, but the Docker **daemon** runs on
-  the host: `docker`/`docker compose` binaries are used from here as normal
-  CLI tools (this repo's dev sandbox does not mount the docker socket — the
-  worker only needs postgres/redis/minio).
+- Nothing container-related is off-limits: the Docker **daemon** runs on the
+  host, and `docker`/`docker compose` are used as normal CLI tools — either
+  from the host (host-native loop) or from inside the dev container
+  (sandboxed agent; the `dev` service mounts the host socket).
+- The `worker` service gets no docker socket and no opencode/gh mounts — only
+  the `dev` container carries the trusted-agent model.
 
 ## Architecture
 
@@ -218,6 +239,11 @@ host uvicorn.
 - Migrations run in `dev-entrypoint.sh` (`alembic upgrade head`) before uvicorn
   starts; the `worker` service is gated on `dev` healthy so it never polls the
   queue before the schema exists
+- The `dev` container additionally carries the sandboxed AI coding agent:
+  host opencode binary + config, git identity, and gh auth are mounted
+  read-only; the host Docker socket is mounted too (RW by design — trusted-agent
+  model, see `DEVELOPMENT.md`). Run the agent inside with `make opencode` or
+  `make sandbox`.
 
 ## Environment Variables
 

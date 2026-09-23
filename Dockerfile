@@ -14,6 +14,12 @@
 ARG MISE_VERSION=2025.4.10
 FROM ghcr.io/jdx/mise:${MISE_VERSION} AS mise
 
+# Static Docker CLI + compose plugin: lets the sandboxed AI coding agent
+# (opencode INSIDE the dev container) drive the host Docker daemon through the
+# mounted socket — same trusted-agent model as gh. Only the `dev` service gets
+# the socket mount; the `worker` service never does.
+FROM docker:27-cli AS docker-cli
+
 FROM python:3.14-slim
 
 # Install system dependencies: build toolchain (backend package + psycopg),
@@ -61,6 +67,11 @@ RUN mise install node@${NODE_VERSION} uv@${UV_VERSION} gh@${GH_VERSION} \
     && printf '#!/bin/sh\nexec "%s/bin/node" "%s/lib/node_modules/corepack/dist/corepack.js" "$@"\n' "$NODE_DIR" "$NODE_DIR" > /usr/local/bin/corepack \
     && chmod +x /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
     && node --version && npm --version && uv --version && gh --version
+
+# Wire the docker CLI + compose plugin onto the image (see docker-cli stage).
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
+RUN docker --version && docker compose version
 
 # Set working directory
 WORKDIR /workspace

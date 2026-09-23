@@ -163,11 +163,13 @@ LLM and Embedding APIs
 ├── Dockerfile                 # Dev sandbox image (mise runtime + deps baked)
 ├── docker-compose.yaml        # Dev sandbox: dev (uvicorn+vite), worker, postgres, redis, minio
 ├── dev-entrypoint.sh          # Dev sandbox entrypoint (alembic + uvicorn + vite, hot reload)
-├── Makefile                   # Dev workflow targets (dev-up, infra-up, check, ...)
+├── Makefile                   # Dev workflow targets (dev-up, dev-restart, opencode, sandbox, check, ...)
 ├── mise.toml                  # Tool versions (node/uv/gh)
+├── scripts/                   # Host helper scripts (open-in-sandbox.sh)
 ├── .github/                   # GitHub Actions CI (backend tests + ruff; frontend lint/build/tests)
 │   ├── workflows/ci.yml
 │   └── dependabot.yml
+├── DEVELOPMENT.md             # Daily-loop cheatsheet (golden rules, sandboxed AI agent)
 ├── PROJECT_CONTEXT.md         # This document
 └── AGENTS.md                  # Development guidelines
 ```
@@ -326,14 +328,23 @@ LLM and Embedding APIs
 
 ## Development workflow
 
+Golden rules: `make dev-up` → `make dev-log` (2nd terminal) → `make dev-down`
+when done; `make check` before every push; only `dev-up` requires opencode
+(`infra-up` + host loop don't). Full cheatsheet: `DEVELOPMENT.md`.
+
 ### Dev sandbox (recommended)
 
 1. `make dev-up` — builds the dev image and starts uvicorn (`--reload`) + Vite
    (HMR) + arq worker + postgres + redis + minio
 2. Open http://localhost:5175 (frontend) / http://localhost:8001/docs (API)
-3. `make dev-log` tails sandbox logs; `make dev-down` stops it (volumes kept)
+3. `make dev-log` tails sandbox logs; `make dev-down` stops it (volumes kept);
+   `make dev-restart` stops + starts in one step
+4. Code with AI inside the sandbox: `make opencode` (agent TUI) or
+   `make sandbox` (plain shell); the dev container mounts the host opencode
+   binary + config, git identity, gh auth, and Docker socket (trusted-agent
+   model — see `DEVELOPMENT.md`)
 
-### Host-native
+### Host-native (fallback)
 
 1. **Setup**: Start infrastructure with `docker compose up -d postgres redis minio`
 2. **Backend**: Run `uv run uvicorn app.main:app --reload` in backend directory
@@ -451,8 +462,11 @@ document processing events) are implemented.
 ### Docker Compose (Dev Sandbox)
 
 ```bash
-make dev-up        # build image + start uvicorn/vite/worker/infra
-make dev-log       # tail sandbox logs
+make dev-up        # build image + start uvicorn/vite/worker/infra (foreground logs)
+make dev-log       # tail sandbox logs (2nd terminal)
+make dev-restart   # down + up in one step (volumes kept)
+make opencode      # run the AI coding agent inside the dev container
+make sandbox       # plain shell inside the dev container
 make dev-down      # stop (keeps volumes)
 ```
 

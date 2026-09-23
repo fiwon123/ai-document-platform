@@ -209,10 +209,15 @@ git remote prune origin
 
 ### Environment Notes
 
-- This project runs with the agent (opencode) **natively on the host**; the
-  `docker compose` dev sandbox provides the app runtime (uvicorn + vite +
-  arq worker + postgres/redis/minio) and is driven via `make`/`docker compose`
+- Golden rules: `make dev-up` → `make dev-log` (2nd terminal) → `make dev-down`
+  when done; `make check` before every push; only `dev-up` requires opencode
+  (`infra-up` + host loop don't).
+- The project supports two agent loops, same files (bind mount): **sandboxed**
+  (recommended — `make opencode` runs the agent inside the `dev` container;
+  stack at `:8000`/`:5173`, make/git/gh/docker available) and **host-native**
+  (this session — opencode on the host drives the sandbox via
+  `make`/`docker compose`). See `DEVELOPMENT.md` for the cheatsheet.
 - Backend: Python 3.14 managed by `uv` — use `uv run`, never pip directly
 - Frontend: Node 22 managed by `npm`
-- `gh` CLI is authenticated natively on the host (`gh auth status`)
+- `gh` CLI is authenticated on the host (shared read-only with the dev sandbox)
 - Never access secret files (`.env`, etc.) without explicit permission

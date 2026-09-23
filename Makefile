@@ -1,4 +1,5 @@
-.PHONY: help setup host-tools infra-up infra-down dev-up dev-build dev-down dev-log dev-exec reset \
+.PHONY: help setup host-tools infra-up infra-down preflight dev-up dev-build dev-down dev-restart \
+        dev-log dev-exec dev-agent opencode sandbox reset \
         test test-backend test-frontend lint lint-fix format typecheck build check
 
 COMPOSE := docker compose
@@ -24,7 +25,21 @@ infra-down: ## Stop infra services
 	$(COMPOSE) down postgres redis minio
 
 # --- Isolated dev sandbox (dev + worker + infra) ----------------------------
-dev-up: ## Start the isolated dev sandbox (uvicorn + vite + worker + infra)
+# Sandboxed AI coding agent (trusted-agent model): the dev container mounts the
+# host opencode binary + config, git identity, and gh auth read-only, plus the
+# host Docker socket (RW by design — see DEVELOPMENT.md). Only the
+# sandbox-starting targets below require the host opencode binary; the
+# host-native loop (infra-up, make check) never does.
+# NOTE: not named OPENCODE — the opencode agent runtime exports an OPENCODE
+# env var (=1) which would override a ?= default via make's env import.
+OPENCODE_BIN ?= $(HOME)/.opencode/bin/opencode
+
+preflight: ## (internal) Require host opencode + pre-create mounted config paths
+	@test -x "$(OPENCODE_BIN)" || { echo "ERROR: opencode not found at $(OPENCODE_BIN)" >&2; \
+	  echo "  Install: curl -fsSL https://opencode.ai/install | bash" >&2; exit 1; }
+	@mkdir -p "$(HOME)/.config/opencode" "$(HOME)/.config/gh" && touch "$(HOME)/.gitconfig"
+
+dev-up: preflight ## Start the isolated dev sandbox (uvicorn + vite + worker + infra)
 	$(COMPOSE) up dev
 
 dev-build: ## Rebuild the dev image after Dockerfile/pyproject/uv.lock changes
@@ -33,11 +48,25 @@ dev-build: ## Rebuild the dev image after Dockerfile/pyproject/uv.lock changes
 dev-down: ## Stop the dev sandbox (keeps volumes)
 	$(COMPOSE) down
 
+dev-restart: preflight ## Stop and restart the dev sandbox in one step (volumes kept)
+	$(COMPOSE) down
+	$(COMPOSE) up dev
+
 dev-log: ## Tail dev sandbox logs
 	$(COMPOSE) logs -f dev
 
 dev-exec: ## Open a shell inside the dev sandbox
 	$(COMPOSE) exec dev bash
+
+opencode: preflight ## Run the AI coding agent (opencode) inside the dev sandbox
+	@if [ -z "$$($(COMPOSE) ps -q dev)" ]; then echo "[opencode] starting dev stack..."; $(COMPOSE) up -d dev; fi
+	@if [ -t 0 ]; then $(COMPOSE) exec -it dev bash -lc "cd /workspace && opencode"; else $(COMPOSE) exec -T dev bash -lc "cd /workspace && opencode"; fi
+
+# Alias kept for compatibility with earlier dev-sandbox docs.
+dev-agent: opencode
+
+sandbox: preflight ## Open an interactive shell in the dev sandbox (opencode ready)
+	scripts/open-in-sandbox.sh
 
 reset: ## Stop everything and wipe volumes (clean slate)
 	$(COMPOSE) down -v
