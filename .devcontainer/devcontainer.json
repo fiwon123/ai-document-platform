@@ -1,5 +1,5 @@
 {
-  "name": "Full Stack (Frontend + Backend)",
+  "name": "AI Document Platform",
   "dockerComposeFile": ["../docker-compose.yaml"],
   "service": "backend",
   "runServices": ["backend", "frontend", "worker"],
