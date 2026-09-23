@@ -240,9 +240,10 @@ host uvicorn.
   starts; the `worker` service is gated on `dev` healthy so it never polls the
   queue before the schema exists
 - The `dev` container additionally carries the sandboxed AI coding agent:
-  host opencode binary + config, git identity, gh auth, and the Docker socket
-  are mounted read-only (see `DEVELOPMENT.md` — trusted-agent model). Run the
-  agent inside with `make opencode` or `make sandbox`.
+  host opencode binary + config, git identity, and gh auth are mounted
+  read-only; the host Docker socket is mounted too (RW by design — trusted-agent
+  model, see `DEVELOPMENT.md`). Run the agent inside with `make opencode` or
+  `make sandbox`.
 
 ## Environment Variables
 

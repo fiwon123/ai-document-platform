@@ -12,6 +12,10 @@ architecture and conventions live in `AGENTS.md` / `PROJECT_CONTEXT.md`.
 2. `make check` before every push — always green before PR
 3. Only `dev-up` requires opencode; `infra-up` + host loop (`make check`) don't
 
+> Rule 3 in practice: the **sandbox-starting** targets run the preflight and
+> need the host opencode binary — `dev-up`, `dev-restart`, `opencode`,
+> `sandbox`. Everything else (including `make check`) never does.
+
 ## Architecture at a glance
 
 ```
@@ -31,7 +35,7 @@ container** (`make opencode`). Both see the same files.
 ```bash
 make dev-up        # START: build (once) + dev + worker + postgres + redis + minio
                    # foreground with combined logs — Ctrl+C stops it
-make dev-log       # tail dev + worker + infra logs without stopping
+make dev-log       # tail the dev sandbox logs (uvicorn + vite; worker: compose logs -f worker)
 make dev-down      # STOP: tear down the stack (postgres data volume kept)
 make dev-restart   # RESTART: down + up in one step, no rebuild, data still there
 make infra-up      # infra only (postgres/redis/minio) for the host-native loop

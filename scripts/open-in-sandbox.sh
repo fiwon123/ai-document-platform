@@ -26,7 +26,9 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
 # Ensure the stack is running (idempotent; keeps postgres_data volume).
-if ! docker compose ps -q dev >/dev/null 2>&1; then
+# NOTE: `docker compose ps -q` prints nothing (exit 0) for a defined-but-stopped
+# service, so check the output, not the exit code.
+if [ -z "$(docker compose ps -q dev)" ]; then
     echo "[sandbox] Starting dev stack (docker compose up -d dev)..."
     docker compose up -d dev
 else

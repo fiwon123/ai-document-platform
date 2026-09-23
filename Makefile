@@ -26,10 +26,10 @@ infra-down: ## Stop infra services
 
 # --- Isolated dev sandbox (dev + worker + infra) ----------------------------
 # Sandboxed AI coding agent (trusted-agent model): the dev container mounts the
-# host opencode binary + config, git identity, gh auth, and the Docker socket
-# read-only (see DEVELOPMENT.md). Only the sandbox-starting targets below
-# require the host opencode binary; the host-native loop (infra-up, make check)
-# never does.
+# host opencode binary + config, git identity, and gh auth read-only, plus the
+# host Docker socket (RW by design — see DEVELOPMENT.md). Only the
+# sandbox-starting targets below require the host opencode binary; the
+# host-native loop (infra-up, make check) never does.
 # NOTE: not named OPENCODE — the opencode agent runtime exports an OPENCODE
 # env var (=1) which would override a ?= default via make's env import.
 OPENCODE_BIN ?= $(HOME)/.opencode/bin/opencode
@@ -37,7 +37,7 @@ OPENCODE_BIN ?= $(HOME)/.opencode/bin/opencode
 preflight: ## (internal) Require host opencode + pre-create mounted config paths
 	@test -x "$(OPENCODE_BIN)" || { echo "ERROR: opencode not found at $(OPENCODE_BIN)" >&2; \
 	  echo "  Install: curl -fsSL https://opencode.ai/install | bash" >&2; exit 1; }
-	@mkdir -p "$(HOME)/.config/opencode" && touch "$(HOME)/.gitconfig"
+	@mkdir -p "$(HOME)/.config/opencode" "$(HOME)/.config/gh" && touch "$(HOME)/.gitconfig"
 
 dev-up: preflight ## Start the isolated dev sandbox (uvicorn + vite + worker + infra)
 	$(COMPOSE) up dev
@@ -59,8 +59,8 @@ dev-exec: ## Open a shell inside the dev sandbox
 	$(COMPOSE) exec dev bash
 
 opencode: preflight ## Run the AI coding agent (opencode) inside the dev sandbox
-	$(COMPOSE) ps -q dev >/dev/null 2>&1 || $(COMPOSE) up -d dev
-	$(COMPOSE) exec -it dev bash -lc "cd /workspace && opencode"
+	@if [ -z "$$($(COMPOSE) ps -q dev)" ]; then echo "[opencode] starting dev stack..."; $(COMPOSE) up -d dev; fi
+	@if [ -t 0 ]; then $(COMPOSE) exec -it dev bash -lc "cd /workspace && opencode"; else $(COMPOSE) exec -T dev bash -lc "cd /workspace && opencode"; fi
 
 # Alias kept for compatibility with earlier dev-sandbox docs.
 dev-agent: opencode
