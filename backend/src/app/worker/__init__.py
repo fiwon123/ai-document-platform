@@ -14,6 +14,7 @@ from app.cache.redis import REDIS_PASSWORD
 from app.database.db import SessionLocal
 from app.models.document import DocumentDB, DocumentStatus
 from app.repositories.document import DocumentRepository
+from app.schemas.webhook import WebhookEvent
 from app.services.chunking import ChunkingService
 from app.services.embedding import EmbeddingService
 from app.services.text_extraction import TextExtractionService
@@ -82,11 +83,31 @@ def _invalidate_caches(document: DocumentDB) -> None:
         logger.warning(f"Document cache invalidation failed: {e}")
 
 
-def _mark_failed(document_id: UUID, error_message: str) -> None:
+def _schedule_webhook(event: WebhookEvent, document: DocumentDB) -> None:
+    """Fire a document webhook event in the background (best-effort).
+
+    The snapshot is taken eagerly — while the worker session is open — and
+    delivery runs as a detached asyncio task so receiver latency and
+    retries never slow down the pipeline; the service swallows all delivery
+    errors. Import is lazy to keep the worker's dependency surface small; a
+    schedule failure is logged and ignored.
+    """
+    try:
+        from app.services.webhook import dispatch_document_event, document_event_info
+
+        info = document_event_info(document)
+        asyncio.create_task(dispatch_document_event(event.value, info))
+    except Exception as e:  # noqa: BLE001 - webhooks must never break the worker
+        logger.warning(f"Webhook scheduling failed for {event.value}: {e}")
+
+
+def _mark_failed(document_id: UUID, error_message: str) -> DocumentDB | None:
     """Record a processing failure without leaving the doc stuck.
 
     Used by the arq handler after the final retry and by the synchronous
     fallback; invalidates caches so clients stop seeing stale metadata.
+    Returns the updated document (None when it no longer exists) so callers
+    can fire webhook notifications for the failure.
     """
     db: Session = SessionLocal()
     try:
@@ -98,6 +119,7 @@ def _mark_failed(document_id: UUID, error_message: str) -> None:
         )
         if document is not None:
             _invalidate_caches(document)
+        return document
     finally:
         db.close()
 
@@ -136,12 +158,15 @@ def _generate_thumbnail(
         raise
 
 
-async def _process_document_impl(document_id: UUID) -> None:
+async def _process_document_impl(document_id: UUID) -> DocumentDB | None:
     """Run the full processing pipeline once for a document.
 
     Raises on failure; the caller decides whether to retry (arq worker) or
-    mark the document failed (synchronous fallback). ``document_id`` must
-    already be a valid UUID.
+    mark the document failed (synchronous fallback). Returns the document
+    in its terminal state (READY, or FAILED when no text could be
+    extracted) so callers can fire the matching webhook event in their own
+    execution context — or None when the document no longer exists.
+    ``document_id`` must already be a valid UUID.
     """
     db: Session = SessionLocal()
     try:
@@ -153,6 +178,7 @@ async def _process_document_impl(document_id: UUID) -> None:
             return
 
         repository.update_status(document_id, DocumentStatus.PROCESSING)
+        _schedule_webhook(WebhookEvent.PROCESSING, document)
 
         file_content = storage.download(document.object_key)
         file_bytes = file_content.read()
@@ -166,13 +192,13 @@ async def _process_document_impl(document_id: UUID) -> None:
         )
 
         if not text.strip():
-            repository.update_status(
+            document = repository.update_status(
                 document_id,
                 DocumentStatus.FAILED,
                 error_message="No text content could be extracted",
             )
             _invalidate_caches(document)
-            return
+            return document
 
         chunking = ChunkingService()
         chunks = chunking.chunk_text(text)
@@ -218,9 +244,10 @@ async def _process_document_impl(document_id: UUID) -> None:
             logger.warning(f"Thumbnail generation failed for {document_id}: {e}")
             db.rollback()
 
-        repository.update_status(document_id, DocumentStatus.READY)
+        document = repository.update_status(document_id, DocumentStatus.READY)
         _invalidate_caches(document)
         logger.info(f"Document processed successfully: {document_id}")
+        return document
     finally:
         db.close()
 
@@ -236,7 +263,20 @@ async def process_document(ctx: dict, document_id: str) -> None:
     """
     document_uuid = UUID(document_id)
     try:
-        await _process_document_impl(document_uuid)
+        document = await _process_document_impl(document_uuid)
+        if document is None:
+            return
+        # Terminal state reached (READY, or FAILED with no extractable
+        # text): schedule the matching event. Runs in the worker's
+        # long-lived loop, so the detached task completes.
+        _schedule_webhook(
+            (
+                WebhookEvent.READY
+                if document.status == DocumentStatus.READY
+                else WebhookEvent.FAILED
+            ),
+            document,
+        )
     except Exception as e:  # noqa: BLE001 - transient errors are retried
         job_try = int(ctx.get("job_try", 1))
         logger.error(
@@ -246,7 +286,9 @@ async def process_document(ctx: dict, document_id: str) -> None:
         if job_try >= MAX_RETRIES:
             # Final attempt exhausted — record the failure so the
             # document is never left stuck in a processing state.
-            _mark_failed(document_uuid, str(e))
+            document = _mark_failed(document_uuid, str(e))
+            if document is not None:
+                _schedule_webhook(WebhookEvent.FAILED, document)
             raise
         # Transient failure: let arq retry with exponential backoff.
         raise Retry(defer=BACKOFF_SECONDS * (2 ** (job_try - 1))) from e
@@ -294,11 +336,37 @@ def process_document_sync(document_id: UUID) -> None:
     can surface the real reason.
     """
     try:
-        asyncio.run(_process_document_impl(document_id))
+        document = asyncio.run(_process_document_impl(document_id))
     except Exception as e:  # noqa: BLE001 - record the failure then re-raise
         logger.error(f"Synchronous processing failed for {document_id}: {e}")
-        _mark_failed(document_id, str(e))
+        document = _mark_failed(document_id, str(e))
+        if document is not None:
+            # Sync context with no event loop: fire via a background thread.
+            from app.services.webhook import (
+                document_event_info,
+                fire_webhook_background,
+            )
+
+            fire_webhook_background(
+                WebhookEvent.FAILED.value,
+                document_event_info(document),
+            )
         raise
+    else:
+        # Terminal state reached: deliver the matching event without
+        # blocking the caller (thread-based — safe outside an event loop).
+        from app.services.webhook import (
+            document_event_info,
+            fire_webhook_background,
+        )
+
+        if document is not None:
+            event = (
+                WebhookEvent.READY
+                if document.status == DocumentStatus.READY
+                else WebhookEvent.FAILED
+            )
+            fire_webhook_background(event.value, document_event_info(document))
 
 
 def process_document_task(document_id: UUID) -> None:
@@ -354,6 +422,7 @@ async def recover_stale_documents(ctx: dict) -> None:
                 "Processing did not complete within the timeout"
             )
             _invalidate_caches(document)
+            _schedule_webhook(WebhookEvent.FAILED, document)
         if stale:
             db.commit()
             logger.info(f"Recovered {len(stale)} stale document(s)")

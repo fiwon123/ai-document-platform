@@ -40,6 +40,9 @@ const QAPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
 );
+const WebhooksPage = lazy(() =>
+  import("./pages/WebhooksPage").then((m) => ({ default: m.WebhooksPage })),
+);
 const NotFoundPage = lazy(() =>
   import("./pages/NotFoundPage").then((m) => ({ default: m.NotFoundPage })),
 );
@@ -84,6 +87,7 @@ function App() {
                         <Route path="search" element={<SearchPage />} />
                         <Route path="qa" element={<QAPage />} />
                         <Route path="settings" element={<SettingsPage />} />
+                        <Route path="webhooks" element={<WebhooksPage />} />
                         <Route path="profile" element={<ProfilePage />} />
                         <Route path="admin" element={<AdminPage />} />
                         <Route path="*" element={<NotFoundPage />} />

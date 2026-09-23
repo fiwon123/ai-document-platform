@@ -382,6 +382,14 @@ class DocumentService:
         if document is None:
             return None
 
+        # Snapshot the fields webhook payloads need *before* the delete
+        # commit: the ORM instance is expired afterwards and the row is
+        # gone, so detached-safe plain values must be captured while the
+        # session can still read them.
+        from app.services.webhook import document_event_info
+
+        delete_info = document_event_info(document)
+
         self.storage.delete(document.object_key)
         # The thumbnail lives in the document's storage folder; removing it
         # keeps delete idempotent and prevents orphaned objects.
@@ -394,6 +402,12 @@ class DocumentService:
         self.repository.delete(document)
         invalidate_document_cache(owner_id, document_id)
         invalidate_user_search_cache(owner_id)
+        # Notify webhook subscribers without blocking the response: the
+        # delivery runs in a daemon thread and never raises into the
+        # request cycle.
+        from app.services.webhook import fire_webhook_background
+
+        fire_webhook_background("document.deleted", delete_info)
         return document
 
     def _get_cached_document(self, owner_id: UUID, document_id: UUID) -> FileResponse | None:
