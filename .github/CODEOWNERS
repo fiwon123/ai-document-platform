@@ -7,9 +7,12 @@
 # Frontend code
 /frontend/ @fiwon123
 
-# Dev container and Docker
-.devcontainer/ @fiwon123
+# Dev sandbox and tooling
+Dockerfile @fiwon123
 docker-compose.yaml @fiwon123
+dev-entrypoint.sh @fiwon123
+Makefile @fiwon123
+mise.toml @fiwon123
 
 # OpenCode configuration
 .opencode/ @fiwon123

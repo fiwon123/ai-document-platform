@@ -14,7 +14,7 @@ Upload documents, search them semantically, and ask questions powered by AI.
 | AI | OpenAI API (embeddings + chat) |
 | Background jobs | arq-based Redis worker service |
 | CI | GitHub Actions (lint, build, pytest) |
-| Dev | Docker Compose, Dev Containers |
+| Dev | Docker Compose dev sandbox (uvicorn + vite + arq worker), mise, Makefile |
 
 ## Features
 
@@ -29,11 +29,13 @@ Upload documents, search them semantically, and ask questions powered by AI.
 
 ## Getting Started
 
-### Dev Container (recommended)
+### Dev Sandbox (recommended)
 
-1. Open this repo in VS Code with the Dev Containers extension
-2. Services start automatically (PostgreSQL, Redis, MinIO, Backend, Frontend, Worker)
-3. Open http://localhost:5173
+1. `make dev-up` — builds the dev image (mise + deps baked) and starts
+   uvicorn (`--reload`) + Vite (HMR) + arq worker + postgres + redis + minio
+2. Open http://localhost:5175 (frontend) / http://localhost:8001/docs (API)
+3. `make dev-log` to tail sandbox logs; `make dev-down` to stop (volumes kept);
+   `make dev-build` to rebuild the image after `pyproject.toml`/`uv.lock` changes
 
 ### Manual Setup
 
@@ -223,14 +225,18 @@ See `infra/README.md`.
 | DELETE | `/v1/users/{id}` | Delete user (admin) |
 | GET | `/v1/health` | Health check |
 
-Full API docs: `http://localhost:8000/docs`
+Full API docs: `http://localhost:8001/docs`
 
 ## Project Structure
 
 ```
 backend/          Python/FastAPI backend
 frontend/         React/TypeScript frontend
-.devcontainer/    Dev Container config
+Dockerfile        Dev sandbox image (mise runtime + deps baked)
+docker-compose.yaml  Dev sandbox: dev (uvicorn+vite), worker, postgres, redis, minio
+dev-entrypoint.sh Dev sandbox entrypoint (alembic + uvicorn + vite, hot reload)
+Makefile          Dev workflow targets (dev-up, infra-up, check, ...)
+mise.toml         Tool versions (node/uv/gh)
 .github/          CI workflows, dependabot, templates
 .opencode/        AI agent config and instructions
 ```

@@ -209,9 +209,10 @@ git remote prune origin
 
 ### Environment Notes
 
-- This project runs inside a Dev Container — there is NO docker CLI available
-  (services run in separate containers, reachable via forwarded ports)
+- This project runs with the agent (opencode) **natively on the host**; the
+  `docker compose` dev sandbox provides the app runtime (uvicorn + vite +
+  arq worker + postgres/redis/minio) and is driven via `make`/`docker compose`
 - Backend: Python 3.14 managed by `uv` — use `uv run`, never pip directly
 - Frontend: Node 22 managed by `npm`
-- `gh` CLI is authenticated and its credentials persist across devcontainer rebuilds
+- `gh` CLI is authenticated natively on the host (`gh auth status`)
 - Never access secret files (`.env`, etc.) without explicit permission

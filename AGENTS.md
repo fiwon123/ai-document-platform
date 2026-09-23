@@ -34,7 +34,7 @@ Build a platform where users can:
 - Authentication: JWT
 - Vector search: pgvector, when needed
 - AI: OpenAI or another compatible LLM API
-- Development: Docker and Dev Containers
+- Development: Docker Compose dev sandbox (uvicorn + vite + arq worker), mise for tools, Makefile-driven
 
 ### Core Architecture
 
@@ -59,7 +59,11 @@ Full-stack monorepo: Python/FastAPI backend + React/TypeScript frontend.
 ```text
 backend/       # FastAPI app, PostgreSQL, MinIO/S3 storage
 frontend/      # React 19, Vite 8, TypeScript
-.devcontainer/ # Docker Compose dev environment
+Dockerfile     # Dev image (uvicorn/vite/worker runtime, deps baked)
+docker-compose.yaml  # dev + worker + postgres + redis + minio
+dev-entrypoint.sh    # Foreground uvicorn + vite with hot reload
+Makefile       # Dev workflow targets (dev-up, infra-up, test, check, ...)
+mise.toml      # Tool versions (node/uv/gh + host k8s toolchain)
 ```
 
 ## Development Commands
@@ -85,118 +89,97 @@ npm run lint         # Run oxlint
 npm run lint:fix     # Auto-fix lint issues
 ```
 
-### Docker Compose (Full Stack)
+### Development Loop (Makefile)
 
 ```bash
-# Start all services (PostgreSQL, Redis, MinIO, Backend, Frontend)
-docker compose up -d
+make setup                # Host-native deps (uv sync + npm install)
+make infra-up             # Start only postgres/redis/minio
+make dev-up               # Isolated dev sandbox: uvicorn + vite + arq worker + infra
+make dev-log              # Tail dev sandbox logs
+make dev-build            # Rebuild the dev image (after pyproject/uv.lock changes)
+make dev-down             # Stop the sandbox (keeps volumes)
+make reset                # Stop everything and wipe volumes (clean slate)
+make check                # Full local gate: lint + tests + build
+```
 
-# Start only infrastructure services
+### Docker Compose (dev sandbox)
+
+The stack has four services: `dev` (uvicorn + vite, foreground, hot reload),
+`worker` (arq document processor), `postgres`, `redis`, `minio`.
+
+```bash
+# Start the full isolated dev sandbox (dev + worker + infra)
+docker compose up dev
+
+# Start only infrastructure services (host-native path)
 docker compose up -d postgres redis minio
 
 # View logs
-docker compose logs -f backend
-docker compose logs -f postgres
+docker compose logs -f dev
+docker compose logs -f worker
 
-# Stop all services
+# Shell inside the sandbox
+docker compose exec dev bash
+
+# Stop all services / wipe volumes (clean slate)
 docker compose down
-
-# Stop and remove volumes (clean slate)
 docker compose down -v
 ```
 
 ## Runtime Environment
 
-The AI agent (opencode) runs **inside a Dev Container**, not on a bare machine.
+The AI agent (opencode) runs **natively on the host**, not inside a container.
+The `docker compose` dev sandbox provides the isolated runtime for the app
+(uvicorn + vite + worker + infra); the agent edits the repo on the host and
+drives the sandbox via `make`/`docker compose`.
 
-### No docker CLI inside the container
+### Docker CLI availability
 
-- `docker` and `docker compose` commands are **NOT available** inside the Dev Container
-- Infrastructure services (PostgreSQL, Redis, MinIO) run in separate containers on the host
-- They are reachable via forwarded ports on `localhost`
+- `docker` / `docker compose` **are available** — the sandbox is managed with
+  plain compose commands (see Makefile targets). No devcontainer, no
+  forwarded-port indirection, and no network-pinning workarounds.
+- Infrastructure services (PostgreSQL, Redis, MinIO) run as compose services
+  and are reachable on `localhost` via their host ports (see below).
 
 ### What the agent CAN do
 
 - Run backend commands: `uv`, `python`
 - Run frontend commands: `npm`, `npx`, `node`
 - Run git commands: `git`, `gh`
-- Access services at forwarded ports (see below)
+- Drive the dev sandbox: `make dev-up`, `make dev-log`, `docker compose exec dev bash`, ...
+- Run the host-native loop: `make infra-up`, then uvicorn/vite directly
 
 ### gh CLI Authentication
 
-- `gh` authenticates automatically on container start using the host's
-  `GITHUB_TOKEN` (forwarded via `remoteEnv` in `.devcontainer/devcontainer.json`)
-- `postStartCommand` runs `gh auth login --with-token` when `gh auth status`
-  fails, so auth is refreshed on every start without manual login
-- The auth config persists across container rebuilds via the `gh_cli_config`
-  named volume (mounted at `/root/.config/gh` and `/home/vscode/.config/gh`)
-- **One-time host setup**: set `GITHUB_TOKEN` in the host shell profile:
-  ```bash
-  export GITHUB_TOKEN="ghp_..."  # scopes: repo, read:org, workflow
-  ```
-  Generate a token at https://github.com/settings/tokens
-- After changing the token on the host, reload the VS Code window
-  (Developer: Reload Window) — no container rebuild needed
-- If `GITHUB_TOKEN` is not set on the host, `postStartCommand` prints a warning
-  and `gh` falls back to unauthenticated (rate-limited) mode; run
-  `gh auth login` manually in that case
+- `gh` authenticates via the host's default credential flow (`gh auth login`
+  or `gh auth login --with-token`), because the agent runs natively on the
+  host — no `remoteEnv` forwarding or config volumes needed.
+- **One-time setup** (already done on this machine): `gh auth login` or set a
+  `GITHUB_TOKEN` with scopes `repo, read:org, workflow`. Use
+  `gh auth status` to verify.
 
-### Service ports (forwarded from host)
+### Service ports (published from compose to the host)
 
-Host ports of the Docker Compose stack (container-internal ports stay at the
-standard values: 5432, 6379, 8000, 5173):
+Container-internal ports stay at the standard values (5432, 6379, 8000,
+5173); host ports are offset to avoid conflicts with other local projects:
 
 - PostgreSQL: `localhost:5434`
 - Redis: `localhost:63790`
 - MinIO API: `localhost:9000` / Console: `localhost:9001`
-- Backend API: `localhost:8001`
-- Frontend Dev: `localhost:5175`
+- Backend API: `localhost:8001` (dev service → container port 8000)
+- Frontend Dev: `localhost:5175` (dev service → container port 5173)
 
-### Devcontainer recovery
-
-If the backend container exits with code 1 on every devcontainer reopen and
-`docker compose logs backend` shows
-`could not translate host name "postgres" to address: Name or service not known`,
-the infrastructure containers have lost their network attachment
-(`docker inspect <project>-postgres-1 --format '{{json .NetworkSettings.Networks}}'`
-returns `{}`). The Dev Containers CLI always runs `up -d --no-recreate`, so it
-never repairs detached containers — the failure repeats until the network is
-recreated on the host.
-
-Diagnose / repair from the **host** (the agent cannot run these inside the
-container):
-
-```bash
-# Check-only: prints OK or the containers missing the network
-./scripts/fix-compose-network.sh
-
-# Repair: recreates the stack (volumes are preserved — NEVER uses -v)
-./scripts/fix-compose-network.sh --repair
-```
-
-Manual equivalent:
-
-```bash
-docker compose down        # no -v: keeps all volumes/data
-docker compose up -d postgres redis minio
-# then reopen the devcontainer
-```
-
-Mitigations baked into `docker-compose.yaml`:
-
-- The project network is pinned by name (`ai-document-platform_default`), so
-  host-side `docker compose` runs and the CLI's `up -d --no-recreate` always
-  target the same physical network.
-- Every service declares `networks: [default]` explicitly.
-- `backend` and `worker` wait (bounded, ~90 s) until the `postgres` hostname
-  resolves before running migrations, instead of failing instantly on a
-  detached network.
+Inside the `dev` container uvicorn and vite share one network namespace, so
+the Vite proxy default (`http://localhost:8000`, vite.config.ts) works
+without extra config. In the host-native loop the same default proxies to the
+host uvicorn.
 
 ### What the agent CANNOT do
 
-- Run `docker` or `docker compose` commands
-- Access the Docker socket
-- Modify the host filesystem (only `/workspace` is writable)
+- Nothing container-related is off-limits, but the Docker **daemon** runs on
+  the host: `docker`/`docker compose` binaries are used from here as normal
+  CLI tools (this repo's dev sandbox does not mount the docker socket — the
+  worker only needs postgres/redis/minio).
 
 ## Architecture
 
@@ -224,11 +207,17 @@ Mitigations baked into `docker-compose.yaml`:
 - **MinIO** (ports 9000/9001): S3-compatible object storage
   - Console: http://localhost:9001 (minioadmin/minioadmin)
 
-### Dev Container
+### Dev Sandbox
 
-- Services run in Docker Compose: `backend` (Python 3.14) + `frontend` (Node 22)
-- Forwarded ports: 8001 (API), 5175 (Vite dev server)
-- Post-create: installs `opencode-ai` globally, syncs backend deps, installs frontend deps
+- Services run in Docker Compose: `dev` (uvicorn + vite, hot reload) +
+  `worker` (arq) + `postgres` + `redis` + `minio`
+- Published ports: 8001 (API), 5175 (Vite dev server), 5434/63790/9000/9001 (infra)
+- Backend deps are baked into `/opt/backend-venv` at image build (no per-start
+  `uv sync`, no startup memory spike); rebuild with `make dev-build` after
+  `pyproject.toml`/`uv.lock` changes
+- Migrations run in `dev-entrypoint.sh` (`alembic upgrade head`) before uvicorn
+  starts; the `worker` service is gated on `dev` healthy so it never polls the
+  queue before the schema exists
 
 ## Environment Variables
 

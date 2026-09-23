@@ -160,12 +160,14 @@ LLM and Embedding APIs
 │   ├── helm/ai-platform/      # Standalone Helm chart
 │   ├── kind/                  # Local Kind cluster config
 │   └── scripts/               # build-images.sh, setup-kind.sh, kind-load-images.sh, teardown-kind.sh
-├── scripts/                   # Host helper scripts (fix-compose-network.sh)
+├── Dockerfile                 # Dev sandbox image (mise runtime + deps baked)
+├── docker-compose.yaml        # Dev sandbox: dev (uvicorn+vite), worker, postgres, redis, minio
+├── dev-entrypoint.sh          # Dev sandbox entrypoint (alembic + uvicorn + vite, hot reload)
+├── Makefile                   # Dev workflow targets (dev-up, infra-up, check, ...)
+├── mise.toml                  # Tool versions (node/uv/gh)
 ├── .github/                   # GitHub Actions CI (backend tests + ruff; frontend lint/build/tests)
 │   ├── workflows/ci.yml
 │   └── dependabot.yml
-├── docker-compose.yaml        # Local dev stack (postgres, redis, minio, backend, worker, frontend)
-├── .devcontainer/             # Dev Container setup
 ├── PROJECT_CONTEXT.md         # This document
 └── AGENTS.md                  # Development guidelines
 ```
@@ -324,6 +326,15 @@ LLM and Embedding APIs
 
 ## Development workflow
 
+### Dev sandbox (recommended)
+
+1. `make dev-up` — builds the dev image and starts uvicorn (`--reload`) + Vite
+   (HMR) + arq worker + postgres + redis + minio
+2. Open http://localhost:5175 (frontend) / http://localhost:8001/docs (API)
+3. `make dev-log` tails sandbox logs; `make dev-down` stops it (volumes kept)
+
+### Host-native
+
 1. **Setup**: Start infrastructure with `docker compose up -d postgres redis minio`
 2. **Backend**: Run `uv run uvicorn app.main:app --reload` in backend directory
 3. **Frontend**: Run `npm run dev` in frontend directory
@@ -437,10 +448,12 @@ document processing events) are implemented.
    npm run dev
    ```
 
-### Docker Compose (Full Stack)
+### Docker Compose (Dev Sandbox)
 
 ```bash
-docker compose up -d
+make dev-up        # build image + start uvicorn/vite/worker/infra
+make dev-log       # tail sandbox logs
+make dev-down      # stop (keeps volumes)
 ```
 
 ### Production (Docker images + Kubernetes)
