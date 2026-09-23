@@ -42,6 +42,12 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/${POSTGRES_DB:-mydb}
+      # GitHub passthrough for the sandboxed AI agent (trusted-agent model):
+      # the `dev` service mounts gh config + the Docker socket and drives the
+      # GitHub workflow, so it forwards the host token by name only. The
+      # `worker` service deliberately does NOT get these (non-trusted).
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GH_TOKEN: ${GH_TOKEN:-${GITHUB_TOKEN:-}}
     depends_on:
       postgres:
         condition: service_healthy

@@ -39,16 +39,16 @@ fi
 # pytest --pdb keep working, and -T when stdin is piped.
 if [[ $# -gt 0 ]]; then
     if [[ -t 0 ]]; then
-        exec docker compose exec -it dev bash -lc "$*"
+        exec docker compose exec -it dev zsh -lc "$*"
     else
-        exec docker compose exec -T dev bash -lc "$*"
+        exec docker compose exec -T dev zsh -lc "$*"
     fi
 fi
 
 echo "[sandbox] Dev sandbox shell — run the AI coding agent with:"
 echo "          cd /workspace && opencode"
 if [[ -t 0 ]]; then
-    exec docker compose exec -it dev bash
+    exec docker compose exec -it dev zsh
 else
-    exec docker compose exec -T dev bash
+    exec docker compose exec -T dev zsh
 fi

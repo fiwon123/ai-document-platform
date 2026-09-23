@@ -31,7 +31,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     gcc \
     libpq-dev \
+    zsh \
     && rm -rf /var/lib/apt/lists/*
+
+# zsh as the default interactive shell for the sandbox. This is cosmetic for
+# the runtime (uvicorn/vite/arq all use /bin/bash / shebang-less exec), but
+# `docker compose exec dev` / `make sandbox` land in zsh. The .zshrc is a
+# minimal color prompt; user tweaks belong in the host-mounted workspace (the
+# container HOME is not bind-mounted, so image-level .zshrc keeps it stable
+# across rebuilds).
+RUN chsh -s /usr/bin/zsh root \
+    && printf '%s\n' \
+        'autoload -U colors && colors' \
+        'PROMPT=%F{green}%n@%m%f %F{blue}%~%f $ ' \
+        > /root/.zshrc
 
 # Copy the pinned mise binary from the stage above.
 ARG MISE_VERSION=2025.4.10
