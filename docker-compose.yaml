@@ -21,7 +21,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["/workspace/dev-entrypoint.sh"]
+    command: ["/sandbox/ai-document-platform/dev-entrypoint.sh"]
     ports:
       # Host ports avoid conflicts with other local projects' containers
       # binding 8000/5173. Internal container ports stay 8000/5173, so the
@@ -56,7 +56,7 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - .:/workspace:cached
+      - .:/sandbox/ai-document-platform:cached
       # Sandboxed AI coding agent (trusted-agent model — see DEVELOPMENT.md):
       # mount the host Docker socket so opencode INSIDE the dev container can
       # drive Docker/compose, and share the host gh auth, opencode binary +
@@ -108,7 +108,7 @@ services:
       context: .
       dockerfile: Dockerfile
     command: ["/opt/backend-venv/bin/arq", "app.worker.WorkerSettings"]
-    working_dir: /workspace/backend
+    working_dir: /sandbox/ai-document-platform/backend
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
@@ -134,7 +134,7 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - .:/workspace:cached
+      - .:/sandbox/ai-document-platform:cached
     restart: unless-stopped
     deploy:
       resources:

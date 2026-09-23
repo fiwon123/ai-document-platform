@@ -2,9 +2,10 @@
 # Built by docker-compose.yaml (`context: .`, `dockerfile: Dockerfile`).
 #
 # This is the "dev sandbox": a slim, isolated runtime for the application.
-# Source code is bind-mounted into /workspace at runtime (hot reload); Python
-# dependencies are baked into /opt/backend-venv at build time so the bind
-# mount (which shadows /workspace) cannot hide them. Frontend dependencies
+# Source code is bind-mounted into /sandbox/ai-document-platform at runtime (hot reload);
+# Python dependencies are baked into /opt/backend-venv at build time so the
+# bind mount (which shadows /sandbox/ai-document-platform) cannot hide them. Frontend
+# dependencies
 # (node_modules) are relocatable and live in the workspace, shared with the
 # host-native loop — dev-entrypoint.sh bootstraps them when missing.
 
@@ -36,15 +37,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # zsh as the default interactive shell for the sandbox. This is cosmetic for
 # the runtime (uvicorn/vite/arq all use /bin/bash / shebang-less exec), but
-# `docker compose exec dev` / `make sandbox` land in zsh. The .zshrc is a
-# minimal color prompt; user tweaks belong in the host-mounted workspace (the
-# container HOME is not bind-mounted, so image-level .zshrc keeps it stable
-# across rebuilds).
+# `docker compose exec dev` / `make sandbox` land in zsh. The prompts for both
+# zsh and bash (with the [SANDBOX] badge + terminal title) come from
+# dev-sandbox-rc.sh, installed at /etc/profile.d/00-dev-sandbox.sh so login
+# shells (e.g. `zsh -lc` via `make opencode`) pick it up automatically; the rc
+# files source it for interactive non-login shells. The container HOME is not
+# bind-mounted, so image-level rc files keep the badge stable across rebuilds;
+# user tweaks belong in the host-mounted workspace.
+COPY dev-sandbox-rc.sh /etc/profile.d/00-dev-sandbox.sh
 RUN chsh -s /usr/bin/zsh root \
     && printf '%s\n' \
-        'autoload -U colors && colors' \
-        'PROMPT=%F{green}%n@%m%f %F{blue}%~%f $ ' \
-        > /root/.zshrc
+        '[ -f /etc/profile.d/00-dev-sandbox.sh ] && . /etc/profile.d/00-dev-sandbox.sh' \
+        > /root/.zshrc \
+    && printf '%s\n' \
+        '[ -f /etc/profile.d/00-dev-sandbox.sh ] && . /etc/profile.d/00-dev-sandbox.sh' \
+        > /root/.bashrc \
+    && printf '%s\n' \
+        '[ -f /etc/profile.d/00-dev-sandbox.sh ] && . /etc/profile.d/00-dev-sandbox.sh' \
+        > /root/.zprofile
 
 # Copy the pinned mise binary from the stage above.
 ARG MISE_VERSION=2025.4.10
@@ -87,16 +97,16 @@ COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr
 RUN docker --version && docker compose version
 
 # Set working directory
-WORKDIR /workspace
+WORKDIR /sandbox/ai-document-platform
 
-# Bake backend dependencies into /opt/backend-venv (NOT /workspace/backend/.venv:
-# the workspace bind mount shadows /workspace at runtime, and venv interpreter
-# symlinks are path-specific, so the baked venv must live outside /workspace).
+# Bake backend dependencies into /opt/backend-venv (NOT /sandbox/ai-document-platform/backend/.venv:
+# the workspace bind mount shadows /sandbox/ai-document-platform at runtime, and venv interpreter
+# symlinks are path-specific, so the baked venv must live outside /sandbox/ai-document-platform).
 # The bind-mounted source at runtime stays in sync with this lockfile via
 # `uv sync` whenever pyproject.toml/uv.lock change.
 ENV UV_PROJECT_ENVIRONMENT=/opt/backend-venv
-COPY backend/ /workspace/backend/
-RUN cd /workspace/backend && uv sync --frozen
+COPY backend/ /sandbox/ai-document-platform/backend/
+RUN cd /sandbox/ai-document-platform/backend && uv sync --frozen
 
 # Keep the container alive when started without an explicit command; the dev
 # and worker compose services override this with their real entrypoints.

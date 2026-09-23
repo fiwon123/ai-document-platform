@@ -14,8 +14,8 @@ set -euo pipefail
 # Frontend deps are shared with the host in the workspace; npm ci runs only
 # when missing.
 
-BACKEND_DIR=/workspace/backend
-FRONTEND_DIR=/workspace/frontend
+BACKEND_DIR=/sandbox/ai-document-platform/backend
+FRONTEND_DIR=/sandbox/ai-document-platform/frontend
 BACKEND_VENV="${UV_PROJECT_ENVIRONMENT:-/opt/backend-venv}"
 
 # --- Bootstrap dependencies if missing (first run on a fresh workspace) ---

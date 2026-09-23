@@ -71,7 +71,7 @@ Or open a plain shell first, then start the agent yourself:
 
 ```bash
 make sandbox          # interactive bash inside the dev container
-cd /workspace && opencode
+cd /sandbox/ai-document-platform && opencode
 ```
 
 One-shot mode without a shell (TTY-aware — interactive commands keep a TTY,
@@ -115,7 +115,7 @@ make build        # frontend typecheck + production build
   (worker heartbeat invisible to the test Redis DB — 231/232 pass). Unrelated to
   app code; tracked as a separate fix.
 - After heavy in-container builds (`make opencode` + builds), files the
-  container wrote as root inside `/workspace` (e.g. `frontend/dist`,
+  container wrote as root inside `/sandbox/ai-document-platform` (e.g. `frontend/dist`,
   `node_modules/.vite`, `__pycache__`) may need `sudo chown -R $(whoami) .` on
   the host before re-building there. They are all gitignored, so git is never
   affected.

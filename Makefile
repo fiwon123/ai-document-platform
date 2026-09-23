@@ -1,5 +1,5 @@
 .PHONY: help setup host-tools infra-up infra-down preflight dev-up dev-build dev-down dev-restart \
-        dev-log dev-exec dev-agent opencode sandbox reset \
+        dev-log dev-exec dev-agent opencode shell sandbox reset \
         test test-backend test-frontend lint lint-fix format typecheck build check
 
 COMPOSE := docker compose
@@ -68,13 +68,16 @@ dev-exec: ## Open a shell inside the dev sandbox
 
 opencode: preflight ## Run the AI coding agent (opencode) inside the dev sandbox
 	@if [ -z "$$($(COMPOSE) ps -q dev)" ]; then echo "[opencode] starting dev stack..."; $(COMPOSE) up -d dev; fi
-	@if [ -t 0 ]; then $(COMPOSE) exec -it dev zsh -lc "cd /workspace && opencode $(OPENCODE_ARGS)"; else $(COMPOSE) exec -T dev zsh -lc "cd /workspace && opencode $(OPENCODE_ARGS)"; fi
+	@if [ -t 0 ]; then $(COMPOSE) exec -it dev zsh -lc "cd /sandbox/ai-document-platform && opencode $(OPENCODE_ARGS)"; else $(COMPOSE) exec -T dev zsh -lc "cd /sandbox/ai-document-platform && opencode $(OPENCODE_ARGS)"; fi
 
 # Alias kept for compatibility with earlier dev-sandbox docs.
 dev-agent: opencode
 
-sandbox: preflight ## Open an interactive shell in the dev sandbox (opencode ready)
+shell: preflight ## Open an interactive shell in the dev sandbox (opencode ready)
 	scripts/open-in-sandbox.sh
+
+# Alias kept for compatibility with earlier dev-sandbox docs.
+sandbox: shell
 
 reset: ## Stop everything and wipe volumes (clean slate)
 	$(COMPOSE) down -v
