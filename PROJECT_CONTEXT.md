@@ -339,10 +339,11 @@ when done; `make check` before every push; only `dev-up` requires opencode
 2. Open http://localhost:5175 (frontend) / http://localhost:8001/docs (API)
 3. `make dev-log` tails sandbox logs; `make dev-down` stops it (volumes kept);
    `make dev-restart` stops + starts in one step
-4. Code with AI inside the sandbox: `make opencode` (agent TUI) or
-   `make sandbox` (plain shell); the dev container mounts the host opencode
-   binary + config, git identity, gh auth, and Docker socket (trusted-agent
-   model — see `DEVELOPMENT.md`)
+4. Code with AI inside the sandbox: `make opencode` (agent TUI, runs with
+   `--auto` — permission prompts auto-approved) or `make sandbox` (plain
+   shell); the dev container mounts the host opencode binary + config, git
+   identity, gh auth, and Docker socket (trusted-agent model — see
+   `DEVELOPMENT.md`)
 
 ### Host-native (fallback)
 
@@ -465,7 +466,7 @@ document processing events) are implemented.
 make dev-up        # build image + start uvicorn/vite/worker/infra (foreground logs)
 make dev-log       # tail sandbox logs (2nd terminal)
 make dev-restart   # down + up in one step (volumes kept)
-make opencode      # run the AI coding agent inside the dev container
+make opencode      # run the AI coding agent inside the dev container (--auto by default)
 make sandbox       # plain shell inside the dev container
 make dev-down      # stop (keeps volumes)
 ```

@@ -55,6 +55,16 @@ docker compose down -v    # ONLY to wipe the database + Redis + MinIO too
 
 ```bash
 make opencode         # → the AI coding agent TUI inside the dev container
+                      #   (runs `opencode --auto`: permission prompts are
+                      #   auto-approved — the sandbox is trusted by design)
+```
+
+`--auto` is the default; override per-invocation:
+
+```bash
+make opencode OPENCODE_ARGS=""                          # bare TUI (prompts back)
+make opencode OPENCODE_ARGS="--auto -m provider/model"  # pick a model
+make opencode OPENCODE_ARGS="run 'task' --auto"         # one-shot non-interactive
 ```
 
 Or open a plain shell first, then start the agent yourself:

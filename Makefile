@@ -34,6 +34,14 @@ infra-down: ## Stop infra services
 # env var (=1) which would override a ?= default via make's env import.
 OPENCODE_BIN ?= $(HOME)/.opencode/bin/opencode
 
+# Default for the sandbox: auto-approve permission prompts (trusted-agent
+# model — the dev container already has the workspace + docker socket).
+# Override per-invocation, e.g.:
+#   make opencode OPENCODE_ARGS=""                      # bare TUI (prompts back)
+#   make opencode OPENCODE_ARGS="--auto -m provider/model"
+#   make opencode OPENCODE_ARGS="run 'task' --auto"     # one-shot non-interactive
+OPENCODE_ARGS ?= --auto
+
 preflight: ## (internal) Require host opencode + pre-create mounted config paths
 	@test -x "$(OPENCODE_BIN)" || { echo "ERROR: opencode not found at $(OPENCODE_BIN)" >&2; \
 	  echo "  Install: curl -fsSL https://opencode.ai/install | bash" >&2; exit 1; }
@@ -60,7 +68,7 @@ dev-exec: ## Open a shell inside the dev sandbox
 
 opencode: preflight ## Run the AI coding agent (opencode) inside the dev sandbox
 	@if [ -z "$$($(COMPOSE) ps -q dev)" ]; then echo "[opencode] starting dev stack..."; $(COMPOSE) up -d dev; fi
-	@if [ -t 0 ]; then $(COMPOSE) exec -it dev bash -lc "cd /workspace && opencode"; else $(COMPOSE) exec -T dev bash -lc "cd /workspace && opencode"; fi
+	@if [ -t 0 ]; then $(COMPOSE) exec -it dev bash -lc "cd /workspace && opencode $(OPENCODE_ARGS)"; else $(COMPOSE) exec -T dev bash -lc "cd /workspace && opencode $(OPENCODE_ARGS)"; fi
 
 # Alias kept for compatibility with earlier dev-sandbox docs.
 dev-agent: opencode

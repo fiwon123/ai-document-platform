@@ -36,8 +36,9 @@ Upload documents, search them semantically, and ask questions powered by AI.
 2. Open http://localhost:5175 (frontend) / http://localhost:8001/docs (API)
 3. `make dev-log` to tail sandbox logs; `make dev-down` to stop (volumes kept);
    `make dev-build` to rebuild the image after `pyproject.toml`/`uv.lock` changes
-4. Code with AI inside the sandbox: `make opencode` (agent TUI) or
-   `make sandbox` (plain shell) — same files, stack at :8000/:5173
+4. Code with AI inside the sandbox: `make opencode` (agent TUI, runs with
+   `--auto` — permission prompts auto-approved) or `make sandbox` (plain
+   shell) — same files, stack at :8000/:5173
 
 See `DEVELOPMENT.md` for the daily loop and golden rules.
 
