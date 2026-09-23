@@ -33,7 +33,14 @@
           "gh pr checks*": "allow",
           "gh label*": "allow",
           "docker compose ps*": "allow",
-          "docker compose logs*": "allow"
+          "docker compose logs*": "allow",
+          "docker compose config*": "allow",
+          "docker compose build*": "allow",
+          "docker compose up*": "allow",
+          "docker compose down*": "allow",
+          "docker compose exec*": "allow",
+          "docker compose run*": "allow",
+          "make*": "allow"
         },
         "task": {
           "*": "deny",
@@ -83,7 +90,7 @@
           "uv run*": "allow",
           "uv sync*": "allow",
           "python*": "allow",
-          "docker compose exec backend*": "allow"
+          "docker compose exec dev*": "allow"
         }
       }
     },
