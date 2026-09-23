@@ -1,0 +1,44 @@
+# Helm test hook — validates a deployed release's core readiness.
+#
+# Runs with `helm test <release>`. The pod curls the backend /v1/health
+# endpoint and asserts connectivity to the frontend service. It does not
+# require ingress or any external dependencies.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "ai-platform.fullname" . }}-test"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: smoke-test
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: smoke-test
+      image: busybox:1.36
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      command:
+        - sh
+        - -c
+        - >
+          set -e;
+          BACKEND_SVC="{{ include "ai-platform.fullname" . }}-backend";
+          FRONTEND_SVC="{{ include "ai-platform.fullname" . }}-frontend";
+          BACKEND_PORT={{ .Values.service.backendPort }};
+          FRONTEND_PORT={{ .Values.service.frontendPort }};
+          echo "checking backend health at $BACKEND_SVC:$BACKEND_PORT/v1/health";
+          wget -q -O - "http://$BACKEND_SVC:$BACKEND_PORT/v1/health" | grep -q '"status"\s*:\s*"healthy"' ||
+            { echo "backend /v1/health did not report healthy"; exit 1; };
+          echo "backend healthy ✓";
+          echo "checking frontend reachability at $FRONTEND_SVC:$FRONTEND_PORT";
+          wget -q -O /dev/null "http://$FRONTEND_SVC:$FRONTEND_PORT/" ||
+            { echo "frontend not reachable"; exit 1; };
+          echo "frontend reachable ✓";
+          echo "smoke test passed";
+  restartPolicy: Never
