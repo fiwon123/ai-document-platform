@@ -87,7 +87,7 @@ describe("Navbar", () => {
 
   it("logs out and navigates to login", () => {
     renderNavbar();
-    fireEvent.click(screen.getAllByText("Logout")[0]);
+    fireEvent.click(screen.getAllByText("Logout")[0]!);
     expect(logout).toHaveBeenCalled();
   });
 

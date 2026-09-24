@@ -2205,6 +2205,45 @@ body {
   }
 }
 
+/* Error boundary fallback */
+.error-boundary {
+  max-width: min(560px, 100%);
+  margin: 48px auto;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--danger-line);
+  border-radius: 12px;
+  text-align: left;
+}
+
+.error-boundary h2 {
+  margin: 0 0 8px;
+  color: var(--danger);
+}
+
+.error-boundary p {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+.error-boundary pre {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: var(--code-bg);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error-boundary-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 
 
 /* Toast notifications */

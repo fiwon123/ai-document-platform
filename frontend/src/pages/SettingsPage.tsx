@@ -26,7 +26,7 @@ export function SettingsPage() {
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>(
-    () => localStorage.getItem(MODEL_STORAGE_KEY) ?? DEFAULT_MODELS.free[0],
+    () => localStorage.getItem(MODEL_STORAGE_KEY) ?? DEFAULT_MODELS.free[0] ?? "gpt-4o-mini",
   );
   const [hasApiKey, setHasApiKey] = useState<boolean>(() =>
     Boolean(localStorage.getItem(API_KEY_STORAGE_KEY)),
