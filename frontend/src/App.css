@@ -100,7 +100,7 @@ body {
 }
 
 .main-content {
-  padding: 24px 6vw;
+  padding: var(--sp-6) 6vw;
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -110,8 +110,8 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 10px;
-  padding: 40px;
+  gap: var(--sp-3);
+  padding: var(--sp-8);
   color: var(--muted);
 }
 
@@ -120,22 +120,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 0;
-}
-
-.spinner {
-  display: inline-block;
-  flex-shrink: 0;
-  border: 2px solid var(--line);
-  border-top-color: var(--blue);
-  border-radius: 50%;
-  animation: ui-spin 0.7s linear infinite;
-}
-
-@keyframes ui-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  padding: var(--sp-8) 0;
 }
 
 .sr-only {
@@ -153,7 +138,7 @@ body {
 /* Skeleton placeholders */
 .skeleton {
   display: inline-block;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: linear-gradient(90deg, var(--line) 25%, var(--surface) 45%, var(--line) 65%);
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.4s ease-in-out infinite;
@@ -165,50 +150,85 @@ body {
   }
 }
 
+.skeleton-circle {
+  border-radius: var(--radius-full);
+}
+
 .skeleton-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background: var(--paper);
 }
 
 .skeleton-card-header {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--sp-4);
 }
 
 .skeleton-card-title {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .skeleton-card-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .skeleton-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin: 16px 0;
+  gap: var(--sp-3);
+  margin: var(--sp-4) 0;
 }
 
 .skeleton-row {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px 16px;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--paper);
+}
+
+/* Table-shaped placeholder: header band + body rows sharing column gutters. */
+.skeleton-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.skeleton-table-header,
+.skeleton-table-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+}
+
+.skeleton-table-header {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.skeleton-table-row {
+  border-bottom: 1px solid var(--line);
+}
+
+.skeleton-table-row:last-child {
+  border-bottom: 0;
 }
 
 .filter-note {
@@ -1099,7 +1119,7 @@ body {
 
 /* Page Header */
 .page-header {
-  margin-bottom: 32px;
+  margin-bottom: var(--sp-7);
 }
 
 /* Profile page: center the header + form card as one column. Scoped with
@@ -1247,7 +1267,7 @@ body {
   /* auto-fit (not auto-fill): cards stretch to fill the row instead of
      leaving fixed-width gaps when there are few documents. */
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 20px;
+  gap: var(--sp-5);
 }
 
 .document-card {
@@ -1255,26 +1275,51 @@ body {
      same Y position across cards in a row, even when bodies vary. */
   display: flex;
   flex-direction: column;
+  /* Each card is its own size container, so its inner layout (header,
+     status row, footer) adapts to the card's rendered width — see the
+     @container rules after the footer styles. */
+  container-type: inline-size;
+  container-name: doc-card;
   background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 14px; /* matches .skeleton-card placeholders */
+  border-radius: var(--radius-lg); /* matches .skeleton-card placeholders */
   overflow: hidden; /* keep header/body/footer inside the rounded corners */
-  transition: box-shadow 0.2s;
+  transition: box-shadow var(--duration-base) var(--ease-standard);
 }
 
 .document-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-md);
 }
 
 :root[data-theme="dark"] .document-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-md);
+}
+
+/* Entrance animation: cards fade + rise slightly on mount. `both` keeps the
+   end state; reduced-motion collapses it via the global rule below. */
+.document-card {
+  animation: fade-rise var(--duration-base) var(--ease-standard) both;
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--sp-2));
+  }
+}
+
+@keyframes stat-pop {
+  from {
+    opacity: 0;
+    transform: translateY(var(--sp-1)) scale(0.9);
+  }
 }
 
 .document-card-header {
   display: flex;
   flex-shrink: 0;
-  gap: 16px;
-  padding: 20px;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
   border-bottom: 1px solid var(--line);
 }
 
@@ -1315,14 +1360,14 @@ body {
 .document-card-body {
   /* Grow to fill leftover space so every footer sits at the same height. */
   flex: 1;
-  padding: 20px;
+  padding: var(--sp-5);
 }
 
 .status-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: var(--sp-3);
 }
 
 .status-badge {
@@ -1363,12 +1408,34 @@ body {
 .document-card-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--sp-2);
   /* Aligned with .document-card-body { flex: 1 } — belt and braces so the
      footer is always pushed to the card bottom. */
   margin-top: auto;
-  padding: 16px 20px;
+  padding: var(--sp-4) var(--sp-5);
   border-top: 1px solid var(--line);
+}
+
+/* Container-query fallback layout: when a card renders narrower than
+   360px (squeezed grid columns, mobile single-column), stack the header
+   and status row vertically and let footer actions wrap instead of clip. */
+@container doc-card (max-width: 360px) {
+  .document-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-3);
+  }
+
+  .status-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-2);
+  }
+
+  .document-card-footer {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
 }
 
 /* Icon-only actions: square buttons aligned to the right of the footer.
@@ -1455,24 +1522,46 @@ body {
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
+  gap: var(--sp-4);
 }
 
 .stat-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 20px;
-  border-radius: 14px; /* matches .document-card / .skeleton-card */
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+  border-radius: var(--radius-lg); /* matches .document-card / .skeleton-card */
   color: white;
+  /* Entrance: cards fade/rise in on mount, staggered by position. */
+  animation: fade-rise var(--duration-base) var(--ease-standard) both;
 }
 
+.stat-card:nth-child(2) {
+  animation-delay: 40ms;
+}
+.stat-card:nth-child(3) {
+  animation-delay: 80ms;
+}
+.stat-card:nth-child(4) {
+  animation-delay: 120ms;
+}
+.stat-card:nth-child(5) {
+  animation-delay: 160ms;
+}
+.stat-card:nth-child(6) {
+  animation-delay: 200ms;
+}
+
+/* The number itself does a pop-in — "counting" feel without JS-driven
+   count-up, so the rendered text stays available to assistive tech and
+   tests. */
 .stat-value {
   font-size: 2rem;
   font-weight: 800;
   letter-spacing: -0.03em;
   color: white;
   line-height: 1.1;
+  animation: stat-pop var(--duration-slow) var(--ease-emphasized) both;
 }
 
 .stat-label {
@@ -1531,7 +1620,7 @@ body {
 
 /* Recent documents */
 .recent-section {
-  margin-top: 36px;
+  margin-top: var(--sp-7);
 }
 
 .recent-list {
@@ -1540,17 +1629,18 @@ body {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
 }
 
 .recent-item {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 18px;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
+  animation: fade-rise var(--duration-base) var(--ease-standard) both;
 }
 
 .recent-filename {
@@ -2200,8 +2290,49 @@ body {
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important; /* cancel staggered entrances */
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Route-change transitions (View Transition API, driven from App.tsx).
+   The API is only used when supported; these rules shape the cross-fade.
+   The @supports block is belt-and-braces for browsers that parse
+   view-transition pseudo-elements but have the feature disabled. */
+::view-transition-old(root) {
+  animation: view-fade-out var(--duration-base) var(--ease-standard) both;
+}
+
+::view-transition-new(root) {
+  animation: view-fade-in var(--duration-slow) var(--ease-standard) both;
+}
+
+@keyframes view-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes view-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@supports not (view-transition-name: none) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Pseudo-element animations are not matched by the `*` rule above. */
+  ::view-transition-old(root),
+  ::view-transition-new(root),
+  ::view-transition-group(*) {
+    animation: none !important;
   }
 }
 

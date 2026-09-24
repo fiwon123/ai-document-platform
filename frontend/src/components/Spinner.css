@@ -1,0 +1,16 @@
+/* Spinner styles — colocated with Spinner.tsx (extracted from App.css so
+   the component owns its look). Uses design tokens from index.css. */
+.spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  border: 2px solid var(--line);
+  border-top-color: var(--blue);
+  border-radius: var(--radius-full);
+  animation: ui-spin var(--duration-slow) linear infinite;
+}
+
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
