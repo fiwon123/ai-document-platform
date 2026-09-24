@@ -83,6 +83,8 @@ describe("DocumentsPage polling", () => {
       status: "ready",
       error_message: null,
       has_thumbnail: false,
+      created_at: "2026-09-08T00:00:00Z",
+      updated_at: "2026-09-08T00:00:00Z",
     });
 
     render(<DocumentsPage />);
@@ -103,6 +105,37 @@ describe("DocumentsPage polling", () => {
     expect(screen.queryByText("pending")).toBeNull();
   });
 
+  it("shows a ticking elapsed label while a document is pending", async () => {
+    const now = new Date().toISOString();
+    mockedList.mockResolvedValue([
+      { ...pendingDoc, updated_at: now },
+      readyDoc,
+    ]);
+    mockedGetStatus.mockResolvedValue({
+      id: "doc-pending",
+      status: "pending",
+      error_message: null,
+      has_thumbnail: false,
+      created_at: now,
+      updated_at: now,
+    });
+
+    render(<DocumentsPage />);
+    await settle();
+
+    // The pending card shows a compact elapsed label; the ready card does not.
+    expect(screen.getByTitle("pending for 0s")).toBeTruthy();
+
+    // One poll later the label ticks forward (updated_at is unchanged, the
+    // fake clock advanced, so elapsed grows).
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    await settle();
+
+    expect(screen.getByTitle("pending for 3s")).toBeTruthy();
+  });
+
   it("fetches the thumbnail once polling reports the document has one", async () => {
     mockedList.mockResolvedValue([{ ...pendingDoc, id: "doc-new" }]);
     mockedGetStatus.mockResolvedValue({
@@ -110,6 +143,8 @@ describe("DocumentsPage polling", () => {
       status: "ready",
       error_message: null,
       has_thumbnail: true,
+      created_at: "2026-09-08T00:00:00Z",
+      updated_at: "2026-09-08T00:00:00Z",
     });
     mockedGetThumbnailUrl.mockResolvedValue({
       id: "doc-new",
@@ -145,6 +180,8 @@ describe("DocumentsPage polling", () => {
       status: "ready",
       error_message: null,
       has_thumbnail: false,
+      created_at: "2026-09-08T00:00:00Z",
+      updated_at: "2026-09-08T00:00:00Z",
     });
 
     render(<DocumentsPage />);
@@ -369,6 +406,8 @@ describe("DocumentsPage thumbnails", () => {
             status: "ready",
             error_message: null,
             has_thumbnail: true,
+            created_at: "2026-09-08T00:00:00Z",
+            updated_at: "2026-09-08T00:00:00Z",
           });
         }
         return Promise.resolve({
@@ -376,6 +415,8 @@ describe("DocumentsPage thumbnails", () => {
           status: "processing",
           error_message: null,
           has_thumbnail: false,
+          created_at: "2026-09-08T00:00:00Z",
+          updated_at: "2026-09-08T00:00:00Z",
         });
       });
       mockedGetThumbnailUrl

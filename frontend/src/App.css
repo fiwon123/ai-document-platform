@@ -1333,6 +1333,20 @@ body {
   text-transform: uppercase;
 }
 
+/* Right-aligned group holding the status badge and (while processing) the
+   elapsed-time label, so `space-between` keeps the same two-column layout. */
+.status-badge-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-elapsed {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .error-detail {
   padding: 8px;
   margin: 8px 0;

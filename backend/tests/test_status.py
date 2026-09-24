@@ -42,6 +42,13 @@ class TestDocumentStatusEndpoint:
         assert body["id"] == str(doc.id)
         assert body["status"] == "ready"
         assert body["error_message"] is None
+        # Timestamps let clients show how long the document has been in its
+        # current state (updated_at refreshes on every status transition).
+        assert body["created_at"]
+        assert body["updated_at"]
+        # Same-timezone ISO strings sort lexicographically; updated_at is
+        # always >= the insert time.
+        assert body["updated_at"] >= body["created_at"]
 
     def test_returns_error_message_for_failed_document(self, client, auth_headers, db_session):
         owner_id = _current_user_id(client, auth_headers)

@@ -293,6 +293,8 @@ class DocumentService:
             status=document.status,
             error_message=document.error_message,
             has_thumbnail=document.has_thumbnail,
+            created_at=document.created_at,
+            updated_at=document.updated_at,
         )
 
     def reprocess(self, document_id: UUID, owner_id: UUID):

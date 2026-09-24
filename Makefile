@@ -48,7 +48,7 @@ preflight: ## (internal) Require host opencode + pre-create mounted config paths
 	@mkdir -p "$(HOME)/.config/opencode" "$(HOME)/.config/gh" && touch "$(HOME)/.gitconfig"
 
 dev-up: preflight ## Start the isolated dev sandbox (uvicorn + vite + worker + infra)
-	$(COMPOSE) up dev
+	$(COMPOSE) up dev worker
 
 dev-build: ## Rebuild the dev image after Dockerfile/pyproject/uv.lock changes
 	$(COMPOSE) build dev
@@ -58,7 +58,7 @@ dev-down: ## Stop the dev sandbox (keeps volumes)
 
 dev-restart: preflight ## Stop and restart the dev sandbox in one step (volumes kept)
 	$(COMPOSE) down
-	$(COMPOSE) up dev
+	$(COMPOSE) up dev worker
 
 dev-log: ## Tail dev sandbox logs
 	$(COMPOSE) logs -f dev
