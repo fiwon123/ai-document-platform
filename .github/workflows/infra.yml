@@ -6,19 +6,23 @@ on:
     branches: [main]
     paths:
       - 'infra/**'
+      - 'backend/**'
+      - 'frontend/**'
       - '.github/workflows/**'
-  push:
-    branches: [dev]
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'package.json'
+      - 'package-lock.json'
   workflow_dispatch:
 
 concurrency:
   group: infra-${{ github.ref }}
   cancel-in-progress: true
 
-# Mirrors the label-gating convention of ci.yml: PR validation runs only when
-# the `ci` label is on the PR. Additionally, every dev push runs lightweight
-# infra validation (no image builds unless code changed — those are SHA-tagged
-# below) so merged infra changes are continuously checked.
+# Mirrors the label-gating convention of ci.yml: validation runs only when
+# the `ci` label is on a PR. No Actions run on pushes to `dev` — infra checks
+# and image builds happen only on dev→main PRs (label-gated) or manual
+# dispatch, so merged dev work is never re-verified or published on dev.
 permissions:
   contents: read
   packages: write
@@ -27,15 +31,15 @@ permissions:
 jobs:
   validate:
     name: Infra (kustomize + helm + kubeconform)
-    # PR events are `ci`-label gated; dev pushes and manual dispatch always run.
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
+    # PR events are `ci`-label gated; manual dispatch always runs.
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Skip the job body entirely for pushes/PRs that touch no infra files
-      # (code-only dev pushes are validated by the image-build job).
+      # Skip the job body entirely for PRs that touch no infra files
+      # (code-only release PRs are validated by the image-build job).
       - name: Detect infra changes
         id: changes
         uses: dorny/paths-filter@v3
@@ -90,9 +94,10 @@ jobs:
 
   build-images:
     name: Build and push production images (ghcr.io)
-    # Every merge to dev produces fresh SHA-tagged images (plus a floating
-    # `latest`) so the cluster can always deploy current dev HEAD.
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # Only dev→main PRs (label-gated) and manual dispatch. Every release
+    # merge produces fresh SHA-tagged images (plus a floating `latest`) so
+    # the cluster can always deploy dev HEAD.
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -127,7 +132,8 @@ jobs:
     name: Smoke test (Kind)
     # End-to-end check on a real Kind cluster: deploy the dev overlay and
     # assert backend health, frontend reachability and an API round-trip.
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # Runs only on dev→main PRs (label-gated) and manual dispatch.
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
