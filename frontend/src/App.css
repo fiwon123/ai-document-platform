@@ -305,21 +305,39 @@ body {
 
 
 .theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
   background: transparent;
   border: 1px solid currentColor;
   border-radius: 8px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
   color: var(--paper);
   opacity: 0.85;
   cursor: pointer;
   transition: opacity 0.2s;
 }
 
+.theme-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
 .theme-toggle:hover {
   opacity: 1;
+}
+
+/* Auth pages: theme toggle pinned to the top-right corner. */
+.auth-theme-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10;
+}
+
+.auth-theme-toggle .theme-toggle {
+  color: var(--ink);
 }
 
 /* Mobile navigation */
@@ -453,6 +471,12 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+/* Landing navbar sits on the light/dark paper surface — the toggle inherits
+   the page text color there instead of the inverted app-navbar colors. */
+.landing-nav-actions .theme-toggle {
+  color: var(--ink);
 }
 
 @media (max-width: 768px) {

@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { useTheme } from "../hooks/useTheme";
+import { ThemeToggle } from "./ThemeToggle";
 
 /**
  * Memoized app navbar: it takes no props, so parent re-renders (route
@@ -11,7 +11,6 @@ import { useTheme } from "../hooks/useTheme";
 export const Navbar = memo(function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -100,14 +99,7 @@ export const Navbar = memo(function Navbar() {
             <Link to="/app/profile" onClick={closeMenu}>
               {user.username}
             </Link>
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={toggleTheme}
-              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-            >
-              {theme === "dark" ? "Light" : "Dark"}
-            </button>
+            <ThemeToggle />
             <button onClick={handleLogout} className="btn btn-secondary">
               Logout
             </button>
@@ -116,15 +108,7 @@ export const Navbar = memo(function Navbar() {
       </div>
 
       <div className="navbar-user">
-        <button
-          type="button"
-          className="theme-toggle"
-          onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-        >
-          {theme === "dark" ? "Light" : "Dark"}
-        </button>
+        <ThemeToggle />
         {user && (
           <>
             <Link to="/app/profile" className="navbar-username">

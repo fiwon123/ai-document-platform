@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 export function LoginPage() {
   const [username, setUsername] = useState("");
@@ -27,6 +28,9 @@ export function LoginPage() {
 
   return (
     <div className="auth-page">
+      <div className="auth-theme-toggle">
+        <ThemeToggle />
+      </div>
       <div className="auth-card">
         <h1>Login</h1>
         <p className="auth-subtitle">Sign in to your account</p>
