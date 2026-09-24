@@ -1,5 +1,5 @@
 import { act, fireEvent, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebhooksPage } from "./WebhooksPage";
 import { renderWithClient } from "../test/renderWithClient";
 import type { WebhookSubscription } from "../types";
@@ -47,6 +47,11 @@ describe("WebhooksPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedList.mockResolvedValue([readySub]);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("renders the loaded subscriptions", async () => {

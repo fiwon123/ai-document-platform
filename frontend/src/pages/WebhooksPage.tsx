@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useOptimistic, useTransition } from "react";
 import type { FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { webhooks } from "../services/api";
@@ -18,10 +18,33 @@ interface Notice {
   text: string;
 }
 
+type OptimisticSubscriptionAction =
+  | { type: "create"; sub: WebhookSubscription }
+  | { type: "toggle"; sub: WebhookSubscription }
+  | { type: "delete"; id: string };
+
 export function WebhooksPage() {
   const queryClient = useQueryClient();
   const webhooksQuery = useWebhooks();
   const subscriptions = webhooksQuery.data ?? [];
+  // Optimistic layer: mutations apply instantly on top of the query data and
+  // are dropped again once the real cache update (or a failure) lands.
+  const [optimisticSubs, addOptimistic] = useOptimistic(
+    subscriptions,
+    (state, action: OptimisticSubscriptionAction) => {
+      switch (action.type) {
+        case "create":
+          return [action.sub, ...state];
+        case "toggle":
+          return state.map((s) => (s.id === action.sub.id ? action.sub : s));
+        case "delete":
+          return state.filter((s) => s.id !== action.id);
+      }
+    },
+  );
+  // addOptimistic must run inside an action (async transition) for React to
+  // re-render optimistically.
+  const [, startTransition] = useTransition();
   const isLoading = webhooksQuery.isPending && !webhooksQuery.data;
   const loadError = webhooksQuery.isError
     ? (webhooksQuery.error as Error).message
@@ -57,51 +80,79 @@ export function WebhooksPage() {
       setCreatingError("Select at least one event.");
       return;
     }
-    setIsCreating(true);
     setCreatingError(null);
-    try {
-      const created = await webhooks.create(url, selectedEvents);
-      queryClient.setQueryData<WebhookSubscription[]>(WEBHOOKS_QUERY_KEY, (prev) => [
-        created,
-        ...(prev ?? []),
-      ]);
-      setUrlDraft("");
-      setSelectedEvents(["document.ready"]);
-      setNotice({ type: "success", text: "Webhook created" });
-    } catch (err: unknown) {
-      setCreatingError(err instanceof Error ? err.message : "Failed to create webhook");
-    } finally {
-      setIsCreating(false);
-    }
+    startTransition(async () => {
+      // Placeholder card while the request is in flight; replaced by the
+      // real subscription once the server responds.
+      const placeholder: WebhookSubscription = {
+        id: `pending-${Date.now()}`,
+        url,
+        events: selectedEvents,
+        is_active: true,
+        secret: "",
+        last_status: null,
+        last_status_code: null,
+        last_delivered_at: null,
+        failure_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      addOptimistic({ type: "create", sub: placeholder });
+      setIsCreating(true);
+      try {
+        const created = await webhooks.create(url, selectedEvents);
+        queryClient.setQueryData<WebhookSubscription[]>(WEBHOOKS_QUERY_KEY, (prev) => [
+          created,
+          ...(prev ?? []),
+        ]);
+        setUrlDraft("");
+        setSelectedEvents(["document.ready"]);
+        setNotice({ type: "success", text: "Webhook created" });
+      } catch (err: unknown) {
+        setCreatingError(err instanceof Error ? err.message : "Failed to create webhook");
+      } finally {
+        setIsCreating(false);
+      }
+    });
   }
 
-  async function handleToggleActive(sub: WebhookSubscription) {
-    try {
-      const updated = await webhooks.update(sub.id, { is_active: !sub.is_active });
-      queryClient.setQueryData<WebhookSubscription[]>(WEBHOOKS_QUERY_KEY, (prev) =>
-        (prev ?? []).map((s) => (s.id === updated.id ? updated : s)),
-      );
-    } catch (err: unknown) {
-      setNotice({
-        type: "error",
-        text: err instanceof Error ? err.message : "Failed to update webhook",
+  function handleToggleActive(sub: WebhookSubscription) {
+    startTransition(async () => {
+      addOptimistic({
+        type: "toggle",
+        sub: { ...sub, is_active: !sub.is_active },
       });
-    }
+      try {
+        const updated = await webhooks.update(sub.id, { is_active: !sub.is_active });
+        queryClient.setQueryData<WebhookSubscription[]>(WEBHOOKS_QUERY_KEY, (prev) =>
+          (prev ?? []).map((s) => (s.id === updated.id ? updated : s)),
+        );
+      } catch (err: unknown) {
+        setNotice({
+          type: "error",
+          text: err instanceof Error ? err.message : "Failed to update webhook",
+        });
+      }
+    });
   }
 
-  async function handleDelete(sub: WebhookSubscription) {
-    try {
-      await webhooks.remove(sub.id);
-      queryClient.setQueryData<WebhookSubscription[]>(WEBHOOKS_QUERY_KEY, (prev) =>
-        (prev ?? []).filter((s) => s.id !== sub.id),
-      );
-      setNotice({ type: "success", text: "Webhook deleted" });
-    } catch (err: unknown) {
-      setNotice({
-        type: "error",
-        text: err instanceof Error ? err.message : "Failed to delete webhook",
-      });
-    }
+  function handleDelete(sub: WebhookSubscription) {
+    if (!confirm(`Delete the webhook for "${sub.url}"?`)) return;
+    startTransition(async () => {
+      addOptimistic({ type: "delete", id: sub.id });
+      try {
+        await webhooks.remove(sub.id);
+        queryClient.setQueryData<WebhookSubscription[]>(WEBHOOKS_QUERY_KEY, (prev) =>
+          (prev ?? []).filter((s) => s.id !== sub.id),
+        );
+        setNotice({ type: "success", text: "Webhook deleted" });
+      } catch (err: unknown) {
+        setNotice({
+          type: "error",
+          text: err instanceof Error ? err.message : "Failed to delete webhook",
+        });
+      }
+    });
   }
 
   async function handleTest(sub: WebhookSubscription) {
@@ -196,12 +247,12 @@ export function WebhooksPage() {
           <p className="settings-note" role="alert">
             {loadError}
           </p>
-        ) : subscriptions.length === 0 ? (
+        ) : optimisticSubs.length === 0 ? (
           <p className="settings-note">
             No webhooks yet — create one above to receive document events.
           </p>
         ) : (
-          subscriptions.map((sub) => (
+          optimisticSubs.map((sub) => (
             <article key={sub.id} className="settings-card webhook-card">
               <div className="webhook-card-header">
                 <code className="webhook-url">{sub.url}</code>
