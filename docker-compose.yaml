@@ -51,7 +51,7 @@ services:
       # GitHub workflow, so it forwards the host token by name only. The
       # `worker` service deliberately does NOT get these (non-trusted).
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      GH_TOKEN: ${GH_TOKEN:-${GH_TOKEN:-}}
+      GH_TOKEN: ${GH_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
