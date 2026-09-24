@@ -23,5 +23,6 @@ data:
   REFRESH_COOKIE_SECURE: {{ .Values.config.auth.refreshCookieSecure | quote }}
   OPENAI_MODEL: {{ .Values.config.ai.openaiModel | quote }}
   EMBEDDING_MODEL: {{ .Values.config.ai.embeddingModel | quote }}
+  LOG_FORMAT: {{ .Values.config.logging.format | quote }}
   RATE_LIMIT_REQUESTS: {{ .Values.config.rateLimit.requests | quote }}
   RATE_LIMIT_WINDOW: {{ .Values.config.rateLimit.window | quote }}
