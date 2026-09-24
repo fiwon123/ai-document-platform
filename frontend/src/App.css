@@ -219,6 +219,83 @@ body {
   font-size: 0.85rem;
 }
 
+/* Document selector (QA + Search pages): compact chip list.
+   The "Search in" label sits above a wrapping row of toggle chips; the
+   container scrolls when there are many documents. Chips are real buttons
+   (aria-pressed) so the group is keyboard-accessible out of the box. */
+.document-filter {
+  margin: 12px 0;
+}
+
+.document-filter-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 168px; /* ~4 rows of chips, then scroll */
+  overflow-y: auto;
+  padding: 2px; /* breathing room for the focus ring */
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.filter-chip:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.filter-chip:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.filter-chip.is-selected {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: var(--paper);
+}
+
+.filter-chip.is-selected:hover {
+  background: var(--blue-hover);
+  border-color: var(--blue-hover);
+  color: var(--paper);
+}
+
+/* Long filenames truncate with an ellipsis instead of wrapping the chip. */
+.filter-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+.filter-chip svg {
+  flex-shrink: 0;
+}
+
 .typing {
   display: inline-flex;
   align-items: center;
