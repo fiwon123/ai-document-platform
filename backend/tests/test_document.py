@@ -6,6 +6,8 @@ external services are contacted.
 
 from unittest.mock import MagicMock
 
+from app.models.document import DocumentStatus
+
 UPLOAD_FILENAME = "notes.txt"
 
 
@@ -316,6 +318,130 @@ class TestDeleteDocument:
 
         invalidate_doc.assert_called_once()
         invalidate_search.assert_called_once()
+
+
+class TestReprocessDocument:
+    """POST /documents/{id}/reprocess re-enqueues a terminal document."""
+
+    def _mark_failed(self, client, auth_headers, document_id, db_session):
+        from uuid import UUID
+
+        from app.models.document import DocumentDB
+
+        row = (
+            db_session.query(DocumentDB)
+            .filter(DocumentDB.id == UUID(document_id))
+            .one()
+        )
+        row.status = DocumentStatus.FAILED
+        row.error_message = "Processing did not complete within the timeout"
+        db_session.commit()
+        return row
+
+    def test_reprocess_failed_document(self, client, auth_headers, db_session, monkeypatch):
+        from app.services import document as document_module
+
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        self._mark_failed(client, auth_headers, created["id"], db_session)
+
+        enqueued = []
+        monkeypatch.setattr(
+            document_module,
+            "process_document_task",
+            lambda doc_id: enqueued.append(doc_id),
+        )
+
+        resp = client.post(
+            f"/v1/documents/{created['id']}/reprocess", headers=auth_headers
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "pending"
+        assert body["document_id"] == created["id"]
+        assert str(enqueued[0]) == created["id"]
+
+    def test_reprocess_ready_document_allowed(self, client, auth_headers, db_session, monkeypatch):
+        from uuid import UUID
+
+        from app.models.document import DocumentDB
+
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        row = (
+            db_session.query(DocumentDB)
+            .filter(DocumentDB.id == UUID(created["id"]))
+            .one()
+        )
+        row.status = DocumentStatus.READY
+        db_session.commit()
+
+        enqueued = []
+        monkeypatch.setattr(
+            "app.services.document.process_document_task",
+            lambda doc_id: enqueued.append(doc_id),
+        )
+
+        resp = client.post(
+            f"/v1/documents/{created['id']}/reprocess", headers=auth_headers
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "pending"
+        assert len(enqueued) == 1
+
+    def test_rejects_already_processing(self, client, auth_headers, db_session, monkeypatch):
+        from uuid import UUID
+
+        from app.models.document import DocumentDB
+
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        row = (
+            db_session.query(DocumentDB)
+            .filter(DocumentDB.id == UUID(created["id"]))
+            .one()
+        )
+        row.status = DocumentStatus.PROCESSING
+        db_session.commit()
+
+        monkeypatch.setattr(
+            "app.services.document.process_document_task", lambda _id: None
+        )
+
+        resp = client.post(
+            f"/v1/documents/{created['id']}/reprocess", headers=auth_headers
+        )
+
+        assert resp.status_code == 409
+        assert resp.json()["error"]["code"] == "conflict"
+
+    def test_404_for_missing_document(self, client, auth_headers):
+        from uuid import uuid4
+
+        resp = client.post(
+            f"/v1/documents/{uuid4()}/reprocess", headers=auth_headers
+        )
+
+        assert resp.status_code == 404
+        assert resp.json()["error"]["code"] == "not_found"
+
+    def test_ownership_isolation(self, client, auth_headers, db_session, monkeypatch):
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        self._mark_failed(client, auth_headers, created["id"], db_session)
+        other_headers = _register_second_user(client)
+
+        monkeypatch.setattr(
+            "app.services.document.process_document_task", lambda _id: None
+        )
+
+        resp = client.post(
+            f"/v1/documents/{created['id']}/reprocess", headers=other_headers
+        )
+
+        assert resp.status_code == 404
 
 
 class TestDownloadDocument:

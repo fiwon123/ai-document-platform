@@ -27,11 +27,11 @@ from app.storage.storage import storage
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 3
-BACKOFF_SECONDS = 5
+MAX_RETRIES = int(os.getenv("WORKER_MAX_RETRIES", "3"))
+BACKOFF_SECONDS = int(os.getenv("WORKER_BACKOFF_SECONDS", "5"))
 
 # Documents stuck in these states longer than this are recovered as failed.
-RECOVERY_TIMEOUT_MINUTES = 30
+RECOVERY_TIMEOUT_MINUTES = int(os.getenv("WORKER_RECOVERY_TIMEOUT_MINUTES", "30"))
 
 # arq coroutine names are derived from the functions' ``__qualname__``; keep
 # them unique and stable so enqueued jobs always resolve to the same handler.
@@ -222,6 +222,12 @@ async def _process_document_impl(document_id: UUID) -> DocumentDB | None:
 
         from app.models.chunk import DocumentChunk
 
+        # A reprocess (or a retry after a partial commit) must not pile up
+        # duplicate chunks: drop anything from a previous run first.
+        db.query(DocumentChunk).filter(
+            DocumentChunk.document_id == document_id
+        ).delete(synchronize_session=False)
+
         for chunk, embedding in zip(chunks, embeddings, strict=False):
             db.add(
                 DocumentChunk(
@@ -396,8 +402,11 @@ async def recover_stale_documents(ctx: dict) -> None:
     Runs periodically via the arq cron. Covers jobs that never started
     (enqueue failed/lost) or workers that crashed mid-flight. A document
     that has been pending/processing for longer than
-    ``RECOVERY_TIMEOUT_MINUTES`` is marked FAILED with a descriptive
-    error so it never stays stuck forever.
+    ``RECOVERY_TIMEOUT_MINUTES`` is marked FAILED so it never stays stuck
+    forever. When the worker recorded a real error before dying (e.g. on a
+    failed final retry that was not persisted), that message is preserved
+    instead of the generic timeout text so users see what actually went
+    wrong.
     """
     cutoff = datetime.now(UTC) - timedelta(minutes=RECOVERY_TIMEOUT_MINUTES)
     db: Session = SessionLocal()
@@ -418,9 +427,12 @@ async def recover_stale_documents(ctx: dict) -> None:
                 f"(status={document.status.value}, created={document.created_at})"
             )
             document.status = DocumentStatus.FAILED
-            document.error_message = (
-                "Processing did not complete within the timeout"
-            )
+            if not document.error_message:
+                document.error_message = (
+                    "Processing did not complete within the timeout. "
+                    "The worker may have stopped, or a transient error "
+                    "exhausted the retries. Try reprocessing the document."
+                )
             _invalidate_caches(document)
             _schedule_webhook(WebhookEvent.FAILED, document)
         if stale:

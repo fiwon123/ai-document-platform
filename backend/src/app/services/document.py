@@ -295,6 +295,75 @@ class DocumentService:
             has_thumbnail=document.has_thumbnail,
         )
 
+    def reprocess(self, document_id: UUID, owner_id: UUID):
+        """Re-enqueue a terminal document (failed or ready) for processing.
+
+        Returns a ``ReprocessDocumentResponse`` payload. Raises
+        ``HTTPException`` 404 when the document is not owned by the user,
+        and 409 when the document is currently pending/processing (a
+        re-enqueue would race the running job).
+        """
+        from app.schemas.document import ReprocessDocumentResponse
+
+        document = self.repository.get_by_id(
+            document_id=document_id,
+            owner_id=owner_id,
+        )
+        if document is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            )
+
+        if document.status in (
+            DocumentStatus.PENDING,
+            DocumentStatus.PROCESSING,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Document is already being processed. "
+                    "Wait for it to finish before retrying."
+                ),
+            )
+
+        # Reset to pending and clear the stale error so the status endpoint
+        # reports a clean in-flight state while the worker runs again.
+        reset = self.repository.update_status(
+            document_id,
+            DocumentStatus.PENDING,
+            error_message=None,
+        )
+        if reset is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            )
+        invalidate_document_cache(owner_id, document_id)
+        invalidate_user_search_cache(owner_id)
+
+        try:
+            process_document_task(document_id)
+        except Exception as e:  # noqa: BLE001 - surface the real processing error
+            logger.warning(f"Reprocessing failed for {document_id}: {e}")
+            failed = self.repository.update_status(
+                document_id,
+                DocumentStatus.FAILED,
+                error_message=f"Failed to process document: {e}",
+            )
+            if failed is not None:
+                invalidate_document_cache(owner_id, document_id)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Failed to process document: {e}",
+            ) from e
+
+        return ReprocessDocumentResponse(
+            message="Document reprocessing started",
+            document_id=document_id,
+            status=DocumentStatus.PENDING,
+        )
+
     def list(self, owner_id: UUID, skip: int = 0, limit: int = 20):
         return self.repository.get_by_owner(owner_id=owner_id, skip=skip, limit=limit)
 

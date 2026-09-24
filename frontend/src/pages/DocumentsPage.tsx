@@ -34,9 +34,11 @@ interface DocumentCardProps {
   isPreviewLoading: boolean;
   isDownloading: boolean;
   isDeleting: boolean;
+  isReprocessing: boolean;
   onPreview: (doc: Document) => void;
   onDownload: (doc: Document) => void;
   onDelete: (id: string) => void;
+  onReprocess: (id: string) => void;
   onThumbnailError: (id: string) => void;
 }
 
@@ -51,9 +53,11 @@ const DocumentCard = memo(function DocumentCard({
   isPreviewLoading,
   isDownloading,
   isDeleting,
+  isReprocessing,
   onPreview,
   onDownload,
   onDelete,
+  onReprocess,
   onThumbnailError,
 }: DocumentCardProps) {
   return (
@@ -97,6 +101,20 @@ const DocumentCard = memo(function DocumentCard({
         </p>
       </div>
       <div className="document-card-footer">
+        {doc.status === "failed" && (
+          <button
+            onClick={() => onReprocess(doc.id)}
+            disabled={isReprocessing}
+            className="btn btn-secondary"
+            title="Re-run document processing"
+          >
+            {isReprocessing ? (
+              <Spinner size={14} label="Reprocessing" />
+            ) : (
+              "Reprocess"
+            )}
+          </button>
+        )}
         <button
           onClick={() => onPreview(doc)}
           disabled={isPreviewLoading}
@@ -151,6 +169,7 @@ export function DocumentsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [reprocessingId, setReprocessingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<DocumentPreview | null>(null);
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -413,6 +432,29 @@ export function DocumentsPage() {
     }
   }, []);
 
+  /** Re-enqueue a failed document for processing and start polling it. */
+  const handleReprocess = useCallback(async (id: string) => {
+    setReprocessingId(id);
+    setError(null);
+    try {
+      await documents.reprocess(id);
+      setDocs((prev) =>
+        prev.map((d) =>
+          d.id === id
+            ? { ...d, status: "pending", error_message: null }
+            : d,
+        ),
+      );
+      toast.success("Document queued for reprocessing");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Reprocessing failed";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setReprocessingId(null);
+    }
+  }, [toast]);
+
   const clearThumbnailUrl = useCallback((id: string) => {
     setThumbnailUrls((prev) => {
       const next = { ...prev };
@@ -484,9 +526,11 @@ export function DocumentsPage() {
               isPreviewLoading={previewLoadingId === doc.id}
               isDownloading={downloadingId === doc.id}
               isDeleting={deletingId === doc.id}
+              isReprocessing={reprocessingId === doc.id}
               onPreview={handlePreview}
               onDownload={handleDownload}
               onDelete={handleDelete}
+              onReprocess={handleReprocess}
               onThumbnailError={clearThumbnailUrl}
             />
           ))}

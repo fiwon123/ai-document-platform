@@ -161,6 +161,27 @@ describe("api client request paths", () => {
     );
   });
 
+  it("should send documents.reprocess to /v1/documents/{id}/reprocess with POST", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          message: "Document reprocessing started",
+          document_id: "doc-5",
+          status: "pending",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await documents.reprocess("doc-5");
+
+    expect(result.status).toBe("pending");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/v1/documents/doc-5/reprocess",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("should send documents.getThumbnailUrl to /v1/documents/{id}/thumbnail", async () => {
     mockFetch.mockResolvedValue(
       new Response(

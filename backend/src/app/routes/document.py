@@ -22,6 +22,7 @@ from app.schemas.document import (
     DocumentStatusResponse,
     DownloadUrlResponse,
     FileResponse,
+    ReprocessDocumentResponse,
     ThumbnailUrlResponse,
 )
 from app.services.document import MAX_BULK_UPLOAD_FILES, DocumentService
@@ -151,6 +152,19 @@ def get_document_thumbnail(
             detail="Thumbnail not available for this document",
         )
     return result
+
+
+@router.post(
+    "/{document_id}/reprocess",
+    status_code=status.HTTP_200_OK,
+    response_model=ReprocessDocumentResponse,
+)
+def reprocess_document(
+    document_id: UUID,
+    service: Annotated[DocumentService, Depends(get_document_service)],
+    owner_id: Annotated[UUID, Depends(get_current_user_id)],
+):
+    return service.reprocess(document_id=document_id, owner_id=owner_id)
 
 
 @router.delete("/{document_id}", response_model=DeleteDocumentResponse)

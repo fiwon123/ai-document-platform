@@ -1282,6 +1282,13 @@ body {
 .document-card-footer .btn {
   /* Equal-width actions keep buttons at the same position across cards. */
   flex: 1;
+  /* Long loading labels ("Downloading…", "Reprocess") must never overflow
+     the card: allow the flex buttons to shrink below their content width
+     and keep the label on a single line. */
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Document preview modal */

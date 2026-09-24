@@ -201,6 +201,18 @@ export const documents = {
     await request<{ message: string }>(`/documents/${id}`, { method: "DELETE" });
   },
 
+  /** Re-enqueue a failed (or ready) document for processing. */
+  async reprocess(id: string): Promise<{
+    message: string;
+    document_id: string;
+    status: string;
+  }> {
+    return request<{ message: string; document_id: string; status: string }>(
+      `/documents/${id}/reprocess`,
+      { method: "POST" },
+    );
+  },
+
   async getDownloadUrl(id: string): Promise<{ id: string; filename: string; download_url: string }> {
     return request(`/documents/${id}/download`);
   },
