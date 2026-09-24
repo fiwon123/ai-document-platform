@@ -45,7 +45,12 @@ class FakeExtractorError:
 
 
 class FakeChunker:
+    def __init__(self, chunks=None):
+        self.chunks = chunks
+
     def chunk_text(self, text):
+        if self.chunks is not None:
+            return self.chunks
         return [
             TextChunk(
                 content="hello world",
@@ -122,6 +127,40 @@ class TestProcessDocumentTask:
         assert chunks[0].embedding == _make_vector(0)
         assert invalidated.call_count == 1
         assert invalidated.call_args.args[0].id == doc.id
+
+    def test_bulk_saved_chunks_preserve_order_and_embeddings(
+        self, db_session, monkeypatch
+    ):
+        """The bulk insert keeps chunk_index order and per-chunk vectors."""
+        doc = _seed_pending_document(db_session)
+        chunker = FakeChunker(
+            chunks=[
+                TextChunk(
+                    content=f"section {i}",
+                    chunk_index=i,
+                    metadata={"start_char": i, "end_char": i + 1, "char_count": 1},
+                )
+                for i in range(3)
+            ]
+        )
+        embedder = FakeEmbedder(vectors=[_make_vector(i) for i in range(3)])
+        _patch_worker_deps(monkeypatch, chunker=chunker, embedder=embedder)
+
+        asyncio.run(process_document({}, str(doc.id)))
+
+        chunks = (
+            db_session.query(DocumentChunk)
+            .filter(DocumentChunk.document_id == doc.id)
+            .order_by(DocumentChunk.chunk_index.asc())
+            .all()
+        )
+        assert [c.content for c in chunks] == ["section 0", "section 1", "section 2"]
+        assert [c.embedding for c in chunks] == [
+            _make_vector(0),
+            _make_vector(1),
+            _make_vector(2),
+        ]
+        assert all(c.id is not None for c in chunks)
 
     def test_saves_chunks_without_vectors_when_embeddings_unavailable(
         self, db_session, monkeypatch
