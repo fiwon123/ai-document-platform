@@ -638,6 +638,188 @@ class TestPreviewDocument:
         assert resp.status_code == 503
         assert resp.json()["error"]["code"] == "service_unavailable"
 
+    def test_ready_document_preview_built_from_chunks(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
+        """READY documents are previewed from chunks — no storage read."""
+        from uuid import uuid4
+
+        from app.models.chunk import DocumentChunk
+        from app.models.document import DocumentDB, DocumentStatus
+        from app.models.user import UserDB
+        from app.storage.storage import storage as app_storage
+
+        # Register + login a dedicated user so the doc owner matches the token.
+        username = f"chunk_owner_{uuid4().hex[:8]}"
+        password = "testpass123"
+        register = client.post(
+            "/v1/auth/register",
+            json={
+                "username": username,
+                "password": password,
+                "confirm_password": password,
+            },
+        )
+        assert register.status_code == 201, register.text
+        login = client.post(
+            "/v1/auth/login",
+            data={"username": username, "password": password},
+        )
+        assert login.status_code == 200, login.text
+        headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        owner = db_session.query(UserDB).filter(UserDB.username == username).one()
+
+        doc = DocumentDB(
+            owner_id=owner.id,
+            filename="chunked.txt",
+            object_key="k/chunked.txt",
+            mime_type="text/plain",
+            status=DocumentStatus.READY,
+        )
+        db_session.add(doc)
+        db_session.flush()
+
+        # Two overlapping windows, exactly like ChunkingService emits:
+        # chunk_b begins with the tail of chunk_a (sliding-window overlap).
+        tail = "over the lazy dog. "
+        chunk_a = "The quick brown fox jumps " + tail
+        chunk_b = tail + "Paid in full: analysis complete."
+        db_session.add_all(
+            [
+                DocumentChunk(
+                    document_id=doc.id, content=chunk_a, chunk_index=0
+                ),
+                DocumentChunk(
+                    document_id=doc.id, content=chunk_b, chunk_index=1
+                ),
+            ]
+        )
+        db_session.commit()
+
+        download = MagicMock()
+        monkeypatch.setattr(app_storage, "download", download)
+
+        resp = client.get(f"/v1/documents/{doc.id}/preview", headers=headers)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["preview"] == (
+            "The quick brown fox jumps over the lazy dog. Paid in full: analysis complete."
+        )
+        assert body["truncated"] is False
+        # The storage download was never touched.
+        download.assert_not_called()
+
+    def test_ready_document_without_chunks_falls_back_to_storage(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
+        """A READY document with no chunks still serves from storage."""
+        from uuid import uuid4
+
+        from app.models.document import DocumentDB, DocumentStatus
+        from app.models.user import UserDB
+        from app.storage.storage import storage as app_storage
+
+        # Register + login a dedicated user so the doc owner matches the token.
+        username = f"fb_owner_{uuid4().hex[:8]}"
+        password = "testpass123"
+        register = client.post(
+            "/v1/auth/register",
+            json={
+                "username": username,
+                "password": password,
+                "confirm_password": password,
+            },
+        )
+        assert register.status_code == 201, register.text
+        login = client.post(
+            "/v1/auth/login",
+            data={"username": username, "password": password},
+        )
+        assert login.status_code == 200, login.text
+        headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        owner = db_session.query(UserDB).filter(UserDB.username == username).one()
+
+        doc = DocumentDB(
+            owner_id=owner.id,
+            filename="legacy.txt",
+            object_key="k/legacy.txt",
+            mime_type="text/plain",
+            status=DocumentStatus.READY,
+        )
+        db_session.add(doc)
+        db_session.commit()
+
+        monkeypatch.setattr(
+            app_storage,
+            "download",
+            lambda _k: self._fake_body(b"legacy stored text"),
+        )
+
+        resp = client.get(f"/v1/documents/{doc.id}/preview", headers=headers)
+
+        assert resp.status_code == 200
+        assert resp.json()["preview"] == "legacy stored text"
+
+    def test_chunked_preview_truncates_at_limit(
+        self, client, auth_headers, db_session
+    ):
+        from uuid import uuid4
+
+        from app.models.chunk import DocumentChunk
+        from app.models.document import DocumentDB, DocumentStatus
+        from app.models.user import UserDB
+
+        # Register + login a dedicated user so the doc owner matches the token.
+        username = f"long_owner_{uuid4().hex[:8]}"
+        password = "testpass123"
+        register = client.post(
+            "/v1/auth/register",
+            json={
+                "username": username,
+                "password": password,
+                "confirm_password": password,
+            },
+        )
+        assert register.status_code == 201, register.text
+        login = client.post(
+            "/v1/auth/login",
+            data={"username": username, "password": password},
+        )
+        assert login.status_code == 200, login.text
+        headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        owner = db_session.query(UserDB).filter(UserDB.username == username).one()
+
+        doc = DocumentDB(
+            owner_id=owner.id,
+            filename="long.txt",
+            object_key="k/long.txt",
+            mime_type="text/plain",
+            status=DocumentStatus.READY,
+        )
+        db_session.add(doc)
+        db_session.flush()
+
+        db_session.add_all(
+            [
+                DocumentChunk(
+                    document_id=doc.id,
+                    content="y" * 1000,
+                    chunk_index=i,
+                )
+                for i in range(8)  # ~6600 chars after de-overlap
+            ]
+        )
+        db_session.commit()
+
+        resp = client.get(f"/v1/documents/{doc.id}/preview", headers=headers)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["truncated"] is True
+        assert len(body["preview"]) == 5000
+        assert body["preview"] == "y" * 5000
+
 
 def _create_document(client, headers, filename=UPLOAD_FILENAME, content=b"hello world"):
     """Upload a document and return its response body (assumes upload works)."""
