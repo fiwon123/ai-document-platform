@@ -170,7 +170,9 @@ class TestProcessDocumentTask:
 
         db_session.refresh(doc)
         assert doc.status == DocumentStatus.FAILED
-        assert doc.error_message == "extraction boom"
+        # The persisted message is generic — internal error details must
+        # not reach the API payload (see worker error sanitization).
+        assert doc.error_message == "Document processing failed"
         assert invalidated.call_count == 1
         assert invalidated.call_args.args[0].id == doc.id
 
@@ -405,7 +407,8 @@ class TestUploadRouteEnqueues:
         body = resp.json()
         assert body["status"] == "failed"
         assert "Failed to process document" in body["error_message"]
-        assert "extraction boom" in body["error_message"]
+        # Raw exception internals are sanitized out of the response.
+        assert "extraction boom" not in body["error_message"]
 
 
 class TestRecoverStaleDocuments:
