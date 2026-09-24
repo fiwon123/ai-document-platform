@@ -322,8 +322,12 @@ async def process_document(ctx: dict, document_id: str) -> None:
         )
         if job_try >= MAX_RETRIES:
             # Final attempt exhausted — record the failure so the
-            # document is never left stuck in a processing state.
-            document = _mark_failed(document_uuid, str(e))
+            # document is never left stuck in a processing state. The
+            # raw exception stays in the log; the persisted message is
+            # generic so internal error details never reach the client.
+            document = _mark_failed(
+                document_uuid, "Document processing failed"
+            )
             if document is not None:
                 _schedule_webhook(WebhookEvent.FAILED, document)
             raise

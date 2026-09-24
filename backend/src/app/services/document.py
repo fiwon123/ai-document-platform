@@ -256,12 +256,13 @@ class DocumentService:
             # Processing failed even after the inline fallback (e.g. the
             # content could not be extracted). Never leave the document
             # stuck in pending; record the failure and return the
-            # refreshed row so the client sees the final status.
+            # refreshed row so the client sees the final status. The
+            # exception runs to the log, not the API payload.
             logger.warning(f"Processing failed for {document_id}: {e}")
             failed = self.repository.update_status(
                 document_id,
                 DocumentStatus.FAILED,
-                error_message=f"Failed to process document: {e}",
+                error_message="Failed to process document: unexpected processing error",
             )
             if failed is not None:
                 created = failed
@@ -367,13 +368,13 @@ class DocumentService:
             failed = self.repository.update_status(
                 document_id,
                 DocumentStatus.FAILED,
-                error_message=f"Failed to process document: {e}",
+                error_message="Failed to process document: unexpected processing error",
             )
             if failed is not None:
                 invalidate_document_cache(owner_id, document_id)
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Failed to process document: {e}",
+                detail="Failed to reprocess the document. Please try again.",
             ) from e
 
         return ReprocessDocumentResponse(
