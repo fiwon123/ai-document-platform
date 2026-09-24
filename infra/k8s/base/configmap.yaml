@@ -31,6 +31,10 @@ data:
   # --- AI ---
   OPENAI_MODEL: "gpt-4"
   EMBEDDING_MODEL: "text-embedding-ada-002"
+  # --- Logging ---
+  # Structured JSON access/service logs for Loki/Promtail (request-id,
+  # method, path, status_code, process_time are emitted as JSON fields).
+  LOG_FORMAT: "json"
   # --- Rate limiting ---
   RATE_LIMIT_REQUESTS: "100"
   RATE_LIMIT_WINDOW: "60"

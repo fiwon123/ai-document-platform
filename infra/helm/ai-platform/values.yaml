@@ -113,6 +113,9 @@ config:
     endpoint: ""
     publicEndpoint: ""
     bucket: documents
+  logging:
+    # -- Log output format: "json" (Loki/Promtail-friendly) or "plain"
+    format: "json"
     secure: "false"
     region: us-east-1
   auth:

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.cache.redis import REDIS_PASSWORD
 from app.database.db import SessionLocal
+from app.logging_config import setup_logging
 from app.models.document import DocumentDB, DocumentStatus
 from app.repositories.document import DocumentRepository
 from app.schemas.webhook import WebhookEvent
@@ -26,6 +27,10 @@ from app.services.thumbnail import (
 from app.storage.storage import storage
 
 logger = logging.getLogger(__name__)
+
+# Structured JSON logging for production (Loki/Promtail); no-op unless
+# LOG_FORMAT=json is set.
+setup_logging()
 
 MAX_RETRIES = int(os.getenv("WORKER_MAX_RETRIES", "3"))
 BACKOFF_SECONDS = int(os.getenv("WORKER_BACKOFF_SECONDS", "5"))

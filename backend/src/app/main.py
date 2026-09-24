@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from .logging_config import setup_logging
 from .middleware import LoggingMiddleware, RateLimitMiddleware
 from .middleware.rate_limit import RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW
 from .routes import auth, document, health, qa, search, statistics, users, webhook
@@ -15,6 +16,10 @@ from .schemas.error import ErrorDetail, ErrorResponse
 from .storage.storage import storage
 
 logger = logging.getLogger(__name__)
+
+# Structured JSON logging for production (Loki/Promtail); no-op unless
+# LOG_FORMAT=json is set. Must run before any app logger emits.
+setup_logging()
 
 # Development defaults; override with the CORS_ORIGINS env var in
 # production (comma-separated, e.g. "https://app.example.com,https://admin.example.com").
