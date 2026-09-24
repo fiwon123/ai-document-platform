@@ -30,8 +30,28 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = int(os.getenv("WORKER_MAX_RETRIES", "3"))
 BACKOFF_SECONDS = int(os.getenv("WORKER_BACKOFF_SECONDS", "5"))
 
-# Documents stuck in these states longer than this are recovered as failed.
-RECOVERY_TIMEOUT_MINUTES = int(os.getenv("WORKER_RECOVERY_TIMEOUT_MINUTES", "30"))
+# A single pipeline run (extraction → chunking → embeddings → thumbnail) can
+# legitimately take a while for large PDFs; arq's default job_timeout (300s)
+# kills those jobs mid-flight. Raised to a configurable default and exposed
+# to arq via the WorkerSettings dict below.
+WORKER_JOB_TIMEOUT_SECONDS = int(os.getenv("WORKER_JOB_TIMEOUT_SECONDS", "900"))
+
+
+def _recovery_timeout_minutes() -> int:
+    """Recovery cutoff for documents stuck in pending/processing.
+
+    The floor is derived from the job timeout × retries so the recovery cron
+    never marks a job failed while it is still legitimately retrying; an
+    explicit WORKER_RECOVERY_TIMEOUT_MINUTES still wins when it is larger.
+    """
+    min_floor = (WORKER_JOB_TIMEOUT_SECONDS // 60 + 1) * MAX_RETRIES
+    return max(
+        int(os.getenv("WORKER_RECOVERY_TIMEOUT_MINUTES", "30")),
+        min_floor,
+    )
+
+
+RECOVERY_TIMEOUT_MINUTES = _recovery_timeout_minutes()
 
 # arq coroutine names are derived from the functions' ``__qualname__``; keep
 # them unique and stable so enqueued jobs always resolve to the same handler.
@@ -479,6 +499,7 @@ WorkerSettings = {
     ],
     "redis_settings": worker_redis_settings(),
     "max_tries": MAX_RETRIES,
+    "job_timeout": WORKER_JOB_TIMEOUT_SECONDS,
     "health_check_key": WORKER_HEALTH_CHECK_KEY,
     "health_check_interval": WORKER_HEALTH_CHECK_INTERVAL,
     "on_startup": _worker_startup,
