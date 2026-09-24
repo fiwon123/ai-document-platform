@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { qa } from "../services/api";
 import type { QAModels } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { useQAModels } from "../hooks/useQAModels";
 import { Spinner } from "../components/Spinner";
 
 const MODEL_STORAGE_KEY = "askdocs-model";
@@ -22,9 +22,15 @@ interface Notice {
 
 export function SettingsPage() {
   const { user } = useAuth();
-  const [models, setModels] = useState<QAModels | null>(null);
-  const [isLoadingModels, setIsLoadingModels] = useState(true);
-  const [modelsError, setModelsError] = useState<string | null>(null);
+  const modelsQuery = useQAModels();
+  // The models endpoint is optional — the page keeps working with defaults
+  // when it is unreachable (e.g. no provider configured).
+  const models: QAModels | null =
+    modelsQuery.isError ? DEFAULT_MODELS : (modelsQuery.data ?? null);
+  const isLoadingModels = modelsQuery.isPending && !modelsQuery.data;
+  const modelsError = modelsQuery.isError
+    ? (modelsQuery.error as Error).message
+    : null;
   const [selectedModel, setSelectedModel] = useState<string>(
     () => localStorage.getItem(MODEL_STORAGE_KEY) ?? DEFAULT_MODELS.free[0] ?? "gpt-4o-mini",
   );
@@ -33,28 +39,6 @@ export function SettingsPage() {
   );
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    qa.getModels()
-      .then((data) => {
-        if (!cancelled) setModels(data);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setModelsError(
-            err instanceof Error ? err.message : "Failed to load models",
-          );
-          setModels(DEFAULT_MODELS);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingModels(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   function handleModelChange(model: string) {
     setSelectedModel(model);

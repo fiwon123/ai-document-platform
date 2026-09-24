@@ -1,10 +1,18 @@
 import { memo, useEffect, useRef, useState } from "react";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { DocumentFilter } from "../components/DocumentFilter";
 import { EmptyState } from "../components/EmptyState";
 import { HighlightedText } from "../components/HighlightedText";
 import { search } from "../services/api";
 import type { SearchResult } from "../types";
 import { Spinner } from "../components/Spinner";
+
+const SEARCH_QUERY_KEY = ["search"] as const;
+
+interface SearchParams {
+  q: string;
+  ids: string;
+}
 
 interface SearchResultCardProps {
   result: SearchResult;
@@ -51,62 +59,78 @@ const PAGE_SIZE = 5;
 
 export function SearchPage() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // The debounced query + selected ids drive the actual fetches. Keeping the
+  // two separated means typing updates the input instantly while the result
+  // set only refreshes after the debounce window (or an explicit submit).
+  const [searchParams, setSearchParams] = useState<SearchParams>({
+    q: "",
+    ids: "",
+  });
   const [isExporting, setIsExporting] = useState<"csv" | "json" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const resultsRef = useRef<SearchResult[]>([]);
-  const searchSeqRef = useRef(0);
 
-  // Keep the latest results in a ref so "load more" can compute the next
-  // offset without stale-closure issues from the debounced effect.
+  const idKey = selectedIds.join(",");
+  const searchQuery = useInfiniteQuery({
+    queryKey: [...SEARCH_QUERY_KEY, searchParams.q, searchParams.ids],
+    queryFn: ({ pageParam }) =>
+      search.search(searchParams.q, PAGE_SIZE, selectedIds, pageParam),
+    initialPageParam: 0,
+    // Search only starts once the user has actually searched something.
+    enabled: searchParams.q.trim().length > 0,
+    // While a newer search is in flight the previous results stay on screen
+    // (lightweight placeholder) so the page never flashes empty.
+    placeholderData: keepPreviousData,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.has_more
+        ? allPages.reduce((total, page) => total + page.results.length, 0)
+        : undefined,
+  });
+
+  const pages = searchQuery.data?.pages ?? [];
+  const results = pages.flatMap((page) => page.results);
+  const totalCount = pages[pages.length - 1]?.total_count ?? 0;
+  const hasMore = pages[pages.length - 1]?.has_more ?? false;
+  const hasSearched = searchParams.q.trim().length > 0;
+  const isLoading = searchQuery.isPending && hasSearched;
+  const isLoadingMore = searchQuery.isFetchingNextPage;
+  const searchError = searchQuery.isError
+    ? (searchQuery.error as Error).message
+    : null;
+  const errorMessage = searchError ?? error;
+
+  // Debounced auto-search as the user types or changes the document filter.
+  // A new query always starts from the first page (offset 0): the query key
+  // changes with the query text and filter ids, which resets the pages.
   useEffect(() => {
-    resultsRef.current = results;
-  }, [results]);
-
-  async function runSearch(q: string, ids: string[], offset = 0) {
-    if (!q.trim()) return;
-    // Each call bumps the sequence number; responses from older calls are
-    // ignored so typing during an in-flight request never lets a stale
-    // response clobber the results for the newest query.
-    const seq = ++searchSeqRef.current;
-    setIsLoading(true);
-    setError(null);
-    setHasSearched(true);
-
-    try {
-      const response = await search.search(q, PAGE_SIZE, ids, offset);
-      if (seq !== searchSeqRef.current) return;
-      if (offset === 0) {
-        setResults(response.results);
-        resultsRef.current = response.results;
-      } else {
-        const merged = [...resultsRef.current, ...response.results];
-        resultsRef.current = merged;
-        setResults(merged);
-      }
-      setTotalCount(response.total_count);
-      setHasMore(response.has_more);
-    } catch (err) {
-      if (seq !== searchSeqRef.current) return;
-      setError(err instanceof Error ? err.message : "Search failed");
-    } finally {
-      if (seq === searchSeqRef.current) {
-        setIsLoading(false);
-        setIsLoadingMore(false);
-      }
+    if (!query.trim()) {
+      // Clearing the input immediately drops any pending debounce and resets
+      // the result set (the query becomes disabled and renders nothing).
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      setSearchParams({ q: "", ids: "" });
+      return;
     }
-  }
+
+    debounceRef.current = setTimeout(() => {
+      setSearchParams({ q: query.trim(), ids: idKey });
+    }, DEBOUNCE_MS);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, selectedIds]);
 
   async function loadMore() {
-    setIsLoadingMore(true);
-    await runSearch(query, selectedIds, resultsRef.current.length);
+    void searchQuery.fetchNextPage();
+  }
+
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    // Explicit submit bypasses the debounce: run the search right away.
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSearchParams({ q: query.trim(), ids: idKey });
   }
 
   async function handleExport(format: "csv" | "json") {
@@ -122,40 +146,6 @@ export function SearchPage() {
     } finally {
       setIsExporting(null);
     }
-  }
-
-  // Debounced auto-search as the user types or changes the document filter.
-  // A new query always starts from the first page (offset 0).
-  useEffect(() => {
-    if (!query.trim()) {
-      // Bump the sequence so any in-flight search for a previous query is
-      // discarded instead of repopulating the (now empty) results, and clear
-      // the loading flags so the spinner never sticks when a request is
-      // cancelled by clearing the field mid-flight.
-      searchSeqRef.current += 1;
-      setIsLoading(false);
-      setIsLoadingMore(false);
-      setResults([]);
-      setTotalCount(0);
-      setHasMore(false);
-      setHasSearched(false);
-      return;
-    }
-
-    debounceRef.current = setTimeout(() => {
-      void runSearch(query, selectedIds);
-    }, DEBOUNCE_MS);
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, selectedIds]);
-
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    void runSearch(query, selectedIds);
   }
 
   return (
@@ -187,7 +177,7 @@ export function SearchPage() {
 
       <DocumentFilter selected={selectedIds} onChange={setSelectedIds} />
 
-      {error && <p className="error-message" role="alert">{error}</p>}
+      {errorMessage && <p className="error-message" role="alert">{errorMessage}</p>}
 
       {isLoading && (
         <div className="loading">
@@ -240,7 +230,11 @@ export function SearchPage() {
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => void loadMore()}
-                disabled={isLoadingMore || isLoading}
+                // Disabled while any fetch runs: a newer search in flight
+                // (placeholder data from keepPreviousData) must not allow
+                // page 2 of the old query to be merged onto page 1 of the
+                // fresh one, and loading more pages is busy regardless.
+                disabled={searchQuery.isFetching || isLoading}
               >
                 {isLoadingMore ? "Loading…" : "Load more results"}
               </button>

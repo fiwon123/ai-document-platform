@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { users } from "../services/api";
 import type { User } from "../types";
 import { useAuth } from "../hooks/useAuth";
@@ -10,7 +11,18 @@ export function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: {
+      username: string;
+      password?: string;
+      confirmPassword?: string;
+    }) => users.updateMe(payload),
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Failed to update profile");
+    },
+  });
+  const isLoading = updateMutation.isPending;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,10 +39,8 @@ export function ProfilePage() {
       return;
     }
 
-    setIsLoading(true);
-
     try {
-      const updated: User = await users.updateMe({
+      const updated: User = await updateMutation.mutateAsync({
         username,
         password: password || undefined,
         confirmPassword: confirmPassword || undefined,
@@ -39,10 +49,8 @@ export function ProfilePage() {
       setPassword("");
       setConfirmPassword("");
       setSuccess("Profile updated");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update profile");
-    } finally {
-      setIsLoading(false);
+    } catch {
+      // The mutation's onError already surfaced the failure.
     }
   };
 

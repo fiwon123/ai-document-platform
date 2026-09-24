@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SearchPage } from "./SearchPage";
+import { renderWithClient } from "../test/renderWithClient";
 import type { SearchResponse } from "../types";
 
 vi.mock("../components/DocumentFilter", () => ({
@@ -26,7 +27,7 @@ const result = {
 };
 
 async function runSearch(query: string) {
-  render(<SearchPage />);
+  renderWithClient(<SearchPage />);
   fireEvent.change(screen.getByPlaceholderText("Search your documents..."), {
     target: { value: query },
   });
@@ -72,7 +73,7 @@ describe("SearchPage", () => {
       }),
     );
 
-    render(<SearchPage />);
+    renderWithClient(<SearchPage />);
     const input = screen.getByPlaceholderText(
       "Search your documents...",
     ) as HTMLInputElement;
@@ -101,7 +102,7 @@ describe("SearchPage", () => {
   });
 
   it("ignores stale responses when a newer search supersedes an in-flight one", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     try {
       const staleResponse: SearchResponse = {
         query: "first",
@@ -125,7 +126,7 @@ describe("SearchPage", () => {
         )
         .mockResolvedValueOnce(freshResponse);
 
-      render(<SearchPage />);
+      renderWithClient(<SearchPage />);
       const input = screen.getByPlaceholderText("Search your documents...");
 
       // First keystroke starts a debounced search that stays pending.
@@ -154,7 +155,7 @@ describe("SearchPage", () => {
   });
 
   it("discards an in-flight search when the query is cleared", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     try {
       let resolveSearch: (value: SearchResponse) => void = () => {};
       mockedSearch.mockReturnValue(
@@ -163,7 +164,7 @@ describe("SearchPage", () => {
         }),
       );
 
-      render(<SearchPage />);
+      renderWithClient(<SearchPage />);
       const input = screen.getByPlaceholderText("Search your documents...");
 
       // A debounced search fires and stays pending.
@@ -201,7 +202,7 @@ describe("SearchPage", () => {
   });
 
   it("disables load more while a newer search is in flight", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     try {
       mockedSearch
         .mockResolvedValueOnce({
@@ -213,7 +214,7 @@ describe("SearchPage", () => {
         // The newer autosearch never resolves, keeping isLoading true.
         .mockReturnValue(new Promise<SearchResponse>(() => {}));
 
-      render(<SearchPage />);
+      renderWithClient(<SearchPage />);
       const input = screen.getByPlaceholderText("Search your documents...");
       fireEvent.change(input, { target: { value: "first" } });
       await act(async () => {

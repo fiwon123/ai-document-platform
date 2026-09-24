@@ -1,7 +1,8 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsPage } from "./SettingsPage";
+import { renderWithClient } from "../test/renderWithClient";
 import type { User } from "../types";
 
 const alice: User = {
@@ -33,7 +34,7 @@ const MODEL_STORAGE_KEY = "askdocs-model";
 const API_KEY_STORAGE_KEY = "askdocs-api-key";
 
 function renderPage() {
-  return render(
+  return renderWithClient(
     <MemoryRouter>
       <SettingsPage />
     </MemoryRouter>,

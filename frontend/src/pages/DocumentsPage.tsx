@@ -6,6 +6,8 @@ import { SkeletonCard } from "../components/Skeleton";
 import { Spinner } from "../components/Spinner";
 import { EmptyState } from "../components/EmptyState";
 import { useToast } from "../hooks/useToast";
+import { useDocuments, DOCUMENTS_QUERY_KEY } from "../hooks/useDocuments";
+import { useQueryClient } from "@tanstack/react-query";
 
 /** How often to re-check documents that are still processing. */
 const POLL_INTERVAL_MS = 3000;
@@ -280,10 +282,21 @@ const DocumentCard = memo(function DocumentCard({
 });
 
 export function DocumentsPage() {
-  const [docs, setDocs] = useState<Document[]>([]);
+  const queryClient = useQueryClient();
+  // The document list is a shared TanStack Query — DocumentFilter reads the
+  // same cache entry, and every mutation below (poll, upload, delete,
+  // reprocess) updates it in place so the grid reflects changes instantly.
+  const docsQuery = useDocuments();
+  const docs = docsQuery.data ?? [];
   const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  /** Bumped on every status poll so per-tick work (elapsed labels, thumbnail
+   *  retry windows) runs even when the query data itself stops changing:
+   *  TanStack Query's structural sharing keeps `docs` referentially stable
+   *  once the polled statuses plateau, so effects keyed only on `docs`
+   *  would otherwise go quiet. */
+  const [pollTick, setPollTick] = useState(0);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
@@ -291,7 +304,6 @@ export function DocumentsPage() {
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** Ids whose thumbnail URL was fetched successfully (avoids refetching). */
@@ -299,27 +311,13 @@ export function DocumentsPage() {
   /** Ids whose last thumbnail lookup failed, timestamped for backoff. */
   const thumbnailFailedAt = useRef<Map<string, number>>(new Map());
 
-  const loadDocuments = useCallback(async () => {
-    try {
-      const data = await documents.list();
-      setDocs(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load documents");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-useEffect(() => {
-  // Fetch-on-mount: this effect synchronizes with the API, and the loader's
-  // setState calls all happen after the awaited fetch — the idiomatic
-  // pattern the (conservative) set-state-in-effect rule cannot see through.
-  // oxlint-disable-next-line react/set-state-in-effect
-  loadDocuments();
-}, [loadDocuments]);
+  const listError = docsQuery.isError ? (docsQuery.error as Error).message : null;
+  const errorMessage = listError ?? error;
 
   // Poll status of every document that is still pending/processing so the
   // badges update live (after upload or external processing) without a reload.
+  // Merges happen through the shared query cache so both the grid and the
+  // DocumentFilter on other pages see the freshest status.
   useEffect(() => {
     const active = docs.filter((d) => isProcessing(d.status));
     if (active.length === 0) return;
@@ -332,8 +330,8 @@ useEffect(() => {
         return; // Transient error — keep polling on the next tick.
       }
 
-      setDocs((prev) =>
-        prev.map((doc) => {
+      queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
+        (prev ?? []).map((doc) => {
           const next = statuses.find((s) => s.id === doc.id);
           if (!next) return doc;
           const changed =
@@ -359,10 +357,14 @@ useEffect(() => {
           };
         }),
       );
+      // Wake the page even when the merged data is structurally identical
+      // (active-but-unchanged documents), so elapsed labels and thumbnail
+      // retries keep advancing with the clock.
+      setPollTick((t) => t + 1);
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [docs]);
+  }, [docs, queryClient]);
 
   // Fetch presigned thumbnail URLs for documents that have one (PDFs that
   // finished processing). Failures are silent — the card keeps its generic
@@ -393,7 +395,10 @@ useEffect(() => {
           thumbnailFailedAt.current.set(doc.id, Date.now());
         });
     }
-  }, [docs]);
+    // pollTick wakes this effect on every status poll, so a failed lookup is
+    // retried once the backoff window elapses even when the docs data (and
+    // thus this effect's other dependency) has plateaued.
+  }, [docs, pollTick]);
 
   // Focus management for the preview modal: move focus into the dialog on
   // open, trap Tab inside it, close on Escape, and restore focus to the
@@ -457,7 +462,10 @@ useEffect(() => {
         try {
           const { uploaded, failed: failures } = await documents.uploadMany(batch);
           if (uploaded.length > 0) {
-            setDocs((prev) => [...uploaded, ...prev]);
+            queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) => [
+              ...uploaded,
+              ...(prev ?? []),
+            ]);
             uploadedCount += uploaded.length;
           }
           for (const failure of failures) {
@@ -507,7 +515,9 @@ useEffect(() => {
     setError(null);
     try {
       await documents.delete(id);
-      setDocs((prev) => prev.filter((d) => d.id !== id));
+      queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
+        (prev ?? []).filter((d) => d.id !== id),
+      );
       // Drop any cached thumbnail URL so a re-uploaded document with the
       // same id (never happens today, but cheap) cannot show a stale image.
       setThumbnailUrls((prev) => {
@@ -522,7 +532,7 @@ useEffect(() => {
     } finally {
       setDeletingId(null);
     }
-  }, [toast]);
+  }, [queryClient, toast]);
 
   // All handlers use only stable references (settiers, the API client,
   // toast), so they keep their identity across renders and memoized cards
@@ -565,8 +575,8 @@ useEffect(() => {
     setError(null);
     try {
       await documents.reprocess(id);
-      setDocs((prev) =>
-        prev.map((d) =>
+      queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
+        (prev ?? []).map((d) =>
           d.id === id
             ? {
                 ...d,
@@ -587,7 +597,7 @@ useEffect(() => {
     } finally {
       setReprocessingId(null);
     }
-  }, [toast]);
+  }, [queryClient, toast]);
 
   const clearThumbnailUrl = useCallback((id: string) => {
     setThumbnailUrls((prev) => {
@@ -635,10 +645,10 @@ useEffect(() => {
         </label>
       </div>
 
-      {error && <p className="error-message" role="alert">{error}</p>}
+      {errorMessage && <p className="error-message" role="alert">{errorMessage}</p>}
       {previewError && <p className="error-message" role="alert">{previewError}</p>}
 
-      {isLoading ? (
+      {docsQuery.isPending ? (
         <div className="document-grid" aria-busy="true">
           <SkeletonCard />
           <SkeletonCard />

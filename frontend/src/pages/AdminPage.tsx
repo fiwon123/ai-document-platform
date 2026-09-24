@@ -1,7 +1,10 @@
-import { memo, useCallback, useEffect, useState } from "react";
-import { statistics, users } from "../services/api";
-import type { AdminStatisticsResponse, User } from "../types";
+import { memo, useCallback, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { users } from "../services/api";
+import type { User } from "../types";
 import { useAuth } from "../hooks/useAuth";
+import { useAdminStatistics } from "../hooks/useStatistics";
+import { useAdminUsers, ADMIN_USERS_QUERY_KEY } from "../hooks/useAdminUsers";
 import { SkeletonList } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
 import { Spinner } from "../components/Spinner";
@@ -84,60 +87,31 @@ const AdminUserRow = memo(function AdminUserRow({
 
 export function AdminPage() {
   const { user: currentUser } = useAuth();
-  const [userList, setUserList] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const isAdmin = currentUser?.role === "admin";
+  // Fetch-on-role-change: non-admins render the access-denied branch and the
+  // queries stay disabled, so no admin data is fetched for them.
+  const usersQuery = useAdminUsers({ enabled: isAdmin });
+  const statsQuery = useAdminStatistics({ enabled: isAdmin });
+  const userList = usersQuery.data ?? [];
+  const stats = statsQuery.data ?? null;
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [stats, setStats] = useState<AdminStatisticsResponse | null>(null);
-  const [statsFailed, setStatsFailed] = useState(false);
 
-  const isAdmin = currentUser?.role === "admin";
-
-  const loadUsers = useCallback(async () => {
-    try {
-      const data = await users.listUsers();
-      setUserList(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load users");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const loadStats = useCallback(async () => {
-    try {
-      const data = await statistics.getAdmin();
-      setStats(data);
-    } catch (err) {
-      // Statistics are supplementary — a failure should not block the
-      // user management table below, but it must resolve the spinner so
-      // the section does not spin forever.
-      console.error("Failed to load admin statistics", err);
-      setStatsFailed(true);
-    }
-  }, []);
-
-useEffect(() => {
-  if (isAdmin) {
-    // Fetch-on-role-change: the loaders' setState calls all happen after
-    // awaited fetches — the idiomatic pattern the (conservative)
-    // set-state-in-effect rule cannot see through.
-    // oxlint-disable-next-line react/set-state-in-effect
-    void loadUsers();
-    // oxlint-disable-next-line react/set-state-in-effect
-    void loadStats();
-  }
-}, [isAdmin, loadUsers, loadStats]);
+  const statsFailed = statsQuery.isError;
+  const listError = usersQuery.isError ? (usersQuery.error as Error).message : null;
+  const errorMessage = listError ?? error;
 
   // Handlers use functional setState only, so they are stable across renders
-  // and memoized rows are not invalidated by parent re-renders.
+  // and memoized rows are not invalidated by parent re-renders. Each one
+  // updates the shared users query cache instead of local component state.
   const handleRoleChange = useCallback(async (userId: string, role: Role) => {
     setBusyId(userId);
     setError(null);
     try {
       const updated = await users.updateUserRole(userId, role);
-      setUserList((prev) =>
-        prev.map((u) =>
+      queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
+        (prev ?? []).map((u) =>
           u.id === userId ? { ...u, role: updated.role } : u,
         ),
       );
@@ -146,7 +120,7 @@ useEffect(() => {
     } finally {
       setBusyId(null);
     }
-  }, []);
+  }, [queryClient]);
 
   const handleDelete = useCallback(async (userId: string, username: string) => {
     if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
@@ -155,21 +129,23 @@ useEffect(() => {
     setError(null);
     try {
       await users.deleteUser(userId);
-      setUserList((prev) => prev.filter((u) => u.id !== userId));
+      queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
+        (prev ?? []).filter((u) => u.id !== userId),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete user");
     } finally {
       setBusyId(null);
     }
-  }, []);
+  }, [queryClient]);
 
   const handleToggleActive = useCallback(async (user: User) => {
     setBusyId(user.id);
     setError(null);
     try {
       const updated = await users.updateUserActive(user.id, !user.is_active);
-      setUserList((prev) =>
-        prev.map((u) =>
+      queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
+        (prev ?? []).map((u) =>
           u.id === user.id ? { ...u, is_active: updated.is_active } : u,
         ),
       );
@@ -178,7 +154,7 @@ useEffect(() => {
     } finally {
       setBusyId(null);
     }
-  }, []);
+  }, [queryClient]);
 
   if (!isAdmin) {
     return (
@@ -199,7 +175,7 @@ useEffect(() => {
         <p>Manage accounts and roles</p>
       </header>
 
-      {error && <p className="error-message" role="alert">{error}</p>}
+      {errorMessage && <p className="error-message" role="alert">{errorMessage}</p>}
 
       <section aria-label="System statistics" className="admin-stats">
         {stats ? (
@@ -256,7 +232,7 @@ useEffect(() => {
         )}
       </section>
 
-      {isLoading ? (
+      {usersQuery.isPending ? (
         <SkeletonList rows={4} />
       ) : userList.length === 0 ? (
         <EmptyState

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { webhooks } from "../services/api";
 import type { WebhookEvent, WebhookSubscription } from "../types";
 import { Spinner } from "../components/Spinner";
+import { useWebhooks, WEBHOOKS_QUERY_KEY } from "../hooks/useWebhooks";
 
 const EVENT_OPTIONS: { value: WebhookEvent; label: string }[] = [
   { value: "document.processing", label: "Processing started" },
@@ -17,9 +19,13 @@ interface Notice {
 }
 
 export function WebhooksPage() {
-  const [subscriptions, setSubscriptions] = useState<WebhookSubscription[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const webhooksQuery = useWebhooks();
+  const subscriptions = webhooksQuery.data ?? [];
+  const isLoading = webhooksQuery.isPending && !webhooksQuery.data;
+  const loadError = webhooksQuery.isError
+    ? (webhooksQuery.error as Error).message
+    : null;
 
   const [urlDraft, setUrlDraft] = useState("");
   const [selectedEvents, setSelectedEvents] = useState<WebhookEvent[]>([
@@ -31,36 +37,6 @@ export function WebhooksPage() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, string>>({});
-
-  const load = useCallback(() => {
-    webhooks
-      .list()
-      .then((data) => setSubscriptions(data))
-      .catch((err: unknown) => {
-        setLoadError(err instanceof Error ? err.message : "Failed to load webhooks");
-      })
-      .finally(() => setIsLoading(false));
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    webhooks
-      .list()
-      .then((data) => {
-        if (!cancelled) setSubscriptions(data);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : "Failed to load webhooks");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   function toggleEvent(event: WebhookEvent) {
     setSelectedEvents((current) =>
@@ -85,7 +61,10 @@ export function WebhooksPage() {
     setCreatingError(null);
     try {
       const created = await webhooks.create(url, selectedEvents);
-      setSubscriptions((current) => [created, ...current]);
+      queryClient.setQueryData<WebhookSubscription[]>(WEBHOOKS_QUERY_KEY, (prev) => [
+        created,
+        ...(prev ?? []),
+      ]);
       setUrlDraft("");
       setSelectedEvents(["document.ready"]);
       setNotice({ type: "success", text: "Webhook created" });
@@ -99,8 +78,8 @@ export function WebhooksPage() {
   async function handleToggleActive(sub: WebhookSubscription) {
     try {
       const updated = await webhooks.update(sub.id, { is_active: !sub.is_active });
-      setSubscriptions((current) =>
-        current.map((s) => (s.id === updated.id ? updated : s)),
+      queryClient.setQueryData<WebhookSubscription[]>(WEBHOOKS_QUERY_KEY, (prev) =>
+        (prev ?? []).map((s) => (s.id === updated.id ? updated : s)),
       );
     } catch (err: unknown) {
       setNotice({
@@ -113,7 +92,9 @@ export function WebhooksPage() {
   async function handleDelete(sub: WebhookSubscription) {
     try {
       await webhooks.remove(sub.id);
-      setSubscriptions((current) => current.filter((s) => s.id !== sub.id));
+      queryClient.setQueryData<WebhookSubscription[]>(WEBHOOKS_QUERY_KEY, (prev) =>
+        (prev ?? []).filter((s) => s.id !== sub.id),
+      );
       setNotice({ type: "success", text: "Webhook deleted" });
     } catch (err: unknown) {
       setNotice({
@@ -132,7 +113,7 @@ export function WebhooksPage() {
         [sub.id]: result.message,
       }));
       // Reflect the updated delivery stats in the listing.
-      load();
+      void queryClient.invalidateQueries({ queryKey: WEBHOOKS_QUERY_KEY });
     } catch (err: unknown) {
       setTestResults((current) => ({
         ...current,

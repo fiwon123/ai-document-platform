@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { QAPage } from "./QAPage";
+import { renderWithClient } from "../test/renderWithClient";
 import { documents, qa } from "../services/api";
 import type { QAResponse } from "../types";
 
@@ -27,7 +28,7 @@ function ask(
 }
 
 async function askQuestion(question: string) {
-  render(<QAPage />);
+  renderWithClient(<QAPage />);
   fireEvent.change(
     screen.getByPlaceholderText("Ask a question about your documents..."),
     { target: { value: question } },
@@ -50,7 +51,7 @@ describe("QAPage", () => {
       "gpt-4o-mini",
     );
 
-    render(<QAPage />);
+    renderWithClient(<QAPage />);
 
     fireEvent.change(
       screen.getByPlaceholderText("Ask a question about your documents..."),
@@ -70,7 +71,7 @@ describe("QAPage", () => {
   it("omits the model badge when the model is null", async () => {
     ask("Hi", "Hello! How can I help?", null);
 
-    render(<QAPage />);
+    renderWithClient(<QAPage />);
 
     fireEvent.change(
       screen.getByPlaceholderText("Ask a question about your documents..."),
@@ -83,7 +84,7 @@ describe("QAPage", () => {
   });
 
   it("shows an empty state before any question is asked", () => {
-    render(<QAPage />);
+    renderWithClient(<QAPage />);
     expect(screen.getByText("No messages yet")).toBeTruthy();
     expect(
       screen.getByText(
@@ -93,7 +94,7 @@ describe("QAPage", () => {
   });
 
   it("disables Send when the input is empty or whitespace", () => {
-    render(<QAPage />);
+    renderWithClient(<QAPage />);
     const send = screen.getByRole("button", { name: "Send" });
     expect(send).toBeDisabled();
 
@@ -111,7 +112,7 @@ describe("QAPage", () => {
   });
 
   it("does not call ask for an empty or whitespace-only input", async () => {
-    render(<QAPage />);
+    renderWithClient(<QAPage />);
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await act(async () => {});
     expect(mockedAsk).not.toHaveBeenCalled();
@@ -135,7 +136,7 @@ describe("QAPage", () => {
       }),
     );
 
-    render(<QAPage />);
+    renderWithClient(<QAPage />);
     fireEvent.change(
       screen.getByPlaceholderText("Ask a question about your documents..."),
       { target: { value: "Loading?" } },
@@ -203,7 +204,7 @@ describe("QAPage", () => {
     ];
     ask("What is the revenue growth?", "20% in Q4.", "gpt-4o-mini", sources);
 
-    render(<QAPage />);
+    renderWithClient(<QAPage />);
     fireEvent.change(
       screen.getByPlaceholderText("Ask a question about your documents..."),
       { target: { value: "What is the revenue growth?" } },
@@ -263,7 +264,7 @@ describe("QAPage", () => {
     ]);
     ask("Only this doc?", "Yes.", null);
 
-    render(<QAPage />);
+    renderWithClient(<QAPage />);
     await act(async () => {});
 
     fireEvent.click(await screen.findByRole("button", { name: /report.pdf/ }));
@@ -298,7 +299,7 @@ describe("QAPage", () => {
   it("renders assistant answers as markdown", async () => {
     ask("Format?", "**bold** and `code`", null);
 
-    render(<QAPage />);
+    renderWithClient(<QAPage />);
     fireEvent.change(
       screen.getByPlaceholderText("Ask a question about your documents..."),
       { target: { value: "Format?" } },
@@ -312,7 +313,7 @@ describe("QAPage", () => {
   it("distinguishes user messages from assistant messages", async () => {
     ask("Who are you?", "An assistant.", null);
 
-    render(<QAPage />);
+    renderWithClient(<QAPage />);
     fireEvent.change(
       screen.getByPlaceholderText("Ask a question about your documents..."),
       { target: { value: "Who are you?" } },

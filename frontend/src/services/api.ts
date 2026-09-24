@@ -55,10 +55,17 @@ function getRefreshPromise(): Promise<TokenResponse | null> {
   return refreshPromise;
 }
 
-async function request<T>(
+/**
+ * Core fetch with shared auth handling: attaches the Bearer token from
+ * localStorage, sends the refresh cookie, and transparently mints a fresh
+ * access token via the refresh endpoint when a request comes back 401 (then
+ * replays the original request once). Every API call — JSON or file download —
+ * flows through here so the refresh logic lives in exactly one place.
+ */
+async function fetchWithAuth(
   path: string,
   options: RequestOptions = {},
-): Promise<T> {
+): Promise<Response> {
   const token = localStorage.getItem("token");
 
   const headers: Record<string, string> = {
@@ -85,33 +92,47 @@ async function request<T>(
     credentials: "include",
   });
 
-  if (!response.ok) {
-    if (
-      response.status === 401 &&
-      !options._retried &&
-      // Login failures come from bad credentials, not an expired session —
-      // replaying through a refresh would only mask the real error.
-      path !== "/auth/login"
-    ) {
-      // Try to mint a fresh access token from the refresh cookie, then
-      // replay the original request once. If refresh fails, the session
-      // is gone — clear the token and send the user back to login.
-      const refreshed = await getRefreshPromise();
-      if (refreshed) {
-        localStorage.setItem("token", refreshed.access_token);
-        return request<T>(path, { ...options, _retried: true });
-      }
-      localStorage.removeItem("token");
-      window.location.href = "/login";
-      throw new ApiError(401, "Session expired. Please log in again.");
+  if (
+    response.status === 401 &&
+    !options._retried &&
+    // Login failures come from bad credentials, not an expired session —
+    // replaying through a refresh would only mask the real error.
+    path !== "/auth/login"
+  ) {
+    // Try to mint a fresh access token from the refresh cookie, then replay
+    // the original request once. If refresh fails, the session is gone —
+    // clear the token and send the user back to login.
+    const refreshed = await getRefreshPromise();
+    if (refreshed) {
+      localStorage.setItem("token", refreshed.access_token);
+      return fetchWithAuth(path, { ...options, _retried: true });
     }
+    localStorage.removeItem("token");
+    window.location.href = "/login";
+    throw new ApiError(401, "Session expired. Please log in again.");
+  }
 
-    const error = await response.json().catch(() => ({ detail: "Request failed" }));
-    // Support both the legacy `{detail}` and the standardized
-    // `{error: {code, message}}` response shapes.
-    const message =
-      error?.detail ?? error?.error?.message ?? `Request failed (${response.status})`;
-    throw new ApiError(response.status, message);
+  return response;
+}
+
+/** Shared error parsing for non-2xx responses (JSON body or fallback). */
+async function parseError(response: Response, fallback: string): Promise<ApiError> {
+  const body = await response.json().catch(() => ({ detail: fallback }));
+  // Support both the legacy `{detail}` and the standardized
+  // `{error: {code, message}}` response shapes.
+  const message =
+    body?.detail ?? body?.error?.message ?? `Request failed (${response.status})`;
+  return new ApiError(response.status, message);
+}
+
+async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const response = await fetchWithAuth(path, options);
+
+  if (!response.ok) {
+    throw await parseError(response, "Request failed");
   }
 
   if (response.status === 204) {
@@ -281,6 +302,11 @@ export const users = {
   async deleteUser(userId: string): Promise<void> {
     await request<void>(`/users/${userId}`, { method: "DELETE" });
   },
+
+  /** Delete the current user's own account. */
+  async deleteMe(): Promise<void> {
+    await request<void>("/users/me", { method: "DELETE" });
+  },
 };
 
 export interface UpdateWebhookInput {
@@ -343,66 +369,38 @@ export const search = {
     documentIds: string[] = [],
     topK = 5,
   ): Promise<void> {
-    const response = await doExport(query, format, documentIds, topK);
-    if (response.status === 401 && !localStorage.getItem("token")) {
-      // The session may have expired while the user was browsing — refresh
-      // silently and retry once, mirroring the shared request() helper.
-      const refreshed = await getRefreshPromise();
-      if (refreshed) {
-        localStorage.setItem("token", refreshed.access_token);
-        const retry = await doExport(query, format, documentIds, topK);
-        return handleExportResponse(retry, format);
-      }
+    // Goes through fetchWithAuth so the 401-refresh-replay and auth header
+    // logic is shared with every other API call.
+    const response = await fetchWithAuth("/search/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query,
+        top_k: topK,
+        offset: 0,
+        document_ids: documentIds.length > 0 ? documentIds : null,
+        format,
+      }),
+    });
+
+    if (!response.ok) {
+      throw await parseError(response, "Export failed");
     }
-    return handleExportResponse(response, format);
+
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    const filename =
+      disposition.match(/filename="?([^";]+)"?/)?.[1] ?? `search_results.${format}`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   },
 };
-
-async function doExport(
-  query: string,
-  format: "csv" | "json",
-  documentIds: string[],
-  topK: number,
-): Promise<Response> {
-  const token = localStorage.getItem("token");
-  return fetch(`${API_BASE}/search/export`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    credentials: "include",
-    body: JSON.stringify({
-      query,
-      top_k: topK,
-      offset: 0,
-      document_ids: documentIds.length > 0 ? documentIds : null,
-      format,
-    }),
-  });
-}
-
-async function handleExportResponse(response: Response, format: "csv" | "json") {
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Export failed" }));
-    const message =
-      error?.detail ?? error?.error?.message ?? `Export failed (${response.status})`;
-    throw new ApiError(response.status, message);
-  }
-
-  const blob = await response.blob();
-  const disposition = response.headers.get("Content-Disposition") ?? "";
-  const filename =
-    disposition.match(/filename="?([^";]+)"?/)?.[1] ?? `search_results.${format}`;
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
 
 export interface QAModels {
   free: string[];
