@@ -74,6 +74,19 @@ def generate_secret() -> str:
     return secrets.token_urlsafe(32)
 
 
+def mask_secret(secret: str) -> str:
+    """Return a display-only form of a signing secret.
+
+    Keeps a recognizable prefix/suffix so an owner can tell multiple keys
+    apart without exposing enough material to forge signatures. The full
+    value is only ever returned from the create endpoint (capture-once);
+    listings and updates expose the masked form.
+    """
+    if len(secret) <= 8:
+        return "hwk...hidden"
+    return f"{secret[:5]}...{secret[-4:]}"
+
+
 def sign_payload(secret: str, body: bytes) -> str:
     """HMAC-SHA256 hexdigest of the raw body using the subscription secret."""
     return hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
