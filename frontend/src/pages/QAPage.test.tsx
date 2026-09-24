@@ -266,7 +266,7 @@ describe("QAPage", () => {
     render(<QAPage />);
     await act(async () => {});
 
-    fireEvent.click(await screen.findByLabelText("report.pdf"));
+    fireEvent.click(await screen.findByRole("button", { name: /report.pdf/ }));
     fireEvent.change(
       screen.getByPlaceholderText("Ask a question about your documents..."),
       { target: { value: "Only this doc?" } },

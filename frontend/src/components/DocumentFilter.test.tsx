@@ -33,9 +33,6 @@ const docs: Document[] = [
 vi.mock("../services/api", () => ({
   documents: {
     list: vi.fn(),
-    getStatus: vi.fn(),
-    upload: vi.fn(),
-    delete: vi.fn(),
   },
 }));
 
@@ -58,18 +55,25 @@ describe("DocumentFilter", () => {
     return onChange;
   }
 
-  it("lists the user's documents", async () => {
+  it("lists the user's documents as chips", async () => {
     renderFilter();
 
-    expect(await screen.findByText("report.pdf")).toBeTruthy();
-    expect(screen.getByText("notes.txt")).toBeTruthy();
-    expect(screen.getByLabelText("All documents")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /report.pdf/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /notes.txt/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /All documents/ })).toBeTruthy();
+  });
+
+  it("marks the All documents chip selected when nothing else is", async () => {
+    renderFilter();
+
+    const allChip = await screen.findByRole("button", { name: /All documents/ });
+    expect(allChip.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("reports a selected document via onChange", async () => {
     const onChange = renderFilter();
 
-    fireEvent.click(await screen.findByLabelText("report.pdf"));
+    fireEvent.click(await screen.findByRole("button", { name: /report.pdf/ }));
 
     expect(onChange).toHaveBeenCalledWith(["doc-a"]);
   });
@@ -77,7 +81,7 @@ describe("DocumentFilter", () => {
   it("removes a document from the selection on second click", async () => {
     const onChange = renderFilter(["doc-a", "doc-b"]);
 
-    fireEvent.click(await screen.findByLabelText("report.pdf"));
+    fireEvent.click(await screen.findByRole("button", { name: /report.pdf/ }));
 
     expect(onChange).toHaveBeenCalledWith(["doc-b"]);
   });
@@ -85,7 +89,7 @@ describe("DocumentFilter", () => {
   it("clears the selection when All documents is clicked", async () => {
     const onChange = renderFilter(["doc-a"]);
 
-    fireEvent.click(await screen.findByLabelText("All documents"));
+    fireEvent.click(await screen.findByRole("button", { name: /All documents/ }));
 
     expect(onChange).toHaveBeenCalledWith([]);
   });
