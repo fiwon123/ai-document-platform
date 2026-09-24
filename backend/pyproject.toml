@@ -13,7 +13,9 @@ dependencies = [
     "passlib>=1.7.4",
     "pgvector>=0.3.6",
     "psycopg2-binary>=2.9.12",
-    "PyPDF2>=3.0.0",
+    # pypdf is the maintained continuation of PyPDF2 (the project was
+    # renamed; PyPDF2 3.0.1 was the last release under that name).
+    "pypdf>=4.0.0",
     "python-jose[cryptography]>=3.5.0",
     "redis>=5.0.0",
     "sqlalchemy>=2.0.51",

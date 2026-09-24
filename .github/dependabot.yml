@@ -37,7 +37,7 @@ updates:
           - "boto3"
       parsing:
         patterns:
-          - "PyPDF2"
+          - "pypdf"
 
   # Frontend npm dependencies
   - package-ecosystem: "npm"
