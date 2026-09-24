@@ -61,7 +61,8 @@ def create_webhook(
     if not is_valid_webhook_url(request.url):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="URL must be a valid http:// or https:// endpoint",
+            detail="URL must be a public http:// or https:// endpoint "
+            "(internal/private addresses are not allowed)",
         )
     return repository.create(
         user_id=owner_id,
@@ -91,7 +92,8 @@ def update_webhook(
     if request.url is not None and not is_valid_webhook_url(request.url):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="URL must be a valid http:// or https:// endpoint",
+            detail="URL must be a public http:// or https:// endpoint "
+            "(internal/private addresses are not allowed)",
         )
     return repository.update(
         subscription,

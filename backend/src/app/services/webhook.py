@@ -11,10 +11,13 @@ they never fail or delay the document pipeline that triggered them.
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import secrets
+import socket
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import urlparse
@@ -38,6 +41,90 @@ DELIVERY_TIMEOUT_SECONDS = 10
 
 SIGNATURE_HEADER = "X-Webhook-Signature"
 EVENT_HEADER = "X-Webhook-Event"
+
+# --- SSRF protection for receiver URLs -------------------------------------
+#
+# Webhook subscriptions POST signed payloads to user-supplied URLs, so the
+# URL must never point at loopback, link-local, private, reserved, or
+# cloud-metadata addresses — otherwise a user could pivot the server into
+# the internal network or exfiltrate cloud IAM credentials. Both IP-literal
+# URLs and hostnames (resolved at subscription time) are checked.
+
+# IPv4 networks that must never be webhook delivery targets. Kept explicit
+# rather than relying on ``ipaddress.is_private`` so new IANA special-use
+# assignments are covered regardless of the stdlib version in use.
+_UNSAFE_IPV4_NETWORKS = [
+    ipaddress.ip_network("0.0.0.0/8"),        # "this" network
+    ipaddress.ip_network("10.0.0.0/8"),       # RFC 1918 private
+    ipaddress.ip_network("100.64.0.0/10"),    # CGNAT
+    ipaddress.ip_network("127.0.0.0/8"),      # loopback
+    ipaddress.ip_network("169.254.0.0/16"),   # link-local (incl. cloud metadata)
+    ipaddress.ip_network("172.16.0.0/12"),    # RFC 1918 private
+    ipaddress.ip_network("192.0.0.0/24"),     # IETF protocol assignments
+    ipaddress.ip_network("192.0.2.0/24"),     # TEST-NET-1
+    ipaddress.ip_network("192.168.0.0/16"),   # RFC 1918 private
+    ipaddress.ip_network("198.18.0.0/15"),    # benchmarking
+    ipaddress.ip_network("198.51.100.0/24"),  # TEST-NET-2
+    ipaddress.ip_network("203.0.113.0/24"),   # TEST-NET-3
+    ipaddress.ip_network("224.0.0.0/4"),      # multicast
+    ipaddress.ip_network("240.0.0.0/4"),      # reserved
+]
+
+_UNSAFE_IPV6_NETWORKS = [
+    ipaddress.ip_network("::/128"),           # unspecified
+    ipaddress.ip_network("::1/128"),          # loopback
+    ipaddress.ip_network("fc00::/7"),         # unique local (private)
+    ipaddress.ip_network("fe80::/10"),        # link-local
+    ipaddress.ip_network("ff00::/8"),         # multicast
+    ipaddress.ip_network("2001:db8::/32"),    # documentation
+]
+
+# Hostnames that conventionally never resolve to a public, externally
+# reachable address. ``*.local``/``*.internal``-style names may not resolve
+# at all in the server's resolver, so they are rejected by name alone.
+_INTERNAL_HOSTNAMES = frozenset(
+    {
+        "localhost",
+        "localhost.localdomain",
+        "metadata.google.internal",
+        "metadata.aws.internal",
+    }
+)
+_INTERNAL_HOSTNAME_SUFFIXES = (
+    ".localhost",
+    ".local",
+    ".internal",
+    ".home.arpa",
+    ".lan",
+    ".localdomain",
+    ".corp",
+)
+
+
+def _is_unsafe_ip(address: ipaddress._BaseAddress) -> bool:
+    """True when ``address`` falls in a network that must never be a target."""
+    networks = (
+        _UNSAFE_IPV4_NETWORKS if isinstance(address, ipaddress.IPv4Address)
+        else _UNSAFE_IPV6_NETWORKS
+    )
+    return any(address in network for network in networks)
+
+
+def _resolve_host(host: str) -> list[ipaddress._BaseAddress]:
+    """Resolve a hostname to its IP addresses (integration-resolvable hook)."""
+    try:
+        infos = socket.getaddrinfo(
+            host, None, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM
+        )
+    except socket.gaierror:
+        return []
+    addresses: list[ipaddress._BaseAddress] = []
+    for info in infos:
+        try:
+            addresses.append(ipaddress.ip_address(info[4][0]))
+        except ValueError:
+            continue
+    return addresses
 
 
 @dataclass(frozen=True)
@@ -79,13 +166,54 @@ def sign_payload(secret: str, body: bytes) -> str:
     return hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
 
-def is_valid_webhook_url(url: str) -> bool:
-    """Accept only parseable http/https URLs (rejects SSRF-prone schemes)."""
+def is_valid_webhook_url(
+    url: str,
+    *,
+    resolver: Callable[[str], list[ipaddress._BaseAddress]] | None = None,
+) -> bool:
+    """Return True only for http(s) URLs that target a public, non-internal
+    address (SSRF guard).
+
+    The check is layered:
+
+    - scheme/netloc sanity (``http``/``https`` only);
+    - a hostname blocklist (``localhost``, ``*.local``, ``*.internal``,
+      cloud-metadata hostnames, ...);
+    - IP-literal URLs are rejected when the literal falls in any unsafe
+      network (loopback, link-local, RFC 1918, CGNAT, multicast, ...);
+    - hostnames are resolved and rejected when any resolved address is
+      unsafe, or when the name does not resolve at all.
+
+    ``resolver`` is injectable for tests (defaults to the real resolver).
+    """
     try:
         parsed = urlparse(url)
+        host = parsed.hostname
     except ValueError:
         return False
-    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+    if parsed.scheme not in ("http", "https") or not host:
+        return False
+
+    lowered = host.lower()
+    if lowered in _INTERNAL_HOSTNAMES or any(
+        lowered.endswith(suffix) for suffix in _INTERNAL_HOSTNAME_SUFFIXES
+    ):
+        return False
+
+    # IP literals are checked directly; hostnames go through the resolver.
+    try:
+        address = ipaddress.ip_address(lowered)
+    except ValueError:
+        address = None
+
+    if address is not None:
+        return not _is_unsafe_ip(address)
+
+    lookup = resolver if resolver is not None else _resolve_host
+    resolved = lookup(lowered)
+    if not resolved:
+        return False
+    return not any(_is_unsafe_ip(item) for item in resolved)
 
 
 def build_payload(event: str, info: DocumentEventInfo) -> dict:
@@ -131,6 +259,14 @@ async def _post_payload(
 
 async def _deliver(subscription: WebhookSubscription, payload: dict) -> tuple[bool, int | None]:
     """Deliver a payload with retries; returns ``(delivered, last_status_code)``."""
+    # Defense in depth: the URL was validated at subscription time, but
+    # re-check before posting so a DNS rebinding change cannot redirect a
+    # payload into the internal network.
+    if not is_valid_webhook_url(subscription.url):
+        logger.warning(
+            "Blocked webhook delivery to unsafe URL: %s", subscription.url
+        )
+        return False, None
     body = json.dumps(payload, separators=(",", ":")).encode()
     signature = sign_payload(subscription.secret, body)
     last_status_code: int | None = None
@@ -257,6 +393,8 @@ async def deliver_test_payload(
             "message": "This is a test notification from AI Document Intelligence Platform",
         },
     }
+    if not is_valid_webhook_url(subscription.url):
+        return False, None, "Webhook URL is not a valid public http(s) endpoint"
     body = json.dumps(payload, separators=(",", ":")).encode()
     signature = sign_payload(subscription.secret, body)
     try:

@@ -7,6 +7,7 @@ are contacted.
 """
 
 import asyncio
+import ipaddress
 import uuid
 from unittest.mock import MagicMock
 
@@ -77,11 +78,59 @@ class TestSigningHelpers:
         from app.services.webhook import is_valid_webhook_url
 
         assert is_valid_webhook_url("https://example.com/hook")
-        assert is_valid_webhook_url("http://localhost:8080/hook")
+        assert is_valid_webhook_url("https://example.com:8443/hook")
         assert not is_valid_webhook_url("ftp://example.com/hook")
         assert not is_valid_webhook_url("javascript:alert(1)")
         assert not is_valid_webhook_url("")
         assert not is_valid_webhook_url("not a url")
+
+    def test_url_validation_rejects_internal_addresses(self):
+        """Loopback, private, link-local, metadata, and special-use ranges."""
+        from app.services.webhook import is_valid_webhook_url
+
+        for url in (
+            "http://localhost:8080/hook",
+            "http://127.0.0.1:8080/hook",
+            "http://[::1]:8080/hook",
+            "http://10.0.0.5/hook",
+            "http://172.16.0.1/hook",
+            "http://192.168.1.10/hook",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://100.64.0.1/hook",
+            "http://0.0.0.0/hook",
+            "http://[fc00::1]/hook",
+            "http://[fe80::1]/hook",
+            "http://myhost.local/hook",
+            "http://service.internal/hook",
+            "http://metadata.google.internal/hook",
+        ):
+            assert not is_valid_webhook_url(url), url
+
+    def test_url_validation_accepts_public_ip_literals(self):
+        from app.services.webhook import is_valid_webhook_url
+
+        assert is_valid_webhook_url("http://93.184.216.34/hook")
+        assert is_valid_webhook_url("https://[2606:2800:220:1:248:1893:25c8:1946]/hook")
+
+    def test_url_validation_uses_resolver_for_hostnames(self):
+        """The resolver is injectable so tests avoid real DNS lookups."""
+        from app.services.webhook import is_valid_webhook_url
+
+        public = lambda host: [ipaddress.ip_address("93.184.216.34")]  # noqa: E731
+
+        assert is_valid_webhook_url("https://example.com/hook", resolver=public)
+
+        # A hostname that resolves to an internal address is rejected even
+        # though the literal name looks public (DNS-rebinding guard).
+        rebinding = lambda host: [ipaddress.ip_address("127.0.0.1")]  # noqa: E731
+        assert not is_valid_webhook_url(
+            "https://rebinding.example/hook", resolver=rebinding
+        )
+
+        # Unresolvable hostnames are rejected.
+        assert not is_valid_webhook_url(
+            "https://unresolvable.example/hook", resolver=lambda host: []
+        )
 
     def test_build_payload_shape(self):
         from app.services.webhook import DocumentEventInfo, build_payload
@@ -140,6 +189,16 @@ class TestWebhookEndpoints:
     def test_create_rejects_invalid_url(self, client, auth_headers):
         resp = _create_subscription(client, auth_headers, url="ftp://example.com/hook")
         assert resp.status_code == 422
+
+    def test_create_rejects_internal_url(self, client, auth_headers):
+        """SSRF guard: private/metadata URLs are rejected at subscription time."""
+        resp = _create_subscription(
+            client,
+            auth_headers,
+            url="http://169.254.169.254/latest/meta-data/",
+        )
+        assert resp.status_code == 422
+        assert "public" in resp.json()["error"]["message"]
 
     def test_create_rejects_empty_events(self, client, auth_headers):
         resp = _create_subscription(client, auth_headers, events=[])
