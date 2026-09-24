@@ -1,0 +1,32 @@
+# Patterns to ignore when building a Helm package (`helm package`).
+# See https://helm.sh/docs/chart_template_guide/helm_ignore_file/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+*.tmp
+*.bak
+*~
+.DS_Store
+
+# VCS
+.git/
+.gitignore
+.gitattributes
+
+# CI
+.github/
+
+# Root-level dev config (not chart files)
+devspace.yaml
+
+# Secrets and env
+.env
+.env.*
+
+# Build artifacts
+frontend/dist/
+
+# Local packaging output
+*.tgz
