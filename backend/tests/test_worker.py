@@ -433,10 +433,22 @@ class TestRecoverStaleDocuments:
         db_session.refresh(old_processing)
         assert old_pending.status == DocumentStatus.FAILED
         assert old_processing.status == DocumentStatus.FAILED
-        assert (
-            old_pending.error_message
-            == "Processing did not complete within the timeout"
+        assert "Processing did not complete within the timeout" in (
+            old_pending.error_message or ""
         )
+
+    def test_preserves_existing_error_message(self, db_session):
+        # A document that already records a real failure keeps it instead of
+        # the generic timeout text, so users see what actually went wrong.
+        doc = self._seed(db_session, DocumentStatus.PROCESSING, 45)
+        doc.error_message = "openai: connection reset"
+        db_session.commit()
+
+        asyncio.run(recover_stale_documents({}))
+
+        db_session.refresh(doc)
+        assert doc.status == DocumentStatus.FAILED
+        assert doc.error_message == "openai: connection reset"
 
     def test_leaves_recent_documents_alone(self, db_session):
         recent_pending = self._seed(db_session, DocumentStatus.PENDING, 5)

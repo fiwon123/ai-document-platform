@@ -26,6 +26,14 @@ const thumbDoc: Document = {
   has_thumbnail: true,
 };
 
+const failedDoc: Document = {
+  ...pendingDoc,
+  id: "doc-failed",
+  filename: "broken.pdf",
+  status: "failed",
+  error_message: "Processing did not complete within the timeout",
+};
+
 vi.mock("../services/api", () => ({
   documents: {
     list: vi.fn(),
@@ -36,6 +44,7 @@ vi.mock("../services/api", () => ({
     getDownloadUrl: vi.fn(),
     getThumbnailUrl: vi.fn(),
     preview: vi.fn(),
+    reprocess: vi.fn(),
   },
 }));
 
@@ -48,6 +57,7 @@ const mockedDelete = vi.mocked(documents.delete);
 const mockedGetDownloadUrl = vi.mocked(documents.getDownloadUrl);
 const mockedGetThumbnailUrl = vi.mocked(documents.getThumbnailUrl);
 const mockedPreview = vi.mocked(documents.preview);
+const mockedReprocess = vi.mocked(documents.reprocess);
 
 /** Flush pending microtasks inside act so React applies queued state updates. */
 async function settle() {
@@ -598,5 +608,93 @@ describe("DocumentsPage busy states", () => {
     // Results from both batches are merged into the document list.
     expect(screen.getByText("f0.txt")).toBeTruthy();
     expect(screen.getByText("f24.txt")).toBeTruthy();
+  });
+});
+
+describe("DocumentsPage reprocess", () => {
+  beforeEach(() => {
+    mockedList.mockResolvedValue([failedDoc, readyDoc]);
+    mockedReprocess.mockResolvedValue({
+      message: "Document reprocessing started",
+      document_id: "doc-failed",
+      status: "pending",
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+  });
+
+  it("shows a Reprocess button only for failed documents", async () => {
+    render(<DocumentsPage />);
+    await settle();
+
+    // The failed card has the button; the ready card does not.
+    expect(screen.getByRole("button", { name: "Reprocess" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Reprocess" })).toHaveLength(1);
+  });
+
+  it("re-enqueues the document, clears the error, and shows the pending badge", async () => {
+    render(<DocumentsPage />);
+    await settle();
+
+    // The failed error is visible before reprocessing.
+    expect(screen.getByText(/did not complete/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reprocess" }));
+    await settle();
+
+    expect(mockedReprocess).toHaveBeenCalledWith("doc-failed");
+    // The card switches to the pending badge and the error disappears.
+    expect(screen.getByText("pending")).toBeTruthy();
+    expect(screen.queryByText(/did not complete/)).toBeNull();
+  });
+
+  it("shows a spinner and disables the button while reprocessing", async () => {
+    let resolveReprocess!: (
+      value: { message: string; document_id: string; status: string },
+    ) => void;
+    mockedReprocess.mockReturnValue(
+      new Promise((resolve) => {
+        resolveReprocess = resolve;
+      }),
+    );
+
+    render(<DocumentsPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reprocess" }));
+
+    expect(
+      (screen.getByRole("button", { name: /Reprocessing/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(screen.getByRole("status", { name: "Reprocessing" })).toBeTruthy();
+
+    await act(async () => {
+      resolveReprocess({
+        message: "Document reprocessing started",
+        document_id: "doc-failed",
+        status: "pending",
+      });
+    });
+    await settle();
+
+    expect(screen.getByText("pending")).toBeTruthy();
+  });
+
+  it("reports a reprocess failure and keeps the failed state", async () => {
+    mockedReprocess.mockRejectedValue(new Error("already processing"));
+
+    render(<DocumentsPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reprocess" }));
+    await settle();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("already processing");
+    // The card stays failed with its original error message.
+    expect(screen.getByText(/did not complete/)).toBeTruthy();
   });
 });

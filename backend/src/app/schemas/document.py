@@ -168,6 +168,14 @@ class DeleteDocumentResponse(BaseModel):
     document_id: UUID
 
 
+class ReprocessDocumentResponse(BaseModel):
+    """Confirmation that a failed/ready document was re-enqueued for processing."""
+
+    message: str
+    document_id: UUID
+    status: DocumentStatus
+
+
 class BulkUploadFailure(BaseModel):
     """Per-file error entry for a bulk upload."""
 
