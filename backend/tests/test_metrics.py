@@ -1,5 +1,29 @@
 """Prometheus /metrics endpoint tests."""
 
+import pytest
+
+_HEALTH_CHECKS = ("check_database", "check_redis", "check_worker", "check_storage")
+
+
+@pytest.fixture(autouse=True)
+def _healthy_health_checks():
+    """Force the health checks healthy so the metric tests do not depend
+    on infra liveness.
+
+    The real ``check_worker`` reports unhealthy whenever the arq worker
+    heartbeat key is missing (no worker runs in the test/CI environment),
+    which would make ``/v1/health`` return 503 and fail this suite's
+    precondition — irrelevant to what these tests exercise.
+    """
+    import app.routes.health as hr
+
+    original = {name: getattr(hr, name) for name in _HEALTH_CHECKS}
+    for name in original:
+        setattr(hr, name, lambda *a, **k: {"status": "healthy"})
+    yield
+    for name, fn in original.items():
+        setattr(hr, name, fn)
+
 
 def test_metrics_endpoint_exposes_process_and_http_metrics(client):
     """The scrape endpoint returns process + HTTP metrics in text format."""
