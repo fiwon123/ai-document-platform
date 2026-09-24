@@ -224,5 +224,7 @@ result-*
 
 # OpenCode
 .opencode/node_modules/
+# OpenCode memory (agent session memory — local only, never committed)
+.opencode/memory/
 # DevSpace (local Kubernetes dev — caches local, not committed)
 .devspace/
