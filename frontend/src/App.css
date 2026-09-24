@@ -1348,7 +1348,8 @@ body {
 
 .document-card-footer {
   display: flex;
-  gap: 10px;
+  justify-content: flex-end;
+  gap: 8px;
   /* Aligned with .document-card-body { flex: 1 } — belt and braces so the
      footer is always pushed to the card bottom. */
   margin-top: auto;
@@ -1356,16 +1357,15 @@ body {
   border-top: 1px solid var(--line);
 }
 
-.document-card-footer .btn {
-  /* Equal-width actions keep buttons at the same position across cards. */
-  flex: 1;
-  /* Long loading labels ("Downloading…", "Reprocess") must never overflow
-     the card: allow the flex buttons to shrink below their content width
-     and keep the label on a single line. */
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+/* Icon-only actions: square buttons aligned to the right of the footer.
+   Icons (16px) + padding define the size; the button never grows with text
+   since there is none. */
+.document-card-footer .btn-icon {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
 }
 
 /* Document preview modal */

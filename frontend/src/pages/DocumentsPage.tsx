@@ -28,6 +28,96 @@ const statusColors: Record<string, string> = {
   failed: "#dc2626",
 };
 
+/**
+ * Small inline action glyphs for the document-card footer (16px, Feather
+ * style, `currentColor` so they inherit the button color). No icon library —
+ * these match the hand-rolled SVG pattern in ThemeToggle/DocumentFilter.
+ * Rendered `aria-hidden` because each button carries its own aria-label.
+ */
+function RefreshIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </svg>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
+    </svg>
+  );
+}
+
 interface DocumentCardProps {
   doc: Document;
   thumbnailUrl: string | undefined;
@@ -105,56 +195,56 @@ const DocumentCard = memo(function DocumentCard({
           <button
             onClick={() => onReprocess(doc.id)}
             disabled={isReprocessing}
-            className="btn btn-secondary"
-            title="Re-run document processing"
+            className="btn btn-secondary btn-icon"
+            aria-label="Reprocess document"
+            title="Reprocess document"
           >
             {isReprocessing ? (
-              <Spinner size={14} label="Reprocessing" />
+              <Spinner size={16} label="Reprocessing" />
             ) : (
-              "Reprocess"
+              <RefreshIcon />
             )}
           </button>
         )}
         <button
           onClick={() => onPreview(doc)}
           disabled={isPreviewLoading}
-          className="btn btn-secondary"
+          className="btn btn-secondary btn-icon"
+          aria-label="Preview document"
+          title="Preview document"
         >
           {isPreviewLoading ? (
-            <>
-              <Spinner size={14} label="Loading preview" />
-              Loading…
-            </>
+            <Spinner size={16} label="Loading preview" />
           ) : (
-            "Preview"
+            <EyeIcon />
           )}
         </button>
         <button
           onClick={() => onDownload(doc)}
           disabled={doc.status !== "ready" || isDownloading}
-          className="btn btn-secondary"
+          className="btn btn-secondary btn-icon"
+          aria-label="Download document"
+          title={
+            doc.status !== "ready" ? "Available after processing" : "Download document"
+          }
         >
           {isDownloading ? (
-            <>
-              <Spinner size={14} label="Downloading" />
-              Downloading…
-            </>
+            <Spinner size={16} label="Downloading" />
           ) : (
-            "Download"
+            <DownloadIcon />
           )}
         </button>
         <button
           onClick={() => onDelete(doc.id)}
           disabled={isDeleting}
-          className="btn btn-danger"
+          className="btn btn-danger btn-icon"
+          aria-label="Delete document"
+          title="Delete document"
         >
           {isDeleting ? (
-            <>
-              <Spinner size={14} label="Deleting" />
-              Deleting…
-            </>
+            <Spinner size={16} label="Deleting" />
           ) : (
-            "Delete"
+            <TrashIcon />
           )}
         </button>
       </div>
