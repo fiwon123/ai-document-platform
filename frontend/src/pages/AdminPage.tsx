@@ -117,12 +117,17 @@ export function AdminPage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (isAdmin) {
-      void loadUsers();
-      void loadStats();
-    }
-  }, [isAdmin, loadUsers, loadStats]);
+useEffect(() => {
+  if (isAdmin) {
+    // Fetch-on-role-change: the loaders' setState calls all happen after
+    // awaited fetches — the idiomatic pattern the (conservative)
+    // set-state-in-effect rule cannot see through.
+    // oxlint-disable-next-line react/set-state-in-effect
+    void loadUsers();
+    // oxlint-disable-next-line react/set-state-in-effect
+    void loadStats();
+  }
+}, [isAdmin, loadUsers, loadStats]);
 
   // Handlers use functional setState only, so they are stable across renders
   // and memoized rows are not invalidated by parent re-renders.

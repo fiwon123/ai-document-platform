@@ -1,20 +1,8 @@
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-export type ToastKind = "success" | "error" | "info";
-
-export interface Toast {
-  id: number;
-  kind: ToastKind;
-  message: string;
-}
-
-interface ToastAPI {
-  success: (message: string) => void;
-  error: (message: string) => void;
-  info: (message: string) => void;
-  dismiss: (id: number) => void;
-}
+import { ToastContext } from "./toastContext";
+import type { Toast, ToastAPI, ToastKind } from "./toastContext";
 
 /** Auto-dismiss delay per kind. */
 const TOAST_DURATION_MS: Record<ToastKind, number> = {
@@ -22,16 +10,6 @@ const TOAST_DURATION_MS: Record<ToastKind, number> = {
   error: 5000,
   info: 3500,
 };
-
-/** No-op default so components render safely without a provider (e.g. in tests). */
-const noop: ToastAPI = {
-  success: () => {},
-  error: () => {},
-  info: () => {},
-  dismiss: () => {},
-};
-
-const ToastContext = createContext<ToastAPI>(noop);
 
 let nextId = 0;
 
@@ -90,8 +68,4 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       )}
     </ToastContext.Provider>
   );
-}
-
-export function useToast(): ToastAPI {
-  return useContext(ToastContext);
 }

@@ -5,7 +5,7 @@ import type { Document, DocumentPreview, DocumentStatusResponse } from "../types
 import { SkeletonCard } from "../components/Skeleton";
 import { Spinner } from "../components/Spinner";
 import { EmptyState } from "../components/EmptyState";
-import { useToast } from "../context/ToastContext";
+import { useToast } from "../hooks/useToast";
 
 /** How often to re-check documents that are still processing. */
 const POLL_INTERVAL_MS = 3000;
@@ -310,9 +310,13 @@ export function DocumentsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadDocuments();
-  }, [loadDocuments]);
+useEffect(() => {
+  // Fetch-on-mount: this effect synchronizes with the API, and the loader's
+  // setState calls all happen after the awaited fetch — the idiomatic
+  // pattern the (conservative) set-state-in-effect rule cannot see through.
+  // oxlint-disable-next-line react/set-state-in-effect
+  loadDocuments();
+}, [loadDocuments]);
 
   // Poll status of every document that is still pending/processing so the
   // badges update live (after upload or external processing) without a reload.
