@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SearchPage } from "./SearchPage";
+import type { SearchResponse } from "../types";
 
 vi.mock("../components/DocumentFilter", () => ({
   DocumentFilter: () => <div data-testid="document-filter" />,
@@ -61,6 +62,95 @@ describe("SearchPage", () => {
     mockedSearch.mockRejectedValue(new Error("Search backend unavailable"));
     await runSearch("anything");
     expect(screen.getByText("Search backend unavailable")).toBeTruthy();
+  });
+
+  it("keeps the search input enabled and focused while a search is in flight", async () => {
+    let resolveSearch: (value: SearchResponse) => void = () => {};
+    mockedSearch.mockReturnValue(
+      new Promise<SearchResponse>((resolve) => {
+        resolveSearch = resolve;
+      }),
+    );
+
+    render(<SearchPage />);
+    const input = screen.getByPlaceholderText(
+      "Search your documents...",
+    ) as HTMLInputElement;
+    input.focus();
+    fireEvent.change(input, { target: { value: "q3 planning" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    // The request is pending — the input must stay enabled and keep focus.
+    // Regression test: it used to be disabled while loading, which made
+    // browsers drop focus mid-typing ("search input keeps unfocusing").
+    expect(input.disabled).toBe(false);
+    expect(document.activeElement).toBe(input);
+
+    await act(async () => {
+      resolveSearch({
+        query: "q3 planning",
+        results: [result],
+        total_count: 1,
+        has_more: false,
+      });
+    });
+
+    // Focus survives the search completing.
+    expect(input.disabled).toBe(false);
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("ignores stale responses when a newer search supersedes an in-flight one", async () => {
+    vi.useFakeTimers();
+    try {
+      const staleResponse: SearchResponse = {
+        query: "first",
+        results: [{ ...result, chunk_id: "c-stale", content: "stale content" }],
+        total_count: 1,
+        has_more: false,
+      };
+      const freshResponse: SearchResponse = {
+        query: "fresh query",
+        results: [{ ...result, chunk_id: "c-fresh", content: "fresh content" }],
+        total_count: 1,
+        has_more: false,
+      };
+
+      let resolveStale: (value: SearchResponse) => void = () => {};
+      mockedSearch
+        .mockReturnValueOnce(
+          new Promise<SearchResponse>((resolve) => {
+            resolveStale = resolve;
+          }),
+        )
+        .mockResolvedValueOnce(freshResponse);
+
+      render(<SearchPage />);
+      const input = screen.getByPlaceholderText("Search your documents...");
+
+      // First keystroke starts a debounced search that stays pending.
+      fireEvent.change(input, { target: { value: "first" } });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+
+      // User keeps typing; the newer debounced search resolves first.
+      fireEvent.change(input, { target: { value: "fresh query" } });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      expect(screen.getByText(byFullText("fresh content"))).toBeTruthy();
+
+      // The stale first response arrives late and must not overwrite results.
+      await act(async () => {
+        resolveStale(staleResponse);
+      });
+
+      expect(screen.getByText(byFullText("fresh content"))).toBeTruthy();
+      expect(screen.queryByText(byFullText("stale content"))).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows a styled empty state when no results match", async () => {

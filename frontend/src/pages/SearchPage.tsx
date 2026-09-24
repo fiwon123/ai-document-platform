@@ -62,6 +62,7 @@ export function SearchPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resultsRef = useRef<SearchResult[]>([]);
+  const searchSeqRef = useRef(0);
 
   // Keep the latest results in a ref so "load more" can compute the next
   // offset without stale-closure issues from the debounced effect.
@@ -71,12 +72,17 @@ export function SearchPage() {
 
   async function runSearch(q: string, ids: string[], offset = 0) {
     if (!q.trim()) return;
+    // Each call bumps the sequence number; responses from older calls are
+    // ignored so typing during an in-flight request never lets a stale
+    // response clobber the results for the newest query.
+    const seq = ++searchSeqRef.current;
     setIsLoading(true);
     setError(null);
     setHasSearched(true);
 
     try {
       const response = await search.search(q, PAGE_SIZE, ids, offset);
+      if (seq !== searchSeqRef.current) return;
       if (offset === 0) {
         setResults(response.results);
         resultsRef.current = response.results;
@@ -88,10 +94,13 @@ export function SearchPage() {
       setTotalCount(response.total_count);
       setHasMore(response.has_more);
     } catch (err) {
+      if (seq !== searchSeqRef.current) return;
       setError(err instanceof Error ? err.message : "Search failed");
     } finally {
-      setIsLoading(false);
-      setIsLoadingMore(false);
+      if (seq === searchSeqRef.current) {
+        setIsLoading(false);
+        setIsLoadingMore(false);
+      }
     }
   }
 
@@ -158,7 +167,6 @@ export function SearchPage() {
             placeholder="Search your documents..."
             aria-label="Search your documents"
             className="search-input"
-            disabled={isLoading}
           />
           <button
             type="submit"
