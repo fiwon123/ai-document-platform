@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { DocumentFilter } from "../components/DocumentFilter";
 import { qa } from "../services/api";
 import type { QAResponse, SearchResult } from "../types";
@@ -17,32 +18,39 @@ interface Message {
 export function QAPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const askMutation = useMutation({
+    mutationFn: (question: string) =>
+      qa.ask(
+        question,
+        selectedIds.length > 0 ? selectedIds : undefined,
+        localStorage.getItem("askdocs-model") ?? undefined,
+      ),
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Failed to get answer");
+    },
+  });
+  const isLoading = askMutation.isPending;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
+    const question = input;
     const userMessage: Message = {
       id: Date.now().toString(),
       type: "user",
-      content: input,
+      content: question,
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
-    setIsLoading(true);
     setError(null);
 
     try {
-      const response: QAResponse = await qa.ask(
-        input,
-        selectedIds.length > 0 ? selectedIds : undefined,
-        localStorage.getItem("askdocs-model") ?? undefined,
-      );
-
+      const response: QAResponse = await askMutation.mutateAsync(question);
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: "assistant",
@@ -50,12 +58,9 @@ export function QAPage() {
         sources: response.sources,
         model: response.model,
       };
-
       setMessages((prev) => [...prev, assistantMessage]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to get answer");
-    } finally {
-      setIsLoading(false);
+    } catch {
+      // The mutation's onError already surfaced the message.
     }
   }
 

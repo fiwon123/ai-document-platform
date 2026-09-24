@@ -1,6 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
+import { notifyManager } from "@tanstack/react-query";
 import { afterEach, vi } from "vitest";
+
+// React Query batches observer notifications with setTimeout(0) by default.
+// In tests that use fake timers that faked timeout never fires, which would
+// leave query results stuck in "fetching". Flushing notifications as a native
+// microtask makes `await act(async () => { await Promise.resolve(); })`
+// reliably settle queries under both real and fake timers.
+notifyManager.setScheduler((cb) => queueMicrotask(cb));
 
 // RTL's auto-cleanup relies on globals being enabled; register it explicitly.
 afterEach(() => {

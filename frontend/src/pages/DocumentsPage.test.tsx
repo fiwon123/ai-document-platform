@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentsPage } from "./DocumentsPage";
+import { renderWithClient } from "../test/renderWithClient";
 import type { Document } from "../types";
 
 const pendingDoc: Document = {
@@ -68,7 +69,7 @@ async function settle() {
 
 describe("DocumentsPage polling", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
   });
 
   afterEach(() => {
@@ -87,7 +88,7 @@ describe("DocumentsPage polling", () => {
       updated_at: "2026-09-08T00:00:00Z",
     });
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     // Initial render: one pending badge, one ready badge.
@@ -120,7 +121,7 @@ describe("DocumentsPage polling", () => {
       updated_at: now,
     });
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     // The pending card shows a compact elapsed label; the ready card does not.
@@ -151,7 +152,7 @@ describe("DocumentsPage polling", () => {
       thumbnail_url: "https://minio.example/thumb.png",
     });
 
-    const { container } = render(<DocumentsPage />);
+    const { container } = renderWithClient(<DocumentsPage />);
     await settle();
 
     // Still processing: no thumbnail lookup happens yet.
@@ -184,7 +185,7 @@ describe("DocumentsPage polling", () => {
       updated_at: "2026-09-08T00:00:00Z",
     });
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     await act(async () => {
@@ -207,7 +208,7 @@ describe("DocumentsPage polling", () => {
   it("does not poll when every document is in a final state", async () => {
     mockedList.mockResolvedValue([readyDoc]);
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
     expect(screen.getAllByText("ready").length).toBe(1);
 
@@ -222,7 +223,7 @@ describe("DocumentsPage polling", () => {
   it("shows the empty state with an upload CTA when there are no documents", async () => {
     mockedList.mockResolvedValue([]);
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     expect(screen.getByText("No documents uploaded yet")).toBeTruthy();
@@ -253,7 +254,7 @@ describe("DocumentsPage preview", () => {
       truncated: false,
     });
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Preview document" }));
@@ -273,7 +274,7 @@ describe("DocumentsPage preview", () => {
       truncated: true,
     });
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Preview document" }));
@@ -292,7 +293,7 @@ describe("DocumentsPage preview", () => {
       truncated: false,
     });
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     const previewButton = screen.getByRole("button", { name: "Preview document" });
@@ -321,7 +322,7 @@ describe("DocumentsPage preview", () => {
       truncated: false,
     });
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Preview document" }));
@@ -337,7 +338,7 @@ describe("DocumentsPage preview", () => {
   it("surfaces a preview error", async () => {
     mockedPreview.mockRejectedValue(new Error("Preview failed"));
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Preview document" }));
@@ -359,7 +360,7 @@ describe("DocumentsPage thumbnails", () => {
       thumbnail_url: "https://minio.example/thumb.png",
     });
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
 
     expect(await screen.findByAltText("Preview of report.pdf")).toHaveAttribute(
       "src",
@@ -371,7 +372,7 @@ describe("DocumentsPage thumbnails", () => {
   it("keeps the generic placeholder for documents without a thumbnail", async () => {
     mockedList.mockResolvedValue([readyDoc]);
 
-    const { container } = render(<DocumentsPage />);
+    const { container } = renderWithClient(<DocumentsPage />);
     await settle();
 
     expect(mockedGetThumbnailUrl).not.toHaveBeenCalled();
@@ -383,7 +384,7 @@ describe("DocumentsPage thumbnails", () => {
     mockedList.mockResolvedValue([thumbDoc]);
     mockedGetThumbnailUrl.mockRejectedValue(new Error("not found"));
 
-    const { container } = render(<DocumentsPage />);
+    const { container } = renderWithClient(<DocumentsPage />);
     await settle();
 
     expect(mockedGetThumbnailUrl).toHaveBeenCalledTimes(1);
@@ -392,7 +393,7 @@ describe("DocumentsPage thumbnails", () => {
   });
 
   it("retries a failed thumbnail lookup after the backoff window", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     try {
       // doc-a finishes processing (has_thumbnail flips via polling); doc-b
       // keeps polling alive so the docs array keeps changing.
@@ -423,7 +424,7 @@ describe("DocumentsPage thumbnails", () => {
         .mockRejectedValueOnce(new Error("boom"))
         .mockResolvedValue({ id: "doc-a", thumbnail_url: "https://minio.example/thumb.png" });
 
-      const { container } = render(<DocumentsPage />);
+      const { container } = renderWithClient(<DocumentsPage />);
       await settle();
 
       // First poll: doc-a becomes ready with a thumbnail, but the lookup fails.
@@ -456,7 +457,7 @@ describe("DocumentsPage thumbnails", () => {
       thumbnail_url: "https://minio.example/thumb.png",
     });
 
-    const { container } = render(<DocumentsPage />);
+    const { container } = renderWithClient(<DocumentsPage />);
     const img = await screen.findByAltText("Preview of report.pdf");
     expect(container.querySelector(".document-thumbnail")).not.toBeNull();
 
@@ -492,7 +493,7 @@ describe("DocumentsPage busy states", () => {
       }),
     );
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
@@ -523,7 +524,7 @@ describe("DocumentsPage busy states", () => {
       }),
     );
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Download document" }));
@@ -556,7 +557,7 @@ describe("DocumentsPage busy states", () => {
       }),
     );
 
-    const { container } = render(<DocumentsPage />);
+    const { container } = renderWithClient(<DocumentsPage />);
     await settle();
 
     const file = new File(["hello world"], "guide.pdf", { type: "application/pdf" });
@@ -590,7 +591,7 @@ describe("DocumentsPage busy states", () => {
       failed: [],
     });
 
-    const { container } = render(<DocumentsPage />);
+    const { container } = renderWithClient(<DocumentsPage />);
     await settle();
 
     const fileA = new File(["a"], "a.txt", { type: "text/plain" });
@@ -610,7 +611,7 @@ describe("DocumentsPage busy states", () => {
       failed: [{ filename: "virus.exe", error: "Unsupported file type." }],
     });
 
-    const { container } = render(<DocumentsPage />);
+    const { container } = renderWithClient(<DocumentsPage />);
     await settle();
 
     const fileOk = new File(["ok"], "ok.txt", { type: "text/plain" });
@@ -634,7 +635,7 @@ describe("DocumentsPage busy states", () => {
       failed: [],
     }));
 
-    const { container } = render(<DocumentsPage />);
+    const { container } = renderWithClient(<DocumentsPage />);
     await settle();
 
     // 25 files > the 20-file per-request backend cap => 2 bulk requests.
@@ -668,7 +669,7 @@ describe("DocumentsPage reprocess", () => {
   });
 
   it("shows a Reprocess button only for failed documents", async () => {
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     // The failed card has the button; the ready card does not.
@@ -677,7 +678,7 @@ describe("DocumentsPage reprocess", () => {
   });
 
   it("re-enqueues the document, clears the error, and shows the pending badge", async () => {
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     // The failed error is visible before reprocessing.
@@ -702,7 +703,7 @@ describe("DocumentsPage reprocess", () => {
       }),
     );
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Reprocess document" }));
@@ -728,7 +729,7 @@ describe("DocumentsPage reprocess", () => {
   it("reports a reprocess failure and keeps the failed state", async () => {
     mockedReprocess.mockRejectedValue(new Error("already processing"));
 
-    render(<DocumentsPage />);
+    renderWithClient(<DocumentsPage />);
     await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Reprocess document" }));

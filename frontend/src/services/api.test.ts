@@ -841,4 +841,14 @@ describe("users admin methods", () => {
     expect(String(url)).toBe("/v1/users/u-2");
     expect(options?.method).toBe("DELETE");
   });
+
+  it("deletes the current user via DELETE /v1/users/me and tolerates 204", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(users.deleteMe()).resolves.toBeUndefined();
+
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
+    expect(String(url)).toBe("/v1/users/me");
+    expect(options?.method).toBe("DELETE");
+  });
 });

@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { ProfilePage } from "./ProfilePage";
+import { renderWithClient } from "../test/renderWithClient";
 import type { User } from "../types";
 
 const alice: User = {
@@ -38,14 +39,14 @@ describe("ProfilePage", () => {
   });
 
   it("pre-fills the username from the current user", () => {
-    render(<ProfilePage />);
+    renderWithClient(<ProfilePage />);
     expect((screen.getByLabelText("Username") as HTMLInputElement).value).toBe(
       "alice",
     );
   });
 
   it("saves a new username and updates the auth context", async () => {
-    render(<ProfilePage />);
+    renderWithClient(<ProfilePage />);
 
     const usernameInput = screen.getByLabelText("Username");
     fireEvent.change(usernameInput, { target: { value: "alice_new" } });
@@ -66,7 +67,7 @@ describe("ProfilePage", () => {
   });
 
   it("warns when the new password fields do not match", async () => {
-    render(<ProfilePage />);
+    renderWithClient(<ProfilePage />);
 
     fireEvent.change(screen.getByLabelText("New password"), {
       target: { value: "new-password-123" },
@@ -86,7 +87,7 @@ describe("ProfilePage", () => {
   it("shows an error message when the update fails", async () => {
     mockedUpdateMe.mockRejectedValue(new Error("Username already registered"));
 
-    render(<ProfilePage />);
+    renderWithClient(<ProfilePage />);
 
     fireEvent.change(screen.getByLabelText("Username"), {
       target: { value: "bob" },

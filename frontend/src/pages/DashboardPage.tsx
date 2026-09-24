@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import { statistics } from "../services/api";
-import type { DocumentStatus, StatisticsResponse } from "../types";
+import { useMyStatistics } from "../hooks/useStatistics";
+import type { DocumentStatus } from "../types";
 import { Spinner } from "../components/Spinner";
 import { EmptyState } from "../components/EmptyState";
 
@@ -20,31 +19,9 @@ const STATUS_COLORS: Record<DocumentStatus, string> = {
 };
 
 export function DashboardPage() {
-  const [stats, setStats] = useState<StatisticsResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const statsQuery = useMyStatistics();
 
-  useEffect(() => {
-    let cancelled = false;
-    statistics
-      .getMe()
-      .then((data) => {
-        if (!cancelled) setStats(data);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load dashboard");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (isLoading) {
+  if (statsQuery.isPending) {
     return (
       <div className="loading">
         <Spinner size={24} label="Loading dashboard" />
@@ -52,14 +29,17 @@ export function DashboardPage() {
     );
   }
 
-  if (error) {
+  if (statsQuery.isError) {
     return (
       <div className="page">
-        <p className="error-message" role="alert">{error}</p>
+        <p className="error-message" role="alert">
+          {(statsQuery.error as Error).message}
+        </p>
       </div>
     );
   }
 
+  const stats = statsQuery.data;
   if (!stats) {
     return null;
   }

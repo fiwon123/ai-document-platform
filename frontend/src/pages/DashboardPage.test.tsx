@@ -1,7 +1,8 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { DashboardPage } from "./DashboardPage";
+import { renderWithClient } from "../test/renderWithClient";
 import type { StatisticsResponse } from "../types";
 
 const sampleStats: StatisticsResponse = {
@@ -35,7 +36,7 @@ describe("DashboardPage", () => {
   });
 
   async function renderPage() {
-    render(
+    renderWithClient(
       <MemoryRouter>
         <DashboardPage />
       </MemoryRouter>,

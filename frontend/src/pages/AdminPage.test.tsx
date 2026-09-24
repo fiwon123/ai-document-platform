@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { AdminPage } from "./AdminPage";
+import { renderWithClient } from "../test/renderWithClient";
 import { useAuth } from "../hooks/useAuth";
 import type { User } from "../types";
 
@@ -91,7 +92,7 @@ describe("AdminPage", () => {
   });
 
   async function renderPage() {
-    render(<AdminPage />);
+    renderWithClient(<AdminPage />);
     await act(async () => {});
   }
 
@@ -249,7 +250,7 @@ describe("AdminPage", () => {
       updateUser: vi.fn(),
     });
 
-    render(<AdminPage />);
+    renderWithClient(<AdminPage />);
 
     expect(screen.getByText("Admin privileges required.")).toBeTruthy();
     expect(mockedGetAdmin).not.toHaveBeenCalled();

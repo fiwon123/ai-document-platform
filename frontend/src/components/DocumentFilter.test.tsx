@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentFilter } from "./DocumentFilter";
+import { renderWithClient } from "../test/renderWithClient";
 import type { Document } from "../types";
 
 const docs: Document[] = [
@@ -51,7 +52,7 @@ describe("DocumentFilter", () => {
 
   function renderFilter(selected: string[] = []) {
     const onChange = vi.fn();
-    render(<DocumentFilter selected={selected} onChange={onChange} />);
+    renderWithClient(<DocumentFilter selected={selected} onChange={onChange} />);
     return onChange;
   }
 
@@ -96,7 +97,7 @@ describe("DocumentFilter", () => {
 
   it("renders nothing when the user has no documents", async () => {
     mockedList.mockResolvedValue([]);
-    const { container } = render(<DocumentFilter selected={[]} onChange={vi.fn()} />);
+    const { container } = renderWithClient(<DocumentFilter selected={[]} onChange={vi.fn()} />);
 
     await act(async () => {});
 

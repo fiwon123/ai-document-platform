@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WebhooksPage } from "./WebhooksPage";
+import { renderWithClient } from "../test/renderWithClient";
 import type { WebhookSubscription } from "../types";
 
 const readySub: WebhookSubscription = {
@@ -49,7 +50,7 @@ describe("WebhooksPage", () => {
   });
 
   it("renders the loaded subscriptions", async () => {
-    render(<WebhooksPage />);
+    renderWithClient(<WebhooksPage />);
     await settle();
 
     expect(screen.getByText("https://example.com/hook")).toBeInTheDocument();
@@ -65,7 +66,7 @@ describe("WebhooksPage", () => {
       url: "https://new.example.com/hook",
       events: ["document.deleted"],
     });
-    render(<WebhooksPage />);
+    renderWithClient(<WebhooksPage />);
     await settle();
 
     fireEvent.change(screen.getByPlaceholderText("https://example.com/hook"), {
@@ -83,7 +84,7 @@ describe("WebhooksPage", () => {
   });
 
   it("rejects creation when no URL is provided", async () => {
-    render(<WebhooksPage />);
+    renderWithClient(<WebhooksPage />);
     await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Create webhook" }));
@@ -95,7 +96,7 @@ describe("WebhooksPage", () => {
 
   it("pauses and resumes a subscription", async () => {
     mockedUpdate.mockResolvedValue({ ...readySub, is_active: false });
-    render(<WebhooksPage />);
+    renderWithClient(<WebhooksPage />);
     await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
@@ -112,7 +113,7 @@ describe("WebhooksPage", () => {
       status_code: 200,
       message: "Delivered",
     });
-    render(<WebhooksPage />);
+    renderWithClient(<WebhooksPage />);
     await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Send test" }));
@@ -124,7 +125,7 @@ describe("WebhooksPage", () => {
 
   it("deletes a subscription", async () => {
     mockedRemove.mockResolvedValue(undefined);
-    render(<WebhooksPage />);
+    renderWithClient(<WebhooksPage />);
     await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
