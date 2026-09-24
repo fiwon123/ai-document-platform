@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { LandingNavbar } from "../components/LandingNavbar";
+import { useAuth } from "../hooks/useAuth";
 
 const FEATURES = [
   {
@@ -81,6 +82,19 @@ const COMPARISON_ROWS: {
 ];
 
 export function LandingPage() {
+  const { user } = useAuth();
+  // Signed-in visitors don't need account-creation CTAs; point them back to
+  // their workspace instead.
+  const secondaryCta = user ? (
+    <Link to="/app" className="btn btn-secondary btn-lg">
+      Go to your workspace
+    </Link>
+  ) : (
+    <Link to="/register" className="btn btn-secondary btn-lg">
+      Create free account
+    </Link>
+  );
+
   return (
     <div className="landing-page">
       <LandingNavbar />
@@ -101,13 +115,13 @@ export function LandingPage() {
             <Link to="/demo" className="btn btn-primary btn-lg">
               Try the live demo
             </Link>
-            <Link to="/register" className="btn btn-secondary btn-lg">
-              Create free account
-            </Link>
+            {secondaryCta}
           </div>
-          <p className="landing-note">
-            No credit card required. Try it without an account.
-          </p>
+          {!user && (
+            <p className="landing-note">
+              No credit card required. Try it without an account.
+            </p>
+          )}
         </div>
 
         <div className="landing-preview" aria-hidden="true">
@@ -186,10 +200,10 @@ export function LandingPage() {
                 <span>{plan.period}</span>
               </p>
               <Link
-                to={plan.to}
+                to={user ? "/app" : plan.to}
                 className={`btn ${plan.featured ? "btn-primary" : "btn-secondary"}`}
               >
-                {plan.cta}
+                {user ? "Open workspace" : plan.cta}
               </Link>
             </article>
           ))}
@@ -225,9 +239,7 @@ export function LandingPage() {
           <Link to="/demo" className="btn btn-primary btn-lg">
             Try the live demo
           </Link>
-          <Link to="/register" className="btn btn-secondary btn-lg">
-            Create free account
-          </Link>
+          {secondaryCta}
         </div>
       </section>
 

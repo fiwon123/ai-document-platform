@@ -44,6 +44,7 @@ describe("Navbar", () => {
   it("shows the brand and core navigation links", () => {
     renderNavbar();
     expect(screen.getByText("AskDocs")).toBeTruthy();
+    expect(screen.getByText("Home")).toBeTruthy();
     expect(screen.getByText("Dashboard")).toBeTruthy();
     expect(screen.getByText("Documents")).toBeTruthy();
     expect(screen.getByText("Search")).toBeTruthy();
@@ -65,6 +66,7 @@ describe("Navbar", () => {
     expect(
       screen.getByRole("link", { name: "AskDocs home" }).getAttribute("href"),
     ).toBe("/app");
+    expect(screen.getByRole("link", { name: "Home" }).getAttribute("href")).toBe("/");
     expect(screen.getByRole("link", { name: "Dashboard" }).getAttribute("href")).toBe("/app");
     expect(screen.getByRole("link", { name: "Documents" }).getAttribute("href")).toBe("/app/documents");
     expect(screen.getByRole("link", { name: "Search" }).getAttribute("href")).toBe("/app/search");
@@ -96,10 +98,8 @@ describe("Navbar", () => {
     });
 
     fireEvent.click(toggle);
-    // Focus lands on the first menu link.
-    expect(document.activeElement).toBe(
-      screen.getByRole("link", { name: "Dashboard" }),
-    );
+    // Focus lands on the first menu link (Home).
+    expect(document.activeElement).toBe(screen.getByRole("link", { name: "Home" }));
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByRole("button", {

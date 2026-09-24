@@ -1,7 +1,11 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEMO_DOCUMENTS, DemoPage } from "./DemoPage";
+
+vi.mock("../hooks/useAuth", () => ({
+  useAuth: () => ({ user: null }),
+}));
 
 const KEY_SEARCH = "askdocs-demo-searches";
 const KEY_QA = "askdocs-demo-qa";

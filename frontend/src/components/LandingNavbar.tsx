@@ -1,8 +1,13 @@
 import { Link } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
+import { useAuth } from "../hooks/useAuth";
 
-/** Marketing navigation shown on the public landing page (no auth needed). */
+/** Marketing navigation shown on the public landing page. When the visitor is
+ *  already signed in the auth button becomes a shortcut back to the app
+ *  instead of a sign-up prompt. */
 export function LandingNavbar() {
+  const { user } = useAuth();
+
   return (
     <nav className="landing-navbar">
       <Link to="/" className="landing-brand" aria-label="AskDocs home">
@@ -20,9 +25,15 @@ export function LandingNavbar() {
         <Link to="/demo" className="btn btn-secondary">
           Try the demo
         </Link>
-        <Link to="/login" className="btn btn-primary">
-          Sign up
-        </Link>
+        {user ? (
+          <Link to="/app" className="btn btn-primary">
+            Go to app
+          </Link>
+        ) : (
+          <Link to="/login" className="btn btn-primary">
+            Sign up
+          </Link>
+        )}
       </div>
     </nav>
   );
