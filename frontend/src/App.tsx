@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { AuthProvider, useAuth } from "./hooks/useAuth";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { AuthProvider } from "./hooks/useAuth";
 import { ToastProvider } from "./context/ToastContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Navbar } from "./components/Navbar";
@@ -49,20 +49,6 @@ const NotFoundPage = lazy(() =>
 
 const pageFallback = <div className="loading">Loading page…</div>;
 
-/**
- * Renders the public landing page at "/", but bounces already-authenticated
- * users straight into the protected /app area.
- */
-export function LandingGate() {
-  const { user } = useAuth();
-
-  if (user) {
-    return <Navigate to="/app" replace />;
-  }
-
-  return <LandingPage />;
-}
-
 function App() {
   return (
     <BrowserRouter>
@@ -71,7 +57,7 @@ function App() {
           <ToastProvider>
           <div className="app">
             <Routes>
-              <Route path="/" element={<LandingGate />} />
+              <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/demo" element={<DemoPage />} />

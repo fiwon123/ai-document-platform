@@ -71,6 +71,9 @@ export const Navbar = memo(function Navbar() {
         className={`navbar-links${menuOpen ? " navbar-links-open" : ""}`}
         id="navbar-links"
       >
+        <Link to="/" onClick={closeMenu}>
+          Home
+        </Link>
         <Link to="/app" onClick={closeMenu}>
           Dashboard
         </Link>
