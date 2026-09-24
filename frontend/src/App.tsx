@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./hooks/AuthProvider";
 import { ToastProvider } from "./context/ToastProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Navbar } from "./components/Navbar";
 import "./App.css";
 
@@ -54,38 +55,42 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <Suspense fallback={pageFallback}>
-          <ToastProvider>
-          <div className="app">
-            <Routes>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/demo" element={<DemoPage />} />
-              <Route
-                path="/app/*"
-                element={
-                  <ProtectedRoute>
-                    <Navbar />
-                    <main className="main-content">
-                      <Routes>
-                        <Route path="" element={<DashboardPage />} />
-                        <Route path="documents" element={<DocumentsPage />} />
-                        <Route path="search" element={<SearchPage />} />
-                        <Route path="qa" element={<QAPage />} />
-                        <Route path="settings" element={<SettingsPage />} />
-                        <Route path="webhooks" element={<WebhooksPage />} />
-                        <Route path="profile" element={<ProfilePage />} />
-                        <Route path="admin" element={<AdminPage />} />
-                        <Route path="*" element={<NotFoundPage />} />
-                      </Routes>
-                    </main>
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </div>
-          </ToastProvider>
+          <ErrorBoundary label="Application error">
+            <ToastProvider>
+            <div className="app">
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                <Route path="/demo" element={<DemoPage />} />
+                <Route
+                  path="/app/*"
+                  element={
+                    <ProtectedRoute>
+                      <Navbar />
+                      <main className="main-content">
+                        <ErrorBoundary label="Page error">
+                          <Routes>
+                            <Route path="" element={<DashboardPage />} />
+                            <Route path="documents" element={<DocumentsPage />} />
+                            <Route path="search" element={<SearchPage />} />
+                            <Route path="qa" element={<QAPage />} />
+                            <Route path="settings" element={<SettingsPage />} />
+                            <Route path="webhooks" element={<WebhooksPage />} />
+                            <Route path="profile" element={<ProfilePage />} />
+                            <Route path="admin" element={<AdminPage />} />
+                            <Route path="*" element={<NotFoundPage />} />
+                          </Routes>
+                        </ErrorBoundary>
+                      </main>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </div>
+            </ToastProvider>
+          </ErrorBoundary>
         </Suspense>
       </AuthProvider>
     </BrowserRouter>

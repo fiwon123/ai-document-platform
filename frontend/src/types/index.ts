@@ -1,10 +1,12 @@
 export type DocumentStatus = "pending" | "processing" | "ready" | "failed";
 
+export type UserRole = "customer" | "admin";
+
 export interface User {
   id: string;
   username: string;
   is_active: boolean;
-  role: string | null;
+  role: UserRole | null;
   created_at: string | null;
 }
 

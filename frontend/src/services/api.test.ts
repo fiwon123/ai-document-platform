@@ -73,7 +73,7 @@ describe("api client request paths", () => {
     const file = new File(["hello"], "notes.txt", { type: "text/plain" });
     await documents.upload(file);
 
-    const [url, options] = mockFetch.mock.calls[0];
+    const [url, options] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/v1/documents/");
     expect(options.method).toBe("POST");
     expect(options.body).toBeInstanceOf(FormData);
@@ -102,13 +102,13 @@ describe("api client request paths", () => {
     const fileB = new File(["b"], "b.exe", { type: "application/octet-stream" });
     const result = await documents.uploadMany([fileA, fileB]);
 
-    const [url, options] = mockFetch.mock.calls[0];
+    const [url, options] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/v1/documents/bulk");
     expect(options.method).toBe("POST");
     expect(options.body).toBeInstanceOf(FormData);
     expect(result.uploaded).toHaveLength(1);
     expect(result.failed).toHaveLength(1);
-    expect(result.failed[0].filename).toBe("b.exe");
+    expect(result.failed[0]!.filename).toBe("b.exe");
   });
 
   it("should send documents.delete to /v1/documents/{id} with DELETE", async () => {
@@ -118,7 +118,7 @@ describe("api client request paths", () => {
 
     await documents.delete("doc-3");
 
-    const [url, options] = mockFetch.mock.calls[0];
+    const [url, options] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/v1/documents/doc-3");
     expect(options.method).toBe("DELETE");
   });
@@ -217,7 +217,7 @@ describe("api client request paths", () => {
 
     await auth.login("alice", "secret123");
 
-    const [url, options] = mockFetch.mock.calls[0];
+    const [url, options] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/v1/auth/login");
     expect(options.method).toBe("POST");
     expect(options.headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
@@ -241,7 +241,7 @@ describe("api client request paths", () => {
     const result = await auth.refresh();
 
     expect(result.access_token).toBe("fresh-token");
-    const [url, options] = mockFetch.mock.calls[0];
+    const [url, options] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/v1/auth/refresh");
     expect(options.method).toBe("POST");
     expect(options.credentials).toBe("include");
@@ -254,7 +254,7 @@ describe("api client request paths", () => {
 
     await auth.logout();
 
-    const [url, options] = mockFetch.mock.calls[0];
+    const [url, options] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/v1/auth/logout");
     expect(options.method).toBe("POST");
   });
@@ -283,13 +283,13 @@ describe("api client request paths", () => {
     expect(result).toEqual([{ id: "doc-1" }]);
     expect(mockFetch).toHaveBeenCalledTimes(3);
     // The refresh call is unauthenticated (cookie-only) and explicit.
-    const [refreshUrl, refreshOptions] = mockFetch.mock.calls[1];
+    const [refreshUrl, refreshOptions] = mockFetch.mock.calls[1]!;
     expect(refreshUrl).toBe("/v1/auth/refresh");
     expect(refreshOptions.method).toBe("POST");
     expect(refreshOptions.credentials).toBe("include");
     expect(refreshOptions.headers?.Authorization).toBeUndefined();
     // The replayed request carries the freshly minted token.
-    const retriedOptions = mockFetch.mock.calls[2][1] as RequestInit;
+    const retriedOptions = mockFetch.mock.calls[2]![1] as RequestInit;
     expect(retriedOptions.headers).toMatchObject({
       Authorization: "Bearer fresh-token",
     });
@@ -305,7 +305,7 @@ describe("api client request paths", () => {
 
     await auth.register("bob", "password123", "password123");
 
-    const [url, options] = mockFetch.mock.calls[0];
+    const [url, options] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/v1/auth/register");
     expect(options.method).toBe("POST");
     expect(JSON.parse(options.body as string)).toEqual({
@@ -335,7 +335,7 @@ describe("api client request paths", () => {
 
     await search.search("quarterly report", 7);
 
-    const [url, options] = mockFetch.mock.calls[0];
+    const [url, options] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/v1/search/");
     expect(options.method).toBe("POST");
     expect(JSON.parse(options.body as string)).toEqual({
@@ -353,7 +353,7 @@ describe("api client request paths", () => {
 
     await qa.ask("What is the refund policy?", ["doc-a", "doc-b"]);
 
-    const [url, options] = mockFetch.mock.calls[0];
+    const [url, options] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/v1/qa/ask");
     expect(options.method).toBe("POST");
     expect(JSON.parse(options.body as string)).toEqual({
@@ -371,7 +371,7 @@ describe("api client request paths", () => {
 
     await qa.ask("What is the refund policy?", undefined, "gpt-4o-mini");
 
-    const [, options] = mockFetch.mock.calls[0];
+    const [, options] = mockFetch.mock.calls[0]!;
     expect(JSON.parse(options.body as string)).toEqual({
       question: "What is the refund policy?",
       document_ids: null,
@@ -388,7 +388,7 @@ describe("api client request paths", () => {
 
     await qa.ask("What is the refund policy?");
 
-    const [, options] = mockFetch.mock.calls[0];
+    const [, options] = mockFetch.mock.calls[0]!;
     expect(JSON.parse(options.body as string)).toEqual({
       question: "What is the refund policy?",
       document_ids: null,
@@ -413,7 +413,7 @@ describe("api client request paths", () => {
 
     await documents.list();
 
-    const [, options] = mockFetch.mock.calls[0];
+    const [, options] = mockFetch.mock.calls[0]!;
     expect(options.headers["Authorization"]).toBe("Bearer jwt-token-123");
   });
 
@@ -480,7 +480,7 @@ describe("documents.getStatus", () => {
     const result = await documents.getStatus("doc-123");
 
     expect(result).toEqual(status);
-    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
     expect(String(url)).toBe("/v1/documents/doc-123/status");
     expect(options?.headers).toMatchObject({ Authorization: "Bearer test-token" });
   });
@@ -524,7 +524,7 @@ describe("search.search", () => {
 
     await search.search("hello", 5, ["doc-a", "doc-b"], 10);
 
-    const [, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    const [, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
     expect(JSON.parse(String(options?.body))).toEqual({
       query: "hello",
       top_k: 5,
@@ -543,7 +543,7 @@ describe("search.search", () => {
 
     await search.search("hello");
 
-    const [, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    const [, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
     expect(JSON.parse(String(options?.body))).toEqual({
       query: "hello",
       top_k: 5,
@@ -569,7 +569,7 @@ describe("search.search", () => {
     try {
       await search.exportResults("quarterly", "csv", ["doc-a"], 5);
 
-      const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+      const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
       expect(String(url)).toBe("/v1/search/export");
       expect(options?.method).toBe("POST");
       expect(JSON.parse(String(options?.body))).toEqual({
@@ -641,7 +641,7 @@ describe("statistics.getMe", () => {
     const result = await statistics.getMe();
 
     expect(result).toEqual(sampleStats);
-    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
     expect(String(url)).toBe("/v1/statistics/me");
     expect(options?.headers).toMatchObject({ Authorization: "Bearer test-token" });
   });
@@ -684,7 +684,7 @@ describe("statistics.getAdmin", () => {
     const result = await statistics.getAdmin();
 
     expect(result).toEqual(adminStats);
-    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
     expect(String(url)).toBe("/v1/statistics/admin");
     expect(options?.headers).toMatchObject({ Authorization: "Bearer test-token" });
   });
@@ -738,7 +738,7 @@ describe("users.updateMe", () => {
     const result = await users.updateMe({ username: "alice_new" });
 
     expect(result).toEqual(updated);
-    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
     expect(String(url)).toBe("/v1/users/me");
     expect(options?.method).toBe("PUT");
     expect(JSON.parse(String(options?.body))).toEqual({ username: "alice_new" });
@@ -755,7 +755,7 @@ describe("users.updateMe", () => {
 
     await users.updateMe({ password: "new-password-123", confirmPassword: "new-password-123" });
 
-    const [, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    const [, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
     expect(JSON.parse(String(options?.body))).toEqual({
       password: "new-password-123",
       confirm_password: "new-password-123",
@@ -791,7 +791,7 @@ describe("users admin methods", () => {
     const result = await users.listUsers();
 
     expect(result).toEqual(usersPayload);
-    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
     expect(String(url)).toBe("/v1/users/");
     expect(options?.headers).toMatchObject({ Authorization: "Bearer test-token" });
   });
@@ -808,7 +808,7 @@ describe("users admin methods", () => {
     const result = await users.updateUserRole("u-1", "admin");
 
     expect(result).toEqual(updated);
-    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
     expect(String(url)).toBe("/v1/users/u-1/role");
     expect(options?.method).toBe("PATCH");
     expect(JSON.parse(String(options?.body))).toEqual({ role: "admin" });
@@ -826,7 +826,7 @@ describe("users admin methods", () => {
     const result = await users.updateUserActive("u-1", false);
 
     expect(result).toEqual(updated);
-    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
     expect(String(url)).toBe("/v1/users/u-1/active");
     expect(options?.method).toBe("PATCH");
     expect(JSON.parse(String(options?.body))).toEqual({ is_active: false });
@@ -837,7 +837,7 @@ describe("users admin methods", () => {
 
     await expect(users.deleteUser("u-2")).resolves.toBeUndefined();
 
-    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0];
+    const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
     expect(String(url)).toBe("/v1/users/u-2");
     expect(options?.method).toBe("DELETE");
   });

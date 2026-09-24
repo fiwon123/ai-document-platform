@@ -644,8 +644,8 @@ describe("DocumentsPage busy states", () => {
     await settle();
 
     expect(mockedUploadMany).toHaveBeenCalledTimes(2);
-    expect(mockedUploadMany.mock.calls[0][0]).toHaveLength(20);
-    expect(mockedUploadMany.mock.calls[1][0]).toHaveLength(5);
+    expect(mockedUploadMany.mock.calls[0]![0]).toHaveLength(20);
+    expect(mockedUploadMany.mock.calls[1]![0]).toHaveLength(5);
     // Results from both batches are merged into the document list.
     expect(screen.getByText("f0.txt")).toBeTruthy();
     expect(screen.getByText("f24.txt")).toBeTruthy();

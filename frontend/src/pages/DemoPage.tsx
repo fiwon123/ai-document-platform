@@ -136,7 +136,7 @@ export function DemoPage() {
     const hits = matchChunks(q);
     let assistant: DemoMessage;
     if (hits.length > 0) {
-      const best = hits[0];
+      const best = hits[0]!;
       assistant = {
         id: nextMessageId(),
         role: "assistant",
