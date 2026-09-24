@@ -402,13 +402,29 @@ class DocumentService:
         }
 
     def preview(self, document_id: UUID, owner_id: UUID):
-        """Return a truncated text preview of the stored document."""
+        """Return a truncated text preview of the stored document.
+
+        READY documents are previewed from their stored chunks (no MinIO
+        round-trip or re-extraction); everything else falls back to
+        reading the stored object, which also covers edge cases where a
+        READY document has no chunks yet (e.g. pre-chunking uploads).
+        """
         document = self.repository.get_by_id(
             document_id=document_id,
             owner_id=owner_id,
         )
         if document is None:
             return None
+
+        if document.status == DocumentStatus.READY:
+            preview_text = self._preview_from_chunks(document_id)
+            if preview_text is not None:
+                return DocumentPreviewResponse(
+                    id=document.id,
+                    filename=document.filename,
+                    preview=preview_text[:PREVIEW_MAX_CHARS],
+                    truncated=len(preview_text) > PREVIEW_MAX_CHARS,
+                )
 
         try:
             body = self.storage.download(document.object_key)
@@ -442,6 +458,38 @@ class DocumentService:
             preview=text[:PREVIEW_MAX_CHARS],
             truncated=len(text) > PREVIEW_MAX_CHARS,
         )
+
+    def _preview_from_chunks(self, document_id: UUID) -> str | None:
+        """Rebuild the start of a READY document from its stored chunks.
+
+        Chunks are extracted-text windows produced with a fixed overlap;
+        the duplicated window is cut when stitching so the result matches
+        the original extraction (approximate for tiny edge fragments).
+        Returns ``None`` when the document has no chunks, so callers can
+        fall back to the storage-based path.
+        """
+        contents = self.repository.get_preview_chunks(
+            document_id, max_chars=PREVIEW_MAX_CHARS
+        )
+        if not contents:
+            return None
+
+        # Mirrors ChunkingService default overlap (see get_preview_chunks).
+        overlap = 200
+        stitched = contents[0]
+        for content in contents[1:]:
+            if not content:
+                continue
+            drop = min(overlap, len(content))
+            for n in range(drop, 0, -1):
+                if stitched.endswith(content[:n]):
+                    stitched += content[n:]
+                    break
+            else:
+                stitched += content
+            if len(stitched) > PREVIEW_MAX_CHARS:
+                break
+        return stitched
 
     def delete(self, document_id: UUID, owner_id: UUID):
         # Fetch a fresh ORM row directly: the cached FileResponse is not a
