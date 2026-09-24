@@ -219,7 +219,7 @@ describe("DocumentsPage preview", () => {
     render(<DocumentsPage />);
     await settle();
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview document" }));
     await settle();
 
     expect(mockedPreview).toHaveBeenCalledWith("doc-ready");
@@ -239,7 +239,7 @@ describe("DocumentsPage preview", () => {
     render(<DocumentsPage />);
     await settle();
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview document" }));
     await settle();
 
     expect(
@@ -258,7 +258,7 @@ describe("DocumentsPage preview", () => {
     render(<DocumentsPage />);
     await settle();
 
-    const previewButton = screen.getByRole("button", { name: "Preview" });
+    const previewButton = screen.getByRole("button", { name: "Preview document" });
     // Simulate real browser behavior where clicking a button focuses it.
     previewButton.focus();
     fireEvent.click(previewButton);
@@ -287,7 +287,7 @@ describe("DocumentsPage preview", () => {
     render(<DocumentsPage />);
     await settle();
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview document" }));
     await settle();
     expect(screen.getByRole("dialog")).toBeTruthy();
 
@@ -303,7 +303,7 @@ describe("DocumentsPage preview", () => {
     render(<DocumentsPage />);
     await settle();
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview document" }));
     await settle();
 
     expect(screen.getByRole("alert")).toHaveTextContent("Preview failed");
@@ -454,10 +454,10 @@ describe("DocumentsPage busy states", () => {
     render(<DocumentsPage />);
     await settle();
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
 
     // While the delete request is pending the button is disabled and shows a spinner.
-    const busyButton = screen.getByRole("button", { name: /Deleting/ }) as HTMLButtonElement;
+    const busyButton = screen.getByRole("button", { name: "Delete document" }) as HTMLButtonElement;
     expect(busyButton.disabled).toBe(true);
     expect(screen.getByRole("status", { name: "Deleting" })).toBeTruthy();
 
@@ -485,10 +485,10 @@ describe("DocumentsPage busy states", () => {
     render(<DocumentsPage />);
     await settle();
 
-    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download document" }));
 
     // While the download URL request is pending the button is disabled and shows a spinner.
-    const busyButton = screen.getByRole("button", { name: /Downloading/ }) as HTMLButtonElement;
+    const busyButton = screen.getByRole("button", { name: "Download document" }) as HTMLButtonElement;
     expect(busyButton.disabled).toBe(true);
     expect(screen.getByRole("status", { name: "Downloading" })).toBeTruthy();
 
@@ -503,7 +503,7 @@ describe("DocumentsPage busy states", () => {
 
     expect(mockedGetDownloadUrl).toHaveBeenCalledWith("doc-ready");
     // The button returns to its idle state once the URL has been fetched.
-    const idleButton = screen.getByRole("button", { name: "Download" }) as HTMLButtonElement;
+    const idleButton = screen.getByRole("button", { name: "Download document" }) as HTMLButtonElement;
     expect(idleButton.disabled).toBe(false);
   });
 
@@ -631,8 +631,8 @@ describe("DocumentsPage reprocess", () => {
     await settle();
 
     // The failed card has the button; the ready card does not.
-    expect(screen.getByRole("button", { name: "Reprocess" })).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "Reprocess" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Reprocess document" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Reprocess document" })).toHaveLength(1);
   });
 
   it("re-enqueues the document, clears the error, and shows the pending badge", async () => {
@@ -642,7 +642,7 @@ describe("DocumentsPage reprocess", () => {
     // The failed error is visible before reprocessing.
     expect(screen.getByText(/did not complete/)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Reprocess" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reprocess document" }));
     await settle();
 
     expect(mockedReprocess).toHaveBeenCalledWith("doc-failed");
@@ -664,10 +664,10 @@ describe("DocumentsPage reprocess", () => {
     render(<DocumentsPage />);
     await settle();
 
-    fireEvent.click(screen.getByRole("button", { name: "Reprocess" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reprocess document" }));
 
     expect(
-      (screen.getByRole("button", { name: /Reprocessing/ }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: "Reprocess document" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
     expect(screen.getByRole("status", { name: "Reprocessing" })).toBeTruthy();
@@ -690,7 +690,7 @@ describe("DocumentsPage reprocess", () => {
     render(<DocumentsPage />);
     await settle();
 
-    fireEvent.click(screen.getByRole("button", { name: "Reprocess" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reprocess document" }));
     await settle();
 
     expect(screen.getByRole("alert")).toHaveTextContent("already processing");
