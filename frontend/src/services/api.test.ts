@@ -467,6 +467,8 @@ describe("documents.getStatus", () => {
       status: "ready",
       error_message: null,
       has_thumbnail: true,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
     };
     vi.mocked(globalThis.fetch).mockResolvedValue(
       new Response(JSON.stringify(status), {

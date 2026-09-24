@@ -17,6 +17,23 @@ function isProcessing(status: Document["status"]): boolean {
   return status === "pending" || status === "processing";
 }
 
+/**
+ * Compact "how long has it been stuck in this state" label, anchored on
+ * `updated_at` (refreshed on every status transition). Coarse enough to not
+ * tick on its own — the 3s status poll re-renders active cards.
+ */
+function formatElapsed(updatedAt: string): string {
+  const seconds = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(updatedAt).getTime()) / 1000),
+  );
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
 /** Delay before a failed thumbnail lookup is retried (prevents hammering). */
 const THUMBNAIL_RETRY_MS = 30_000;
 
@@ -176,11 +193,21 @@ const DocumentCard = memo(function DocumentCard({
       <div className="document-card-body">
         <div className="status-row">
           <span>Status:</span>
-          <span
-            className="status-badge"
-            style={{ backgroundColor: statusColors[doc.status] || "#6b7280" }}
-          >
-            {doc.status}
+          <span className="status-badge-group">
+            <span
+              className="status-badge"
+              style={{ backgroundColor: statusColors[doc.status] || "#6b7280" }}
+            >
+              {doc.status}
+            </span>
+            {isProcessing(doc.status) && (
+              <span
+                className="status-elapsed"
+                title={`${doc.status} for ${formatElapsed(doc.updated_at)}`}
+              >
+                {formatElapsed(doc.updated_at)}
+              </span>
+            )}
           </span>
         </div>
         {doc.error_message && (
@@ -304,21 +331,27 @@ export function DocumentsPage() {
       setDocs((prev) =>
         prev.map((doc) => {
           const next = statuses.find((s) => s.id === doc.id);
-          if (
-            !next ||
-            (next.status === doc.status &&
-              next.error_message === doc.error_message &&
-              next.has_thumbnail === doc.has_thumbnail)
-          ) {
-            // Keep the object identity for unchanged documents so their
-            // memoized cards skip re-rendering on this poll tick.
+          if (!next) return doc;
+          const changed =
+            next.status !== doc.status ||
+            next.error_message !== doc.error_message ||
+            next.has_thumbnail !== doc.has_thumbnail ||
+            next.updated_at !== doc.updated_at;
+          if (!changed && !isProcessing(next.status)) {
+            // Keep the object identity for unchanged, non-active documents so
+            // their memoized cards skip re-rendering on this poll tick.
             return doc;
           }
+          // Active documents always get a fresh object so the elapsed-time
+          // label re-renders on every poll (identity only matters for cards
+          // that are not visibly changing every 3s).
           return {
             ...doc,
             status: next.status,
             error_message: next.error_message,
             has_thumbnail: next.has_thumbnail,
+            created_at: next.created_at,
+            updated_at: next.updated_at,
           };
         }),
       );
@@ -531,7 +564,14 @@ export function DocumentsPage() {
       setDocs((prev) =>
         prev.map((d) =>
           d.id === id
-            ? { ...d, status: "pending", error_message: null }
+            ? {
+                ...d,
+                status: "pending",
+                error_message: null,
+                // Restart the elapsed timer immediately; the 3s poll then
+                // syncs the authoritative value from the backend.
+                updated_at: new Date().toISOString(),
+              }
             : d,
         ),
       );

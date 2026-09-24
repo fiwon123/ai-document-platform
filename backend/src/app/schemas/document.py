@@ -53,12 +53,19 @@ class FileResponse(BaseModel):
 
 
 class DocumentStatusResponse(BaseModel):
-    """Minimal status payload for clients that poll processing state."""
+    """Minimal status payload for clients that poll processing state.
+
+    ``created_at``/``updated_at`` let the client show how long a document has
+    been in its current state (``updated_at`` is refreshed on every status
+    transition, so while pending/processing it is the transition time).
+    """
 
     id: UUID
     status: DocumentStatus
     error_message: str | None = None
     has_thumbnail: bool = False
+    created_at: datetime
+    updated_at: datetime
 
 
 class DocumentChunkResponse(BaseModel):
