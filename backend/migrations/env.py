@@ -5,7 +5,15 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.database import Base
-from app.models import document, user, chunk, search
+from app.models import (  # noqa: F401 — registers all ORM models on Base.metadata for autogenerate
+    DocumentChunk,
+    DocumentDB,
+    DocumentStatus,
+    Role,
+    SearchHistory,
+    UserDB,
+    WebhookSubscription,
+)
 
 config = context.config
 
