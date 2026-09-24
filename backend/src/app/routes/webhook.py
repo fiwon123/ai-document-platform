@@ -18,6 +18,7 @@ from app.services.webhook import (
     deliver_test_payload,
     generate_secret,
     is_valid_webhook_url,
+    mask_secret,
 )
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -33,13 +34,31 @@ def _events_as_strings(events: list[WebhookEvent]) -> list[str]:
     return [event.value for event in events]
 
 
+def _masked_response(subscription) -> WebhookSubscriptionResponse:
+    """Serialize a subscription with a masked signing secret.
+
+    The full secret is capture-once: only the create response carries it,
+    so anyone already holding the key can rotate by deleting/recreating.
+    """
+    response = WebhookSubscriptionResponse.model_validate(subscription)
+    response.secret = mask_secret(subscription.secret)
+    return response
+
+
 @router.get("/", response_model=list[WebhookSubscriptionResponse])
 def list_webhooks(
     repository: Annotated[WebhookRepository, Depends(get_webhook_repository)],
     owner_id: Annotated[UUID, Depends(get_current_user_id)],
 ):
-    """List the current user's webhook subscriptions (newest first)."""
-    return repository.list_for_user(owner_id)
+    """List the current user's webhook subscriptions (newest first).
+
+    Signing secrets are returned in masked form; the full value is only
+    visible in the create response.
+    """
+    return [
+        _masked_response(subscription)
+        for subscription in repository.list_for_user(owner_id)
+    ]
 
 
 @router.post(
@@ -54,9 +73,9 @@ def create_webhook(
 ):
     """Subscribe the current user to document events at a receiver URL.
 
-    A fresh HMAC signing secret is generated and returned in the response
-    (it is also available in the listing) so the receiver can verify the
-    ``X-Webhook-Signature`` header of every payload.
+    A fresh HMAC signing secret is generated and returned in THIS
+    response only — it is masked in every later listing — so capture it
+    here to configure the receiver's ``X-Webhook-Signature`` verification.
     """
     if not is_valid_webhook_url(request.url):
         raise HTTPException(
@@ -82,7 +101,11 @@ def update_webhook(
     repository: Annotated[WebhookRepository, Depends(get_webhook_repository)],
     owner_id: Annotated[UUID, Depends(get_current_user_id)],
 ):
-    """Update the URL, subscribed events, or active flag of a subscription."""
+    """Update the URL, subscribed events, or active flag of a subscription.
+
+    The signing secret is never returned in full here — it is masked in
+    the response just like listings.
+    """
     subscription = repository.get_for_user(subscription_id, owner_id)
     if subscription is None:
         raise HTTPException(
@@ -95,7 +118,7 @@ def update_webhook(
             detail="URL must be a public http:// or https:// endpoint "
             "(internal/private addresses are not allowed)",
         )
-    return repository.update(
+    updated = repository.update(
         subscription,
         url=request.url,
         events=(
@@ -105,6 +128,7 @@ def update_webhook(
         ),
         is_active=request.is_active,
     )
+    return _masked_response(updated)
 
 
 @router.delete("/{subscription_id}", status_code=status.HTTP_204_NO_CONTENT)

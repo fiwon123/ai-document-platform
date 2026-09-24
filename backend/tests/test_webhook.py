@@ -74,6 +74,17 @@ class TestSigningHelpers:
         assert secret_a
         assert secret_a != secret_b
 
+    def test_mask_secret_hides_full_value(self):
+        from app.services.webhook import mask_secret
+
+        secret = "AbCdEfGh1234567890"
+        hidden = mask_secret(secret)
+        assert hidden != secret
+        assert "..." in hidden
+        assert hidden == f"{secret[:5]}...{secret[-4:]}"
+        # Very short secrets degrade to a fully opaque placeholder.
+        assert mask_secret("short") == "hwk...hidden"
+
     def test_url_validation(self):
         from app.services.webhook import is_valid_webhook_url
 
@@ -165,7 +176,13 @@ class TestWebhookEndpoints:
 
         listing = client.get("/v1/webhooks/", headers=auth_headers)
         assert listing.status_code == 200
-        assert [s["id"] for s in listing.json()] == [sid]
+        listed = listing.json()
+        assert [s["id"] for s in listed] == [sid]
+
+        # Signing secrets are capture-once: the create response carries
+        # the full value, listings only a masked form.
+        assert listed[0]["secret"] != body["secret"]
+        assert listed[0]["secret"] == f"{body['secret'][:5]}...{body['secret'][-4:]}"
 
         updated = client.put(
             f"/v1/webhooks/{sid}",
@@ -181,6 +198,9 @@ class TestWebhookEndpoints:
         assert ub["url"] == "https://example.com/other"
         assert sorted(ub["events"]) == ["document.deleted", "document.failed"]
         assert ub["is_active"] is False
+        # The full secret is never echoed back on update either.
+        assert ub["secret"] == listed[0]["secret"]
+        assert ub["secret"] != body["secret"]
 
         deleted = client.delete(f"/v1/webhooks/{sid}", headers=auth_headers)
         assert deleted.status_code == 204

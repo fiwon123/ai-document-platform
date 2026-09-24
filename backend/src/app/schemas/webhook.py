@@ -57,8 +57,9 @@ class WebhookSubscriptionResponse(BaseModel):
     url: str
     events: list[str]
     is_active: bool
-    # Exposed so the owner can configure their receiver to verify the
-    # X-Webhook-Signature header (HMAC-SHA256 of the raw body).
+    # HMAC-SHA256 signing secret for verifying the X-Webhook-Signature
+    # header. The full value is only returned by the create endpoint
+    # (capture-once); listings and updates return a masked form.
     secret: str
     last_status: str | None = None
     last_status_code: int | None = None
