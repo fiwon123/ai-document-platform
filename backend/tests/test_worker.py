@@ -18,6 +18,7 @@ from app.models.user import UserDB
 from app.services.chunking import TextChunk
 from app.worker import (
     WorkerSettings,
+    _recovery_timeout_minutes,
     process_document,
     process_document_task,
     recover_stale_documents,
@@ -340,6 +341,10 @@ class TestWorkerSettings:
     def test_settings_expose_task_and_limits(self):
         assert process_document in WorkerSettings["functions"]
         assert WorkerSettings["max_tries"] == 3
+        # Large PDFs exceed arq's default 300s budget — the worker raises it.
+        assert WorkerSettings["job_timeout"] == int(
+            os.getenv("WORKER_JOB_TIMEOUT_SECONDS", "900")
+        )
 
     def test_redis_settings_from_env(self):
         settings = WorkerSettings["redis_settings"]
@@ -423,9 +428,27 @@ class TestRecoverStaleDocuments:
         db_session.commit()
         return doc
 
+    def test_recovery_floor_tracks_job_timeout_and_retries(self, monkeypatch):
+        """The recovery cutoff must never preempt jobs that are still
+        legitimately retrying (job_timeout × max_tries), and an explicit
+        larger override is honored."""
+        from app.worker import MAX_RETRIES, WORKER_JOB_TIMEOUT_SECONDS
+
+        default_floor = (WORKER_JOB_TIMEOUT_SECONDS // 60 + 1) * MAX_RETRIES
+        assert _recovery_timeout_minutes() >= default_floor
+
+        # An explicit override larger than the floor wins.
+        monkeypatch.setenv("WORKER_RECOVERY_TIMEOUT_MINUTES", str(default_floor + 5))
+        assert _recovery_timeout_minutes() == default_floor + 5
+
+        # An override smaller than the floor is clamped up to it.
+        monkeypatch.setenv("WORKER_RECOVERY_TIMEOUT_MINUTES", "1")
+        assert _recovery_timeout_minutes() == default_floor
+
     def test_marks_old_pending_and_processing_as_failed(self, db_session):
-        old_pending = self._seed(db_session, DocumentStatus.PENDING, 45)
-        old_processing = self._seed(db_session, DocumentStatus.PROCESSING, 45)
+        # Seeded well beyond the recovery floor (job_timeout × retries).
+        old_pending = self._seed(db_session, DocumentStatus.PENDING, 120)
+        old_processing = self._seed(db_session, DocumentStatus.PROCESSING, 120)
 
         asyncio.run(recover_stale_documents({}))
 
@@ -440,7 +463,7 @@ class TestRecoverStaleDocuments:
     def test_preserves_existing_error_message(self, db_session):
         # A document that already records a real failure keeps it instead of
         # the generic timeout text, so users see what actually went wrong.
-        doc = self._seed(db_session, DocumentStatus.PROCESSING, 45)
+        doc = self._seed(db_session, DocumentStatus.PROCESSING, 120)
         doc.error_message = "openai: connection reset"
         db_session.commit()
 

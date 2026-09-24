@@ -51,7 +51,7 @@ services:
       # GitHub workflow, so it forwards the host token by name only. The
       # `worker` service deliberately does NOT get these (non-trusted).
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      GH_TOKEN: ${GH_TOKEN:-${GITHUB_TOKEN:-}}
+      GH_TOKEN: ${GH_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -128,6 +128,13 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/${POSTGRES_DB:-mydb}
+      # Processing-timeout tuning (large PDFs): job_timeout is arq's per-run
+      # budget; the recovery floor is clamped to job_timeout × retries inside
+      # the worker. Embedding knobs bound per-request latency and batch size.
+      WORKER_JOB_TIMEOUT_SECONDS: ${WORKER_JOB_TIMEOUT_SECONDS:-900}
+      WORKER_RECOVERY_TIMEOUT_MINUTES: ${WORKER_RECOVERY_TIMEOUT_MINUTES:-30}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-120}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-2048}
     depends_on:
       # Wait for dev to finish migrations + start uvicorn first so the worker
       # never polls the queue before the schema exists.
