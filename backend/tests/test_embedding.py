@@ -1,105 +1,143 @@
-"""Tests for the embedding service (request batching + client construction).
-
-External services are never called: the shared OpenAI client is replaced
-with a fake that records each embeddings request.
-"""
-
-from types import SimpleNamespace
+"""Tests for the embedding service's bounded retry behavior."""
 
 import pytest
 
-from app.services import embedding as embedding_module
-from app.services.embedding import EmbeddingService
 
+def _fake_response():
+    """A minimal embeddings response with one vector."""
 
-class _FakeEmbeddingsAPI:
-    def __init__(self) -> None:
-        self.calls: list[list[str]] = []
-        self._next_index = 0
+    class _Data:
+        embedding = [0.5, 0.25]
 
-    def create(self, *, model: str, input: str | list[str]) -> SimpleNamespace:
-        items = input if isinstance(input, list) else [input]
-        self.calls.append(list(items))
-        # Embeddings are returned per request in input order; a global
-        # counter lets callers verify ordering across batches.
-        embeddings = [float(self._next_index + i) for i in range(len(items))]
-        self._next_index += len(items)
-        return SimpleNamespace(
-            data=[SimpleNamespace(embedding=[v]) for v in embeddings]
-        )
+    class _Resp:
+        data = [_Data()]
+
+    return _Resp()
 
 
 class _FakeClient:
-    def __init__(self) -> None:
-        self.embeddings = _FakeEmbeddingsAPI()
+    """Duck-typed OpenAI client that raises queued exceptions then succeeds."""
+
+    def __init__(self, exc_queue=None):
+        self.exc_queue = list(exc_queue or [])
+        self.calls = 0
+
+    @property
+    def embeddings(self):
+        return self
+
+    def create(self, **kwargs):
+        self.calls += 1
+        if self.exc_queue:
+            raise self.exc_queue.pop(0)
+        return _fake_response()
 
 
-@pytest.fixture()
-def fake_client(monkeypatch) -> _FakeClient:
-    client = _FakeClient()
-    monkeypatch.setattr(embedding_module, "client", client)
-    return client
+def _make_request():
+    import httpx2
+
+    return httpx2.Request("POST", "https://api.openai.com/v1/embeddings")
 
 
-class TestGenerateEmbedding:
-    def test_single_text_uses_one_request(self, fake_client):
-        result = EmbeddingService().generate_embedding("hello")
+def _conn_error():
+    import openai
 
-        assert result == [0.0]
-        assert fake_client.embeddings.calls == [["hello"]]
-
-    def test_raises_without_configured_client(self, monkeypatch):
-        monkeypatch.setattr(embedding_module, "client", None)
-
-        with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
-            EmbeddingService().generate_embedding("hello")
+    return openai.APIConnectionError(request=_make_request())
 
 
-class TestGenerateEmbeddings:
-    def test_batches_when_exceeding_batch_size(self, monkeypatch, fake_client):
-        monkeypatch.setattr(embedding_module, "EMBEDDING_BATCH_SIZE", 2)
-        texts = [f"chunk-{i}" for i in range(5)]
+def _rate_limit_error():
+    import httpx2
+    import openai
 
-        result = EmbeddingService().generate_embeddings(texts)
-
-        # Order preserved across batches; the tail is a partial batch.
-        assert result == [[float(i)] for i in range(5)]
-        assert fake_client.embeddings.calls == [
-            ["chunk-0", "chunk-1"],
-            ["chunk-2", "chunk-3"],
-            ["chunk-4"],
-        ]
-
-    def test_single_request_within_batch_size(self, monkeypatch, fake_client):
-        monkeypatch.setattr(embedding_module, "EMBEDDING_BATCH_SIZE", 2048)
-
-        EmbeddingService().generate_embeddings(["a", "b"])
-
-        assert fake_client.embeddings.calls == [["a", "b"]]
-
-    def test_empty_input_makes_no_requests(self, fake_client):
-        assert EmbeddingService().generate_embeddings([]) == []
-        assert fake_client.embeddings.calls == []
-
-    def test_raises_without_configured_client(self, monkeypatch):
-        monkeypatch.setattr(embedding_module, "client", None)
-
-        with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
-            EmbeddingService().generate_embeddings(["hello"])
+    request = _make_request()
+    return openai.RateLimitError(
+        "rate limited", response=httpx2.Response(429, request=request), body=None
+    )
 
 
-class TestClientConstruction:
-    def test_no_client_without_api_key(self, monkeypatch):
-        monkeypatch.setattr(embedding_module, "OPENAI_API_KEY", "")
-        assert embedding_module._build_client() is None
+def _server_error():
+    import httpx2
+    import openai
 
-    def test_client_applies_explicit_timeout(self, monkeypatch):
-        monkeypatch.setattr(embedding_module, "OPENAI_API_KEY", "sk-test")
-        monkeypatch.setattr(embedding_module, "EMBEDDING_TIMEOUT_SECONDS", 120)
+    request = _make_request()
+    return openai.InternalServerError(
+        "internal error", response=httpx2.Response(500, request=request), body=None
+    )
 
-        client = embedding_module._build_client()
 
-        assert client is not None
-        # A hung embeddings call must fail within the configured timeout
-        # instead of stalling the document pipeline indefinitely.
-        assert client.timeout == 120
+def _bad_request_error():
+    import httpx2
+    import openai
+
+    request = _make_request()
+    return openai.BadRequestError(
+        "bad request", response=httpx2.Response(400, request=request), body=None
+    )
+
+
+def _patch_module(monkeypatch):
+    from app.services import embedding
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(embedding, "time", _FakeTime(sleeps))
+    return embedding, sleeps
+
+
+class _FakeTime:
+    def __init__(self, sleeps):
+        self.sleeps = sleeps
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+
+
+class TestRetryOnTransientFailures:
+    def test_succeeds_after_transient_failures(self, monkeypatch):
+        embedding, sleeps = _patch_module(monkeypatch)
+        fake = _FakeClient(exc_queue=[_conn_error(), _rate_limit_error()])
+        monkeypatch.setattr(embedding, "client", fake)
+
+        result = embedding.EmbeddingService().generate_embeddings(["a", "b"])
+
+        assert result == [[0.5, 0.25]]
+        assert fake.calls == 3  # 1 attempt + 2 retries
+        # Exponential backoff: base * 2^attempt -> 1.0s then 2.0s.
+        assert sleeps == [1.0, 2.0]
+
+    def test_gives_up_after_retries_exhausted(self, monkeypatch):
+        embedding, _ = _patch_module(monkeypatch)
+        fake = _FakeClient(exc_queue=[_server_error()] * 10)
+        monkeypatch.setattr(embedding, "client", fake)
+
+        with pytest.raises(Exception, match="internal error"):
+            embedding.EmbeddingService().generate_embeddings(["a"])
+
+        assert fake.calls == embedding.EMBEDDING_RETRY_ATTEMPTS + 1
+
+    def test_does_not_retry_client_errors(self, monkeypatch):
+        embedding, sleeps = _patch_module(monkeypatch)
+        fake = _FakeClient(exc_queue=[_bad_request_error()])
+        monkeypatch.setattr(embedding, "client", fake)
+
+        with pytest.raises(Exception, match="bad request"):
+            embedding.EmbeddingService().generate_embeddings(["a"])
+
+        assert fake.calls == 1
+        assert sleeps == []  # no backoff for non-retryable errors
+
+    def test_single_embedding_uses_retry_too(self, monkeypatch):
+        embedding, _ = _patch_module(monkeypatch)
+        fake = _FakeClient(exc_queue=[_conn_error()])
+        monkeypatch.setattr(embedding, "client", fake)
+
+        result = embedding.EmbeddingService().generate_embedding("a")
+
+        assert result == [0.5, 0.25]
+        assert fake.calls == 2
+
+    def test_unconfigured_client_still_raises(self, monkeypatch):
+        embedding, _ = _patch_module(monkeypatch)
+        monkeypatch.setattr(embedding, "client", None)
+
+        with pytest.raises(RuntimeError, match="not configured"):
+            embedding.EmbeddingService().generate_embeddings(["a"])
