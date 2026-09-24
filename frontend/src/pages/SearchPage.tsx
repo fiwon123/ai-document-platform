@@ -128,6 +128,13 @@ export function SearchPage() {
   // A new query always starts from the first page (offset 0).
   useEffect(() => {
     if (!query.trim()) {
+      // Bump the sequence so any in-flight search for a previous query is
+      // discarded instead of repopulating the (now empty) results, and clear
+      // the loading flags so the spinner never sticks when a request is
+      // cancelled by clearing the field mid-flight.
+      searchSeqRef.current += 1;
+      setIsLoading(false);
+      setIsLoadingMore(false);
       setResults([]);
       setTotalCount(0);
       setHasMore(false);
@@ -233,7 +240,7 @@ export function SearchPage() {
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => void loadMore()}
-                disabled={isLoadingMore}
+                disabled={isLoadingMore || isLoading}
               >
                 {isLoadingMore ? "Loading…" : "Load more results"}
               </button>
