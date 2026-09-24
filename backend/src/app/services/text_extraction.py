@@ -19,9 +19,9 @@ class TextExtractionService:
 
     def _extract_from_pdf(self, file_object: BinaryIO) -> str:
         try:
-            import PyPDF2
+            import pypdf
 
-            reader = PyPDF2.PdfReader(file_object)
+            reader = pypdf.PdfReader(file_object)
             text_parts = []
             for page in reader.pages:
                 text = page.extract_text()
@@ -29,7 +29,7 @@ class TextExtractionService:
                     text_parts.append(text)
             return "\n\n".join(text_parts)
         except ImportError:
-            return "[PDF extraction requires PyPDF2: pip install PyPDF2]"
+            return "[PDF extraction requires pypdf: pip install pypdf]"
 
     def _extract_from_text(self, file_object: BinaryIO) -> str:
         content = file_object.read()
