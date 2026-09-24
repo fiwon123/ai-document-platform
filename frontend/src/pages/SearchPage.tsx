@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, useTransition } from "react";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { DocumentFilter } from "../components/DocumentFilter";
 import { EmptyState } from "../components/EmptyState";
@@ -70,6 +70,9 @@ export function SearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Typing updates the input non-blockingly: the keystroke render is deferred
+  // to a transition so long-running searches never jank the input itself.
+  const [, startTransition] = useTransition();
 
   const idKey = selectedIds.join(",");
   const searchQuery = useInfiniteQuery({
@@ -160,7 +163,7 @@ export function SearchPage() {
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => startTransition(() => setQuery(e.target.value))}
             placeholder="Search your documents..."
             aria-label="Search your documents"
             className="search-input"

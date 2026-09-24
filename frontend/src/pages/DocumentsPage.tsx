@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import { documents } from "../services/api";
 import type { Document, DocumentPreview, DocumentStatusResponse } from "../types";
@@ -38,6 +46,11 @@ function formatElapsed(updatedAt: string): string {
 
 /** Delay before a failed thumbnail lookup is retried (prevents hammering). */
 const THUMBNAIL_RETRY_MS = 30_000;
+
+type OptimisticDocumentAction =
+  | { type: "delete"; id: string }
+  | { type: "reprocess"; id: string }
+  | { type: "upload"; files: File[] };
 
 const statusColors: Record<string, string> = {
   // -600 weight shades keep white text WCAG AA (>= 4.5:1) in both themes.
@@ -288,6 +301,49 @@ export function DocumentsPage() {
   // reprocess) updates it in place so the grid reflects changes instantly.
   const docsQuery = useDocuments();
   const docs = docsQuery.data ?? [];
+  // Optimistic layer: delete/reprocess/upload apply to the visible grid
+  // instantly and are dropped again once the real cache update (or a
+  // failure) lands. Polling and thumbnails keep reading the non-optimistic
+  // `docs` so they only ever touch real documents.
+  const [optimisticDocs, addOptimistic] = useOptimistic(
+    docs,
+    (state, action: OptimisticDocumentAction) => {
+    if (action.type === "delete") {
+      return state.filter((d) => d.id !== action.id);
+    }
+    if (action.type === "reprocess") {
+      return state.map((d) =>
+        d.id === action.id
+          ? {
+              ...d,
+              status: "pending",
+              error_message: null,
+              // Restart the elapsed timer immediately; the 3s poll then
+              // syncs the authoritative value from the backend.
+              updated_at: new Date().toISOString(),
+            }
+          : d,
+      );
+    }
+    // Upload: prepend in-flight placeholder cards for each selected file.
+    const files: File[] = action.files;
+    const placeholders: Document[] = files.map((file) => ({
+      id: `pending-${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      owner_id: "",
+      filename: file.name,
+      object_key: "",
+      mime_type: file.type || "application/octet-stream",
+      status: "pending",
+      error_message: null,
+      has_thumbnail: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+    return [...placeholders, ...state];
+  });
+  // addOptimistic must run inside an action (async transition) for React to
+  // re-render optimistically.
+  const [, startTransition] = useTransition();
   const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -443,52 +499,58 @@ export function DocumentsPage() {
    * Uploads files via the bulk endpoint. Batches larger than the backend
    * limit are split into sequential bulk requests. Per-file failures from
    * the response are reported individually; successful files still appear.
+   * The busy flag is set eagerly (before the transition) so the dropzone
+   * disables immediately; placeholder cards are shown optimistically while
+   * the requests are in flight.
    */
   async function uploadFiles(files: File[]) {
     if (files.length === 0 || isUploading) return;
 
     setIsUploading(true);
     setError(null);
-    const errors: string[] = [];
-    let uploadedCount = 0;
+    startTransition(async () => {
+      addOptimistic({ type: "upload", files });
+      const errors: string[] = [];
+      let uploadedCount = 0;
 
-    const batches: File[][] = [];
-    for (let i = 0; i < files.length; i += MAX_BULK_UPLOAD_FILES) {
-      batches.push(files.slice(i, i + MAX_BULK_UPLOAD_FILES));
-    }
-
-    try {
-      for (const batch of batches) {
-        try {
-          const { uploaded, failed: failures } = await documents.uploadMany(batch);
-          if (uploaded.length > 0) {
-            queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) => [
-              ...uploaded,
-              ...(prev ?? []),
-            ]);
-            uploadedCount += uploaded.length;
-          }
-          for (const failure of failures) {
-            const message = `Upload of "${failure.filename}" failed: ${failure.error}`;
-            errors.push(message);
-            toast.error(message);
-          }
-        } catch (err) {
-          const message = err instanceof Error ? err.message : "unknown error";
-          errors.push(`Batch upload failed: ${message}`);
-          toast.error(`Batch upload failed: ${message}`);
-        }
+      const batches: File[][] = [];
+      for (let i = 0; i < files.length; i += MAX_BULK_UPLOAD_FILES) {
+        batches.push(files.slice(i, i + MAX_BULK_UPLOAD_FILES));
       }
-    } finally {
-      setIsUploading(false);
-    }
 
-    if (errors.length > 0) setError(errors.join(" "));
-    if (uploadedCount > 0) {
-      toast.success(
-        `${uploadedCount} document${uploadedCount === 1 ? "" : "s"} uploaded — processing started`,
-      );
-    }
+      try {
+        for (const batch of batches) {
+          try {
+            const { uploaded, failed: failures } = await documents.uploadMany(batch);
+            if (uploaded.length > 0) {
+              queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) => [
+                ...uploaded,
+                ...(prev ?? []),
+              ]);
+              uploadedCount += uploaded.length;
+            }
+            for (const failure of failures) {
+              const message = `Upload of "${failure.filename}" failed: ${failure.error}`;
+              errors.push(message);
+              toast.error(message);
+            }
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "unknown error";
+            errors.push(`Batch upload failed: ${message}`);
+            toast.error(`Batch upload failed: ${message}`);
+          }
+        }
+      } finally {
+        setIsUploading(false);
+      }
+
+      if (errors.length > 0) setError(errors.join(" "));
+      if (uploadedCount > 0) {
+        toast.success(
+          `${uploadedCount} document${uploadedCount === 1 ? "" : "s"} uploaded — processing started`,
+        );
+      }
+    });
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -508,30 +570,35 @@ export function DocumentsPage() {
     void uploadFiles(files);
   }
 
-  const handleDelete = useCallback(async (id: string) => {
+  const handleDelete = useCallback((id: string) => {
     if (!confirm("Are you sure you want to delete this document?")) return;
 
+    // Busy flags are urgent (outside the transition) so the row's delete
+    // button disables and shows its spinner immediately.
     setDeletingId(id);
     setError(null);
-    try {
-      await documents.delete(id);
-      queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
-        (prev ?? []).filter((d) => d.id !== id),
-      );
-      // Drop any cached thumbnail URL so a re-uploaded document with the
-      // same id (never happens today, but cheap) cannot show a stale image.
-      setThumbnailUrls((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      toast.success("Document deleted");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
-      toast.error(err instanceof Error ? err.message : "Delete failed");
-    } finally {
-      setDeletingId(null);
-    }
+    startTransition(async () => {
+      addOptimistic({ type: "delete", id });
+      try {
+        await documents.delete(id);
+        queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
+          (prev ?? []).filter((d) => d.id !== id),
+        );
+        // Drop any cached thumbnail URL so a re-uploaded document with the
+        // same id (never happens today, but cheap) cannot show a stale image.
+        setThumbnailUrls((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        toast.success("Document deleted");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Delete failed");
+        toast.error(err instanceof Error ? err.message : "Delete failed");
+      } finally {
+        setDeletingId(null);
+      }
+    });
   }, [queryClient, toast]);
 
   // All handlers use only stable references (settiers, the API client,
@@ -570,33 +637,38 @@ export function DocumentsPage() {
   }, []);
 
   /** Re-enqueue a failed document for processing and start polling it. */
-  const handleReprocess = useCallback(async (id: string) => {
+  const handleReprocess = useCallback((id: string) => {
+    // Busy flag is urgent (outside the transition) so the row's reprocess
+    // button disables and shows its spinner immediately.
     setReprocessingId(id);
     setError(null);
-    try {
-      await documents.reprocess(id);
-      queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
-        (prev ?? []).map((d) =>
-          d.id === id
-            ? {
-                ...d,
-                status: "pending",
-                error_message: null,
-                // Restart the elapsed timer immediately; the 3s poll then
-                // syncs the authoritative value from the backend.
-                updated_at: new Date().toISOString(),
-              }
-            : d,
-        ),
-      );
-      toast.success("Document queued for reprocessing");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Reprocessing failed";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setReprocessingId(null);
-    }
+    startTransition(async () => {
+      addOptimistic({ type: "reprocess", id });
+      try {
+        await documents.reprocess(id);
+        queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
+          (prev ?? []).map((d) =>
+            d.id === id
+              ? {
+                  ...d,
+                  status: "pending",
+                  error_message: null,
+                  // Restart the elapsed timer immediately; the 3s poll then
+                  // syncs the authoritative value from the backend.
+                  updated_at: new Date().toISOString(),
+                }
+              : d,
+          ),
+        );
+        toast.success("Document queued for reprocessing");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Reprocessing failed";
+        setError(message);
+        toast.error(message);
+      } finally {
+        setReprocessingId(null);
+      }
+    });
   }, [queryClient, toast]);
 
   const clearThumbnailUrl = useCallback((id: string) => {
@@ -654,7 +726,7 @@ export function DocumentsPage() {
           <SkeletonCard />
           <SkeletonCard />
         </div>
-      ) : docs.length === 0 ? (
+      ) : optimisticDocs.length === 0 ? (
         <EmptyState
           title="No documents uploaded yet"
           description="Upload your first document above to start asking questions."
@@ -662,7 +734,7 @@ export function DocumentsPage() {
         />
       ) : (
         <div className="document-grid">
-          {docs.map((doc) => (
+          {optimisticDocs.map((doc) => (
             <DocumentCard
               key={doc.id}
               doc={doc}

@@ -74,7 +74,14 @@ export function QAPage() {
       <DocumentFilter selected={selectedIds} onChange={setSelectedIds} />
 
       <div className="chat-container">
-        <div className="chat-messages">
+        {/* Live region: screen readers announce new messages as they are
+            added (role="log" implies aria-live="polite"). */}
+        <div
+          className="chat-messages"
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions"
+        >
           {messages.length === 0 && (
             <EmptyState
               title="No messages yet"

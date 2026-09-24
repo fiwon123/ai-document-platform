@@ -485,7 +485,7 @@ describe("DocumentsPage busy states", () => {
     vi.restoreAllMocks();
   });
 
-  it("disables the row's delete button and shows a spinner while deleting", async () => {
+  it("optimistically removes the document while the delete request is pending", async () => {
     let resolveDelete!: () => void;
     mockedDelete.mockReturnValue(
       new Promise<void>((resolve) => {
@@ -496,20 +496,50 @@ describe("DocumentsPage busy states", () => {
     renderWithClient(<DocumentsPage />);
     await settle();
 
+    // The ready card and its delete button are visible before the click.
+    expect(screen.getByText("notes.txt")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
 
-    // While the delete request is pending the button is disabled and shows a spinner.
-    const busyButton = screen.getByRole("button", { name: "Delete document" }) as HTMLButtonElement;
-    expect(busyButton.disabled).toBe(true);
-    expect(screen.getByRole("status", { name: "Deleting" })).toBeTruthy();
+    // Optimistic deletion: the card disappears immediately, before the
+    // request settles.
+    expect(mockedDelete).toHaveBeenCalledWith("doc-ready");
+    expect(screen.queryByText("notes.txt")).toBeNull();
+    expect(screen.getByText("No documents uploaded yet")).toBeTruthy();
 
     await act(async () => {
       resolveDelete();
     });
     await settle();
 
-    expect(mockedDelete).toHaveBeenCalledWith("doc-ready");
+    // The document stays gone once the delete request has completed.
     expect(screen.queryByText("notes.txt")).toBeNull();
+  });
+
+  it("restores the document when the delete request fails", async () => {
+    let rejectDelete!: (error: Error) => void;
+    mockedDelete.mockReturnValue(
+      new Promise<void>((_, reject) => {
+        rejectDelete = reject;
+      }),
+    );
+
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
+    await settle();
+
+    // The card was removed optimistically while the request was pending.
+    expect(screen.queryByText("notes.txt")).toBeNull();
+
+    await act(async () => {
+      rejectDelete(new Error("Delete failed"));
+    });
+    await settle();
+
+    // The optimistic removal rolls back and the card returns with the error.
+    expect(screen.getByText("notes.txt")).toBeTruthy();
+    expect(screen.getByRole("alert")).toHaveTextContent("Delete failed");
   });
 
   it("disables the row's download button and shows a spinner while fetching the URL", async () => {
@@ -693,7 +723,7 @@ describe("DocumentsPage reprocess", () => {
     expect(screen.queryByText(/did not complete/)).toBeNull();
   });
 
-  it("shows a spinner and disables the button while reprocessing", async () => {
+  it("optimistically flips the failed card to pending while the request is in flight", async () => {
     let resolveReprocess!: (
       value: { message: string; document_id: string; status: string },
     ) => void;
@@ -707,12 +737,13 @@ describe("DocumentsPage reprocess", () => {
     await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Reprocess document" }));
+    await settle();
 
-    expect(
-      (screen.getByRole("button", { name: "Reprocess document" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    expect(screen.getByRole("status", { name: "Reprocessing" })).toBeTruthy();
+    // Optimistic: the card immediately shows the pending badge and the
+    // failure message clears, before the request has resolved.
+    expect(mockedReprocess).toHaveBeenCalledWith("doc-failed");
+    expect(screen.getByText("pending")).toBeTruthy();
+    expect(screen.queryByText(/did not complete/)).toBeNull();
 
     await act(async () => {
       resolveReprocess({
@@ -723,10 +754,12 @@ describe("DocumentsPage reprocess", () => {
     });
     await settle();
 
+    // The card stays pending once the request has completed.
     expect(screen.getByText("pending")).toBeTruthy();
+    expect(screen.queryByText(/did not complete/)).toBeNull();
   });
 
-  it("reports a reprocess failure and keeps the failed state", async () => {
+  it("rolls back to the failed state when reprocessing fails", async () => {
     mockedReprocess.mockRejectedValue(new Error("already processing"));
 
     renderWithClient(<DocumentsPage />);
@@ -736,7 +769,9 @@ describe("DocumentsPage reprocess", () => {
     await settle();
 
     expect(screen.getByRole("alert")).toHaveTextContent("already processing");
-    // The card stays failed with its original error message.
+    // The optimistic flip rolls back: the card stays failed with its
+    // original error message and its Reprocess button.
     expect(screen.getByText(/did not complete/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reprocess document" })).toBeTruthy();
   });
 });

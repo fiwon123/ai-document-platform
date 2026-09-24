@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useState, useOptimistic, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { users } from "../services/api";
 import type { User } from "../types";
@@ -85,6 +85,11 @@ const AdminUserRow = memo(function AdminUserRow({
   );
 });
 
+type OptimisticUserAction =
+  | { type: "role"; userId: string; role: Role }
+  | { type: "toggle-active"; user: User; isActive: boolean }
+  | { type: "delete"; userId: string };
+
 export function AdminPage() {
   const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
@@ -94,6 +99,28 @@ export function AdminPage() {
   const usersQuery = useAdminUsers({ enabled: isAdmin });
   const statsQuery = useAdminStatistics({ enabled: isAdmin });
   const userList = usersQuery.data ?? [];
+  // Optimistic layer: role/status/delete mutations apply to the visible table
+  // instantly and are dropped once the real cache update (or a failure) lands.
+  const [optimisticUsers, addOptimistic] = useOptimistic(
+    userList,
+    (state, action: OptimisticUserAction) => {
+      switch (action.type) {
+        case "delete":
+          return state.filter((u) => u.id !== action.userId);
+        case "role":
+          return state.map((u) =>
+            u.id === action.userId ? { ...u, role: action.role } : u,
+          );
+        case "toggle-active":
+          return state.map((u) =>
+            u.id === action.user.id ? { ...u, is_active: action.isActive } : u,
+          );
+      }
+    },
+  );
+  // addOptimistic must run inside an action (async transition) for React to
+  // re-render optimistically.
+  const [, startTransition] = useTransition();
   const stats = statsQuery.data ?? null;
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -105,55 +132,68 @@ export function AdminPage() {
   // Handlers use functional setState only, so they are stable across renders
   // and memoized rows are not invalidated by parent re-renders. Each one
   // updates the shared users query cache instead of local component state.
-  const handleRoleChange = useCallback(async (userId: string, role: Role) => {
+  const handleRoleChange = useCallback((userId: string, role: Role) => {
     setBusyId(userId);
     setError(null);
-    try {
-      const updated = await users.updateUserRole(userId, role);
-      queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
-        (prev ?? []).map((u) =>
-          u.id === userId ? { ...u, role: updated.role } : u,
-        ),
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update role");
-    } finally {
-      setBusyId(null);
-    }
+    startTransition(async () => {
+      addOptimistic({ type: "role", userId, role });
+      try {
+        const updated = await users.updateUserRole(userId, role);
+        queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
+          (prev ?? []).map((u) =>
+            u.id === userId ? { ...u, role: updated.role } : u,
+          ),
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to update role");
+      } finally {
+        setBusyId(null);
+      }
+    });
   }, [queryClient]);
 
-  const handleDelete = useCallback(async (userId: string, username: string) => {
+  const handleDelete = useCallback((userId: string, username: string) => {
     if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
 
     setBusyId(userId);
     setError(null);
-    try {
-      await users.deleteUser(userId);
-      queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
-        (prev ?? []).filter((u) => u.id !== userId),
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete user");
-    } finally {
-      setBusyId(null);
-    }
+    startTransition(async () => {
+      addOptimistic({ type: "delete", userId });
+      try {
+        await users.deleteUser(userId);
+        queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
+          (prev ?? []).filter((u) => u.id !== userId),
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to delete user");
+      } finally {
+        setBusyId(null);
+      }
+    });
   }, [queryClient]);
 
-  const handleToggleActive = useCallback(async (user: User) => {
+  const handleToggleActive = useCallback((user: User) => {
     setBusyId(user.id);
     setError(null);
-    try {
-      const updated = await users.updateUserActive(user.id, !user.is_active);
-      queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
-        (prev ?? []).map((u) =>
-          u.id === user.id ? { ...u, is_active: updated.is_active } : u,
-        ),
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update status");
-    } finally {
-      setBusyId(null);
-    }
+    startTransition(async () => {
+      addOptimistic({
+        type: "toggle-active",
+        user,
+        isActive: !user.is_active,
+      });
+      try {
+        const updated = await users.updateUserActive(user.id, !user.is_active);
+        queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
+          (prev ?? []).map((u) =>
+            u.id === user.id ? { ...u, is_active: updated.is_active } : u,
+          ),
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to update status");
+      } finally {
+        setBusyId(null);
+      }
+    });
   }, [queryClient]);
 
   if (!isAdmin) {
@@ -234,7 +274,7 @@ export function AdminPage() {
 
       {usersQuery.isPending ? (
         <SkeletonList rows={4} />
-      ) : userList.length === 0 ? (
+      ) : optimisticUsers.length === 0 ? (
         <EmptyState
           title="No users found"
           description="There are no user accounts yet."
@@ -252,7 +292,7 @@ export function AdminPage() {
               </tr>
             </thead>
             <tbody>
-              {userList.map((user) => (
+              {optimisticUsers.map((user) => (
                 <AdminUserRow
                   key={user.id}
                   user={user}
