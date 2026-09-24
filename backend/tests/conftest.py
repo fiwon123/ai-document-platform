@@ -24,6 +24,10 @@ PG_PASSWORD = os.getenv("POSTGRES_PASSWORD", "mysecretpassword")
 # - database/db.py builds the engine from POSTGRES_* vars
 # Configure everything before any `app.*` import.
 os.environ["POSTGRES_DB"] = TEST_DB_NAME
+# The app engine requires POSTGRES_PASSWORD (no default is baked in
+# anymore); align it with the maintenance-connection password so the
+# suite runs without extra environment configuration.
+os.environ.setdefault("POSTGRES_PASSWORD", PG_PASSWORD)
 os.environ.setdefault("SECRET_KEY", "test-only-secret-key")
 # Keep the in-memory rate limiter from tripping during long test runs.
 os.environ.setdefault("RATE_LIMIT_REQUESTS", "10000")
@@ -36,7 +40,9 @@ os.environ.setdefault("REFRESH_COOKIE_SECURE", "false")
 # point the flush at the developer's live cache database.
 os.environ["REDIS_DB"] = "15"
 
-from sqlalchemy import create_engine, text
+# NOTE: imports must stay below the env setup above — app modules read
+# the environment at import time.
+from sqlalchemy import create_engine, text  # noqa: E402
 
 
 def _server_engine():

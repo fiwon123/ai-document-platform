@@ -50,8 +50,35 @@ def parse_cors_origins(raw: str | None) -> list[str]:
     return list(_DEFAULT_CORS_ORIGINS)
 
 
+def _validate_environment() -> None:
+    """Fail fast on startup when required security configuration is missing.
+
+    Security-sensitive settings must never ship baked-in defaults; a
+    missing value is a misconfiguration, so refuse to boot rather than
+    run in a broken (or unexpectedly permissive) state.
+    """
+    missing = []
+    if not os.getenv("SECRET_KEY"):
+        missing.append("SECRET_KEY (JWT signing key)")
+    if missing:
+        raise RuntimeError(
+            "Missing required environment variables: " + ", ".join(missing)
+        )
+
+    if os.getenv("MINIO_ACCESS_KEY", "minioadmin") == "minioadmin" or os.getenv(
+        "MINIO_SECRET_KEY", "minioadmin"
+    ) == "minioadmin":
+        logger.warning(
+            "MinIO is using the default admin credentials — override "
+            "MINIO_ACCESS_KEY/MINIO_SECRET_KEY in non-local environments"
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Refuse to serve with an invalid/missing security configuration.
+    _validate_environment()
+
     # Ensure the MinIO bucket exists before serving any requests.
     try:
         storage.ensure_bucket()
