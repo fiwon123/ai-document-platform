@@ -89,8 +89,61 @@ class TestDocumentStatusEndpoint:
         doc.has_thumbnail = True
         db_session.commit()
 
+        # The thumbnail flag is cached like the rest of the status payload;
+        # a transition invalidates it (here simulated via the same invalidation
+        # hook the worker uses on status changes).
+        from app.services.document import invalidate_document_cache
+
+        invalidate_document_cache(owner_id, doc.id)
+
         resp = client.get(f"/v1/documents/{doc.id}/status", headers=auth_headers)
         assert resp.json()["has_thumbnail"] is True
+
+    def test_status_is_cached_between_polls(self, client, auth_headers, db_session):
+        """Polls are served from the short-TTL cache until invalidated."""
+        owner_id = _current_user_id(client, auth_headers)
+        doc = _seed_doc(db_session, owner_id, DocumentStatus.PROCESSING)
+
+        first = client.get(f"/v1/documents/{doc.id}/status", headers=auth_headers)
+        assert first.status_code == 200
+        assert first.json()["status"] == "processing"
+
+        # Transition the row behind the cache's back: the next poll must
+        # still return the cached status (short TTL), not the new row.
+        doc.status = DocumentStatus.READY
+        doc.error_message = None
+        db_session.commit()
+
+        second = client.get(f"/v1/documents/{doc.id}/status", headers=auth_headers)
+        assert second.json()["status"] == "processing"  # served from cache
+
+        from app.services.document import invalidate_document_cache
+
+        invalidate_document_cache(owner_id, doc.id)
+
+        third = client.get(f"/v1/documents/{doc.id}/status", headers=auth_headers)
+        assert third.json()["status"] == "ready"  # fresh from the database
+
+    def test_status_cache_tracks_transitions(self, client, auth_headers, db_session):
+        """document -> failed after invalidation reflects the new status."""
+        from app.services.document import invalidate_document_cache
+
+        owner_id = _current_user_id(client, auth_headers)
+        doc = _seed_doc(db_session, owner_id, DocumentStatus.PROCESSING)
+
+        client.get(f"/v1/documents/{doc.id}/status", headers=auth_headers)
+        invalidate_document_cache(owner_id, doc.id)
+
+        doc.status = DocumentStatus.FAILED
+        doc.error_message = "Document processing failed"
+        db_session.commit()
+
+        resp = client.get(f"/v1/documents/{doc.id}/status", headers=auth_headers)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "failed"
+        assert body["error_message"] == "Document processing failed"
 
     def test_missing_document_returns_404(self, client, auth_headers, db_session):
         resp = client.get(f"/v1/documents/{uuid4()}/status", headers=auth_headers)
