@@ -253,8 +253,12 @@ async def _process_document_impl(document_id: UUID) -> DocumentDB | None:
             DocumentChunk.document_id == document_id
         ).delete(synchronize_session=False)
 
-        for chunk, embedding in zip(chunks, embeddings, strict=False):
-            db.add(
+        # Bulk insert instead of per-chunk add()/flush: for large documents
+        # this skips the unit-of-work machinery (identity map, dependency
+        # tracking, per-object events) for thousands of rows. Order/indices
+        # are preserved via chunk_index; embedding is attached per chunk.
+        db.bulk_save_objects(
+            [
                 DocumentChunk(
                     document_id=document_id,
                     content=chunk.content,
@@ -262,7 +266,9 @@ async def _process_document_impl(document_id: UUID) -> DocumentDB | None:
                     metadata_=chunk.metadata,
                     embedding=embedding,
                 )
-            )
+                for chunk, embedding in zip(chunks, embeddings, strict=False)
+            ]
+        )
 
         db.commit()
 

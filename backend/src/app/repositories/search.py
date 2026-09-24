@@ -107,7 +107,7 @@ class SearchRepository:
         query = query.filter(DocumentChunk.embedding.isnot(None))
         query = self._apply_user_filter(query, user_id, document_ids)
 
-        rows = query.order_by(distance).offset(offset).limit(top_k).all()
+        rows = query.order_by(distance, DocumentChunk.id).offset(offset).limit(top_k).all()
         total_count = rows[0].total_count if rows else 0
 
         return (

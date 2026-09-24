@@ -40,7 +40,9 @@ ALLOWED_MIME_TYPES = {
 }
 
 DOCUMENT_CACHE_TTL_SECONDS = 60
+STATUS_CACHE_TTL_SECONDS = 15
 _DOCUMENT_KEY = "document:{owner_id}:{document_id}"
+_STATUS_KEY = "document:status:{owner_id}:{document_id}"
 
 # Maximum number of files accepted in a single bulk upload request.
 MAX_BULK_UPLOAD_FILES = 20
@@ -58,14 +60,16 @@ def _sanitize_filename(filename: str) -> str:
 
 
 def invalidate_document_cache(owner_id: UUID, document_id: UUID) -> None:
-    """Drop the cached metadata entry for a document.
+    """Drop the cached metadata + status entries for a document.
 
     Called whenever a document's row changes (status transitions, deletes)
-    so callers never serve stale metadata longer than necessary. The TTL
-    provides a second line of defense if a caller forgets to invalidate.
+    so callers never serve stale metadata or polled status longer than
+    necessary. The TTLs provide a second line of defense if a caller
+    forgets to invalidate.
     """
     try:
         redis_client.delete(_DOCUMENT_KEY.format(owner_id=owner_id, document_id=document_id))
+        redis_client.delete(_STATUS_KEY.format(owner_id=owner_id, document_id=document_id))
     except Exception as e:  # noqa: BLE001 - cache must never break the caller
         logger.warning(f"Document cache invalidation failed: {e}")
 
@@ -280,7 +284,17 @@ class DocumentService:
         return document
 
     def get_status(self, document_id: UUID, owner_id: UUID):
-        """Return a minimal status object for polling clients."""
+        """Return a minimal status object for polling clients.
+
+        Polling clients hit this endpoint repeatedly while a document is
+        processing, so the response is cached briefly
+        (``STATUS_CACHE_TTL_SECONDS``); every status transition invalidates
+        the entry through ``invalidate_document_cache`` (worker + delete).
+        """
+        cached = self._get_cached_status(owner_id, document_id)
+        if cached is not None:
+            return cached
+
         document = self.repository.get_by_id(
             document_id=document_id,
             owner_id=owner_id,
@@ -288,7 +302,7 @@ class DocumentService:
         if document is None:
             return None
 
-        return DocumentStatusResponse(
+        response = DocumentStatusResponse(
             id=document.id,
             status=document.status,
             error_message=document.error_message,
@@ -296,6 +310,8 @@ class DocumentService:
             created_at=document.created_at,
             updated_at=document.updated_at,
         )
+        self._cache_status(owner_id, document_id, response)
+        return response
 
     def reprocess(self, document_id: UUID, owner_id: UUID):
         """Re-enqueue a terminal document (failed or ready) for processing.
@@ -402,13 +418,29 @@ class DocumentService:
         }
 
     def preview(self, document_id: UUID, owner_id: UUID):
-        """Return a truncated text preview of the stored document."""
+        """Return a truncated text preview of the stored document.
+
+        READY documents are previewed from their stored chunks (no MinIO
+        round-trip or re-extraction); everything else falls back to
+        reading the stored object, which also covers edge cases where a
+        READY document has no chunks yet (e.g. pre-chunking uploads).
+        """
         document = self.repository.get_by_id(
             document_id=document_id,
             owner_id=owner_id,
         )
         if document is None:
             return None
+
+        if document.status == DocumentStatus.READY:
+            preview_text = self._preview_from_chunks(document_id)
+            if preview_text is not None:
+                return DocumentPreviewResponse(
+                    id=document.id,
+                    filename=document.filename,
+                    preview=preview_text[:PREVIEW_MAX_CHARS],
+                    truncated=len(preview_text) > PREVIEW_MAX_CHARS,
+                )
 
         try:
             body = self.storage.download(document.object_key)
@@ -442,6 +474,38 @@ class DocumentService:
             preview=text[:PREVIEW_MAX_CHARS],
             truncated=len(text) > PREVIEW_MAX_CHARS,
         )
+
+    def _preview_from_chunks(self, document_id: UUID) -> str | None:
+        """Rebuild the start of a READY document from its stored chunks.
+
+        Chunks are extracted-text windows produced with a fixed overlap;
+        the duplicated window is cut when stitching so the result matches
+        the original extraction (approximate for tiny edge fragments).
+        Returns ``None`` when the document has no chunks, so callers can
+        fall back to the storage-based path.
+        """
+        contents = self.repository.get_preview_chunks(
+            document_id, max_chars=PREVIEW_MAX_CHARS
+        )
+        if not contents:
+            return None
+
+        # Mirrors ChunkingService default overlap (see get_preview_chunks).
+        overlap = 200
+        stitched = contents[0]
+        for content in contents[1:]:
+            if not content:
+                continue
+            drop = min(overlap, len(content))
+            for n in range(drop, 0, -1):
+                if stitched.endswith(content[:n]):
+                    stitched += content[n:]
+                    break
+            else:
+                stitched += content
+            if len(stitched) > PREVIEW_MAX_CHARS:
+                break
+        return stitched
 
     def delete(self, document_id: UUID, owner_id: UUID):
         # Fetch a fresh ORM row directly: the cached FileResponse is not a
@@ -503,3 +567,32 @@ class DocumentService:
             )
         except Exception as e:  # noqa: BLE001 - cache write must never break reads
             logger.warning(f"Document cache write failed: {e}")
+
+    def _get_cached_status(
+        self, owner_id: UUID, document_id: UUID
+    ) -> DocumentStatusResponse | None:
+        try:
+            payload = redis_client.get_json(
+                _STATUS_KEY.format(owner_id=owner_id, document_id=document_id)
+            )
+            if payload is None:
+                return None
+            return DocumentStatusResponse.model_validate(payload)
+        except Exception as e:  # noqa: BLE001 - fall back to the database
+            logger.warning(f"Status cache read failed: {e}")
+            return None
+
+    def _cache_status(
+        self,
+        owner_id: UUID,
+        document_id: UUID,
+        response: DocumentStatusResponse,
+    ) -> None:
+        try:
+            redis_client.set_json(
+                _STATUS_KEY.format(owner_id=owner_id, document_id=document_id),
+                response.model_dump(mode="json"),
+                ex=STATUS_CACHE_TTL_SECONDS,
+            )
+        except Exception as e:  # noqa: BLE001 - cache write must never break reads
+            logger.warning(f"Status cache write failed: {e}")

@@ -7,7 +7,16 @@ from fastapi import Request, Response
 from prometheus_client import Counter, Histogram
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.middleware.logging_context import (
+    install_request_id_stamping,
+    reset_request_id,
+    run_with_request_id,
+)
+
 logger = logging.getLogger("app.access")
+
+# Stamp request ids on every log record (workers/startup fall back to '-').
+install_request_id_stamping()
 
 # Prometheus metrics exposed on the /metrics endpoint (scraped by the
 # ServiceMonitor in the monitoring stack; see
@@ -37,32 +46,39 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         start_time = time.time()
 
-        response = await call_next(request)
+        request_id, ctx_token = run_with_request_id(request.headers.get("x-request-id"))
+        try:
+            response = await call_next(request)
 
-        process_time = time.time() - start_time
-        status_code = response.status_code
+            process_time = time.time() - start_time
+            status_code = response.status_code
 
-        # Instrumenting the scrape endpoint itself would just add noise.
-        if request.url.path != "/metrics":
-            metric_path = _metric_path(request.url.path)
-            HTTP_REQUESTS_TOTAL.labels(request.method, metric_path, str(status_code)).inc()
-            HTTP_REQUEST_DURATION_SECONDS.labels(request.method, metric_path).observe(process_time)
+            # Instrumenting the scrape endpoint itself would just add noise.
+            if request.url.path != "/metrics":
+                metric_path = _metric_path(request.url.path)
+                HTTP_REQUESTS_TOTAL.labels(request.method, metric_path, str(status_code)).inc()
+                HTTP_REQUEST_DURATION_SECONDS.labels(request.method, metric_path).observe(
+                    process_time
+                )
 
-        log_data = {
-            "method": request.method,
-            "path": request.url.path,
-            "status_code": status_code,
-            "process_time": round(process_time, 4),
-            "client_host": request.client.host if request.client else "unknown",
-        }
+            log_data = {
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": status_code,
+                "process_time": round(process_time, 4),
+                "client_host": request.client.host if request.client else "unknown",
+            }
 
-        if status_code >= 500:
-            logger.error("Request failed", extra=log_data)
-        elif status_code >= 400:
-            logger.warning("Client error", extra=log_data)
-        else:
-            logger.info("Request completed", extra=log_data)
+            if status_code >= 500:
+                logger.error("Request failed", extra=log_data)
+            elif status_code >= 400:
+                logger.warning("Client error", extra=log_data)
+            else:
+                logger.info("Request completed", extra=log_data)
 
-        response.headers["X-Process-Time"] = str(round(process_time, 4))
+            response.headers["X-Request-ID"] = request_id
+            response.headers["X-Process-Time"] = str(round(process_time, 4))
 
-        return response
+            return response
+        finally:
+            reset_request_id(ctx_token)
