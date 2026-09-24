@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { AuthProvider } from "./hooks/useAuth";
-import { ToastProvider } from "./context/ToastContext";
+import { AuthProvider } from "./hooks/AuthProvider";
+import { ToastProvider } from "./context/ToastProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Navbar } from "./components/Navbar";
 import "./App.css";

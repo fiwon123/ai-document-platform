@@ -1,28 +1,8 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { AuthContext } from "../context/authContext";
 import { auth } from "../services/api";
 import type { User } from "../types";
-
-interface AuthContextType {
-  user: User | null;
-  token: string | null;
-  isLoading: boolean;
-  login: (username: string, password: string) => Promise<void>;
-  register: (
-    username: string,
-    password: string,
-    confirmPassword: string,
-  ) => Promise<void>;
-  logout: () => void;
-  updateUser: (user: User) => void;
-}
 
 /** Refresh the access token shortly BEFORE it expires so requests never 401. */
 const REFRESH_BEFORE_EXPIRY_MS = 60_000;
@@ -47,14 +27,14 @@ function getRemainingLifetime(token: string): number | null {
   }
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(
     localStorage.getItem("token"),
   );
-  const [isLoading, setIsLoading] = useState(true);
+  // With no token there is nothing to verify on mount, so the provider
+  // starts "loaded"; with a token it starts loading until /auth/me resolves.
+  const [isLoading, setIsLoading] = useState(() => token !== null);
   const refreshTimerRef = useRef<number | null>(null);
 
   const clearRefreshTimer = useCallback(() => {
@@ -66,54 +46,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /** Ask for a new access token before the current one expires. The server
    *  rotates the refresh cookie, so each timer arm uses the fresh lifetime.
-   *  A plain function (not memoized) so it can re-arm itself recursively. */
-  function scheduleProactiveRefresh(expiresInSeconds: number) {
-    clearRefreshTimer();
-    const delayMs = Math.max(
-      expiresInSeconds * 1000 - REFRESH_BEFORE_EXPIRY_MS,
-      MIN_REFRESH_DELAY_MS,
-    );
-    refreshTimerRef.current = window.setTimeout(() => {
-      void auth
-        .refresh()
-        .then((refreshed) => {
-          localStorage.setItem("token", refreshed.access_token);
-          setToken(refreshed.access_token);
-          // Rotation gives a new expiration — arm the next refresh.
-          scheduleProactiveRefresh(refreshed.expires_in);
-        })
-        .catch(() => {
-          // Refresh failed (network/cookie gone). The next API call's 401
-          // handler will redirect to login; clear the timer state so a
-          // later login can re-arm cleanly.
-          refreshTimerRef.current = null;
-        });
-    }, delayMs);
-  }
+   *  Memoized (depends only on the stable clearRefreshTimer) so callers can
+   *  safely list it in effect dependency arrays; it may re-arm itself via
+   *  its own name (named function expression avoids capture-before-init). */
+  const scheduleProactiveRefresh = useCallback(
+    function scheduleProactiveRefresh(expiresInSeconds: number) {
+      clearRefreshTimer();
+      const delayMs = Math.max(
+        expiresInSeconds * 1000 - REFRESH_BEFORE_EXPIRY_MS,
+        MIN_REFRESH_DELAY_MS,
+      );
+      refreshTimerRef.current = window.setTimeout(() => {
+        void auth
+          .refresh()
+          .then((refreshed) => {
+            localStorage.setItem("token", refreshed.access_token);
+            setToken(refreshed.access_token);
+            // Rotation gives a new expiration — arm the next refresh.
+            scheduleProactiveRefresh(refreshed.expires_in);
+          })
+          .catch(() => {
+            // Refresh failed (network/cookie gone). The next API call's 401
+            // handler will redirect to login; clear the timer state so a
+            // later login can re-arm cleanly.
+            refreshTimerRef.current = null;
+          });
+      }, delayMs);
+    },
+    [clearRefreshTimer],
+  );
 
   useEffect(() => {
-    if (token) {
-      auth
-        .getMe()
-        .then((me) => {
-          setUser(me);
-          // After a page reload with a still-valid token, re-arm the
-          // proactive refresh so the session keeps pre-emptively re-arming
-          // (the timer is not persisted across reloads).
-          const remaining = getRemainingLifetime(token);
-          if (remaining !== null) {
-            scheduleProactiveRefresh(remaining);
-          }
-        })
-        .catch(() => {
-          localStorage.removeItem("token");
-          setToken(null);
-        })
-        .finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false);
-    }
-  }, [token]);
+    if (!token) return;
+    auth
+      .getMe()
+      .then((me) => {
+        setUser(me);
+        // After a page reload with a still-valid token, re-arm the
+        // proactive refresh so the session keeps pre-emptively re-arming
+        // (the timer is not persisted across reloads).
+        const remaining = getRemainingLifetime(token);
+        if (remaining !== null) {
+          scheduleProactiveRefresh(remaining);
+        }
+      })
+      .catch(() => {
+        localStorage.removeItem("token");
+        setToken(null);
+      })
+      .finally(() => setIsLoading(false));
+  }, [token, scheduleProactiveRefresh]);
 
   useEffect(() => clearRefreshTimer, [clearRefreshTimer]);
 
@@ -153,12 +135,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
 }

@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DEMO_DOCUMENTS, DemoPage } from "./DemoPage";
+import { DEMO_DOCUMENTS } from "./demoData";
+import { DemoPage } from "./DemoPage";
 
 vi.mock("../hooks/useAuth", () => ({
   useAuth: () => ({ user: null }),

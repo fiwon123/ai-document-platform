@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { HighlightedText, highlightParts } from "./HighlightedText";
+import { HighlightedText } from "./HighlightedText";
+import { highlightParts } from "../utils/highlight";
 
 describe("highlightParts", () => {
   it("returns a single plain part for an empty query", () => {
