@@ -45,6 +45,17 @@ describe("ProfilePage", () => {
     );
   });
 
+  it("shows an initials avatar and the user's role badge", () => {
+    renderWithClient(<ProfilePage />);
+
+    // Avatar is decorative but rendered in the DOM above the form.
+    expect(screen.getByText("A")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "alice" }),
+    ).toBeTruthy();
+    expect(screen.getByText("customer")).toBeTruthy();
+  });
+
   it("saves a new username and updates the auth context", async () => {
     renderWithClient(<ProfilePage />);
 

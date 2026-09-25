@@ -227,6 +227,28 @@ describe("AdminPage", () => {
     expect(cardValue("Searches")?.includes("99")).toBe(true);
   });
 
+  it("renders an icon tile on every system statistics card", async () => {
+    await renderPage();
+
+    const region = screen.getByRole("region", {
+      name: "System statistics",
+    });
+    const cards = region.querySelectorAll(".stat-card");
+    expect(cards.length).toBeGreaterThan(0);
+    cards.forEach((card) => {
+      expect(card.querySelector(".stat-icon svg")).toBeTruthy();
+    });
+  });
+
+  it("shows an initials avatar next to each username", async () => {
+    await renderPage();
+
+    // Avatars are decorative but rendered in the DOM as part of the row.
+    expect(screen.getByText("R")).toBeTruthy();
+    expect(screen.getByText("A")).toBeTruthy();
+    expect(screen.getByText("R").closest("tr")?.textContent).toContain("root");
+  });
+
   it("resolves the spinner and shows a message when statistics fail", async () => {
     mockedGetAdmin.mockRejectedValue(new Error("stats down"));
     await renderPage();

@@ -2233,6 +2233,53 @@ body {
   margin: 0 auto;
 }
 
+/* Profile identity header: initials avatar + username + role badge, aligned
+   with the narrow centered column above the form card. */
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.avatar-initials {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--blue) 14%, transparent),
+    color-mix(in srgb, #7c3aed 14%, transparent)
+  );
+  font: 800 1.35rem "DM Mono", monospace;
+  color: var(--ink);
+  flex-shrink: 0;
+}
+
+.profile-head-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.profile-name {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+/* The auth-card keeps its huge 44px padding for the centered auth pages; the
+   profile column is narrow, so the form card tightens to match. */
+.profile-card {
+  padding: 28px;
+  border-radius: var(--radius-lg);
+}
+
 .page-header h1 {
   margin: 0 0 8px;
   font-size: 2rem;
@@ -3620,6 +3667,7 @@ body {
 /* User Admin Table */
 .user-table-wrap {
   overflow-x: auto;
+  margin-top: 8px;
 }
 
 .user-table {
@@ -3627,6 +3675,8 @@ body {
   border-collapse: collapse;
   background: var(--paper);
   border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
 }
 
 .user-table th,
@@ -3677,10 +3727,20 @@ body {
 }
 
 .user-status {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   padding: 3px 10px;
   border-radius: 999px;
   font: 500 11px "DM Mono", monospace;
+}
+
+.user-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .user-status.is-active {
@@ -3691,6 +3751,25 @@ body {
 .user-status.is-disabled {
   background: color-mix(in srgb, var(--danger) 15%, transparent);
   color: var(--danger);
+}
+
+/* Admin user rows: initials avatar next to the username. */
+.admin-user-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-user-avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+  font: 700 12px "DM Mono", monospace;
+  color: var(--ink);
+  flex-shrink: 0;
 }
 
 @media (max-width: 760px) {
@@ -4027,9 +4106,19 @@ body {
 }
 
 .settings-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 0 0 8px;
   font-size: 1.15rem;
   letter-spacing: -0.01em;
+}
+
+.settings-card h2 svg {
+  width: 18px;
+  height: 18px;
+  color: var(--blue);
+  flex-shrink: 0;
 }
 
 .settings-desc {

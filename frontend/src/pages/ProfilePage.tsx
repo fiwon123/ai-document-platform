@@ -5,6 +5,7 @@ import { users } from "../services/api";
 import type { User } from "../types";
 import { useAuth } from "../hooks/useAuth";
 import { FormSubmitButton } from "../components/FormSubmitButton";
+import { Badge } from "../components/Badge";
 
 interface ProfileFieldsProps {
   username: string;
@@ -145,6 +146,18 @@ export function ProfilePage() {
         <h1>Profile</h1>
         <p>Update your account details</p>
       </header>
+
+      <div className="profile-head">
+        <span className="avatar-initials" aria-hidden="true">
+          {(user?.username ?? "?").charAt(0).toUpperCase()}
+        </span>
+        <div className="profile-head-meta">
+          <h2 className="profile-name">{user?.username ?? "—"}</h2>
+          <Badge tone={user?.role === "admin" ? "green" : "blue"}>
+            {user?.role ?? "customer"}
+          </Badge>
+        </div>
+      </div>
 
       <form className="auth-card profile-card" action={handleSubmit}>
         <ProfileFields

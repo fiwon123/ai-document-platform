@@ -61,6 +61,17 @@ describe("SettingsPage", () => {
     ).toBe("/app/profile");
   });
 
+  it("renders an icon next to each settings section heading", async () => {
+    renderPage();
+    await act(async () => {});
+
+    const headings = screen.getAllByRole("heading", { level: 2 });
+    expect(headings.length).toBeGreaterThanOrEqual(3);
+    headings.forEach((h) => {
+      expect(h.querySelector("svg")).toBeTruthy();
+    });
+  });
+
   it("shows the model picker grouped by free and paid tiers", async () => {
     renderPage();
     await act(async () => {});
