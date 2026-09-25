@@ -83,4 +83,47 @@ describe("DashboardPage", () => {
     const uploadLink = screen.getByRole("link", { name: "Upload a document" });
     expect(uploadLink).toHaveAttribute("href", "/app/documents");
   });
+
+  it("renders quick actions linking to documents, search and qa", async () => {
+    await renderPage();
+
+    const upload = screen.getByRole("link", { name: /Upload document/ });
+    expect(upload).toHaveAttribute("href", "/app/documents");
+    expect(
+      screen.getByRole("link", { name: /Search documents/ }),
+    ).toHaveAttribute("href", "/app/search");
+    expect(
+      screen.getByRole("link", { name: /Ask a question/ }),
+    ).toHaveAttribute("href", "/app/qa");
+  });
+
+  it("renders skeleton placeholders while statistics load", () => {
+    mockedGetMe.mockReturnValue(new Promise(() => {}));
+
+    renderWithClient(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("status", { name: "Loading dashboard" }),
+    ).toBeTruthy();
+  });
+
+  it("renders status-toned initial tiles for recent documents", async () => {
+    const { container } = renderWithClient(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+
+    const tiles = container.querySelectorAll(".recent-tile");
+    expect(tiles.length).toBe(2);
+    expect(tiles[0]?.textContent).toBe("G"); // guide.pdf → ready → green
+    expect(tiles[0]?.classList.contains("tone-green")).toBe(true);
+    expect(tiles[1]?.textContent).toBe("D"); // draft.md → pending → amber
+    expect(tiles[1]?.classList.contains("tone-amber")).toBe(true);
+  });
 });

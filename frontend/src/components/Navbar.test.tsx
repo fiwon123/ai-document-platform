@@ -108,4 +108,37 @@ describe("Navbar", () => {
     // Focus returns to the toggle button.
     expect(document.activeElement).toBe(toggle);
   });
+
+  it("marks the active route link with aria-current", () => {
+    render(
+      <MemoryRouter initialEntries={["/app/documents"]}>
+        <Navbar />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Documents" }).getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      screen.getByRole("link", { name: "Dashboard" }).getAttribute("aria-current"),
+    ).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Home" }).getAttribute("aria-current"),
+    ).toBeNull();
+  });
+
+  it("marks the dashboard link active on the /app index", () => {
+    render(
+      <MemoryRouter initialEntries={["/app"]}>
+        <Navbar />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Dashboard" }).getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      screen.getByRole("link", { name: "Documents" }).getAttribute("aria-current"),
+    ).toBeNull();
+  });
 });

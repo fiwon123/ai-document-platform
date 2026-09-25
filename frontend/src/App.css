@@ -453,6 +453,15 @@ body {
   padding: 16px 6vw;
   background: var(--ink);
   color: var(--paper);
+  /* Sticky app bar: translucent ink with a blur so content scrolling under
+     it stays legible. falls back to solid ink when color-mix is unsupported. */
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: color-mix(in srgb, var(--ink) 92%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid color-mix(in srgb, var(--paper) 12%, transparent);
 }
 
 .navbar-brand a {
@@ -476,19 +485,29 @@ body {
 
 .navbar-links {
   display: flex;
-  gap: 24px;
+  gap: 6px;
 }
 
 .navbar-links a {
   color: var(--paper);
   text-decoration: none;
   font-size: 0.9rem;
+  padding: 6px 12px;
+  border-radius: 999px;
   opacity: 0.8;
-  transition: opacity 0.2s;
+  transition: opacity 0.2s, background-color 0.2s;
 }
 
 .navbar-links a:hover {
   opacity: 1;
+  background: color-mix(in srgb, var(--paper) 8%, transparent);
+}
+
+.navbar-links a.active,
+.navbar-links a[aria-current="page"] {
+  background: color-mix(in srgb, var(--paper) 16%, transparent);
+  opacity: 1;
+  font-weight: 600;
 }
 
 .navbar-user {
@@ -631,6 +650,7 @@ body {
   .navbar-links a {
     padding: 10px 6px;
     font-size: 1rem;
+    border-radius: 10px;
   }
 
   .navbar-user-mobile {
@@ -2713,6 +2733,147 @@ body {
 /* Dashboard stats
    Colored stat cards reuse the -600 badge weights from Theme Rule 8 so
    white text stays WCAG AA in both themes (the weights never brighten). */
+/* Quick-action links on the dashboard: icon tile + label + caption. */
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--sp-4);
+  margin: var(--sp-5) 0 var(--sp-6);
+}
+
+.quick-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  color: var(--ink);
+  text-decoration: none;
+  transition: transform 0.15s var(--ease-standard), border-color 0.15s var(--ease-standard);
+}
+
+.quick-action:hover {
+  transform: translateY(-2px);
+  border-color: var(--blue);
+}
+
+.quick-action:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.quick-action strong {
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.quick-action-caption {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.quick-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  margin-bottom: var(--sp-1);
+  color: var(--blue);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--blue) 14%, transparent),
+    color-mix(in srgb, #7c3aed 14%, transparent)
+  );
+}
+
+.quick-action-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Stat cards: icon slot above the animated value. */
+.stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  margin-bottom: var(--sp-1);
+  background: rgba(255, 255, 255, 0.18);
+  color: white;
+}
+
+.stat-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* The total card inverts in dark mode (like the navbar): slate-900 blends
+   into the page background, so it becomes a light card with dark text. Its
+   icon tile inverts to a translucent dark tint so it stays visible. */
+:root[data-theme="dark"] .stat-total .stat-icon {
+  background: rgba(15, 23, 42, 0.1);
+  color: #0f172a;
+}
+
+/* Dashboard loading state: skeleton stat cards + recent rows. */
+.stat-skeleton {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  animation: none;
+  justify-content: flex-start;
+}
+
+.stat-skeleton .skeleton {
+  border-radius: 8px;
+}
+
+/* Recent documents: status-toned initial tile (reuses the badge tone
+   pairs from the shared Badge component). */
+.recent-tile {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tone-blue {
+  background: var(--badge-blue-bg);
+  color: var(--badge-blue-text);
+}
+
+.tone-green {
+  background: var(--badge-green-bg);
+  color: var(--badge-green-text);
+}
+
+.tone-amber {
+  background: var(--badge-amber-bg);
+  color: var(--badge-amber-text);
+}
+
+.tone-red {
+  background: var(--badge-red-bg);
+  color: var(--badge-red-text);
+}
+
+.tone-gray {
+  background: var(--badge-gray-bg);
+  color: var(--badge-gray-text);
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
