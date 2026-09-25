@@ -236,6 +236,115 @@ describe("DocumentsPage polling", () => {
   });
 });
 
+describe("DocumentsPage filter toolbar", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  const mixedDocs = [pendingDoc, readyDoc, failedDoc]; // report.pdf, notes.txt, broken.pdf
+
+  it("filters the grid by filename as the user types", async () => {
+    mockedList.mockResolvedValue(mixedDocs);
+
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    expect(screen.getByRole("heading", { name: "report.pdf" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "notes.txt" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "broken.pdf" })).toBeTruthy();
+
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search documents by filename" }),
+      { target: { value: "pdf" } },
+    );
+    await settle();
+
+    expect(screen.getByRole("heading", { name: "report.pdf" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "broken.pdf" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "notes.txt" })).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain("Showing 2 of 3");
+  });
+
+  it("filters by status chip and shows counts on each chip", async () => {
+    mockedList.mockResolvedValue(mixedDocs);
+
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    const failedChip = screen.getByRole("button", { name: /^Failed/ });
+    expect(failedChip.textContent).toContain("1");
+    expect(screen.getByRole("button", { name: /^All/ }).textContent).toContain("3");
+
+    fireEvent.click(failedChip);
+    await settle();
+
+    expect(screen.getByRole("heading", { name: "broken.pdf" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "report.pdf" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "notes.txt" })).toBeNull();
+
+    // Clicking the active chip again clears the filter.
+    fireEvent.click(screen.getByRole("button", { name: /^Failed/ }));
+    await settle();
+    expect(screen.getByRole("heading", { name: "report.pdf" })).toBeTruthy();
+  });
+
+  it("combines filename search with a status filter", async () => {
+    mockedList.mockResolvedValue(mixedDocs);
+
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search documents by filename" }),
+      { target: { value: "p" } },
+    );
+    // report.pdf (pending) and broken.pdf (failed) both match "p".
+    fireEvent.click(screen.getByRole("button", { name: /^Pending/ }));
+    await settle();
+
+    expect(screen.getByRole("heading", { name: "report.pdf" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "broken.pdf" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "notes.txt" })).toBeNull();
+  });
+
+  it("shows the no-match state and clears filters from it", async () => {
+    mockedList.mockResolvedValue(mixedDocs);
+
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search documents by filename" }),
+      { target: { value: "zzz" } },
+    );
+    await settle();
+
+    expect(screen.getByText("No documents match your filters")).toBeTruthy();
+    // Both the toolbar row and the empty-state CTA clear the filters —
+    // either one empties the search box and the status chip.
+    const clears = screen.getAllByRole("button", { name: "Clear filters" });
+    expect(clears.length).toBe(2);
+    fireEvent.click(clears[1]!);
+    await settle();
+
+    expect(screen.getByRole("heading", { name: "report.pdf" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "notes.txt" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "broken.pdf" })).toBeTruthy();
+  });
+
+  it("hides the status chip for statuses with no documents", async () => {
+    mockedList.mockResolvedValue([readyDoc]);
+
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    expect(screen.getByRole("button", { name: /^Ready/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Failed/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Processing/ })).toBeNull();
+  });
+});
+
 describe("DocumentsPage preview", () => {
   beforeEach(() => {
     mockedList.mockResolvedValue([readyDoc]);
