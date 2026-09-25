@@ -92,8 +92,7 @@ describe("design tokens", () => {
     expect(css.match(/--line-strong\s*:/g)).toHaveLength(2);
   });
 
-  it("keeps the logo marquee keyframe in step with its copy count", () => {
-    // The marquee loops by translating a fixed percentage of a track that
+  it("keeps the logo marquee keyframe in step with its copy count", () => {    // The marquee loops by translating a fixed percentage of a track that
     // holds N identical copies of the logo list. For the loop to be seamless
     // the percentage must be exactly one copy's width: 100/N. If the two drift
     // apart the strip wraps mid-copy and the row visibly jumps — the exact
@@ -148,5 +147,56 @@ describe("design tokens", () => {
       `keyframe implies ${Math.round(copies)} copies but the strip builds ${actual}`,
     ).toBe(Math.round(copies));
     expect(actual).toBeGreaterThanOrEqual(2);
+  });
+
+  it("gives each landing stat a distinct accent that dark mode can override", () => {
+    // The stat figures read --card-accent, which is set by [data-accent] and
+    // restated per theme by :root[data-theme="dark"] [data-accent]. Two failure
+    // modes both end in three identical-looking numbers, and neither is caught
+    // by a render test because a missing custom property silently falls back:
+    //
+    //   1. two stats sharing an accent, or
+    //   2. an accent used here that no dark-theme block restates, so that one
+    //      figure stays dark-mode-illegible while the other two lift.
+    const source = readFileSync(
+      resolve(process.cwd(), "src", "pages", "LandingPage.tsx"),
+      "utf8",
+    );
+    const accents = [...source.matchAll(/stat-item"\s+data-accent="(\w+)"/g)].map(
+      (m) => m[1],
+    );
+    expect(accents).toHaveLength(3);
+    // No repeats: a duplicated accent means two of the three figures match.
+    expect(new Set(accents).size).toBe(3);
+
+    for (const accent of accents) {
+      // Scope each lookup to the *opening selector* of its own block. A naive
+      // `[data-accent="green"]` search also matches inside
+      // `:root[data-theme="dark"] [data-accent="green"]`, which let a broken
+      // light-theme declaration pass by finding the dark one next to it.
+      // The negative lookahead rejects a dark-prefixed occurrence, and
+      // `{[^}]*` stops at the first closing brace so only that block's body
+      // is considered.
+      const body = (selector: string) => {
+        const m = css.match(
+          new RegExp(`(?:^|[}\\n])\\s*${selector}\\s*\\{([^}]*)\\}`),
+        );
+        return m?.[1] ?? "";
+      };
+
+      const light = body(`(?!:root)\\[data-accent="${accent}"\\]`);
+      expect(
+        light,
+        `[data-accent="${accent}"] must declare --card-accent for the light theme`,
+      ).toMatch(/--card-accent\s*:/);
+
+      const dark = body(
+        `:root\\[data-theme="dark"\\]\\s*\\[data-accent="${accent}"\\]`,
+      );
+      expect(
+        dark,
+        `[data-accent="${accent}"] must restate --card-accent for dark theme`,
+      ).toMatch(/--card-accent\s*:/);
+    }
   });
 });

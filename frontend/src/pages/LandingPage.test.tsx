@@ -86,6 +86,22 @@ describe("LandingPage", () => {
     expect(screen.getByText("GDPR compliant")).toBeTruthy();
   });
 
+  it("gives each stat its own accent colour", () => {
+    // The three figures used to share one blue->violet gradient, so they read
+    // as three copies of the same number. They now declare data-accent and take
+    // --card-accent from the same accent system the cards use, which is what
+    // makes them distinguishable — and what makes dark mode work here without a
+    // dedicated rule.
+    renderPage();
+    const items = document.querySelectorAll(".stat-item");
+    expect(items.length).toBe(3);
+    expect([...items].map((i) => i.getAttribute("data-accent"))).toEqual([
+      "blue",
+      "violet",
+      "green",
+    ]);
+  });
+
   it("labels the illustrative stats honestly as sample data", () => {
     renderPage();
     expect(

@@ -312,7 +312,14 @@ html.theme-transitioning code {
 
 /* `transition` is not inherited, so pseudo-elements that carry themed
    color on their own (the logo bullet, badge dots) need the same
-   treatment as their host element. */
+   treatment as their host element.
+
+   .stat-item strong.stat-value is here for a different reason than the ones
+   above: it no longer paints a gradient, but its colour comes from
+   --card-accent, which the dark-theme accent blocks restate. A custom
+   property change is not itself interpolable, so without a `color`
+   transition each stat figure would snap to its dark-mode hue at the instant
+   the toggle lands while everything around it eases. */
 html.theme-transitioning .logo-mark::before,
 html.theme-transitioning .badge-dot,
 html.theme-transitioning .stat-item strong.stat-value,
@@ -1539,7 +1546,7 @@ body {
 
 /* Social proof: flowing logo marquee, animated stats, trust badges. */
 .landing-social {
-  padding: 72px 6vw 64px;
+  padding: 48px 6vw 44px;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   /* A faint brand wash instead of flat --surface, so the band reads as its
@@ -1554,31 +1561,29 @@ body {
   text-align: center;
 }
 
-/* Section eyebrow over the logo wall. Two changes from the previous version:
-   it was 0.82rem of muted grey centred under a centred band, which read as a
-   caption rather than a heading, and the reported complaint was that the
-   title needed to be bigger and pulled to the left. The band stays centred
-   (the logo row and stats are centred compositions) but the eyebrow now
-   anchors the left edge on its own, which also gives the section a reading
-   order: label, then proof, then figures. */
+/* Section eyebrow over the logo wall.
+   An earlier revision pulled this to the left edge, arguing the rest of the
+   band was a centred composition. It did not read as deliberate — it read as
+   a heading that had failed to centre, since the logo row and the stat row
+   beneath it are both centred. Centred, with the accent rule centred under it
+   too, the block now sits on the same axis as everything it introduces. */
 .trusted-by {
-  margin: 0 0 30px;
+  margin: 0 0 22px;
   color: var(--ink);
-  font-size: clamp(1.05rem, 1.6vw, 1.25rem);
+  font-size: clamp(1.05rem, 1.6vw, 1.2rem);
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: none;
-  text-align: left;
+  text-align: center;
 }
 
-/* Small accent rule under the eyebrow, so the left anchor reads as
-   deliberate rather than as an alignment accident. */
+/* Small accent rule under the eyebrow, centred to match. */
 .trusted-by::after {
   content: "";
   display: block;
   width: 44px;
   height: 3px;
-  margin-top: 12px;
+  margin: 12px auto 0;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--blue), #7c3aed);
 }
@@ -1598,14 +1603,17 @@ body {
 .logo-marquee {
   position: relative;
   overflow: hidden;
-  margin-bottom: 56px;
+  margin-bottom: 34px;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
   mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
 }
 
-.logo-marquee:hover .logo-strip {
-  animation-play-state: paused;
-}
+/* No hover-pause. It used to stop the strip under the pointer, on the theory
+   that stopping motion on hover is polite. Here it fought the motion: the row
+   is a single continuous drift, and freezing it under the cursor left a dead
+   band mid-scroll that read as a stall rather than as a deliberate hold. The
+   strip is decorative, nothing is clickable in it, and it carries no focusable
+   content, so there is nothing to interrupt. */
 
 .logo-strip {
   display: flex;
@@ -1719,7 +1727,7 @@ body {
   flex-wrap: wrap;
   justify-content: center;
   align-items: stretch;
-  margin: 0 auto 40px;
+  margin: 0 auto 26px;
   max-width: 900px;
 }
 
@@ -1729,8 +1737,8 @@ body {
   flex: 1 1 240px;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 8px 28px;
+  gap: 8px;
+  padding: 6px 24px;
 }
 
 /* Divider between neighbouring stats; hidden on the outer edges and on
@@ -1745,35 +1753,44 @@ body {
   background: linear-gradient(
     180deg,
     transparent,
-    color-mix(in srgb, var(--blue) 32%, var(--line)),
+    color-mix(in srgb, var(--line) 90%, transparent),
     transparent
   );
 }
 
-/* Headline stat numbers. Scale is up from clamp(3rem, 7.5vw, 5.25rem) to
-   clamp(3.5rem, 8.5vw, 6.25rem) — the figures are the point of this band and
-   they were reading smaller than the trust badges below them.
+/* Headline stat numbers.
+   Scale comes down from clamp(3.5rem, 8.5vw, 6.25rem): the section was three
+   figures and a disclaimer, and at the old display size it read as the
+   loudest thing on the page while carrying the least information. These now
+   sit below the hero headline in the hierarchy, which is where they belong.
 
-   The "highlight" is a layered one rather than a bigger box. background-clip:
-   text already paints the gradient, and a plain text-shadow on top of
-   clipped text renders as a smear, so the glow is a drop-shadow filter on the
-   element, which follows the gradient shape. The gradient is also pulled
-   slightly bluer at its start so the first glyph in each number has
-   something to hold onto. CountUp is untouched: it still animates, and still
-   bypasses animation entirely under prefers-reduced-motion. */
+   The colour is no longer a single shared blue->violet gradient. Each stat
+   declares its own data-accent, so it reads --card-accent from the same
+   accent system the feature and step cards use (App.css [data-accent]). That
+   means the three figures are distinguishable at a glance, and dark mode needs
+   no rule here at all: the existing :root[data-theme="dark"] [data-accent]
+   blocks already restate --card-accent for each hue, and a custom property is
+   resolved at computed-value time, so color: var(--card-accent) picks up
+   whichever value that element has.
+
+   The glow is a drop-shadow filter rather than a text-shadow, because a
+   text-shadow under solid glyph colour would sit behind the text as a
+   separate blurred copy rather than following the letterforms. */
 .stat-item strong {
-  font-size: clamp(3.5rem, 8.5vw, 6.25rem);
+  font-size: clamp(2.5rem, 6vw, 4.25rem);
   font-weight: 800;
   letter-spacing: -0.05em;
-  color: var(--blue);
+  color: var(--card-accent, var(--blue));
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  filter: drop-shadow(0 6px 22px color-mix(in srgb, var(--blue) 26%, transparent));
+  filter: drop-shadow(
+    0 5px 18px color-mix(in srgb, var(--card-accent, var(--blue)) 24%, transparent)
+  );
 }
 
 .stat-item span {
   color: var(--muted);
-  font-size: 1.08rem;
+  font-size: 0.95rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   text-align: center;
@@ -1794,36 +1811,10 @@ body {
     background: linear-gradient(
       90deg,
       transparent,
-      color-mix(in srgb, var(--blue) 32%, var(--line)),
+      color-mix(in srgb, var(--line) 90%, transparent),
       transparent
     );
   }
-}
-
-/* Headline stat numbers: blue→violet gradient text for more visual weight
-   (CountUp already animates the counting). */
-.stat-item strong.stat-value {
-  background: linear-gradient(120deg, var(--blue) 5%, #7c3aed 88%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-:root[data-theme="dark"] .stat-item strong {
-  color: #60a5fa;
-}
-
-:root[data-theme="dark"] .stat-item strong.stat-value {
-  background: linear-gradient(120deg, #60a5fa 5%, #c4b5fd 90%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* On the softened dark band a 26% blue drop-shadow is nearly invisible, so
-   the dark glow is brighter and tighter. */
-:root[data-theme="dark"] .stat-item strong {
-  filter: drop-shadow(0 4px 20px rgb(96 165 250 / 0.28));
 }
 
 /* ── CountUp "alive" state ───────────────────────────────────────────────
@@ -1832,10 +1823,11 @@ body {
    that the count reads as *doing* something rather than as a number that was
    briefly wrong.
 
-   This targets the inner .count-up span, not the .stat-value <strong>. The
-   strong paints a gradient via background-clip: text with color: transparent,
-   so a colour rule on it would be invisible; the span has no clip of its own
-   and inherits nothing that would swallow the colour. */
+   This targets the inner .count-up span, not the .stat-value <strong>, which
+   owns the accent colour. The settled state must therefore be `inherit` and
+   not a literal colour: painting it --ink here would override the per-stat
+   accent the moment the count finished, so each figure would count up in grey
+   and then snap to black instead of holding its hue. */
 
 .count-up.animating {
   /* transform does not apply to a non-replaced inline box. inline-block keeps
@@ -1849,8 +1841,12 @@ body {
     color 0.5s var(--ease-standard);
 }
 
+/* Settled state. `inherit` rather than --ink: the surrounding .stat-value
+   <strong> owns the per-stat accent colour, so inheriting is what preserves
+   it. Hard-coding a colour here would repaint every figure black the instant
+   its count finished, undoing the accent work. */
 .count-up:not(.animating) {
-  color: var(--ink);
+  color: inherit;
   font-size: 1em;
   transition:
     font-size 0.2s var(--ease-standard),
@@ -1870,15 +1866,14 @@ body {
   }
 }
 
-/* The dark theme needs the muted end lifted — --muted on the dark band is
-   already light, so the grey-to-ink ramp would read as brightening to a
-   dimmer colour. */
+/* The dark theme needs the animating (grey) end lifted — --muted on the dark
+   band is already light, so the ramp would read as brightening to a dimmer
+   colour. The settled state is left alone: it inherits the per-stat accent,
+   and the :root[data-theme="dark"] [data-accent] blocks already restate each
+   one for dark. A literal colour here would flatten all three back to one
+   tone exactly when they should be most distinguishable. */
 :root[data-theme="dark"] .count-up.animating {
   color: #93c5fd;
-}
-
-:root[data-theme="dark"] .count-up:not(.animating) {
-  color: #f1f5f9;
 }
 
 @media (prefers-reduced-motion: reduce) {

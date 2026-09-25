@@ -454,20 +454,25 @@ export function LandingPage() {
               ))}
             </div>
           </div>
+          {/* Each stat carries its own data-accent so the number picks up the
+              same accent palette the feature/step cards use (see App.css
+              [data-accent]) instead of one shared gradient. Documents = blue,
+              questions = violet, uptime = green, so the three read as a set
+              rather than as three copies of the same figure. */}
           <div className="stat-row">
-            <div className="stat-item">
+            <div className="stat-item" data-accent="blue">
               <strong className="stat-value">
                 <CountUp value={12000} suffix="+" />
               </strong>
               <span>Documents processed</span>
             </div>
-            <div className="stat-item">
+            <div className="stat-item" data-accent="violet">
               <strong className="stat-value">
                 <CountUp value={48000} suffix="+" />
               </strong>
               <span>Questions answered</span>
             </div>
-            <div className="stat-item">
+            <div className="stat-item" data-accent="green">
               <strong className="stat-value">
                 <CountUp value={99} suffix="%" />
               </strong>
