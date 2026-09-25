@@ -77,7 +77,8 @@ describe("LandingPage", () => {
   it("shows social proof: logos, stats, and trust badges", () => {
     renderPage();
     expect(screen.getByText("Trusted by teams who ship")).toBeTruthy();
-    expect(screen.getByText("Northwind")).toBeTruthy();
+    // The marquee track is duplicated for the seamless loop.
+    expect(screen.getAllByText("Northwind").length).toBeGreaterThan(0);
     expect(screen.getByText("Documents processed")).toBeTruthy();
     expect(screen.getByText("Questions answered")).toBeTruthy();
     expect(screen.getByText("Search uptime")).toBeTruthy();
@@ -142,5 +143,20 @@ describe("LandingPage", () => {
     expect(screen.getByRole("navigation", { name: "Legal" })).toBeTruthy();
     expect(screen.getByLabelText("AskDocs on GitHub")).toBeTruthy();
     expect(screen.getByText("Made for people who love their documents.")).toBeTruthy();
+  });
+
+  it("points the GitHub social to the repository and marks the rest coming-soon", () => {
+    renderPage();
+    const github = screen.getByLabelText("AskDocs on GitHub") as HTMLAnchorElement;
+    expect(github.href).toBe("https://github.com/fiwon123/ai-document-platform");
+    expect(github.target).toBe("_blank");
+
+    const twitter = screen.getByLabelText("AskDocs on Twitter") as HTMLAnchorElement;
+    expect(twitter.getAttribute("data-coming-soon")).toBe("true");
+    expect(twitter.title).toBe("Coming soon");
+
+    const linkedin = screen.getByLabelText("AskDocs on LinkedIn") as HTMLAnchorElement;
+    expect(linkedin.getAttribute("data-coming-soon")).toBe("true");
+    expect(linkedin.title).toBe("Coming soon");
   });
 });

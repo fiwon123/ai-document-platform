@@ -3,8 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export type Theme = "light" | "dark";
 
 const THEME_KEY = "askdocs-theme";
-/** How long the theme-transition class stays on <html> after a toggle. */
-const THEME_TRANSITION_MS = 400;
+/** How long the theme-transition class stays on <html> after a toggle.
+ *  Kept short so the color flip feels snappy instead of laggy. */
+const THEME_TRANSITION_MS = 220;
 
 function getInitialTheme(): Theme {
   if (typeof window === "undefined") return "light";
