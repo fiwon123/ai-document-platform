@@ -663,6 +663,10 @@ export function LandingPage() {
       <section className="landing-cta-band">
         <Reveal variant="up">
           <h2>Ready to find answers in your documents?</h2>
+          <p className="landing-cta-band-sub">
+            Upload a file and ask a question in under a minute. No credit card,
+            no setup — your first three documents are free.
+          </p>
           <div className="landing-ctas">
             <Link to="/demo" className="btn btn-primary btn-lg">
               Try the live demo

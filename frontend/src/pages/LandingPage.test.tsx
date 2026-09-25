@@ -95,6 +95,33 @@ describe("LandingPage", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the logo marquee loop seamless by duplicating every mark", () => {
+    // The user asked to keep the marquee animation, so the -50% loop depends
+    // on the track being an exact doubling of the logo list. If the strip is
+    // ever de-duplicated the marquee visibly jumps at the wrap point.
+    const { container } = renderPage();
+    const strip = container.querySelector(".logo-strip")!;
+    const marks = [...strip.querySelectorAll(".logo-mark")].map(
+      (m) => m.textContent,
+    );
+    expect(marks.length).toBeGreaterThan(0);
+    expect(marks.length % 2).toBe(0);
+    expect(marks.slice(0, marks.length / 2)).toEqual(
+      marks.slice(marks.length / 2),
+    );
+  });
+
+  it("gives the closing CTA band a supporting line under the heading", () => {
+    renderPage();
+    const band = document.querySelector(".landing-cta-band")!;
+    expect(band.querySelector("h2")?.textContent).toBe(
+      "Ready to find answers in your documents?",
+    );
+    expect(
+      band.querySelector(".landing-cta-band-sub")?.textContent,
+    ).toContain("first three documents are free");
+  });
+
   it("organizes features into core and secondary groups", () => {
     renderPage();
     expect(screen.getByText("Core capabilities")).toBeTruthy();
