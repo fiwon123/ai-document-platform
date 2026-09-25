@@ -12,6 +12,7 @@ vi.mock("../services/api", () => ({
 
 const mockedAsk = vi.mocked(qa.ask);
 const mockedList = vi.mocked(documents.list);
+const mockedGetModels = vi.mocked(qa.getModels);
 
 function ask(
   question: string,
@@ -42,6 +43,7 @@ describe("QAPage", () => {
     vi.clearAllMocks();
     localStorage.removeItem("askdocs-model");
     mockedList.mockResolvedValue([]);
+    mockedGetModels.mockResolvedValue({ free: [], paid: [] });
   });
 
   it("renders the user question, the answer, and the answering model", async () => {
@@ -324,5 +326,126 @@ describe("QAPage", () => {
     // Both avatars render: U for the user, AI for the assistant.
     expect(screen.getAllByText("U").length).toBeGreaterThan(0);
     expect(screen.getAllByText("AI").length).toBeGreaterThan(0);
+  });
+
+  it("renders the model picker with free and paid models", async () => {
+    mockedGetModels.mockResolvedValue({
+      free: ["gpt-4o-mini", "llama-3.3-70b-versatile"],
+      paid: ["gpt-4o"],
+    });
+
+    renderWithClient(<QAPage />);
+    await act(async () => {});
+
+    const select = screen.getByLabelText("Model");
+    expect(
+      screen.getByRole("option", { name: "gpt-4o-mini" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: "llama-3.3-70b-versatile" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("option", { name: "gpt-4o" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Provider default" })).toBeTruthy();
+    expect((select as HTMLSelectElement).value).toBe("");
+  });
+
+  it("persists a selected model and passes it to ask", async () => {
+    mockedGetModels.mockResolvedValue({ free: ["gpt-4o-mini"], paid: [] });
+    ask("Model picker?", "Picked gpt-4o-mini.", "gpt-4o-mini");
+
+    renderWithClient(<QAPage />);
+    await act(async () => {});
+
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: { value: "gpt-4o-mini" },
+    });
+    expect(localStorage.getItem("askdocs-model")).toBe("gpt-4o-mini");
+
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+      { target: { value: "Model picker?" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await act(async () => {});
+
+    expect(mockedAsk).toHaveBeenCalledWith(
+      "Model picker?",
+      undefined,
+      "gpt-4o-mini",
+    );
+  });
+
+  it("submits a suggested question from the empty state", async () => {
+    ask("Which documents mention security?", "Security is covered.", null);
+
+    renderWithClient(<QAPage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Which documents mention security?" }),
+    );
+    await act(async () => {});
+
+    expect(mockedAsk).toHaveBeenCalledWith(
+      "Which documents mention security?",
+      undefined,
+      undefined,
+    );
+    expect(screen.getByText("Security is covered.")).toBeTruthy();
+  });
+
+  it("offers follow-up chips after an answer and appends them", async () => {
+    ask("First?", "First answer.", null);
+    await askQuestion("First?");
+
+    ask("Can you elaborate on that?", "Elaboration.", null);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Can you elaborate on that?" }),
+    );
+    await act(async () => {});
+
+    expect(mockedAsk).toHaveBeenLastCalledWith(
+      "Can you elaborate on that?",
+      undefined,
+      undefined,
+    );
+    // Both turns remain on screen.
+    expect(screen.getByText("First answer.")).toBeTruthy();
+    expect(screen.getByText("Elaboration.")).toBeTruthy();
+    expect(
+      screen.getByText("What are the key takeaways?"),
+    ).toBeTruthy();
+  });
+
+  it("copies an answer to the clipboard with feedback", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    ask("Copy?", "Copyable answer text.", null);
+
+    renderWithClient(<QAPage />);
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+      { target: { value: "Copy?" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy answer" }));
+    await act(async () => {});
+
+    expect(writeText).toHaveBeenCalledWith("Copyable answer text.");
+    expect(screen.getByText("Copied!")).toBeTruthy();
+  });
+
+  it("starts a new conversation with the New chat button", async () => {
+    ask("Greeting?", "Hello!", null);
+    await askQuestion("Greeting?");
+
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await act(async () => {});
+
+    expect(screen.getByText("No messages yet")).toBeTruthy();
+    expect(screen.queryByText("Hello!")).not.toBeInTheDocument();
   });
 });

@@ -2951,6 +2951,52 @@ body {
   height: calc(100vh - 80px);
 }
 
+.qa-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.qa-model-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.qa-model-select {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.qa-model-select:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-soft);
+}
+
+.qa-new-chat {
+  margin-left: auto;
+}
+
+.qa-suggested-questions,
+.chat-followups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chat-followups {
+  justify-content: flex-end;
+  margin: -8px 0 20px;
+}
+
 .chat-container {
   flex: 1;
   display: flex;
@@ -3003,6 +3049,38 @@ body {
   padding: 16px;
   background: var(--paper);
   border: 1px solid var(--line);
+  position: relative; /* anchors the copy button */
+}
+
+/* Copy-answer action on assistant bubbles. */
+.copy-answer-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font: 600 0.72rem "DM Sans", system-ui, sans-serif;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.chat-message.assistant:hover .copy-answer-btn,
+.copy-answer-btn:focus-visible {
+  opacity: 1;
+}
+
+.copy-answer-btn:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.copy-answer-btn:active {
+  color: var(--green);
+  border-color: var(--green);
 }
 
 .chat-message.user .message-content {
