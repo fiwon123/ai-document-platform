@@ -300,6 +300,10 @@ html.theme-transitioning .trust-badges li,
 html.theme-transitioning code {
   transition:
     background-color 0.22s var(--ease-standard),
+    /* Gradient fills (logo pills, stat figures, the CTA band's radial lift)
+       do not respond to a background-color transition — they need
+       background-image, or they snap for the length of the toggle. */
+    background-image 0.22s var(--ease-standard),
     color 0.22s var(--ease-standard),
     border-color 0.22s var(--ease-standard),
     fill 0.22s var(--ease-standard),
@@ -311,6 +315,7 @@ html.theme-transitioning code {
    treatment as their host element. */
 html.theme-transitioning .logo-mark::before,
 html.theme-transitioning .badge-dot,
+html.theme-transitioning .stat-item strong.stat-value,
 html.theme-transitioning .recent-tile,
 html.theme-transitioning .file-icon,
 html.theme-transitioning .file-icon::before {
@@ -1549,13 +1554,33 @@ body {
   text-align: center;
 }
 
+/* Section eyebrow over the logo wall. Two changes from the previous version:
+   it was 0.82rem of muted grey centred under a centred band, which read as a
+   caption rather than a heading, and the reported complaint was that the
+   title needed to be bigger and pulled to the left. The band stays centred
+   (the logo row and stats are centred compositions) but the eyebrow now
+   anchors the left edge on its own, which also gives the section a reading
+   order: label, then proof, then figures. */
 .trusted-by {
-  margin: 0 0 26px;
-  color: var(--muted);
-  font-size: 0.82rem;
+  margin: 0 0 30px;
+  color: var(--ink);
+  font-size: clamp(1.05rem, 1.6vw, 1.25rem);
   font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  text-align: left;
+}
+
+/* Small accent rule under the eyebrow, so the left anchor reads as
+   deliberate rather than as an alignment accident. */
+.trusted-by::after {
+  content: "";
+  display: block;
+  width: 44px;
+  height: 3px;
+  margin-top: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--blue), #7c3aed);
 }
 
 /* Logo marquee: the strip is duplicated in the JSX and translated -50% so the
@@ -1604,44 +1629,68 @@ body {
   }
 }
 
+/* Customer wordmark pill.
+   The complaint was that these "look too much simple" and it was unclear
+   whether the motion or the styling was at fault. It was the styling: the
+   pill was flat --paper on --surface with a 1px --line edge, so at a glance
+   the row was just grey words on a grey band, and the 28s scroll added motion
+   without adding any sense of craft.
+
+   What changed is depth, not decoration. A diagonal brand-tinted gradient
+   replaces the flat fill, the edge moves to --line-strong so the pill is
+   actually delineated against the band, and the shadow becomes a real
+   two-layer elevation. The diamond bullet picks up the same gradient as the
+   wordmark so the lockup reads as one object. The marquee itself is
+   untouched: same duration, same -50% seamless loop, same hover pause and
+   same reduced-motion static fallback. */
 .logo-mark {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  margin-right: 26px;
-  padding: 12px 26px;
-  border: 1px solid var(--line);
+  gap: 12px;
+  margin-right: 30px;
+  padding: 14px 32px;
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: var(--paper);
-  /* Sits at --muted, not full ink: a wall of black wordmarks reads as
-     heavier than a real customer logo wall. */
-  color: color-mix(in srgb, var(--ink) 62%, var(--paper));
-  font-size: 1.24rem;
+  background: linear-gradient(
+    135deg,
+    var(--paper) 0%,
+    color-mix(in srgb, var(--blue) 6%, var(--paper)) 100%
+  );
+  /* Sits below full ink: a wall of black wordmarks reads as heavier than a
+     real customer logo wall. Still 4.5:1+ against the pill fill. */
+  color: color-mix(in srgb, var(--ink) 72%, var(--paper));
+  font-size: 1.32rem;
   font-weight: 800;
   letter-spacing: -0.03em;
   white-space: nowrap;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.06),
+    0 4px 12px rgb(15 23 42 / 0.05);
   transition:
     color 0.25s var(--ease-standard),
     border-color 0.25s var(--ease-standard),
-    box-shadow 0.25s var(--ease-standard);
+    box-shadow 0.25s var(--ease-standard),
+    transform 0.25s var(--ease-standard);
 }
 
 .logo-mark:hover {
   color: var(--ink);
-  border-color: color-mix(in srgb, var(--blue) 40%, var(--line));
-  box-shadow: 0 4px 16px color-mix(in srgb, var(--blue) 14%, transparent);
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--line-strong));
+  box-shadow:
+    0 2px 4px rgb(15 23 42 / 0.08),
+    0 10px 28px color-mix(in srgb, var(--blue) 18%, transparent);
+  transform: translateY(-2px);
 }
 
-/* Diamond bullet inside each logo pill. */
+/* Diamond bullet inside each logo pill, tinted to match the wordmark fill. */
 .logo-mark::before {
   content: "";
-  width: 9px;
-  height: 9px;
+  width: 11px;
+  height: 11px;
   border-radius: 2px;
   transform: rotate(45deg);
-  background: var(--blue);
+  background: linear-gradient(135deg, var(--blue), #7c3aed);
 }
 
 /* ── Hero-style stats ──────────────────────────────────────────────────
@@ -1685,18 +1734,30 @@ body {
   );
 }
 
+/* Headline stat numbers. Scale is up from clamp(3rem, 7.5vw, 5.25rem) to
+   clamp(3.5rem, 8.5vw, 6.25rem) — the figures are the point of this band and
+   they were reading smaller than the trust badges below them.
+
+   The "highlight" is a layered one rather than a bigger box. background-clip:
+   text already paints the gradient, and a plain text-shadow on top of
+   clipped text renders as a smear, so the glow is a drop-shadow filter on the
+   element, which follows the gradient shape. The gradient is also pulled
+   slightly bluer at its start so the first glyph in each number has
+   something to hold onto. CountUp is untouched: it still animates, and still
+   bypasses animation entirely under prefers-reduced-motion. */
 .stat-item strong {
-  font-size: clamp(3rem, 7.5vw, 5.25rem);
+  font-size: clamp(3.5rem, 8.5vw, 6.25rem);
   font-weight: 800;
   letter-spacing: -0.05em;
   color: var(--blue);
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  filter: drop-shadow(0 6px 22px color-mix(in srgb, var(--blue) 26%, transparent));
 }
 
 .stat-item span {
   color: var(--muted);
-  font-size: 1rem;
+  font-size: 1.08rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   text-align: center;
@@ -1726,7 +1787,7 @@ body {
 /* Headline stat numbers: blue→violet gradient text for more visual weight
    (CountUp already animates the counting). */
 .stat-item strong.stat-value {
-  background: linear-gradient(120deg, var(--blue) 20%, #7c3aed 85%);
+  background: linear-gradient(120deg, var(--blue) 5%, #7c3aed 88%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -1737,10 +1798,16 @@ body {
 }
 
 :root[data-theme="dark"] .stat-item strong.stat-value {
-  background: linear-gradient(120deg, #60a5fa 10%, #c4b5fd 90%);
+  background: linear-gradient(120deg, #60a5fa 5%, #c4b5fd 90%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+/* On the softened dark band a 26% blue drop-shadow is nearly invisible, so
+   the dark glow is brighter and tighter. */
+:root[data-theme="dark"] .stat-item strong {
+  filter: drop-shadow(0 4px 20px rgb(96 165 250 / 0.28));
 }
 
 /* Honest-label note under the illustrative stats. */
@@ -2538,30 +2605,64 @@ body {
   line-height: 1.6;
 }
 
-/* CTA band — animated gradient. */
+/* CTA band — the closing call to action.
+
+   Reported as looking "out of style" against the rest of the page, and the
+   reason is structural rather than cosmetic: it was the one full-bleed block
+   on the page whose *fill* ignored the design tokens. Every other surface
+   reads from --blue / --surface / --line, so this band was a hardcoded
+   gradient sitting next to tokenised sections and looking pasted on. The
+   hero, the feature cards and the stat gradient all share the same
+   blue→violet axis, so the band now uses that axis explicitly and the
+   shimmer animates background-position as before.
+
+   Depth comes from a radial lift behind the buttons plus a soft inner top
+   highlight, so the block reads as a raised panel rather than a colour
+   swatch. Padding and heading scale are up to match the hero's proportions.
+   The white primary button is kept in both themes: it is the highest-contrast
+   element on the page and inverting it in dark mode would weaken the one
+   action we want. */
 .landing-cta-band {
-  padding: 84px 6vw;
+  padding: 104px 6vw;
   text-align: center;
-  background: linear-gradient(120deg, #2563eb, #7c3aed, #2563eb);
-  background-size: 220% 220%;
+  background:
+    radial-gradient(120% 140% at 50% 118%, rgb(255 255 255 / 0.16) 0, transparent 62%),
+    linear-gradient(120deg, #2563eb, #7c3aed, #2563eb);
+  background-size: 100% 100%, 220% 220%;
   color: white;
   animation: band-shift 14s ease-in-out infinite alternate;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22);
 }
 
 @keyframes band-shift {
-  from { background-position: 0% 50%; }
-  to   { background-position: 100% 50%; }
+  from { background-position: 50% 50%, 0% 50%; }
+  to   { background-position: 50% 50%, 100% 50%; }
 }
 
 .landing-cta-band h2 {
-  margin: 0 0 24px;
-  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  margin: 0 0 14px;
+  font-size: clamp(1.9rem, 3.6vw, 2.75rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: white;
+  text-wrap: balance;
 }
 
+/* Supporting line so the band carries a reason to act, not just a button. */
+.landing-cta-band-sub {
+  margin: 0 auto 32px;
+  max-width: 52ch;
+  color: rgb(255 255 255 / 0.86);
+  font-size: 1.05rem;
+  line-height: 1.6;
+  text-wrap: balance;
+}
+
+/* Slight lift + shadow on the primary so it sits above the band. */
 .landing-cta-band .btn-primary {
   background: white;
   color: #1e3a8a;
+  box-shadow: 0 10px 30px rgb(15 23 42 / 0.22);
 }
 
 /* Out-spec the dark-theme .btn-primary override — the band keeps a white
@@ -2574,15 +2675,19 @@ body {
 .landing-cta-band .btn-primary:hover:not(:disabled),
 :root[data-theme="dark"] .landing-cta-band .btn-primary:hover:not(:disabled) {
   background: #e2e8f0;
+  box-shadow: 0 14px 38px rgb(15 23 42 / 0.28);
+  transform: translateY(-1px);
 }
 
 .landing-cta-band .btn-secondary {
-  border-color: rgb(255 255 255 / 0.6);
+  border-color: rgb(255 255 255 / 0.55);
   color: white;
+  backdrop-filter: blur(6px);
 }
 
 .landing-cta-band .btn-secondary:hover:not(:disabled) {
-  background: rgb(255 255 255 / 0.12);
+  background: rgb(255 255 255 / 0.14);
+  border-color: rgb(255 255 255 / 0.85);
 }
 
 /* Full footer. */
