@@ -1,7 +1,9 @@
 import {
   memo,
   useCallback,
+  useDeferredValue,
   useEffect,
+  useMemo,
   useOptimistic,
   useRef,
   useState,
@@ -15,7 +17,7 @@ import { Spinner } from "../components/Spinner";
 import { EmptyState } from "../components/EmptyState";
 import { Badge, DOCUMENT_STATUS_TONE } from "../components/Badge";
 import { PreviewModal } from "../components/PreviewModal";
-import { RefreshIcon, EyeIcon, DownloadIcon } from "../components/icons";
+import { RefreshIcon, EyeIcon, DownloadIcon, SearchIcon } from "../components/icons";
 import { formatElapsed } from "../utils/time";
 import { useToast } from "../hooks/useToast";
 import { useDocuments, DOCUMENTS_QUERY_KEY } from "../hooks/useDocuments";
@@ -27,6 +29,14 @@ const POLL_INTERVAL_MS = 3000;
 
 /** Maximum files the backend accepts per bulk request. */
 const MAX_BULK_UPLOAD_FILES = 20;
+
+/** Statuses offered as filter chips, in pipeline order. */
+const STATUS_FILTERS: Document["status"][] = [
+  "pending",
+  "processing",
+  "ready",
+  "failed",
+];
 
 function isProcessing(status: Document["status"]): boolean {
   return status === "pending" || status === "processing";
@@ -285,6 +295,10 @@ export function DocumentsPage() {
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Filename search text (client-side filter over the loaded list). */
+  const [searchQuery, setSearchQuery] = useState("");
+  /** Active status chip, or null when filtering by all statuses. */
+  const [statusFilter, setStatusFilter] = useState<Document["status"] | null>(null);
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** Ids whose thumbnail URL was fetched successfully (avoids refetching). */
@@ -294,6 +308,35 @@ export function DocumentsPage() {
 
   const listError = docsQuery.isError ? (docsQuery.error as Error).message : null;
   const errorMessage = listError ?? error;
+
+  // Client-side filtering: the deferred query keeps the list rendering
+  // responsive while typing, and the memos recompute only when the docs,
+  // the query, or the active status actually change.
+  const deferredQuery = useDeferredValue(searchQuery);
+  const filteredDocs = useMemo(() => {
+    const needle = deferredQuery.trim().toLowerCase();
+    return optimisticDocs.filter((doc) => {
+      const matchesQuery = needle === "" || doc.filename.toLowerCase().includes(needle);
+      const matchesStatus = statusFilter === null || doc.status === statusFilter;
+      return matchesQuery && matchesStatus;
+    });
+  }, [optimisticDocs, deferredQuery, statusFilter]);
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<Document["status"], number> = {
+      pending: 0,
+      processing: 0,
+      ready: 0,
+      failed: 0,
+    };
+    for (const doc of optimisticDocs) counts[doc.status] += 1;
+    return counts;
+  }, [optimisticDocs]);
+
+  const clearFilters = useCallback(() => {
+    setSearchQuery("");
+    setStatusFilter(null);
+  }, []);
 
   // Poll status of every document that is still pending/processing so the
   // badges update live (after upload or external processing) without a reload.
@@ -633,6 +676,75 @@ export function DocumentsPage() {
       {errorMessage && <p className="error-message" role="alert">{errorMessage}</p>}
       {previewError && <p className="error-message" role="alert">{previewError}</p>}
 
+      {optimisticDocs.length > 0 && (
+        <div className="documents-toolbar">
+          <div className="documents-search">
+            <SearchIcon />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by filename"
+              aria-label="Search documents by filename"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="documents-search-clear"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+          <div
+            className="status-filter"
+            role="group"
+            aria-label="Filter documents by status"
+          >
+            <button
+              type="button"
+              className={`filter-chip${statusFilter === null ? " is-selected" : ""}`}
+              aria-pressed={statusFilter === null}
+              onClick={() => setStatusFilter(null)}
+            >
+              All
+              <span className="chip-count">{optimisticDocs.length}</span>
+            </button>
+            {STATUS_FILTERS.filter((status) => statusCounts[status] > 0).map(
+              (status) => (
+                <button
+                  key={status}
+                  type="button"
+                  className={`filter-chip${statusFilter === status ? " is-selected" : ""}`}
+                  aria-pressed={statusFilter === status}
+                  onClick={() =>
+                    setStatusFilter(statusFilter === status ? null : status)
+                  }
+                  title={`Show ${status} documents`}
+                >
+                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                  <span className="chip-count">{statusCounts[status]}</span>
+                </button>
+              ),
+            )}
+          </div>
+          {(searchQuery || statusFilter !== null) && (
+            <p className="documents-result-count" role="status">
+              Showing {filteredDocs.length} of {optimisticDocs.length} documents
+              <button
+                type="button"
+                className="documents-filter-clear"
+                onClick={clearFilters}
+              >
+                Clear filters
+              </button>
+            </p>
+          )}
+        </div>
+      )}
+
       {docsQuery.isPending ? (
         <div className="document-grid" aria-busy="true">
           <SkeletonCard />
@@ -645,9 +757,18 @@ export function DocumentsPage() {
           description="Upload your first document above to start asking questions."
           action={{ label: "Upload a document", onClick: openFilePicker }}
         />
+      ) : filteredDocs.length === 0 ? (
+        <EmptyState
+          title="No documents match your filters"
+          description={[
+            statusFilter ? `No ${statusFilter} documents` : "No documents",
+            searchQuery ? `match "${searchQuery}".` : "match your filters.",
+          ].join(" ")}
+          action={{ label: "Clear filters", onClick: clearFilters }}
+        />
       ) : (
         <div className="document-grid">
-          {optimisticDocs.map((doc) => (
+          {filteredDocs.map((doc) => (
             <DocumentCard
               key={doc.id}
               doc={doc}
