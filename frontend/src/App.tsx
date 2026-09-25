@@ -36,6 +36,47 @@ const RegisterPage = lazy(() =>
 const DemoPage = lazy(() =>
   import("./pages/DemoPage").then((m) => ({ default: m.DemoPage })),
 );
+/* Marketing pages. Each is its own chunk so the landing page's first paint does
+   not carry a dozen pages of legal prose it will never render. */
+const ProductPage = lazy(() =>
+  import("./pages/ProductPage").then((m) => ({ default: m.ProductPage })),
+);
+const FeaturesPage = lazy(() =>
+  import("./pages/FeaturesPage").then((m) => ({ default: m.FeaturesPage })),
+);
+const HowItWorksPage = lazy(() =>
+  import("./pages/HowItWorksPage").then((m) => ({ default: m.HowItWorksPage })),
+);
+const PricingPage = lazy(() =>
+  import("./pages/PricingPage").then((m) => ({ default: m.PricingPage })),
+);
+const CompanyPage = lazy(() =>
+  import("./pages/CompanyPage").then((m) => ({ default: m.CompanyPage })),
+);
+const AboutPage = lazy(() =>
+  import("./pages/AboutPage").then((m) => ({ default: m.AboutPage })),
+);
+const BlogPage = lazy(() =>
+  import("./pages/BlogPage").then((m) => ({ default: m.BlogPage })),
+);
+const CareersPage = lazy(() =>
+  import("./pages/CareersPage").then((m) => ({ default: m.CareersPage })),
+);
+const ContactPage = lazy(() =>
+  import("./pages/ContactPage").then((m) => ({ default: m.ContactPage })),
+);
+const PrivacyPage = lazy(() =>
+  import("./pages/PrivacyPage").then((m) => ({ default: m.PrivacyPage })),
+);
+const TermsPage = lazy(() =>
+  import("./pages/TermsPage").then((m) => ({ default: m.TermsPage })),
+);
+const SecurityPage = lazy(() =>
+  import("./pages/SecurityPage").then((m) => ({ default: m.SecurityPage })),
+);
+const GdprPage = lazy(() =>
+  import("./pages/GdprPage").then((m) => ({ default: m.GdprPage })),
+);
 const DocumentsPage = lazy(() =>
   import("./pages/DocumentsPage").then((m) => ({ default: m.DocumentsPage })),
 );
@@ -162,6 +203,23 @@ function App() {
                 <div className="app">
                   <ViewTransitionRoutes>
                     <Route path="/" element={<LandingPage />} />
+                    {/* Product */}
+                    <Route path="/product" element={<ProductPage />} />
+                    <Route path="/features" element={<FeaturesPage />} />
+                    <Route path="/how-it-works" element={<HowItWorksPage />} />
+                    <Route path="/pricing" element={<PricingPage />} />
+                    <Route path="/demo" element={<DemoPage />} />
+                    {/* Company */}
+                    <Route path="/company" element={<CompanyPage />} />
+                    <Route path="/about" element={<AboutPage />} />
+                    <Route path="/blog" element={<BlogPage />} />
+                    <Route path="/careers" element={<CareersPage />} />
+                    <Route path="/contact" element={<ContactPage />} />
+                    {/* Legal */}
+                    <Route path="/privacy" element={<PrivacyPage />} />
+                    <Route path="/terms" element={<TermsPage />} />
+                    <Route path="/security" element={<SecurityPage />} />
+                    <Route path="/gdpr" element={<GdprPage />} />
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/register" element={<RegisterPage />} />
                     <Route path="/demo" element={<DemoPage />} />

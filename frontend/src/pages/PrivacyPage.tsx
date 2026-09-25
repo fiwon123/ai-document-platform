@@ -1,0 +1,100 @@
+import { LegalDocument, type LegalSection } from "../components/LegalDocument";
+import { SITE } from "../content/marketing";
+
+const SECTIONS: LegalSection[] = [
+  {
+    heading: "Who we are",
+    body: [
+      `${SITE.entity} ("we", "us") operates the ${SITE.name} document intelligence platform. This policy explains what personal data the service handles, why, and what we do with it.`,
+      "It applies to the hosted service and to this website. It does not cover documents you upload to a workspace you control beyond describing our own processing of them — you remain the controller of your content.",
+    ],
+  },
+  {
+    heading: "Data we process",
+    body: ["We process the following categories of personal data, either on your behalf or to operate the service."],
+    items: [
+      "Account data: username, password hash, role, account status, and timestamps.",
+      "Session data: access tokens and rotating refresh tokens. Refresh tokens are stored as hashes and can be revoked.",
+      "Content you upload: the files, the extracted text, the derived chunks and vector embeddings, and any preview images rendered from them.",
+      "Usage data: search queries, result counts, and question/answer pairs you submit, used to operate the workspace and to cache responses.",
+      "Technical data: request metadata retained for security and rate-limiting purposes, including IP address where required to enforce limits.",
+    ],
+  },
+  {
+    heading: "Why we process it",
+    body: [
+      "Account data exists to authenticate you and to apply plan limits. Content data exists to provide the features you asked for: search and question answering cannot work without indexing the documents you uploaded. Usage data exists to answer your questions and to cache repeated queries so responses are fast.",
+      "We do not use your documents to train models, and we do not sell personal data to anyone.",
+    ],
+  },
+  {
+    heading: "Legal bases",
+    body: [
+      "Where the GDPR applies, we rely on the following bases: performance of a contract for data needed to run your workspace; legitimate interests for security, rate limiting, and abuse prevention; and consent for marketing email, which you can withdraw at any time.",
+      "Where we rely on legitimate interests, those interests are operating and protecting the service. You have the right to object — see the GDPR page.",
+    ],
+  },
+  {
+    heading: "Processors and sub-processors",
+    body: [
+      "We use subprocessors to provide infrastructure services. The current list, which must be kept accurate and published before this policy goes live, includes:",
+    ],
+    items: [
+      "A managed PostgreSQL provider, used for account data, document metadata, chunks, and vector embeddings.",
+      "An S3-compatible object storage provider, used to store uploaded files under a per-user key prefix.",
+      "A managed Redis provider, used for caching, rate limiting, and the job queue.",
+      "An application hosting provider, used to run the API and the background worker.",
+      "Model providers (OpenAI, Groq) used for embeddings and question answering. On paid plans you may supply your own API key, in which case the request is made with your credentials and does not use ours.",
+    ],
+  },
+  {
+    heading: "Retention",
+    body: [
+      "Account and session data is retained for the life of the account and deleted shortly after closure. Content you upload is retained until you delete the document or close the account, and is then removed from storage and from the vector index.",
+      "Security logs are retained for a limited period for investigation, after which they are deleted. Cached responses are invalidated when the underlying documents change.",
+    ],
+  },
+  {
+    heading: "Security",
+    body: [
+      "We apply the measures described on the Security page, including per-user isolation of stored objects, encryption in transit, and access controls. No system is perfectly secure, but the design assumes documents are sensitive and treats isolation as a property of the data model rather than a filter applied at query time.",
+    ],
+  },
+  {
+    heading: "Your rights",
+    body: [
+      "Depending on where you live, you may have the right to access your personal data, correct it, delete it, restrict or object to processing, receive it in a portable form, and withdraw consent. You can exercise most of these directly in the workspace — for example, deleting an uploaded document removes it from storage and the index.",
+      `Requests that the interface cannot satisfy can be sent to ${SITE.legalEmail}. We respond within the timeframes the applicable law requires.`,
+    ],
+  },
+  {
+    heading: "International transfers",
+    body: [
+      "Our infrastructure providers may process data outside your country, including in the United States. Where data is transferred out of the EEA or UK we rely on the relevant safeguards, such as Standard Contractual Clauses, and we will say so here with the specific providers involved before this policy is published.",
+    ],
+  },
+  {
+    heading: "Children",
+    body: [
+      "The service is intended for businesses and adults. We do not knowingly collect data from children, and we delete it if we discover that we have.",
+    ],
+  },
+  {
+    heading: "Changes and contact",
+    body: [
+      "If this policy changes materially we will update the date above and, for account holders, notify them through the product. Questions, requests, and complaints are welcome at the addresses on the Contact page.",
+    ],
+  },
+];
+
+export function PrivacyPage() {
+  return (
+    <LegalDocument
+      eyebrow="Legal"
+      title="Privacy Policy"
+      intro="What personal data the service handles, why it handles it, and what you can do about it."
+      sections={SECTIONS}
+      activePath="/privacy"
+    />
+  );
+}

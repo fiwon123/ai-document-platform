@@ -6194,3 +6194,495 @@ body {
 .code-block .tok-number {
   color: var(--code-number);
 }
+
+/* ── Header section menus ──────────────────────────────────────────────────
+   The header carries two disclosure menus (Product, Company) rather than eight
+   flat links. Legal deliberately stays footer-only: primary navigation should
+   hold where people are going, not every page that exists. */
+
+.nav-group {
+  position: relative;
+}
+
+.nav-group-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.nav-group-trigger:hover,
+.nav-group-trigger[aria-expanded="true"],
+.nav-group-trigger.active {
+  color: var(--ink);
+}
+
+.nav-group-chevron {
+  transition: transform 0.2s var(--ease-standard);
+}
+
+.nav-group-trigger[aria-expanded="true"] .nav-group-chevron {
+  transform: rotate(180deg);
+}
+
+/* Visible focus ring for keyboard users. The trigger is a <button>, so this
+   replaces the browser default rather than supplementing it. */
+.nav-group-trigger:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.nav-group-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 210px;
+  padding: 6px;
+  transform: translateX(-50%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: 0 18px 44px rgb(15 23 42 / 0.14);
+  animation: nav-group-in 0.16s var(--ease-standard);
+}
+
+@keyframes nav-group-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.nav-group-menu a {
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-group-menu a:hover,
+.nav-group-menu a:focus-visible,
+.nav-group-menu a.active {
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+  color: var(--ink);
+}
+
+.nav-group-menu a:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+
+/* The hub link is visually distinct from its children: it is the section, not
+   one item in it. */
+.nav-group-overview {
+  color: var(--ink) !important;
+  font-weight: 700;
+  border-bottom: 1px solid var(--line);
+  border-radius: 8px 8px 0 0 !important;
+  margin-bottom: 4px;
+}
+
+@media (max-width: 768px) {
+  /* The nav row wraps to full width here, so the menu drops the absolute
+     positioning and the translate and just flows under its trigger. Absolute
+     positioning on a full-width wrapped row opens off-screen. */
+  .nav-group-menu {
+    position: static;
+    min-width: 0;
+    transform: none;
+    margin-top: 8px;
+    animation: none;
+  }
+
+  .nav-group {
+    width: 100%;
+  }
+
+  .nav-group-menu a {
+    white-space: normal;
+  }
+}
+
+/* ── Marketing page shell ───────────────────────────────────────────────────
+   Shared by all 13 non-landing marketing routes via <PageLayout>, so a new page
+   inherits the landing page's measure, spacing rhythm, and type scale instead
+   of inventing its own. */
+
+.page-main {
+  display: block;
+}
+
+.page-hero {
+  position: relative;
+  padding: 72px 6vw 8px;
+  text-align: center;
+}
+
+.page-hero-inner {
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.page-hero h1 {
+  margin: 10px 0 0;
+  font-size: clamp(2.1rem, 4.6vw, 3.4rem);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+}
+
+.page-hero .landing-sub {
+  margin-top: 18px;
+  font-size: clamp(1.02rem, 1.5vw, 1.15rem);
+}
+
+.page-body {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 6vw 88px;
+}
+
+.page-section {
+  margin-bottom: 56px;
+}
+
+.page-section-title {
+  margin: 0 0 18px;
+  font-size: clamp(1.3rem, 2.4vw, 1.7rem);
+  letter-spacing: -0.02em;
+}
+
+.page-body p {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.72;
+}
+
+.page-body p strong {
+  color: var(--ink);
+}
+
+.page-body code {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  font-size: 0.88em;
+}
+
+.page-body ul,
+.page-body ol {
+  margin: 0 0 16px;
+  padding-left: 22px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.page-body li {
+  margin-bottom: 8px;
+}
+
+.page-body a:not(.btn) {
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.page-body a:not(.btn):hover {
+  text-decoration: underline;
+}
+
+.page-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+.page-grid-secondary {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.page-card,
+.page-card-static {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card, var(--paper));
+  text-decoration: none;
+}
+
+.page-card h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+.page-card-static h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.page-card p,
+.page-card-static p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.65;
+}
+
+.page-card-cta {
+  margin-top: auto;
+  padding-top: 6px;
+  color: var(--blue);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.plan-detail-price {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.plan-detail-price strong {
+  color: var(--ink);
+  font-size: 1.4rem;
+}
+
+.plan-detail-price span {
+  font-size: 0.85rem;
+}
+
+.plan-includes {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.9rem;
+}
+
+/* ── How it works: stage list ─────────────────────────────────────────────── */
+
+.pipeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+.pipeline-stage {
+  padding: 20px 0;
+  border-top: 1px solid var(--line);
+}
+
+.pipeline-stage:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.pipeline-stage-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.pipeline-stage-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--card-accent, var(--blue)) 12%, transparent);
+  color: var(--card-accent, var(--blue));
+}
+
+.pipeline-stage h3 {
+  margin: 0 0 3px;
+  font-size: 1.08rem;
+}
+
+.pipeline-summary {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.pipeline-detail {
+  margin: 0 0 12px;
+}
+
+.pipeline-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pipeline-facts li {
+  padding: 4px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* ── About: stack table ───────────────────────────────────────────────────── */
+
+.stack-list {
+  margin: 0 0 20px;
+  border-top: 1px solid var(--line);
+}
+
+.stack-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.stack-row dt {
+  min-width: 130px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stack-row dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+/* ── Company: contact + careers rows ──────────────────────────────────────── */
+
+.contact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.contact-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card, var(--paper));
+}
+
+.contact-row h3 {
+  margin: 0;
+  font-size: 1.08rem;
+}
+
+.contact-row p {
+  margin: 0;
+  font-size: 0.94rem;
+}
+
+.role-type {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.empty-state-panel {
+  padding: 30px 26px;
+  border: 1px dashed var(--line);
+  border-radius: 16px;
+}
+
+.empty-state-panel h2 {
+  margin: 0 0 12px;
+  font-size: 1.2rem;
+}
+
+/* ── Legal documents ──────────────────────────────────────────────────────── */
+
+.template-notice {
+  margin-bottom: 28px;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--amber, #f59e0b) 45%, var(--line));
+  border-left-width: 4px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--amber, #f59e0b) 8%, transparent);
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.template-notice strong {
+  color: var(--ink);
+}
+
+.legal-updated {
+  margin: 0 0 32px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.legal-section {
+  margin-bottom: 34px;
+}
+
+.legal-section h2 {
+  margin: 0 0 12px;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+.legal-section-number {
+  color: var(--blue);
+}
+
+@media (max-width: 720px) {
+  .page-hero {
+    padding-top: 52px;
+  }
+
+  .page-body {
+    padding-bottom: 64px;
+  }
+
+  .page-section {
+    margin-bottom: 44px;
+  }
+
+  .stack-row dt {
+    min-width: 100%;
+  }
+}
