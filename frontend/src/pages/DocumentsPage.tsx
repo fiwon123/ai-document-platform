@@ -14,8 +14,12 @@ import { SkeletonCard } from "../components/Skeleton";
 import { Spinner } from "../components/Spinner";
 import { EmptyState } from "../components/EmptyState";
 import { Badge, DOCUMENT_STATUS_TONE } from "../components/Badge";
+import { PreviewModal } from "../components/PreviewModal";
+import { RefreshIcon, EyeIcon, DownloadIcon } from "../components/icons";
+import { formatElapsed } from "../utils/time";
 import { useToast } from "../hooks/useToast";
 import { useDocuments, DOCUMENTS_QUERY_KEY } from "../hooks/useDocuments";
+import { MY_STATISTICS_QUERY_KEY } from "../hooks/useStatistics";
 import { useQueryClient } from "@tanstack/react-query";
 
 /** How often to re-check documents that are still processing. */
@@ -28,23 +32,6 @@ function isProcessing(status: Document["status"]): boolean {
   return status === "pending" || status === "processing";
 }
 
-/**
- * Compact "how long has it been stuck in this state" label, anchored on
- * `updated_at` (refreshed on every status transition). Coarse enough to not
- * tick on its own — the 3s status poll re-renders active cards.
- */
-function formatElapsed(updatedAt: string): string {
-  const seconds = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(updatedAt).getTime()) / 1000),
-  );
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m`;
-}
-
 /** Delay before a failed thumbnail lookup is retried (prevents hammering). */
 const THUMBNAIL_RETRY_MS = 30_000;
 
@@ -52,74 +39,6 @@ type OptimisticDocumentAction =
   | { type: "delete"; id: string }
   | { type: "reprocess"; id: string }
   | { type: "upload"; files: File[] };
-
-/**
- * Small inline action glyphs for the document-card footer (16px, Feather
- * style, `currentColor` so they inherit the button color). No icon library —
- * these match the hand-rolled SVG pattern in ThemeToggle/DocumentFilter.
- * Rendered `aria-hidden` because each button carries its own aria-label.
- */
-function RefreshIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <polyline points="23 4 23 10 17 10" />
-      <polyline points="1 20 1 14 7 14" />
-      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-    </svg>
-  );
-}
-
-function EyeIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
-function DownloadIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
-    </svg>
-  );
-}
 
 function TrashIcon() {
   return (
@@ -462,44 +381,9 @@ export function DocumentsPage() {
     // thus this effect's other dependency) has plateaued.
   }, [docs, pollTick]);
 
-  // Focus management for the preview modal: move focus into the dialog on
-  // open, trap Tab inside it, close on Escape, and restore focus to the
-  // triggering element on close (WCAG 2.4.3 / 2.1.2).
-  const previewCloseRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!preview) return;
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    previewCloseRef.current?.focus();
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setPreview(null);
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const modal = previewCloseRef.current?.closest(".modal");
-      if (!modal) return;
-      const focusables = modal.querySelectorAll<HTMLElement>(
-        'button:not([disabled]):not([aria-hidden="true"]), [href], input:not([disabled]):not([aria-hidden="true"]), select:not([disabled]):not([aria-hidden="true"]), textarea:not([disabled]):not([aria-hidden="true"]), [tabindex]:not([tabindex="-1"])',
-      );
-      if (focusables.length === 0) return;
-      const first = focusables[0]!;
-      const last = focusables[focusables.length - 1]!;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      // Restore focus after the dialog unmounts.
-      previouslyFocused?.focus?.();
-    };
-  }, [preview]);
+  // Focus management for the preview modal lives in the shared
+  // <PreviewModal> component (move focus in, trap Tab, close on Escape,
+  // restore focus on close).
 
   /**
    * Uploads files via the bulk endpoint. Batches larger than the backend
@@ -552,6 +436,10 @@ export function DocumentsPage() {
 
       if (errors.length > 0) setError(errors.join(" "));
       if (uploadedCount > 0) {
+        // The document set changed — refresh the dashboard summary so its
+        // stat cards and recent list pick up the new upload immediately
+        // instead of waiting out the 30s query freshness window.
+        queryClient.invalidateQueries({ queryKey: MY_STATISTICS_QUERY_KEY });
         toast.success(
           `${uploadedCount} document${uploadedCount === 1 ? "" : "s"} uploaded — processing started`,
         );
@@ -590,6 +478,8 @@ export function DocumentsPage() {
         queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
           (prev ?? []).filter((d) => d.id !== id),
         );
+        // Keep the dashboard summary in sync after a deletion.
+        queryClient.invalidateQueries({ queryKey: MY_STATISTICS_QUERY_KEY });
         // Drop any cached thumbnail URL so a re-uploaded document with the
         // same id (never happens today, but cheap) cannot show a stale image.
         setThumbnailUrls((prev) => {
@@ -667,6 +557,9 @@ export function DocumentsPage() {
           ),
         );
         toast.success("Document queued for reprocessing");
+        // Reprocessing changes status counts (failed → pending) — refresh
+        // the dashboard summary so its recent list shows the retry state.
+        queryClient.invalidateQueries({ queryKey: MY_STATISTICS_QUERY_KEY });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Reprocessing failed";
         setError(message);
@@ -775,33 +668,7 @@ export function DocumentsPage() {
       </div>
 
       {preview && (
-        <div className="modal-overlay" onClick={() => setPreview(null)}>
-          <div
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="preview-modal-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-header">
-              <h2 id="preview-modal-title">{preview.filename}</h2>
-              <button
-                ref={previewCloseRef}
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setPreview(null)}
-              >
-                Close
-              </button>
-            </div>
-            <pre className="preview-text">{preview.preview}</pre>
-            {preview.truncated && (
-              <p className="preview-note">
-                Preview truncated to the first 5000 characters.
-              </p>
-            )}
-          </div>
-        </div>
+        <PreviewModal preview={preview} onClose={() => setPreview(null)} />
       )}
     </div>
   );
