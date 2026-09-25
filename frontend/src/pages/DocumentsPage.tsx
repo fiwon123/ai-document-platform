@@ -34,7 +34,8 @@ const MAX_BULK_UPLOAD_FILES = 20;
  * Stable empty list for `docsQuery.data ?? EMPTY_DOCS`.
  *
  * An inline `?? []` allocates a fresh array on every render, so effects
- * depending on it re-ran each time. Exported for the page's own tests.
+ * depending on it re-ran each time. Module-private: the const exists only to
+ * give that fallback a stable identity, it is not part of the page's API.
  */
 const EMPTY_DOCS: Document[] = [];
 
