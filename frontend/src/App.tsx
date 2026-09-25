@@ -1,6 +1,20 @@
-import { lazy, Suspense } from "react";
+import {
+  createContext,
+  lazy,
+  Suspense,
+  useContext,
+  useState,
+  type ReactNode,
+} from "react";
+import { flushSync } from "react-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter,
+  Route,
+  Routes,
+  useLocation,
+  type Location,
+} from "react-router-dom";
 import { AuthProvider } from "./hooks/AuthProvider";
 import { ToastProvider } from "./context/ToastProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -52,6 +66,91 @@ const NotFoundPage = lazy(() =>
 
 const pageFallback = <div className="loading">Loading page…</div>;
 
+/* ---------------------------------------------------------------------------
+   View transitions
+   The route tree renders against a *stored* location so navigation can run
+   through the View Transition API: React renders the new page inside
+   document.startViewTransition() (flushed synchronously) and the browser
+   cross-fades the outgoing/incoming snapshots. Without API support the
+   location updates immediately — the app behaves exactly as before.
+   --------------------------------------------------------------------------- */
+
+type ViewTransitionLike = { finished: Promise<void> };
+
+function getViewTransitionStart():
+  | ((update: () => void) => ViewTransitionLike)
+  | null {
+  const doc = document as unknown as {
+    startViewTransition?: (update: () => void) => ViewTransitionLike;
+  };
+  return typeof doc.startViewTransition === "function"
+    ? doc.startViewTransition.bind(doc)
+    : null;
+}
+
+/** The location the route tree currently renders for (see above). */
+const DisplayLocationContext = createContext<Location | null>(null);
+
+function ViewTransitionRoutes({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const [displayLocation, setDisplayLocation] = useState(location);
+
+  // Adjust state during render (the documented derived-state pattern): any
+  // key mismatch means the user navigated. With the View Transition API we
+  // render the new page inside the transition callback via flushSync so the
+  // browser captures both snapshots; without it, update immediately.
+  if (location.key !== displayLocation.key) {
+    const start = getViewTransitionStart();
+    if (start) {
+      const next = location;
+      try {
+        const transition = start(() => {
+          flushSync(() => setDisplayLocation(next));
+        });
+        // A navigation racing this one aborts the previous transition; the
+        // render callback already ran, so swallow the rejection.
+        transition.finished.catch(() => {});
+      } catch {
+        setDisplayLocation(location);
+      }
+    } else {
+      setDisplayLocation(location);
+    }
+  }
+
+  return (
+    <DisplayLocationContext.Provider value={displayLocation}>
+      <Routes location={displayLocation}>{children}</Routes>
+    </DisplayLocationContext.Provider>
+  );
+}
+
+/** The protected app shell renders its relative routes against the same
+ * stored location so the whole page cross-fades together on navigation. */
+function ProtectedRoutes() {
+  const displayLocation = useContext(DisplayLocationContext);
+  return (
+    <ProtectedRoute>
+      <Navbar />
+      <main className="main-content">
+        <ErrorBoundary label="Page error">
+          <Routes location={displayLocation ?? undefined}>
+            <Route path="" element={<DashboardPage />} />
+            <Route path="documents" element={<DocumentsPage />} />
+            <Route path="search" element={<SearchPage />} />
+            <Route path="qa" element={<QAPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="webhooks" element={<WebhooksPage />} />
+            <Route path="profile" element={<ProfilePage />} />
+            <Route path="admin" element={<AdminPage />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </ErrorBoundary>
+      </main>
+    </ProtectedRoute>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -61,36 +160,14 @@ function App() {
             <ErrorBoundary label="Application error">
               <ToastProvider>
                 <div className="app">
-                  <Routes>
+                  <ViewTransitionRoutes>
                     <Route path="/" element={<LandingPage />} />
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/register" element={<RegisterPage />} />
                     <Route path="/demo" element={<DemoPage />} />
-                    <Route
-                      path="/app/*"
-                      element={
-                        <ProtectedRoute>
-                          <Navbar />
-                          <main className="main-content">
-                            <ErrorBoundary label="Page error">
-                              <Routes>
-                                <Route path="" element={<DashboardPage />} />
-                                <Route path="documents" element={<DocumentsPage />} />
-                                <Route path="search" element={<SearchPage />} />
-                                <Route path="qa" element={<QAPage />} />
-                                <Route path="settings" element={<SettingsPage />} />
-                                <Route path="webhooks" element={<WebhooksPage />} />
-                                <Route path="profile" element={<ProfilePage />} />
-                                <Route path="admin" element={<AdminPage />} />
-                                <Route path="*" element={<NotFoundPage />} />
-                              </Routes>
-                            </ErrorBoundary>
-                          </main>
-                        </ProtectedRoute>
-                      }
-                    />
+                    <Route path="/app/*" element={<ProtectedRoutes />} />
                     <Route path="*" element={<NotFoundPage />} />
-                  </Routes>
+                  </ViewTransitionRoutes>
                 </div>
               </ToastProvider>
             </ErrorBoundary>
