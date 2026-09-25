@@ -380,6 +380,52 @@ describe("DocumentsPage thumbnails", () => {
     expect(container.querySelector(".file-icon")).toBeTruthy();
   });
 
+  it("shows the file extension on the placeholder tile", async () => {
+    mockedList.mockResolvedValue([pendingDoc]); // report.pdf
+
+    const { container } = renderWithClient(<DocumentsPage />);
+    await settle();
+
+    expect(container.querySelector(".file-icon")?.textContent).toBe("PDF");
+  });
+
+  it("falls back to FILE for dotless or long extensions", async () => {
+    mockedList.mockResolvedValue([
+      { ...pendingDoc, id: "doc-dotless", filename: "archive" },
+      { ...pendingDoc, id: "doc-long", filename: "data.somethinglong" },
+    ]);
+
+    const { container } = renderWithClient(<DocumentsPage />);
+    await settle();
+
+    const tiles = container.querySelectorAll(".file-icon");
+    expect(tiles.length).toBe(2);
+    expect(tiles[0]?.textContent).toBe("FILE");
+    expect(tiles[1]?.textContent).toBe("FILE");
+  });
+
+  it("renders an indeterminate progress bar while processing", async () => {
+    mockedList.mockResolvedValue([
+      { ...pendingDoc, id: "doc-processing", status: "processing" },
+    ]);
+
+    const { container } = renderWithClient(<DocumentsPage />);
+    await settle();
+
+    const track = container.querySelector(".progress-track");
+    expect(track).toBeTruthy();
+    expect(track?.querySelector(".progress-bar")).toBeTruthy();
+  });
+
+  it("omits the progress bar for non-processing documents", async () => {
+    mockedList.mockResolvedValue([readyDoc]);
+
+    const { container } = renderWithClient(<DocumentsPage />);
+    await settle();
+
+    expect(container.querySelector(".progress-track")).toBeNull();
+  });
+
   it("falls back to the placeholder when the thumbnail URL request fails", async () => {
     mockedList.mockResolvedValue([thumbDoc]);
     mockedGetThumbnailUrl.mockRejectedValue(new Error("not found"));

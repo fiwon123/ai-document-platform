@@ -157,6 +157,15 @@ interface DocumentCardProps {
   onThumbnailError: (id: string) => void;
 }
 
+/** Uppercase file extension for the placeholder tile (max 4 chars); falls
+ *  back to a generic label for dotless or long-extension filenames. */
+function fileExtension(filename: string): string {
+  const dot = filename.lastIndexOf(".");
+  if (dot <= 0 || dot === filename.length - 1) return "FILE";
+  const ext = filename.slice(dot + 1).toUpperCase();
+  return ext.length > 4 ? "FILE" : ext;
+}
+
 /**
  * Memoized per-document card. During status polling only the documents
  * whose status changed receive new object identities, so unchanged cards
@@ -191,7 +200,9 @@ const DocumentCard = memo(function DocumentCard({
             }}
           />
         ) : (
-          <div className="file-icon" aria-hidden="true">FILE</div>
+          <div className="file-icon" aria-hidden="true">
+            {fileExtension(doc.filename)}
+          </div>
         )}
         <div className="document-info">
           <h3>{doc.filename}</h3>
@@ -215,6 +226,11 @@ const DocumentCard = memo(function DocumentCard({
             )}
           </span>
         </div>
+        {isProcessing(doc.status) && (
+          <span className="progress-track" aria-hidden="true">
+            <span className="progress-bar" />
+          </span>
+        )}
         {doc.error_message && (
           <p className="error-detail">{doc.error_message}</p>
         )}
@@ -698,7 +714,21 @@ export function DocumentsPage() {
             onChange={handleFileChange}
             disabled={isUploading}
           />
-          <span className="upload-symbol" aria-hidden="true">+</span>
+          <span className="upload-symbol" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              focusable="false"
+            >
+              <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+              <path d="M12 12v9" />
+              <path d="m16 16-4-4-4 4" />
+            </svg>
+          </span>
           <strong>
             {isUploading ? "Uploading…" : "Drop documents here"}
           </strong>
