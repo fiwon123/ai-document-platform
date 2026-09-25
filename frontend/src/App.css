@@ -41,6 +41,13 @@
   --ink: #0f172a; /* slate-900 — near-black for text and dark surfaces */
   --muted: #64748b; /* slate-500 */
   --line: #e2e8f0; /* slate-200 */
+  /* Stronger border for card edges. --line stays the default hairline; this
+     is the one to reach for when a surface needs a visible outline. Kept
+     deliberately quiet in light mode — #cbd5e1 on white is ~1.5:1, which is
+     the conventional weight for a light-UI divider and is not meant to read
+     as a WCAG 1.4.11 boundary. The dark override below is the one tuned to
+     an actual target. */
+  --line-strong: #cbd5e1; /* slate-300 */
   --paper: #ffffff; /* white background */
   --surface: #f8fafc; /* slate-50 */
   /* Surface hierarchy: base page bands → raised panels → floating elevations.
@@ -80,6 +87,14 @@
   --ink: #e2e8f0; /* slate-200 — light text on dark surfaces */
   --muted: #94a3b8; /* slate-400 */
   --line: #2c3a52; /* visible border on the softened backgrounds */
+  /* Brighter than --line. On #121927 the default hairline measures 1.54:1
+     against the page, so every card painted var(--paper) floated on nothing
+     and depended on that faint edge to exist at all. This value measures
+     3.25:1 on the page, clearing the 3:1 non-text target for the one place
+     it matters most: a card's outer boundary. Against the raised
+     surface-2 end of a card's own gradient it lands ~2.5:1, which is
+     acceptable because the gradient already separates those two. */
+  --line-strong: #546a97;
   --paper: #121927; /* deep slate — page background */
   --surface: #1b2639; /* inputs, chips, alt sections — one step up */
   --surface-2: #242f47; /* raised panels */
@@ -103,6 +118,72 @@
   --code-number: #fcd34d; /* amber-300 */
 
   color-scheme: dark;
+}
+
+/* ── Dark-mode surface ladder ─────────────────────────────────────────
+   The core dark-mode readability problem: --paper (#121927) is the same
+   value as the page background, so the cards painted with it —
+   .document-card, .search-result-card, .settings-card, .profile-hero —
+   float on nothing and depend entirely on a faint --line border (1.54:1
+   against the page) to exist at all. The cards already on --surface
+   (.profile-stat, .quick-action, .recent-item) are a step higher, but that
+   border was still their only defined edge. --surface / --surface-2 /
+   --surface-3 are a deliberate ladder; this rule is about *using* it.
+
+   One grouped rule rather than thirty scattered overrides. :is() keeps
+   the selector readable and the specificity predictable — the highest
+   argument (.document-card) plus :root[data-theme="dark"] comfortably
+   beats any single-component base rule, so no !important is needed.
+
+   Two things happen at once, per the agreed design:
+     1. a shallow surface -> surface-2 gradient, which gives the card a
+        direction and separates it from the flat page;
+     2. a brighter border, because a gradient alone still leaves the
+        card edge ambiguous where the gradient is near the page value.
+   Extend this list when adding a new card surface. */
+:root[data-theme="dark"] :is(
+  .document-card,
+  .search-result-card,
+  .settings-card,
+  .profile-hero,
+  .profile-stat,
+  .quick-action,
+  .recent-item,
+  .stat-skeleton,
+  .skeleton-card
+) {
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+  border-color: var(--line-strong);
+}
+
+/* Tables get a stronger edge and a filled header instead of a gradient:
+   a table-level gradient would show through the header cells and behind
+   every row, which fights with the row striping below. */
+:root[data-theme="dark"] .user-table {
+  border-color: var(--line-strong);
+  background: var(--surface);
+}
+
+:root[data-theme="dark"] .user-table thead th {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+/* Inputs sit on the darkest rung and get an inner shadow for depth: a flat
+   fill against a gradient card reads as a hole rather than a field. */
+:root[data-theme="dark"] :is(
+  input,
+  textarea,
+  select,
+  .documents-search input,
+  .search-input,
+  .filter-chip
+) {
+  border-color: var(--line-strong);
+}
+
+:root[data-theme="dark"] :is(input, textarea, select) {
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.3);
 }
 
 /* Smooth theme switch: added to <html> by useTheme for the duration of a
@@ -522,13 +603,25 @@ body {
   background: var(--blue);
   border-color: var(--blue);
   color: var(--paper);
+  /* A soft accent halo so the active filter is findable at a glance in a
+     long chip list, not just distinguishable up close. */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 18%, transparent);
 }
 
 .filter-chip.is-selected:hover {
   background: var(--blue-hover);
   border-color: var(--blue-hover);
   color: var(--paper);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 24%, transparent);
 }
+
+/* No dark-mode colour override for the selected chip, deliberately.
+   The base rule resolves to `color: var(--paper)` (#121927) on
+   `background: var(--blue)` (#60a5fa) in dark mode — 6.92:1, which
+   already clears AA comfortably. An earlier attempt here forced
+   #f1f5f9 text onto a #2563eb fill to "fix" a perceived problem and
+   quietly dropped it to 4.72:1; the bright-blue/near-black pairing is
+   the intended dark-mode treatment, so only the glow is added. */
 
 /* Long filenames truncate with an ellipsis instead of wrapping the chip. */
 .filter-chip-name {
@@ -584,6 +677,12 @@ body {
   outline: none;
   border-color: var(--blue);
   box-shadow: 0 0 0 3px var(--blue-15, rgba(37, 99, 235, 0.15));
+}
+
+/* The toolbar sits directly on the page, so on dark the field needs to be
+   a step lighter than the page to read as an input at all. */
+:root[data-theme="dark"] .documents-search input {
+  background: var(--surface-2);
 }
 
 .documents-search input::placeholder {
@@ -761,11 +860,19 @@ body {
   background: color-mix(in srgb, var(--paper) 8%, transparent);
 }
 
+/* Active tab. The old state was a 16% tint of --paper over the bar, which
+   in dark mode is a nearly-invisible dark wash — the reported "tab is the
+   same colour as the header". Two changes: a stronger fill, and a solid
+   accent underline so the current page is marked by shape and not only by
+   tint (Theme Rule: never rely on a subtle background alone to carry
+   state). Note this is a hierarchy fix, not a compliance fix — the label
+   text itself already met AA. */
 .navbar-links a.active,
 .navbar-links a[aria-current="page"] {
-  background: color-mix(in srgb, var(--paper) 16%, transparent);
+  background: color-mix(in srgb, var(--paper) 22%, transparent);
   opacity: 1;
   font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--blue);
 }
 
 /* "Back to site" exit link: slightly dimmer than the workspace links and
@@ -3513,6 +3620,15 @@ body {
   flex-shrink: 0;
 }
 
+/* On dark the 10% accent washes nearly vanish and the tile reads as an
+   empty outline. Give it a solid tinted fill and a brighter edge so the
+   file-type label is actually legible inside the card. */
+:root[data-theme="dark"] .file-icon {
+  border-color: var(--line-strong);
+  background: linear-gradient(135deg, rgb(37 99 235 / 0.28), rgb(124 58 237 / 0.28));
+  color: #f1f5f9;
+}
+
 /* Indeterminate processing indicator under the status row. */
 .progress-track {
   display: block;
@@ -3549,7 +3665,13 @@ body {
   border: 1px solid var(--line);
   border-radius: 4px;
   flex-shrink: 0;
-  background-color: var(--panel);
+  /* Was var(--panel), which is not a token in either theme — the browser
+     dropped the declaration and the tile fell back to transparent. */
+  background-color: var(--surface-2);
+}
+
+:root[data-theme="dark"] .document-thumbnail {
+  border-color: var(--line-strong);
 }
 
 .document-info h3 {
@@ -4786,14 +4908,27 @@ body {
 
 .user-table th {
   font-weight: 600;
-  color: var(--muted);
   text-transform: uppercase;
   font-size: 0.75rem;
   letter-spacing: 0.05em;
+  /* Filled header band: the label row previously had no background and
+     inherited the muted colour, so the column headings read as body text
+     sitting on the same white as the data. A hierarchy fix rather than an
+     AA fix — muted-on-white was already ~4.8:1 — but the heading now
+     measures ~10.8:1 against the band, which is the point of separating
+     it visually. */
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/* Zebra striping — the table is wide and mostly text, so alternating
+   tints are what let the eye stay on one row across the columns. */
+.user-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
 }
 
 .user-table tbody tr:hover {
-  background: var(--surface, #fafafa);
+  background: color-mix(in srgb, var(--blue) 7%, transparent);
 }
 
 .user-table select {
@@ -5303,7 +5438,9 @@ body {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
-  color: var(--foreground);
+  /* Was var(--foreground), never defined in either theme — the browser
+     dropped the declaration and the field inherited its colour. */
+  color: var(--ink);
   font-size: 0.95rem;
 }
 
@@ -5366,10 +5503,18 @@ body {
   padding: 3px 8px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: var(--surface-alt);
+  /* Was var(--surface-alt), also undefined — these tags rendered with no
+     background at all, which is why the event chips were hard to read. */
+  background: var(--surface-2);
   color: var(--muted);
   font-size: 0.75rem;
-  font-family: var(--font-mono, monospace);
+  /* index.css names the mono stack --mono, not --font-mono. */
+  font-family: var(--mono);
+}
+
+:root[data-theme="dark"] .webhook-event-tag {
+  border-color: var(--line-strong);
+  color: var(--ink);
 }
 
 .webhook-meta {
@@ -5410,7 +5555,9 @@ body {
   display: block;
   margin-top: 6px;
   padding: 8px 10px;
-  background: var(--surface-alt);
+  /* Was var(--surface-alt) — undefined, so the secret rendered as bare
+     text on the page with no code surface behind it. */
+  background: var(--code-bg);
   border: 1px solid var(--line);
   border-radius: 6px;
   word-break: break-all;
