@@ -89,7 +89,6 @@ export function GdprPage() {
       title="GDPR"
       intro="How the platform handles personal data under the GDPR, in plain language."
       sections={SECTIONS}
-      activePath="/gdpr"
     />
   );
 }

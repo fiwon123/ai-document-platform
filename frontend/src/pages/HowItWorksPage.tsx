@@ -1,5 +1,9 @@
 import { Link } from "react-router-dom";
-import { PageLayout, PageSection } from "../components/PageLayout";
+import {
+  PageCta,
+  PageLayout,
+  PageSection,
+} from "../components/PageLayout";
 import { FeatureIcon } from "../components/landing/FeatureIcon";
 import { PIPELINE_STAGES, STEPS } from "../content/marketing";
 
@@ -15,9 +19,13 @@ export function HowItWorksPage() {
   return (
     <PageLayout
       eyebrow="Product"
-      title="From upload to grounded answer"
+      title={
+        <>
+          From upload to{" "}
+          <span className="gradient-text">grounded answer</span>
+        </>
+      }
       subtitle="Six stages, one of which is slow on purpose. Here is what happens to a file after you drop it in."
-      activePath="/how-it-works"
     >
       <PageSection title="The short version">
         <p>
@@ -35,14 +43,21 @@ export function HowItWorksPage() {
 
       <PageSection title="Stage by stage">
         <ol className="pipeline">
-          {PIPELINE_STAGES.map((stage) => (
+          {PIPELINE_STAGES.map((stage, index) => (
             <li key={stage.title} className="pipeline-stage" data-accent={stage.accent}>
               <div className="pipeline-stage-head">
                 <span className="pipeline-stage-icon">
                   <FeatureIcon path={stage.icon} />
                 </span>
                 <div>
-                  <h3>{stage.title}</h3>
+                  <h3>
+                    {/* The ordinal is decoration — the list already conveys
+                        order to assistive tech, and this only labels it. */}
+                    <span className="pipeline-stage-number" aria-hidden="true">
+                      {index + 1}
+                    </span>
+                    {stage.title}
+                  </h3>
                   <p className="pipeline-summary">{stage.summary}</p>
                 </div>
               </div>
@@ -87,6 +102,12 @@ export function HowItWorksPage() {
           depth, and <Link to="/gdpr">GDPR</Link> covers the data-subject side.
         </p>
       </PageSection>
+
+      <PageCta
+        title="Run the pipeline on your own files"
+        body="Nothing above is theoretical. Upload a document and watch it move through the six stages."
+        secondary={{ to: "/features", label: "See all features" }}
+      />
     </PageLayout>
   );
 }

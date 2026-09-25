@@ -1,5 +1,18 @@
-import { PageCard, PageLayout, PageSection } from "../components/PageLayout";
+import {
+  PageCard,
+  PageCta,
+  PageLayout,
+  PageSection,
+} from "../components/PageLayout";
 import { NAV_PRODUCT } from "../content/marketing";
+
+/** Accent per hub card — matches the feature cards on /features. */
+const ACCENTS = ["/features", "/how-it-works", "/pricing", "/demo"] as const;
+
+function accentFor(to: string) {
+  const i = ACCENTS.indexOf(to as (typeof ACCENTS)[number]);
+  return (["blue", "violet", "green", "amber"] as const)[i] ?? "blue";
+}
 
 /**
  * Product hub.
@@ -12,9 +25,13 @@ export function ProductPage() {
   return (
     <PageLayout
       eyebrow="Product"
-      title="A private workspace for your documents"
+      title={
+        <>
+          A private workspace for{" "}
+          <span className="gradient-text">your documents</span>
+        </>
+      }
       subtitle="Upload files, search them by meaning, and ask questions that get answered from your own content — not from a model's memory."
-      activePath="/product"
     >
       <PageSection title="Where to go next">
         <div className="page-grid">
@@ -24,6 +41,7 @@ export function ProductPage() {
               to={item.to}
               title={item.label}
               body={BLURBS[item.to] ?? ""}
+              accent={accentFor(item.to)}
             />
           ))}
         </div>
@@ -66,6 +84,11 @@ export function ProductPage() {
           .
         </p>
       </PageSection>
+
+      <PageCta
+        title="Start with a document you already know"
+        body="The fastest way to judge a retrieval system is to point it at something you can check the answer against."
+      />
     </PageLayout>
   );
 }

@@ -94,7 +94,6 @@ export function PrivacyPage() {
       title="Privacy Policy"
       intro="What personal data the service handles, why it handles it, and what you can do about it."
       sections={SECTIONS}
-      activePath="/privacy"
     />
   );
 }

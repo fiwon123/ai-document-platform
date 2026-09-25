@@ -1,5 +1,9 @@
 import { Link } from "react-router-dom";
-import { PageLayout, PageSection } from "../components/PageLayout";
+import {
+  PageCta,
+  PageLayout,
+  PageSection,
+} from "../components/PageLayout";
 import { SITE } from "../content/marketing";
 
 /**
@@ -15,9 +19,12 @@ export function ContactPage() {
   return (
     <PageLayout
       eyebrow="Company"
-      title="Contact"
+      title={
+        <>
+          <span className="gradient-text">Contact</span>
+        </>
+      }
       subtitle="The fastest way to reach us is an issue on the repository. Everything else is slower to read and harder to search later."
-      activePath="/contact"
     >
       <PageSection title="Where to go">
         <div className="contact-list">
@@ -90,6 +97,12 @@ export function ContactPage() {
           be replaced with a real mailbox before this page is published.
         </p>
       </PageSection>
+
+      <PageCta
+        title="Or just try it"
+        body="Sometimes the fastest way to answer a question about the product is to upload a document and see what happens."
+        secondary={{ to: "/demo", label: "Try the live demo" }}
+      />
     </PageLayout>
   );
 }

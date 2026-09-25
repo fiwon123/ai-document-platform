@@ -1,5 +1,9 @@
 import { Link } from "react-router-dom";
-import { PageLayout, PageSection } from "../components/PageLayout";
+import {
+  PageCta,
+  PageLayout,
+  PageSection,
+} from "../components/PageLayout";
 import { SITE } from "../content/marketing";
 
 const ROLES = [
@@ -31,9 +35,12 @@ export function CareersPage() {
   return (
     <PageLayout
       eyebrow="Company"
-      title="Careers"
+      title={
+        <>
+          <span className="gradient-text">Careers</span>
+        </>
+      }
       subtitle="AskDocs is a small open-source project. There is no org chart, no hiring process, and no recruiter — just a repository and a list of things that need doing."
-      activePath="/careers"
     >
       <PageSection title="Open roles">
         <div className="contact-list">
@@ -75,6 +82,13 @@ export function CareersPage() {
           openings.
         </p>
       </PageSection>
+
+      <PageCta
+        title="Think you would be a good fit?"
+        body="Open an issue on the repository describing what you would change. That is the whole application."
+        primary={{ to: "/contact", label: "Start a conversation" }}
+        secondary={{ to: "/about", label: "About the project" }}
+      />
     </PageLayout>
   );
 }

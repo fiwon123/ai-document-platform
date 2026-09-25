@@ -76,7 +76,6 @@ export function SecurityPage() {
       title="Security"
       intro="How the platform is built to protect documents — the controls that are actually implemented, and the ones that are not yet."
       sections={SECTIONS}
-      activePath="/security"
     />
   );
 }

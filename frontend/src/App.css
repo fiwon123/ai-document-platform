@@ -392,6 +392,12 @@ html.theme-transitioning .file-icon::before {
 }
 
 /* Gradient headline accent (blue → violet; brighter pair in dark mode). */
+/* Deliberately left as an inline box. `display: inline-block` was tried here for
+   a marketing headline, but this class also wraps a phrase mid-sentence in the
+   landing hero and the 404 code, where an inline-block changes the line-break
+   behaviour at the span edge. The clipped background works on inline boxes in
+   every browser that matters, so there is nothing to gain and landing text to
+   lose. */
 .gradient-text {
   background: linear-gradient(100deg, var(--blue), #7c3aed);
   -webkit-background-clip: text;
@@ -1284,6 +1290,17 @@ body {
 @keyframes mesh-drift {
   from { transform: translate3d(-1.5%, -1%, 0) scale(1); }
   to   { transform: translate3d(1.5%, 1.5%, 0) scale(1.08); }
+}
+
+/* The drifting mesh is decorative and now sits behind every marketing hero as
+   well as the landing one, so it is a continuous background animation across
+   the whole public site. That is exactly the kind of thing the reduced-motion
+   preference exists to stop: it never ends. The gradients remain — only the
+   movement is dropped. */
+@media (prefers-reduced-motion: reduce) {
+  .hero-mesh {
+    animation: none;
+  }
 }
 
 .landing-hero-inner {
@@ -6204,6 +6221,31 @@ body {
   position: relative;
 }
 
+/* A section that is a single page needs no menu — it is a link. Styled from the
+   same tokens as the trigger so the header reads as one row rather than one
+   link next to one button. */
+.nav-direct-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.nav-direct-link:hover,
+.nav-direct-link.active {
+  color: var(--ink);
+}
+
+.nav-direct-link:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 .nav-group-trigger {
   display: inline-flex;
   align-items: center;
@@ -6239,6 +6281,21 @@ body {
   outline: 2px solid var(--blue);
   outline-offset: 3px;
   border-radius: 4px;
+}
+
+/* Hover bridge.
+   The menu sits 10px below the trigger, and an absolutely positioned child
+   does not contribute to its parent's hover box — so the pointer is outside the
+   container while crossing that band, and a naive `mouseleave` close fires
+   before the pointer arrives. This transparent strip fills the gap and belongs
+   to the container, keeping the pointer inside for the whole journey. */
+.nav-group::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  height: 12px;
 }
 
 .nav-group-menu {
@@ -6318,6 +6375,11 @@ body {
     width: 100%;
   }
 
+  /* No gap to bridge once the menu is in normal flow. */
+  .nav-group::after {
+    display: none;
+  }
+
   .nav-group-menu a {
     white-space: normal;
   }
@@ -6336,6 +6398,18 @@ body {
   position: relative;
   padding: 72px 6vw 8px;
   text-align: center;
+  /* Fades the mesh out into the page body instead of cutting it with a hard
+     edge, so the hero reads as lit from above rather than boxed in. */
+  overflow: hidden;
+}
+
+/* The hero mesh itself is `.hero-mesh`, reused verbatim from the landing hero —
+   same gradients, same dark-mode override, same drift animation — so a visitor
+   moving from the landing page to /pricing sees one site rather than two. */
+
+.page-hero-inner {
+  position: relative;
+  z-index: 1;
 }
 
 .page-hero-inner {
@@ -6363,6 +6437,51 @@ body {
 
 .page-section {
   margin-bottom: 56px;
+}
+
+/* ── Closing call to action ────────────────────────────────────────────────
+   Deliberately NOT the landing page's full-bleed animated gradient band: that
+   band breaks out to the viewport edge, and interior pages sit inside a
+   max-width measure, so reusing it would either overflow the container or
+   shrink into a band that no longer reads as full-bleed. This is the contained
+   equivalent — the same blue→violet tint, held in a bordered panel that matches
+   the interior cards. */
+.page-cta-band {
+  position: relative;
+  overflow: hidden;
+  margin-top: 72px;
+  padding: 56px 48px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background:
+    radial-gradient(90% 120% at 8% 0%, color-mix(in srgb, var(--blue) 12%, transparent) 0, transparent 58%),
+    radial-gradient(80% 110% at 96% 100%, color-mix(in srgb, #7c3aed 12%, transparent) 0, transparent 58%),
+    var(--paper);
+  text-align: center;
+}
+
+.page-cta-band h2 {
+  margin: 0 0 12px;
+  font-size: clamp(1.6rem, 2.8vw, 2.15rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.page-cta-band-sub {
+  margin: 0 auto 28px;
+  max-width: 54ch;
+  color: var(--muted);
+  font-size: 1.02rem;
+  line-height: 1.6;
+  text-wrap: balance;
+}
+
+.page-cta-band-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
 }
 
 .page-section-title {
@@ -6423,14 +6542,76 @@ body {
 
 .page-card,
 .page-card-static {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 24px;
+  padding: 26px;
   border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--card, var(--paper));
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: var(--shadow-sm);
   text-decoration: none;
+  transition:
+    transform var(--duration-base) var(--ease-standard),
+    box-shadow var(--duration-base) var(--ease-standard),
+    border-color var(--duration-base) var(--ease-standard);
+}
+
+/* Accent wash from the top-left, matching the landing feature cards. The
+   gradient sits behind the content and is clipped by the card's own radius. */
+.page-card::before,
+.page-card-static::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    120% 90% at 0% 0%,
+    var(--card-accent-soft, transparent) 0,
+    transparent 62%
+  );
+  transition: opacity var(--duration-base) var(--ease-standard);
+}
+
+.page-card:hover,
+.page-card-static:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: color-mix(in srgb, var(--card-accent, var(--blue)) 35%, var(--line));
+}
+
+.page-card:hover::before,
+.page-card-static:hover::before {
+  opacity: 1;
+}
+
+/* Accent-tinted icon tile — the same 52px square the landing feature cards
+   use, so a feature looks identical in both places. */
+.page-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 4px;
+  padding: 13px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card-accent, var(--blue)) 12%, var(--surface));
+  color: var(--card-accent, var(--blue));
+  transition: transform var(--duration-base) var(--ease-standard);
+}
+
+.page-card-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.page-card:hover .page-card-icon,
+.page-card-static:hover .page-card-icon {
+  transform: scale(1.1) rotate(-5deg);
 }
 
 .page-card h2 {
@@ -6490,21 +6671,54 @@ body {
   counter-reset: none;
 }
 
+/* Stages read as cards rather than as a plain list: the left accent rail marks
+   where one stage ends and the next begins, which a bare top border does not. */
 .pipeline-stage {
-  padding: 20px 0;
-  border-top: 1px solid var(--line);
+  position: relative;
+  margin-bottom: 14px;
+  padding: 24px 26px 24px 28px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  transition:
+    transform var(--duration-base) var(--ease-standard),
+    box-shadow var(--duration-base) var(--ease-standard),
+    border-color var(--duration-base) var(--ease-standard);
 }
 
-.pipeline-stage:first-child {
-  border-top: 0;
-  padding-top: 0;
+/* Vertical accent rail on the leading edge. */
+.pipeline-stage::before {
+  content: "";
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--card-accent, var(--blue));
+  opacity: 0.55;
+  transition: opacity var(--duration-base) var(--ease-standard);
+}
+
+.pipeline-stage:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--card-accent, var(--blue)) 32%, var(--line));
+  box-shadow: 0 10px 28px var(--card-accent-ring, rgb(15 23 42 / 0.1));
+}
+
+.pipeline-stage:hover::before {
+  opacity: 1;
+}
+
+.pipeline-stage:last-child {
+  margin-bottom: 0;
 }
 
 .pipeline-stage-head {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
-  margin-bottom: 10px;
+  gap: 16px;
+  margin-bottom: 12px;
 }
 
 .pipeline-stage-icon {
@@ -6512,16 +6726,46 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 11px;
-  background: color-mix(in srgb, var(--card-accent, var(--blue)) 12%, transparent);
+  width: 52px;
+  height: 52px;
+  padding: 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card-accent, var(--blue)) 12%, var(--surface));
   color: var(--card-accent, var(--blue));
+  transition: transform var(--duration-base) var(--ease-standard);
+}
+
+.pipeline-stage-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.pipeline-stage:hover .pipeline-stage-icon {
+  transform: scale(1.08);
 }
 
 .pipeline-stage h3 {
-  margin: 0 0 3px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
   font-size: 1.08rem;
+}
+
+/* Stage number, matching the landing page's step-number badge. */
+.pipeline-stage-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--card-accent, var(--blue));
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
 .pipeline-summary {
@@ -6542,6 +6786,16 @@ body {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.pipeline-facts li {
+  padding: 4px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .pipeline-facts li {

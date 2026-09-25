@@ -203,12 +203,12 @@ function App() {
                 <div className="app">
                   <ViewTransitionRoutes>
                     <Route path="/" element={<LandingPage />} />
+                    <Route path="/demo" element={<DemoPage />} />
                     {/* Product */}
                     <Route path="/product" element={<ProductPage />} />
                     <Route path="/features" element={<FeaturesPage />} />
                     <Route path="/how-it-works" element={<HowItWorksPage />} />
                     <Route path="/pricing" element={<PricingPage />} />
-                    <Route path="/demo" element={<DemoPage />} />
                     {/* Company */}
                     <Route path="/company" element={<CompanyPage />} />
                     <Route path="/about" element={<AboutPage />} />
@@ -222,7 +222,6 @@ function App() {
                     <Route path="/gdpr" element={<GdprPage />} />
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/register" element={<RegisterPage />} />
-                    <Route path="/demo" element={<DemoPage />} />
                     <Route path="/app/*" element={<ProtectedRoutes />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </ViewTransitionRoutes>
