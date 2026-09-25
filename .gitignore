@@ -222,6 +222,11 @@ result
 result-*
 .direnv/
 
+# Node / npm
+# Matches node_modules at any level (root, frontend/, .opencode/, ...), so a
+# host-native `npm install` run from the repository root stays ignored too.
+node_modules/
+
 # OpenCode
 .opencode/node_modules/
 # OpenCode memory (agent session memory — local only, never committed)
