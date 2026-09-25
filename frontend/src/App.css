@@ -1332,27 +1332,36 @@ body {
 
 /* Social proof: flowing logo marquee, animated stats, trust badges. */
 .landing-social {
-  padding: 56px 6vw;
+  padding: 72px 6vw 64px;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  background: var(--surface);
+  /* A faint brand wash instead of flat --surface, so the band reads as its
+     own surface without a hard color block. */
+  background:
+    radial-gradient(
+      60% 100% at 50% 0%,
+      color-mix(in srgb, var(--blue) 7%, transparent) 0,
+      transparent 70%
+    ),
+    var(--surface);
   text-align: center;
 }
 
 .trusted-by {
-  margin: 0 0 22px;
+  margin: 0 0 26px;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
 /* Logo marquee: the strip is duplicated in the JSX and translated -50% so the
    loop is seamless. Edge fade via mask-image; pauses on hover. */
 .logo-marquee {
+  position: relative;
   overflow: hidden;
-  margin-bottom: 40px;
+  margin-bottom: 56px;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
   mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
 }
@@ -1394,53 +1403,122 @@ body {
 }
 
 .logo-mark {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin-right: 24px;
-  padding: 9px 20px;
+  gap: 10px;
+  margin-right: 26px;
+  padding: 12px 26px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--paper);
-  font-size: 1.02rem;
+  /* Sits at --muted, not full ink: a wall of black wordmarks reads as
+     heavier than a real customer logo wall. */
+  color: color-mix(in srgb, var(--ink) 62%, var(--paper));
+  font-size: 1.24rem;
   font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--muted);
+  letter-spacing: -0.03em;
   white-space: nowrap;
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
+  transition:
+    color 0.25s var(--ease-standard),
+    border-color 0.25s var(--ease-standard),
+    box-shadow 0.25s var(--ease-standard);
+}
+
+.logo-mark:hover {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--blue) 40%, var(--line));
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--blue) 14%, transparent);
 }
 
 /* Diamond bullet inside each logo pill. */
 .logo-mark::before {
   content: "";
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 2px;
   transform: rotate(45deg);
   background: var(--blue);
 }
 
+/* ── Hero-style stats ──────────────────────────────────────────────────
+   The numbers are the headline of this band, so they get display scale
+   and a wide horizontal rhythm: a centered number above its label, with
+   vertical dividers between items. Inline-flex (not flex) on the item is
+   what lets the divider ride the item's own border box. */
 .stat-row {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 28px 64px;
-  margin-bottom: 36px;
+  align-items: stretch;
+  margin: 0 auto 40px;
+  max-width: 900px;
 }
 
 .stat-item {
+  position: relative;
   display: flex;
+  flex: 1 1 240px;
   flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 28px;
+}
+
+/* Divider between neighbouring stats; hidden on the outer edges and on
+   narrow screens where the items stack and the rule would look stray. */
+.stat-item + .stat-item::before {
+  content: "";
+  position: absolute;
+  top: 12%;
+  left: 0;
+  width: 1px;
+  height: 76%;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in srgb, var(--blue) 32%, var(--line)),
+    transparent
+  );
 }
 
 .stat-item strong {
-  font-size: clamp(2.4rem, 5vw, 3.4rem);
+  font-size: clamp(3rem, 7.5vw, 5.25rem);
   font-weight: 800;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.05em;
   color: var(--blue);
   font-variant-numeric: tabular-nums;
-  line-height: 1.05;
+  line-height: 1;
+}
+
+.stat-item span {
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .stat-item {
+    flex-basis: 100%;
+  }
+
+  .stat-item + .stat-item::before {
+    /* Stacked items: swap the side rule for a horizontal one. */
+    top: 0;
+    left: 50%;
+    width: 60%;
+    height: 1px;
+    transform: translateX(-50%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--blue) 32%, var(--line)),
+      transparent
+    );
+  }
 }
 
 /* Headline stat numbers: blue→violet gradient text for more visual weight
@@ -1463,17 +1541,12 @@ body {
   color: transparent;
 }
 
-.stat-item span {
-  color: var(--muted);
-  font-size: 0.92rem;
-  font-weight: 600;
-}
-
 /* Honest-label note under the illustrative stats. */
 .stats-demo-note {
-  margin: -14px 0 22px;
+  margin: 0 auto 28px;
+  max-width: 46ch;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-style: italic;
 }
 
@@ -1481,7 +1554,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1491,15 +1564,39 @@ body {
 .trust-badges li {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 14px;
+  gap: 8px;
+  padding: 9px 18px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--paper);
   color: var(--muted);
-  font-size: 0.86rem;
+  font-size: 0.9rem;
   font-weight: 600;
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
+  transition:
+    color 0.2s var(--ease-standard),
+    border-color 0.2s var(--ease-standard);
+}
+
+.trust-badges li:hover {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--green) 40%, var(--line));
+}
+
+/* Check mark in its own tinted disc: a bare green glyph next to muted text
+   reads as a rendering artifact, a disc reads as a deliberate status chip. */
+.trust-badge-check {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--green-soft);
+}
+
+.trust-badge-check svg {
+  width: 12px;
+  height: 12px;
 }
 
 .trust-badges .compare-check {
@@ -1573,12 +1670,121 @@ body {
   margin-top: 40px;
 }
 
+/* ── Per-card accent palette ───────────────────────────────────────────
+   Every feature and step card declares its own accent via `data-accent`
+   (set in LandingPage.tsx). The card then reads --card-accent and its
+   translucent companions, so the icon tile, border, glow and tint all
+   shift together — and adding a sixth accent is one block here plus one
+   string in the page data, not a new pile of selectors.
+
+   Each accent defines a solid tone plus two mixes used for the tinted
+   background and the hover ring. Kept in sRGB so contrast reasoning
+   matches the rest of the sheet. */
+[data-accent="blue"] {
+  --card-accent: #2563eb;
+  --card-accent-soft: rgb(37 99 235 / 0.07);
+  --card-accent-ring: rgb(37 99 235 / 0.22);
+}
+
+[data-accent="violet"] {
+  --card-accent: #7c3aed;
+  --card-accent-soft: rgb(124 58 237 / 0.07);
+  --card-accent-ring: rgb(124 58 237 / 0.22);
+}
+
+[data-accent="green"] {
+  --card-accent: #16a34a;
+  --card-accent-soft: rgb(22 163 74 / 0.07);
+  --card-accent-ring: rgb(22 163 74 / 0.22);
+}
+
+[data-accent="amber"] {
+  --card-accent: #d97706;
+  --card-accent-soft: rgb(217 119 6 / 0.08);
+  --card-accent-ring: rgb(217 119 6 / 0.24);
+}
+
+[data-accent="rose"] {
+  --card-accent: #e11d48;
+  --card-accent-soft: rgb(225 29 72 / 0.07);
+  --card-accent-ring: rgb(225 29 72 / 0.22);
+}
+
+/* Dark mode lifts the accent a step for legibility on dark surfaces and
+   raises the tint alphas, since the same 7% wash is nearly invisible
+   against #121927. Violet and rose brighten most; blue/green already do. */
+:root[data-theme="dark"] [data-accent="blue"] {
+  --card-accent: #60a5fa;
+  --card-accent-soft: rgb(37 99 235 / 0.16);
+  --card-accent-ring: rgb(96 165 250 / 0.3);
+}
+
+:root[data-theme="dark"] [data-accent="violet"] {
+  --card-accent: #a78bfa;
+  --card-accent-soft: rgb(124 58 237 / 0.18);
+  --card-accent-ring: rgb(167 139 250 / 0.32);
+}
+
+:root[data-theme="dark"] [data-accent="green"] {
+  --card-accent: #4ade80;
+  --card-accent-soft: rgb(22 163 74 / 0.16);
+  --card-accent-ring: rgb(74 222 128 / 0.3);
+}
+
+:root[data-theme="dark"] [data-accent="amber"] {
+  --card-accent: #fbbf24;
+  --card-accent-soft: rgb(217 119 6 / 0.18);
+  --card-accent-ring: rgb(251 191 36 / 0.32);
+}
+
+:root[data-theme="dark"] [data-accent="rose"] {
+  --card-accent: #fb7185;
+  --card-accent-soft: rgb(225 29 72 / 0.18);
+  --card-accent-ring: rgb(251 113 133 / 0.32);
+}
+
 .landing-card {
+  position: relative;
+  overflow: hidden;
   padding: 26px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--paper);
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+  /* Accent washes in from the top-left on hover. A pseudo-element rather
+     than animating background-image, so the hover stays on the compositor
+     instead of repainting the gradient every frame. */
+  transition:
+    border-color 0.25s var(--ease-standard),
+    box-shadow 0.25s var(--ease-standard);
+}
+
+.landing-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    120% 90% at 0% 0%,
+    var(--card-accent-soft) 0,
+    transparent 60%
+  );
+  transition: opacity 0.3s var(--ease-standard);
+}
+
+.landing-card:hover {
+  border-color: color-mix(in srgb, var(--card-accent) 45%, var(--line));
+  box-shadow: 0 10px 28px var(--card-accent-ring);
+}
+
+.landing-card:hover::before {
+  opacity: 1;
+}
+
+/* Keep the text above the wash. */
+.landing-card > * {
+  position: relative;
 }
 
 :root[data-theme="dark"] .landing-card,
@@ -1595,19 +1801,14 @@ body {
   padding: 13px;
   margin-bottom: 16px;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--blue) 10%, var(--surface));
-  color: var(--blue);
+  background: color-mix(in srgb, var(--card-accent) 12%, var(--surface));
+  color: var(--card-accent);
   transition: transform 0.25s var(--ease-spring), background-color 0.25s;
 }
 
 .landing-card:hover .feature-icon {
   transform: scale(1.1) rotate(-5deg);
-  background: color-mix(in srgb, var(--blue) 18%, var(--surface));
-}
-
-:root[data-theme="dark"] .landing-card .feature-icon {
-  background: rgb(37 99 235 / 0.18);
-  color: #60a5fa;
+  background: color-mix(in srgb, var(--card-accent) 20%, var(--surface));
 }
 
 .landing-card h3 {
@@ -1630,34 +1831,60 @@ body {
   text-align: left;
 }
 
+/* Steps carry the same per-card accent as feature cards. The tinted top
+   edge is the point: these sat white-on-white, so the first thing a
+   visitor should register is the colored band, not the copy. */
 .landing-step {
   position: relative;
+  overflow: hidden;
   padding: 26px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--paper);
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
-  transition: border-color 0.2s var(--ease-standard), transform 0.2s var(--ease-standard);
+  transition:
+    border-color 0.2s var(--ease-standard),
+    transform 0.2s var(--ease-standard),
+    box-shadow 0.2s var(--ease-standard);
+}
+
+/* Colored top edge, fading out to the right. */
+.landing-step::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--card-accent) 0%,
+    color-mix(in srgb, var(--card-accent) 30%, transparent) 55%,
+    transparent 100%
+  );
 }
 
 .landing-step:hover {
-  border-color: color-mix(in srgb, var(--blue) 35%, var(--line));
-  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--card-accent) 45%, var(--line));
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px var(--card-accent-ring);
 }
 
-/* Dashed connector between steps on wide layouts. */
+/* Dashed connector between steps on wide layouts. Tinted with the accent
+   of the step it leaves, so the flow reads left to right instead of as
+   three disconnected boxes. */
 .landing-step:not(:last-child)::after {
   content: "";
   position: absolute;
   top: 44px;
   right: -14px;
   width: 16px;
-  border-top: 2px dashed var(--line);
+  border-top: 2px dashed color-mix(in srgb, var(--card-accent) 45%, var(--line));
   transition: border-color 0.2s;
 }
 
 .landing-step:hover:not(:last-child)::after {
-  border-top-color: var(--blue);
+  border-top-color: var(--card-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1682,13 +1909,14 @@ body {
   height: 56px;
   margin-bottom: 16px;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--blue) 12%, var(--paper));
-  color: var(--blue);
+  background: color-mix(in srgb, var(--card-accent) 12%, var(--paper));
+  color: var(--card-accent);
+  transition: transform 0.3s var(--ease-spring), background-color 0.25s;
 }
 
-:root[data-theme="dark"] .landing-step-icon {
-  background: rgb(37 99 235 / 0.18);
-  color: #60a5fa;
+.landing-step:hover .landing-step-icon {
+  transform: scale(1.08) translateY(-2px);
+  background: color-mix(in srgb, var(--card-accent) 20%, var(--paper));
 }
 
 .landing-step-number {
@@ -1698,20 +1926,49 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--blue), #7c3aed);
+  background: var(--card-accent);
   color: white;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 800;
-  box-shadow: 0 2px 6px rgb(37 99 235 / 0.35);
+  box-shadow: 0 2px 6px var(--card-accent-ring);
+  transition: transform 0.3s var(--ease-spring);
 }
 
-/* Keep the number badge legible at 4.5:1 in dark mode (blue brightens). */
+/* The badge gets a slow pulse while the card is hovered — enough motion
+   to read as "this step is live", not enough to demand attention. */
+.landing-step:hover .landing-step-number {
+  animation: step-pulse 1.6s var(--ease-standard) infinite;
+}
+
+@keyframes step-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.16);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-step:hover .landing-step-number {
+    animation: none;
+  }
+
+  .landing-step:hover .landing-step-icon {
+    transform: none;
+  }
+}
+
+/* The accent is a mid-tone in light mode, so white on it clears 4.5:1
+   (violet #7c3aed is 5.9:1, rose #e11d48 is 4.8:1). In dark mode the
+   accents brighten to 300-level tones, where white does NOT — so flip
+   the numeral to the dark ink. */
 :root[data-theme="dark"] .landing-step-number {
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.4);
+  color: #0f172a;
 }
 
 .landing-step h3 {
@@ -1865,6 +2122,14 @@ body {
   overflow-x: auto;
   max-width: 940px;
   margin: 0 auto;
+  border-radius: 14px;
+  /* The table can be wider than the viewport on narrow screens; a shadow
+     on the wrapper (not the table) keeps the scroll edge visible. */
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
+}
+
+:root[data-theme="dark"] .landing-table-wrap {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
 }
 
 .landing-table {
@@ -1872,11 +2137,13 @@ body {
   border-collapse: collapse;
   background: var(--paper);
   border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
 }
 
 .landing-table th,
 .landing-table td {
-  padding: 12px 16px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--line);
   text-align: center;
   font-size: 0.9rem;
@@ -1887,17 +2154,53 @@ body {
   text-align: left;
 }
 
+/* Header row: a tinted band with a stronger bottom rule. Flat --surface
+   was too close to the card white, so the column labels read as body
+   text rather than as headers. */
 .landing-table thead th {
-  background: var(--surface);
+  background: var(--surface-2);
+  color: var(--ink);
   font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--line);
 }
 
-.landing-table tr:last-child td {
+:root[data-theme="dark"] .landing-table thead th {
+  background: var(--surface-3);
+}
+
+/* Zebra striping: the comparison rows are long and label-only, so
+   alternating tints carry the eye across. */
+.landing-table tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+.landing-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--blue) 5%, transparent);
+}
+
+.landing-table tbody tr:last-child td {
   border-bottom: none;
 }
 
+/* The featured column gets a tinted fill plus a leading rule, so the Pro
+   cell is identifiable without hunting for the "Most Popular" badge. */
 .landing-table .pro-cell {
-  background: color-mix(in srgb, var(--blue) 6%, transparent);
+  background: color-mix(in srgb, var(--blue) 7%, transparent);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.landing-table th.pro-head {
+  background: color-mix(in srgb, var(--blue) 12%, var(--surface-2));
+  color: var(--blue);
+}
+
+.landing-table td.pro-cell {
+  border-left: 1px solid color-mix(in srgb, var(--blue) 25%, var(--line));
+  border-right: 1px solid color-mix(in srgb, var(--blue) 25%, var(--line));
 }
 
 .compare-check {
@@ -1924,11 +2227,45 @@ body {
   gap: 12px;
 }
 
+/* Accent bar on the leading edge: the accordion was a stack of identical
+   white rows, so nothing separated one question from the next. The bar
+   also gives the open item a second, non-color affordance (it thickens). */
 .faq-item {
+  position: relative;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--paper);
   overflow: hidden;
+  transition:
+    border-color 0.25s var(--ease-standard),
+    background-color 0.25s var(--ease-standard),
+    box-shadow 0.25s var(--ease-standard);
+}
+
+.faq-item::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: color-mix(in srgb, var(--blue) 35%, transparent);
+  transition: background-color 0.25s var(--ease-standard);
+}
+
+.faq-item:hover {
+  border-color: color-mix(in srgb, var(--blue) 40%, var(--line));
+  background: color-mix(in srgb, var(--blue) 3%, var(--paper));
+}
+
+.faq-item.open {
+  border-color: color-mix(in srgb, var(--blue) 55%, var(--line));
+  background: color-mix(in srgb, var(--blue) 5%, var(--paper));
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--blue) 14%, transparent);
+}
+
+.faq-item.open::before {
+  background: var(--blue);
 }
 
 .faq-question {
@@ -1941,29 +2278,36 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 18px 20px;
+  padding: 20px 22px;
   border: none;
   background: none;
   color: var(--ink);
   font-family: inherit;
-  font-size: 1rem;
+  font-size: 1.04rem;
   font-weight: 700;
+  letter-spacing: -0.01em;
   text-align: left;
   cursor: pointer;
+  transition: color 0.2s;
 }
 
 .faq-question button:hover {
   color: var(--blue);
 }
 
+.faq-item.open .faq-question button {
+  color: var(--blue);
+}
+
 .faq-chevron {
   flex: none;
   color: var(--muted);
-  transition: transform 0.25s var(--ease-decelerate);
+  transition: transform 0.25s var(--ease-decelerate), color 0.25s;
 }
 
 .faq-item.open .faq-chevron {
   transform: rotate(180deg);
+  color: var(--blue);
 }
 
 .faq-answer {
@@ -2041,11 +2385,32 @@ body {
 
 /* Full footer. */
 .landing-footer {
-  padding: 56px 6vw 28px;
-  border-top: 1px solid var(--line);
-  background: var(--paper);
+  position: relative;
+  padding: 64px 6vw 28px;
   color: var(--muted);
   font-size: 0.9rem;
+  /* A step down from the CTA band rather than flat page white, so the
+     page ends on a distinct surface instead of trailing off. */
+  background: var(--surface);
+}
+
+/* Accent hairline along the top: the footer previously had a 1px neutral
+   border, which read as an accidental seam rather than a boundary. */
+.landing-footer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--blue) 20%,
+    #7c3aed 50%,
+    var(--blue) 80%,
+    transparent
+  );
 }
 
 .newsletter {

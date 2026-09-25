@@ -123,67 +123,85 @@ const SCREENSHOTS = [
 
 const LOGOS = ["Northwind", "Lumina", "Vertex Labs", "Bluepeak", "Tesseract"];
 
-const CORE_FEATURES: { title: string; body: string; icon: string }[] = [
+/** Accent palettes for feature/step cards. Each card reads its own accent
+ *  from a data attribute (see App.css), so colors are defined once in CSS
+ *  and applied per card in markup — no per-card inline styles. */
+type Accent = "blue" | "violet" | "green" | "amber" | "rose";
+
+type Feature = { title: string; body: string; icon: string; accent: Accent };
+
+const CORE_FEATURES: Feature[] = [
   {
     title: "Upload anything",
     body: "PDF, TXT, JSON, and CSV up to 25 MB. Files are processed in the background while you keep working.",
     icon: ICONS.upload,
+    accent: "blue",
   },
   {
     title: "Semantic search",
     body: "Find answers across your documents with vector search — results ranked by meaning, not just keywords.",
     icon: ICONS.search,
+    accent: "violet",
   },
   {
     title: "Ask your documents",
     body: "Get direct answers grounded in your own files, with source context. No more scanning pages by hand.",
     icon: ICONS.chat,
+    accent: "green",
   },
 ];
 
-const SECONDARY_FEATURES: { title: string; body: string; icon: string }[] = [
+const SECONDARY_FEATURES: Feature[] = [
   {
     title: "Private by design",
     body: "Documents are isolated per user. Only you can search and ask questions about what you upload.",
     icon: ICONS.shield,
+    accent: "blue",
   },
   {
     title: "Blazing fast",
     body: "An asynchronous worker pipeline plus Redis caching keep uploads, search, and answers snappy.",
     icon: ICONS.bolt,
+    accent: "amber",
   },
   {
     title: "Bulk upload",
     body: "Drop in dozens of files at once. Every one is extracted, chunked, and embedded automatically.",
     icon: ICONS.bulk,
+    accent: "violet",
   },
   {
     title: "Export results",
     body: "Download search results as CSV or JSON — formula-injection safe for safe spreadsheet sharing.",
     icon: ICONS.export,
+    accent: "green",
   },
   {
     title: "Webhook notifications",
     body: "Get notified when documents finish processing, fail, or are deleted — sign with HMAC secrets.",
     icon: ICONS.webhook,
+    accent: "rose",
   },
 ];
 
-const STEPS: { title: string; body: string; icon: string }[] = [
+const STEPS: Feature[] = [
   {
     title: "Upload",
     body: "Drop your documents into your workspace. Processing starts automatically.",
     icon: STEP_ICONS.upload,
+    accent: "blue",
   },
   {
     title: "Search",
     body: "Find relevant passages in seconds with semantic search across all your files.",
     icon: STEP_ICONS.search,
+    accent: "violet",
   },
   {
     title: "Ask",
     body: "Ask questions in plain language and get answers quoted from your own documents.",
     icon: STEP_ICONS.chat,
+    accent: "green",
   },
 ];
 
@@ -452,7 +470,9 @@ export function LandingPage() {
           <ul className="trust-badges">
             {TRUST_BADGES.map((badge) => (
               <li key={badge}>
-                <CheckIcon />
+                <span className="trust-badge-check">
+                  <CheckIcon />
+                </span>
                 {badge}
               </li>
             ))}
@@ -473,7 +493,10 @@ export function LandingPage() {
         <div className="landing-grid landing-grid-core">
           {CORE_FEATURES.map((feature, i) => (
             <Reveal key={feature.title} variant="up" delay={Math.min(i * 60, 120)}>
-              <article className="landing-card landing-card-core card-hover">
+              <article
+                className="landing-card landing-card-core card-hover"
+                data-accent={feature.accent}
+              >
                 <FeatureIcon path={feature.icon} />
                 <h3>{feature.title}</h3>
                 <p>{feature.body}</p>
@@ -489,7 +512,7 @@ export function LandingPage() {
         <div className="landing-grid landing-grid-secondary">
           {SECONDARY_FEATURES.map((feature, i) => (
             <Reveal key={feature.title} variant="up" delay={Math.min(i * 50, 200)}>
-              <article className="landing-card card-hover">
+              <article className="landing-card card-hover" data-accent={feature.accent}>
                 <FeatureIcon path={feature.icon} />
                 <h3>{feature.title}</h3>
                 <p>{feature.body}</p>
@@ -507,7 +530,7 @@ export function LandingPage() {
         <div className="landing-steps">
           {STEPS.map((item, i) => (
             <Reveal key={item.title} variant="up" delay={Math.min(i * 100, 200)}>
-              <article className="landing-step">
+              <article className="landing-step" data-accent={item.accent}>
                 <span className="landing-step-icon">
                   <svg
                     viewBox="0 0 24 24"
@@ -593,7 +616,12 @@ export function LandingPage() {
                 <tr>
                   <th>Compare plans</th>
                   {PLANS.map((plan) => (
-                    <th key={plan.name}>{plan.name}</th>
+                    <th
+                      key={plan.name}
+                      className={plan.featured ? "pro-head" : undefined}
+                    >
+                      {plan.name}
+                    </th>
                   ))}
                 </tr>
               </thead>

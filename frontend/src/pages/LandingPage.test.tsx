@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LandingPage } from "./LandingPage";
@@ -158,5 +158,65 @@ describe("LandingPage", () => {
     const linkedin = screen.getByLabelText("AskDocs on LinkedIn") as HTMLAnchorElement;
     expect(linkedin.getAttribute("data-coming-soon")).toBe("true");
     expect(linkedin.title).toBe("Coming soon");
+  });
+
+  /* The accent system (#377) drives every per-card color from a
+     data-accent attribute, so these assert the attribute is present and
+     correct — the actual colors live in App.css keyed off the same name. */
+
+  it("tags each core feature card with its own accent", () => {
+    renderPage();
+    const grid = document.querySelector(".landing-grid-core") as HTMLElement;
+    const card = (title: string) =>
+      within(grid).getByText(title).closest("article") as HTMLElement;
+
+    expect(card("Upload anything").dataset.accent).toBe("blue");
+    expect(card("Semantic search").dataset.accent).toBe("violet");
+    expect(card("Ask your documents").dataset.accent).toBe("green");
+  });
+
+  it("tags each secondary feature card with an accent", () => {
+    renderPage();
+    // Scoped to the grid: "Bulk upload" and "Webhook notifications" also
+    // appear as rows in the pricing comparison table.
+    const grid = document.querySelector(".landing-grid-secondary") as HTMLElement;
+    const card = (title: string) =>
+      within(grid).getByText(title).closest("article") as HTMLElement;
+
+    expect(card("Private by design").dataset.accent).toBe("blue");
+    expect(card("Blazing fast").dataset.accent).toBe("amber");
+    expect(card("Bulk upload").dataset.accent).toBe("violet");
+    expect(card("Export results").dataset.accent).toBe("green");
+    expect(card("Webhook notifications").dataset.accent).toBe("rose");
+  });
+
+  it("tags each how-it-works step with its accent in order", () => {
+    renderPage();
+    const steps = Array.from(
+      document.querySelectorAll(".landing-step"),
+    ) as HTMLElement[];
+
+    expect(steps).toHaveLength(3);
+    expect(steps.map((s) => s.dataset.accent)).toEqual(["blue", "violet", "green"]);
+  });
+
+  it("marks the featured plan column header in the comparison table", () => {
+    renderPage();
+    const proHead = document.querySelector(".landing-table th.pro-head");
+    expect(proHead?.textContent).toBe("Pro");
+  });
+
+  it("wraps each trust badge check in its own tinted disc", () => {
+    renderPage();
+    // "Included" is the shared aria-label on the check glyph; the pricing
+    // table uses the same icon, so scope the query to the badge list.
+    const badges = Array.from(
+      document.querySelectorAll(".trust-badges li"),
+    ) as HTMLElement[];
+
+    expect(badges).toHaveLength(4);
+    for (const badge of badges) {
+      expect(badge.querySelector(".trust-badge-check")).toBeTruthy();
+    }
   });
 });
