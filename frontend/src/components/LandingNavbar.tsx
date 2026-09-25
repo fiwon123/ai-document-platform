@@ -187,9 +187,7 @@ function NavGroupMenu({
   );
 }
 
-/** Sections that get their own page. Product is one of them — a single click to
- *  the hub is what a visitor expects, so it is a plain link rather than a menu
- *  that only adds a click. */
+/** Section hubs — also the first item inside each menu. */
 const PRODUCT_HUB = "/product";
 const COMPANY_HUB = "/company";
 
@@ -204,7 +202,6 @@ const COMPANY_HUB = "/company";
  */
 export function LandingNavbar() {
   const { user } = useAuth();
-  const { pathname } = useLocation();
 
   return (
     <nav className="landing-navbar">
@@ -214,25 +211,8 @@ export function LandingNavbar() {
       </Link>
 
       <div className="landing-nav-links">
-        {/* Derived from NAV_PRODUCT rather than a second hardcoded list, so
-            adding a Product page in the content module cannot leave the header
-            link looking unselected on that page. */}
-        <Link
-          to={PRODUCT_HUB}
-          className={`nav-direct-link${
-            pathname === PRODUCT_HUB ||
-            NAV_PRODUCT.some((item) => item.to === pathname)
-              ? " active"
-              : ""
-          }`}
-        >
-          Product
-        </Link>
-        <NavGroupMenu
-          label="Company"
-          hub={COMPANY_HUB}
-          items={NAV_COMPANY}
-        />
+        <NavGroupMenu label="Product" hub={PRODUCT_HUB} items={NAV_PRODUCT} />
+        <NavGroupMenu label="Company" hub={COMPANY_HUB} items={NAV_COMPANY} />
       </div>
 
       <div className="landing-nav-actions">

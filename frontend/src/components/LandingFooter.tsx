@@ -15,12 +15,24 @@ function SocialLink({
   path,
   href,
   title,
+  viewBox = "0 0 24 24",
   comingSoon = false,
 }: {
   label: string;
   path: string;
   href?: string;
   title?: string;
+  /**
+   * Per-icon viewBox, matching the grid the path was authored on.
+   *
+   * This exists because the glyphs are NOT all on one grid: GitHub is a 16x16
+   * Octicons mark, the rest are 24x24. Rendering all three at `width={18}` with
+   * a hardcoded `0 0 24 24` viewBox silently scales the 16-unit GitHub disc down
+   * to 12px, so it looks smaller than its neighbours. A viewBox is a scale, not
+   * a stretch: it cannot make a non-square glyph square, and it cannot change a
+   * silhouette's shape. Both of those needed a different path (see SOCIAL_PATHS).
+   */
+  viewBox?: string;
   /** Placeholder for accounts we don't run yet — dimmed, not a link. */
   comingSoon?: boolean;
 }) {
@@ -37,7 +49,7 @@ function SocialLink({
         title={title}
         data-coming-soon="true"
       >
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+        <svg viewBox={viewBox} width="18" height="18" aria-hidden="true" focusable="false">
           <path d={path} fill="currentColor" />
         </svg>
       </span>
@@ -53,7 +65,7 @@ function SocialLink({
       target="_blank"
       rel="noopener noreferrer"
     >
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+      <svg viewBox={viewBox} width="18" height="18" aria-hidden="true" focusable="false">
         <path d={path} fill="currentColor" />
       </svg>
     </a>
@@ -105,11 +117,17 @@ export function LandingFooter() {
           <span className="footer-brand-name">{SITE.name}</span>
           <p>{SITE.tagline}</p>
           <div className="footer-socials">
+            {/* GitHub's path is authored on a 16x16 grid (the Octicons mark),
+                so it needs a 16x16 viewBox. Without this the disc renders at
+                16/24 of 18px — two-thirds the size of its neighbours, which
+                reads as "the GitHub button is smaller" rather than "the GitHub
+                glyph is a circle". */}
             <SocialLink
               label={`${SITE.name} on GitHub`}
               path={SOCIAL_PATHS.github}
               href={SITE.repoUrl}
               title="View source on GitHub"
+              viewBox="0 0 16 16"
             />
             <SocialLink
               label={`${SITE.name} on Twitter`}
