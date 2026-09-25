@@ -109,9 +109,11 @@ describe("Navbar", () => {
     });
 
     fireEvent.click(toggle);
-    // Focus lands on the first menu link (Back to site).
+    // Focus lands on the first link *inside the menu*. The back link is no
+    // longer a menu item — it sits beside the brand, always visible — so
+    // "Dashboard" is now the first focusable thing the disclosure reveals.
     expect(document.activeElement).toBe(
-      screen.getByRole("link", { name: "Back to site" }),
+      screen.getByRole("link", { name: "Dashboard" }),
     );
 
     fireEvent.keyDown(document, { key: "Escape" });
@@ -146,8 +148,24 @@ describe("Navbar", () => {
     expect(backLink.className).toContain("navbar-back-link");
     // The arrow icon renders inside the link.
     expect(backLink.querySelector("svg")).toBeTruthy();
-    // The back link does not sit inside the .navbar-brand block.
-    expect(container.querySelector(".navbar-brand")?.contains(backLink)).toBe(false);
+    // It is a sibling immediately *before* the brand block, not inside it and
+    // not part of the page-link row.
+    const brand = container.querySelector(".navbar-brand")!;
+    expect(brand.contains(backLink)).toBe(false);
+    expect(backLink.nextElementSibling).toBe(brand);
+    expect(container.querySelector(".navbar-links")!.contains(backLink)).toBe(false);
+  });
+
+  it("keeps the back link accessible by name when the label is visually hidden", () => {
+    // On <=768px the text is clipped with clip-path rather than removed, so
+    // it stays in the accessibility tree and the link keeps its name.
+    renderNavbar();
+    const backLink = screen.getByRole("link", { name: "Back to site" });
+    expect(backLink.querySelector(".navbar-back-link-text")?.textContent).toBe(
+      "Back to site",
+    );
+    // No aria-label overriding the visible text (voice-control label match).
+    expect(backLink.getAttribute("aria-label")).toBeNull();
   });
 
   it("marks the dashboard link active on the /app index", () => {

@@ -180,7 +180,7 @@ const DocumentCard = memo(function DocumentCard({
           <button
             onClick={() => onReprocess(doc.id)}
             disabled={isReprocessing}
-            className="btn btn-secondary btn-icon"
+            className="btn btn-icon-accent btn-icon-blue btn-icon"
             aria-label="Reprocess document"
             title="Reprocess document"
           >
@@ -194,7 +194,7 @@ const DocumentCard = memo(function DocumentCard({
         <button
           onClick={() => onPreview(doc)}
           disabled={isPreviewLoading}
-          className="btn btn-secondary btn-icon"
+          className="btn btn-icon-accent btn-icon-violet btn-icon"
           aria-label="Preview document"
           title="Preview document"
         >
@@ -207,7 +207,7 @@ const DocumentCard = memo(function DocumentCard({
         <button
           onClick={() => onDownload(doc)}
           disabled={doc.status !== "ready" || isDownloading}
-          className="btn btn-secondary btn-icon"
+          className="btn btn-icon-accent btn-icon-green btn-icon"
           aria-label="Download document"
           title={
             doc.status !== "ready" ? "Available after processing" : "Download document"
