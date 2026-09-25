@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { DocumentFilter } from "../components/DocumentFilter";
 import { qa } from "../services/api";
 import type { QAResponse, SearchResult } from "../types";
 import { Spinner } from "../components/Spinner";
 import { Markdown } from "../components/Markdown";
 import { EmptyState } from "../components/EmptyState";
+import { HighlightedText } from "../components/HighlightedText";
+import { MatchChip } from "../components/MatchChip";
 
 const MODEL_KEY = "askdocs-model";
 
@@ -30,15 +33,16 @@ interface Message {
 }
 
 /** Copy fallback for insecure contexts where navigator.clipboard is missing. */
-async function copyText(text: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    return navigator.clipboard.writeText(text);
+  async function copyText(text: string): Promise<void> {
+    if (navigator.clipboard?.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    // No-op fallback: keep the button safe (never throws) in non-secure
+    // contexts (e.g. plain-http previews that lack the Clipboard API).
   }
-  // No-op fallback: keep the button safe (never throws) in non-secure
-  // contexts (e.g. plain-http previews that lack the Clipboard API).
-}
 
 export function QAPage() {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +52,14 @@ export function QAPage() {
   );
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+
+  /** The user question that produced the message at `index` (walk back). */
+  function questionFor(index: number): string {
+    for (let i = index - 1; i >= 0; i--) {
+      if (messages[i]!.type === "user") return messages[i]!.content;
+    }
+    return "";
+  }
 
   const modelsQuery = useQuery({
     queryKey: ["qa-models"],
@@ -213,7 +225,7 @@ export function QAPage() {
             </EmptyState>
           )}
 
-          {messages.map((message) => (
+          {messages.map((message, index) => (
             <div key={message.id} className={`chat-message ${message.type}`}>
               <div className="message-avatar">
                 {message.type === "user" ? "U" : "AI"}
@@ -246,17 +258,39 @@ export function QAPage() {
                 )}
                 {message.sources && message.sources.length > 0 && (
                   <div className="message-sources">
-                    <strong>Sources:</strong>
-                    {message.sources.map((source) => (
-                      <div key={source.chunk_id} className="source-item">
-                        <span className="source-document">
-                          {source.document_filename}
-                        </span>
-                        <span className="source-preview">
-                          {source.content.substring(0, 100)}...
-                        </span>
-                      </div>
-                    ))}
+                    <strong>Sources — why this document:</strong>
+                    {message.sources.map((source) => {
+                      const question = questionFor(index);
+                      return (
+                        <button
+                          key={source.chunk_id}
+                          type="button"
+                          className="source-item"
+                          title="Open this passage in semantic search"
+                          onClick={() =>
+                            navigate(
+                              `/app/search?q=${encodeURIComponent(question)}&doc=${encodeURIComponent(source.document_id)}`,
+                            )
+                          }
+                        >
+                          <span className="source-document">
+                            {source.document_filename}
+                            <MatchChip pct={(1 - source.score) * 100} />
+                          </span>
+                          <span className="source-reason">
+                            Why this source: this passage is the closest
+                            semantic match to your question.
+                          </span>
+                          <span className="source-preview">
+                            <HighlightedText
+                              text={source.content.substring(0, 240)}
+                              query={question}
+                            />
+                            {source.content.length > 240 && "…"}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

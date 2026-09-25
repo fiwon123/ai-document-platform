@@ -3585,6 +3585,61 @@ body {
   white-space: nowrap;
 }
 
+/* Match strength tones (shared with QA sources + demo). Colors reuse the
+   Badge tone pairs so both themes stay legible. */
+.result-match-chip.tone-strong {
+  color: var(--badge-green-text);
+  background: var(--badge-green-bg);
+  border-color: color-mix(in srgb, var(--badge-green-text) 30%, transparent);
+}
+
+.result-match-chip.tone-partial {
+  color: var(--badge-amber-text);
+  background: var(--badge-amber-bg);
+  border-color: color-mix(in srgb, var(--badge-amber-text) 30%, transparent);
+}
+
+.result-match-chip.tone-weak {
+  color: var(--badge-red-text);
+  background: var(--badge-red-bg);
+  border-color: color-mix(in srgb, var(--badge-red-text) 30%, transparent);
+}
+
+/* Legend beneath the search status line explaining the chip tones. */
+.match-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.match-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.match-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.match-legend-dot.tone-strong {
+  background: var(--badge-green-text);
+}
+
+.match-legend-dot.tone-partial {
+  background: var(--badge-amber-text);
+}
+
+.match-legend-dot.tone-weak {
+  background: var(--badge-red-text);
+}
+
 .result-content {
   margin: 0;
   line-height: 1.6;
@@ -3819,16 +3874,46 @@ body {
 }
 
 .source-item {
+  display: block;
+  width: 100%;
   padding: 8px;
   margin-bottom: 8px;
   background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.source-item:hover {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 6%, var(--paper));
+}
+
+.source-item:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 .source-document {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-weight: 600;
   font-size: 0.85rem;
   margin-bottom: 4px;
+}
+
+.source-reason {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+  font-style: italic;
 }
 
 .source-preview {

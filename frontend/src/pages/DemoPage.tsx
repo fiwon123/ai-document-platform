@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { LandingNavbar } from "../components/LandingNavbar";
 import { Markdown } from "../components/Markdown";
 import { Badge } from "../components/Badge";
+import { HighlightedText } from "../components/HighlightedText";
+import { MatchChip } from "../components/MatchChip";
 import { DEMO_DOCUMENTS } from "./demoData";
 import type { DemoSampleDoc } from "./demoData";
 
@@ -270,11 +272,11 @@ export function DemoPage() {
                 <div key={result.chunkId} className="search-result-card">
                   <div className="result-header">
                     <span className="result-document">{result.doc.filename}</span>
-                    <span className="result-score">
-                      Score: {(result.score * 100).toFixed(1)}%
-                    </span>
+                    <MatchChip pct={result.score * 100} />
                   </div>
-                  <p className="result-content">{result.chunk}</p>
+                  <p className="result-content">
+                    <HighlightedText text={result.chunk} query={searchQuery} />
+                  </p>
                 </div>
               ))}
             </div>
