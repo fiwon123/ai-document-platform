@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LandingPage } from "./LandingPage";
@@ -62,5 +62,66 @@ describe("LandingPage", () => {
     });
     expect(screen.getAllByText("Open workspace").length).toBeGreaterThan(0);
     expect(screen.queryByText("No credit card required. Try it without an account.")).toBeNull();
+  });
+
+  it("shows a product-screenshot carousel in the hero", () => {
+    renderPage();
+    const carousel = screen.getByRole("group", {
+      name: "AskDocs product screenshots",
+    });
+    expect(carousel).toBeTruthy();
+    expect(screen.getAllByRole("img").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Go to slide 1")).toBeTruthy();
+  });
+
+  it("shows social proof: logos, stats, and trust badges", () => {
+    renderPage();
+    expect(screen.getByText("Trusted by teams who ship")).toBeTruthy();
+    expect(screen.getByText("Northwind")).toBeTruthy();
+    expect(screen.getByText("Documents processed")).toBeTruthy();
+    expect(screen.getByText("Questions answered")).toBeTruthy();
+    expect(screen.getByText("Search uptime")).toBeTruthy();
+    expect(screen.getByText("SOC 2 ready")).toBeTruthy();
+    expect(screen.getByText("GDPR compliant")).toBeTruthy();
+  });
+
+  it("extended features list (8 cards) renders with icons", () => {
+    renderPage();
+    // Feature cards AND comparison-table rows share several names, so these
+    // assertions include both occurrences.
+    expect(screen.getAllByText("Bulk upload").length).toBeGreaterThan(0);
+    expect(screen.getByText("Export results")).toBeTruthy();
+    expect(screen.getAllByText("Webhook notifications").length).toBeGreaterThan(0);
+    expect(screen.getByText("Blazing fast")).toBeTruthy();
+  });
+
+  it("switches plan card pricing between monthly and annual", () => {
+    renderPage();
+    expect(screen.getAllByText(/per month/).length).toBeGreaterThan(0);
+    expect(screen.getByText("$12")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Toggle annual billing"));
+    expect(screen.getByText("$10")).toBeTruthy();
+    expect(screen.getByText("Save 17%")).toBeTruthy();
+  });
+
+  it("expands and collapses FAQ answers", () => {
+    renderPage();
+    const button = screen.getByRole("button", { name: /Is there a free plan/ });
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("renders a full footer with navigation, newsletter, and social links", () => {
+    renderPage();
+    expect(screen.getByText("Stay in the loop")).toBeTruthy();
+    expect(screen.getByLabelText("Email address")).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Product" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Company" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Legal" })).toBeTruthy();
+    expect(screen.getByLabelText("AskDocs on GitHub")).toBeTruthy();
+    expect(screen.getByText("Made for people who love their documents.")).toBeTruthy();
   });
 });
