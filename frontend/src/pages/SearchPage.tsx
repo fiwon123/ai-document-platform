@@ -1,8 +1,10 @@
 import { memo, useEffect, useRef, useState, useTransition } from "react";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { DocumentFilter } from "../components/DocumentFilter";
 import { EmptyState } from "../components/EmptyState";
 import { HighlightedText } from "../components/HighlightedText";
+import { MatchChip } from "../components/MatchChip";
 import { search } from "../services/api";
 import type { SearchResult } from "../types";
 
@@ -36,7 +38,6 @@ const SearchResultCard = memo(function SearchResultCard({
   result,
   query,
 }: SearchResultCardProps) {
-  const matchPct = Math.max(0, (1 - result.score) * 100);
   return (
     <div className="search-result-card">
       <div className="result-header">
@@ -65,12 +66,7 @@ const SearchResultCard = memo(function SearchResultCard({
           </svg>
           {result.document_filename}
         </span>
-        <span
-          className="result-match-chip"
-          title={`Similarity: ${((1 - result.score) * 100).toFixed(1)}%`}
-        >
-          {matchPct.toFixed(0)}% match
-        </span>
+        <MatchChip pct={(1 - result.score) * 100} />
       </div>
       <p className="result-content">
         <HighlightedText text={result.content} query={query} />
@@ -136,17 +132,31 @@ const DEBOUNCE_MS = 300;
 const PAGE_SIZE = 5;
 
 export function SearchPage() {
-  const [query, setQuery] = useState("");
+  const [urlParams, setUrlParams] = useSearchParams();
+  // Deep-link support: `?q=<query>&doc=<document-id>` restores an exact
+  // search scope (QA "why this source" links navigate here). Read once at
+  // construction — afterwards search state owns the URL.
+  const initialQ = useRef(
+    urlParams.get("q") ?? "",
+  ).current;
+  const initialIds = useRef(
+    (urlParams.get("doc") ?? urlParams.get("ids") ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean),
+  ).current;
+
+  const [query, setQuery] = useState(initialQ);
   // The debounced query + selected ids drive the actual fetches. Keeping the
   // two separated means typing updates the input instantly while the result
   // set only refreshes after the debounce window (or an explicit submit).
   const [searchParams, setSearchParams] = useState<SearchParams>({
-    q: "",
-    ids: "",
+    q: initialQ,
+    ids: initialIds.join(","),
   });
   const [isExporting, setIsExporting] = useState<"csv" | "json" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(initialIds);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Typing updates the input non-blockingly: the keystroke render is deferred
   // to a transition so long-running searches never jank the input itself.
@@ -202,6 +212,17 @@ export function SearchPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, selectedIds]);
+
+  // Mirror the live search state back into the URL (`replace` keeps history
+  // tidy while typing; the visible query/scope is always the current one).
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (searchParams.q) next.set("q", searchParams.q);
+    if (selectedIds.length > 0) next.set("doc", selectedIds.join(","));
+    if (next.toString() !== urlParams.toString()) {
+      setUrlParams(next, { replace: true });
+    }
+  }, [searchParams.q, selectedIds, urlParams, setUrlParams]);
 
   async function loadMore() {
     void searchQuery.fetchNextPage();
@@ -333,6 +354,21 @@ export function SearchPage() {
           </div>
           <p className="search-status">
             Showing {results.length} of {totalCount} result{totalCount === 1 ? "" : "s"}
+          </p>
+          <p className="match-legend">
+            <span className="match-legend-label">Match strength:</span>
+            <span className="match-legend-item">
+              <span className="match-legend-dot tone-strong" aria-hidden="true" />
+              strong 65%+
+            </span>
+            <span className="match-legend-item">
+              <span className="match-legend-dot tone-partial" aria-hidden="true" />
+              partial 35–64%
+            </span>
+            <span className="match-legend-item">
+              <span className="match-legend-dot tone-weak" aria-hidden="true" />
+              weak below 35%
+            </span>
           </p>
           {results.map((result) => (
             <SearchResultCard
