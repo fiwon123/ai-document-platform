@@ -114,11 +114,11 @@ html.theme-transitioning *,
 html.theme-transitioning *::before,
 html.theme-transitioning *::after {
   transition:
-    background-color 0.35s var(--ease-standard),
-    color 0.35s var(--ease-standard),
-    border-color 0.35s var(--ease-standard),
-    fill 0.35s var(--ease-standard),
-    stroke 0.35s var(--ease-standard) !important;
+    background-color 0.22s var(--ease-standard),
+    color 0.22s var(--ease-standard),
+    border-color 0.22s var(--ease-standard),
+    fill 0.22s var(--ease-standard),
+    stroke 0.22s var(--ease-standard) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -973,7 +973,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 48px;
+  gap: 56px;
   padding: 72px 6vw 88px;
   text-align: center;
   overflow: hidden;
@@ -1059,11 +1059,12 @@ body {
   color: var(--muted);
 }
 
-/* Product screenshot window. */
+/* Product screenshot window — the hero's main visual, sized to dominate the
+   fold (up to 1120px wide instead of a modest 880px box). */
 .landing-preview {
   position: relative;
   z-index: 1;
-  width: min(100%, 880px);
+  width: min(94vw, 1120px);
   animation: preview-float 9s ease-in-out infinite;
 }
 
@@ -1085,14 +1086,18 @@ body {
 
 .preview-window {
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 18px;
   overflow: hidden;
-  box-shadow: 0 24px 48px rgb(15 23 42 / 0.14);
+  box-shadow:
+    0 30px 60px rgb(15 23 42 / 0.16),
+    0 2px 10px rgb(15 23 42 / 0.08);
   background: var(--surface);
 }
 
 :root[data-theme="dark"] .preview-window {
-  box-shadow: 0 24px 56px rgb(0 0 0 / 0.5);
+  box-shadow:
+    0 30px 70px rgb(0 0 0 / 0.55),
+    0 2px 12px rgb(0 0 0 / 0.35);
 }
 
 .preview-bar {
@@ -1129,6 +1134,7 @@ body {
 
 .carousel-slides {
   position: relative;
+  width: 100%;
   background: var(--surface);
 }
 
@@ -1238,7 +1244,7 @@ body {
   transform: scale(1.25);
 }
 
-/* Social proof: logos, animated stats, trust badges. */
+/* Social proof: flowing logo marquee, animated stats, trust badges. */
 .landing-social {
   padding: 56px 6vw;
   border-top: 1px solid var(--line);
@@ -1256,22 +1262,76 @@ body {
   text-transform: uppercase;
 }
 
+/* Logo marquee: the strip is duplicated in the JSX and translated -50% so the
+   loop is seamless. Edge fade via mask-image; pauses on hover. */
+.logo-marquee {
+  overflow: hidden;
+  margin-bottom: 40px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+}
+
+.logo-marquee:hover .logo-strip {
+  animation-play-state: paused;
+}
+
 .logo-strip {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
   align-items: center;
-  gap: 18px 44px;
-  margin-bottom: 40px;
+  gap: 0;
+  width: max-content;
+  animation: logo-scroll 28s linear infinite;
+}
+
+@keyframes logo-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-strip {
+    animation: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 18px 44px;
+    width: auto;
+  }
+
+  .logo-marquee {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
 }
 
 .logo-mark {
-  font-size: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 24px;
+  padding: 9px 20px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  font-size: 1.02rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--muted);
-  opacity: 0.75;
   white-space: nowrap;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
+}
+
+/* Diamond bullet inside each logo pill. */
+.logo-mark::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  transform: rotate(45deg);
+  background: var(--blue);
 }
 
 .stat-row {
@@ -1297,25 +1357,24 @@ body {
   line-height: 1.05;
 }
 
-/* Soft glow pulse on the headline stat numbers. */
-@keyframes stat-glow {
-  0%,
-  100% {
-    text-shadow: 0 0 0 color-mix(in srgb, var(--blue) 0%, transparent);
-  }
-  50% {
-    text-shadow:
-      0 0 18px color-mix(in srgb, var(--blue) 35%, transparent),
-      0 0 42px color-mix(in srgb, var(--blue) 18%, transparent);
-  }
+/* Headline stat numbers: blue→violet gradient text for more visual weight
+   (CountUp already animates the counting). */
+.stat-item strong.stat-value {
+  background: linear-gradient(120deg, var(--blue) 20%, #7c3aed 85%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 :root[data-theme="dark"] .stat-item strong {
   color: #60a5fa;
 }
 
-.stat-item strong.stat-value {
-  animation: stat-glow 4.5s ease-in-out infinite;
+:root[data-theme="dark"] .stat-item strong.stat-value {
+  background: linear-gradient(120deg, #60a5fa 10%, #c4b5fd 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .stat-item span {
@@ -1336,19 +1395,25 @@ body {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 10px 26px;
+  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* Pills instead of plain text so the badges read as chips in both themes. */
 .trust-badges li {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 0.86rem;
   font-weight: 600;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
 }
 
 .trust-badges .compare-check {
@@ -1372,8 +1437,12 @@ body {
   color: var(--muted);
 }
 
+/* Alternating bands get a soft gradient plus edges so the section boundary
+   stays visible in light mode (where surface vs paper is otherwise subtle). */
 .landing-section-alt {
-  background: var(--surface);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
 /* Feature cards. */
@@ -1423,20 +1492,35 @@ body {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--paper);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
 }
 
+:root[data-theme="dark"] .landing-card,
+:root[data-theme="dark"] .landing-step {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+}
+
+/* Icon tile: each feature glyph sits in a soft accent chip. */
 .landing-card .feature-icon {
   display: block;
+  box-sizing: border-box;
+  width: 52px;
+  height: 52px;
+  padding: 13px;
   margin-bottom: 16px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--blue) 10%, var(--surface));
   color: var(--blue);
-  transition: transform 0.25s var(--ease-spring);
+  transition: transform 0.25s var(--ease-spring), background-color 0.25s;
 }
 
 .landing-card:hover .feature-icon {
-  transform: scale(1.14) rotate(-5deg);
+  transform: scale(1.1) rotate(-5deg);
+  background: color-mix(in srgb, var(--blue) 18%, var(--surface));
 }
 
 :root[data-theme="dark"] .landing-card .feature-icon {
+  background: rgb(37 99 235 / 0.18);
   color: #60a5fa;
 }
 
@@ -1466,6 +1550,13 @@ body {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--paper);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+  transition: border-color 0.2s var(--ease-standard), transform 0.2s var(--ease-standard);
+}
+
+.landing-step:hover {
+  border-color: color-mix(in srgb, var(--blue) 35%, var(--line));
+  transform: translateY(-2px);
 }
 
 /* Dashed connector between steps on wide layouts. */
@@ -1476,6 +1567,18 @@ body {
   right: -14px;
   width: 16px;
   border-top: 2px dashed var(--line);
+  transition: border-color 0.2s;
+}
+
+.landing-step:hover:not(:last-child)::after {
+  border-top-color: var(--blue);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-step {
+    transition: none;
+    transform: none;
+  }
 }
 
 @media (max-width: 900px) {
@@ -1512,15 +1615,17 @@ body {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--blue);
+  background: linear-gradient(135deg, var(--blue), #7c3aed);
   color: white;
   font-size: 0.78rem;
   font-weight: 800;
+  box-shadow: 0 2px 6px rgb(37 99 235 / 0.35);
 }
 
 /* Keep the number badge legible at 4.5:1 in dark mode (blue brightens). */
 :root[data-theme="dark"] .landing-step-number {
-  background: #2563eb;
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.4);
 }
 
 .landing-step h3 {
@@ -1966,6 +2071,18 @@ body {
   color: var(--blue);
   border-color: var(--blue);
   transform: translateY(-2px);
+}
+
+/* Placeholder social accounts (not live yet): dimmed, no lift on hover. */
+.footer-social.coming-soon {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.footer-social.coming-soon:hover {
+  color: var(--muted);
+  border-color: var(--line);
+  transform: none;
 }
 
 .footer-bottom {

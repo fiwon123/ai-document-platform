@@ -289,9 +289,30 @@ const FOOTER_LEGAL = [
   { label: "GDPR", to: "/" },
 ];
 
-function SocialLink({ label, path }: { label: string; path: string }) {
+function SocialLink({
+  label,
+  path,
+  href = "/#",
+  title,
+  comingSoon = false,
+}: {
+  label: string;
+  path: string;
+  href?: string;
+  title?: string;
+  /** Placeholder for accounts we don't run yet — dimmed with a tooltip. */
+  comingSoon?: boolean;
+}) {
   return (
-    <a className="footer-social" href="/#" aria-label={label}>
+    <a
+      className={`footer-social${comingSoon ? " coming-soon" : ""}`}
+      href={href}
+      aria-label={label}
+      title={title}
+      data-coming-soon={comingSoon ? "true" : undefined}
+      target={comingSoon ? undefined : "_blank"}
+      rel={comingSoon ? undefined : "noopener noreferrer"}
+    >
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
         <path d={path} fill="currentColor" />
       </svg>
@@ -393,12 +414,16 @@ export function LandingPage() {
       <section className="landing-social" aria-label="Social proof">
         <Reveal variant="up">
           <p className="trusted-by">Trusted by teams who ship</p>
-          <div className="logo-strip" aria-hidden="true">
-            {LOGOS.map((logo) => (
-              <span key={logo} className="logo-mark">
-                {logo}
-              </span>
-            ))}
+          {/* The track is duplicated so the marquee can loop seamlessly by
+              translating -50%. aria-hidden: purely decorative text marks. */}
+          <div className="logo-marquee" aria-hidden="true">
+            <div className="logo-strip">
+              {[...LOGOS, ...LOGOS].map((logo, i) => (
+                <span key={`${logo}-${i}`} className="logo-mark">
+                  {logo}
+                </span>
+              ))}
+            </div>
           </div>
           <div className="stat-row">
             <div className="stat-item">
@@ -644,9 +669,24 @@ export function LandingPage() {
             <span className="footer-brand-name">AskDocs</span>
             <p>AI Document Intelligence Platform</p>
             <div className="footer-socials">
-              <SocialLink label="AskDocs on GitHub" path={SOCIAL_PATHS.github} />
-              <SocialLink label="AskDocs on Twitter" path={SOCIAL_PATHS.twitter} />
-              <SocialLink label="AskDocs on LinkedIn" path={SOCIAL_PATHS.linkedin} />
+              <SocialLink
+                label="AskDocs on GitHub"
+                path={SOCIAL_PATHS.github}
+                href="https://github.com/fiwon123/ai-document-platform"
+                title="View source on GitHub"
+              />
+              <SocialLink
+                label="AskDocs on Twitter"
+                path={SOCIAL_PATHS.twitter}
+                title="Coming soon"
+                comingSoon
+              />
+              <SocialLink
+                label="AskDocs on LinkedIn"
+                path={SOCIAL_PATHS.linkedin}
+                title="Coming soon"
+                comingSoon
+              />
             </div>
           </div>
           <nav className="footer-col" aria-label="Product">
