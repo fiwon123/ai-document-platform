@@ -87,4 +87,55 @@ describe("CountUp", () => {
     render(<CountUp value={1200} format={(n) => `${n}k`} />);
     expect(screen.getByText("1200k")).toBeTruthy();
   });
+
+  it("marks the number as animating only while the count is in progress", async () => {
+    // The class is the CSS hook for the shake / grow / grey-to-ink ramp in
+    // App.css. It must be present for the whole count and dropped on the frame
+    // the final value lands, otherwise the number keeps shaking forever or
+    // never animates at all.
+    vi.useFakeTimers();
+    const { container } = render(<CountUp value={12000} durationMs={1000} />);
+    const el = container.querySelector(".count-up")!;
+
+    expect(el.className).toContain("animating");
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(container.querySelector(".count-up")!.className).toContain(
+      "animating",
+    );
+
+    await vi.advanceTimersByTimeAsync(600);
+    const done = container.querySelector(".count-up")!;
+    expect(done.className).not.toContain("animating");
+    expect(done.textContent).toBe("12,000");
+  });
+
+  it("never marks the number as animating for reduced motion", async () => {
+    // Reduced motion renders the final value instantly, so there is no count
+    // in progress to decorate. A lingering .animating would shake a number
+    // that a visitor explicitly asked not to animate.
+    //
+    // The observer mock still reports isIntersecting immediately, so this does
+    // prove the guard rather than passing by accident: `canAnimate` being
+    // false is what must keep the class off, not the fact that the count
+    // happens to be finished.
+    vi.useFakeTimers();
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    const { container } = render(<CountUp value={512} durationMs={1000} />);
+    const el = container.querySelector(".count-up")!;
+    expect(el.className).not.toContain("animating");
+    expect(el.textContent).toBe("512");
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(container.querySelector(".count-up")!.className).not.toContain(
+      "animating",
+    );
+  });
+
+  it("never marks the number as animating without IntersectionObserver", () => {
+    vi.unstubAllGlobals();
+    const { container } = render(<CountUp value={42} suffix="%" />);
+    const el = container.querySelector(".count-up")!;
+    expect(el.className).not.toContain("animating");
+    expect(el.textContent).toBe("42%");
+  });
 });

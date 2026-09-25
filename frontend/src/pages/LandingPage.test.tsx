@@ -95,20 +95,21 @@ describe("LandingPage", () => {
     ).toBeTruthy();
   });
 
-  it("keeps the logo marquee loop seamless by duplicating every mark", () => {
-    // The user asked to keep the marquee animation, so the -50% loop depends
-    // on the track being an exact doubling of the logo list. If the strip is
-    // ever de-duplicated the marquee visibly jumps at the wrap point.
+  it("keeps the logo marquee loop seamless by triplicating every mark", () => {
+    // The user asked to keep the marquee animation, so the -33.333% loop
+    // depends on the track being an exact tripling of the logo list. If the
+    // strip is ever de-duplicated the marquee visibly jumps at the wrap point.
+    // The copy count and the keyframe percentage must be changed together.
     const { container } = renderPage();
     const strip = container.querySelector(".logo-strip")!;
     const marks = [...strip.querySelectorAll(".logo-mark")].map(
       (m) => m.textContent,
     );
+    const third = marks.length / 3;
     expect(marks.length).toBeGreaterThan(0);
-    expect(marks.length % 2).toBe(0);
-    expect(marks.slice(0, marks.length / 2)).toEqual(
-      marks.slice(marks.length / 2),
-    );
+    expect(marks.length % 3).toBe(0);
+    expect(marks.slice(0, third)).toEqual(marks.slice(third, third * 2));
+    expect(marks.slice(third, third * 2)).toEqual(marks.slice(third * 2));
   });
 
   it("gives the closing CTA band a supporting line under the heading", () => {

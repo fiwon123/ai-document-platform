@@ -82,8 +82,19 @@ export function CountUp({ value, durationMs = 1200, suffix = "", format }: Count
   const current = canAnimate ? display : value;
   const shown = format ? format(current) : current.toLocaleString();
 
+  // Drives the decorative "alive" styling (shake, grow, grey-to-ink colour
+  // shift) in App.css. Deliberately derived rather than stored in its own
+  // state: `display` is already the single source of truth for how far the
+  // count has progressed, and a parallel `isAnimating` flag could drift out of
+  // sync with it — e.g. stay true if the interval were cleared early.
+  //
+  // The class must stay off for the non-animating fallbacks (no
+  // IntersectionObserver, reduced motion), since those render the final value
+  // immediately and there is no count in progress to decorate.
+  const animating = canAnimate && started && display < value;
+
   return (
-    <span ref={ref} className="count-up">
+    <span ref={ref} className={animating ? "count-up animating" : "count-up"}>
       {shown}
       {suffix}
     </span>

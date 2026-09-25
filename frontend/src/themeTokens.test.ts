@@ -87,8 +87,66 @@ describe("design tokens", () => {
   });
 
   it("defines --line-strong once per theme", () => {
-    // Two definitions: the light default and the dark override. If either is
-    // dropped the card edges silently fall back to the hairline.
+    // Two definitions: the light default and the dark override. If either
+    // is dropped the card edges silently fall back to the hairline.
     expect(css.match(/--line-strong\s*:/g)).toHaveLength(2);
+  });
+
+  it("keeps the logo marquee keyframe in step with its copy count", () => {
+    // The marquee loops by translating a fixed percentage of a track that
+    // holds N identical copies of the logo list. For the loop to be seamless
+    // the percentage must be exactly one copy's width: 100/N. If the two drift
+    // apart the strip wraps mid-copy and the row visibly jumps — the exact
+    // "pops in from the right" bug this replaced, and one that renders fine
+    // and lints fine, so nothing else in the suite notices.
+    //
+    // The old two-copy/-50% pairing was correct too, which is the trap: this
+    // is a coupling guard, not a bug repro. Deriving the expected value from
+    // the keyframe's own percentage keeps it honest for any copy count.
+    const keyframe = css.match(
+      /@keyframes\s+logo-scroll\s*\{[\s\S]*?\n\}/,
+    )?.[0];
+    expect(keyframe, "@keyframes logo-scroll must exist").toBeDefined();
+
+    const to = keyframe!.match(
+      /to\s*\{[^}]*transform:\s*translateX\((-?[\d.]+)%\)/,
+    )?.[1];
+    expect(to, "logo-scroll must translateX by a percentage").toBeDefined();
+
+    const percent = Number(to);
+    // A percentage is a signed fraction of the track. 100/N => N = 100/pct.
+    const copies = 100 / Math.abs(percent);
+
+    // The tolerance here is loose on purpose. Writing -33.333333% instead of
+    // -33.3% is a sub-pixel difference spread over a 42s cycle and is not a
+    // bug worth failing a build over; the meaningful failure is a whole
+    // *mismatch* (the "expected 3 to be 2" assertion below), not a rounding
+    // difference. What is rejected here is a percentage that implies a
+    // fractional number of copies, e.g. -40% -> 2.5.
+    expect(
+      Math.abs(copies - Math.round(copies)),
+      `-${percent}% implies ${copies} copies, which is not a whole number`,
+    ).toBeLessThan(0.05);
+
+    // …and that whole number has to match the track that JSX actually builds,
+    // which is the half of the coupling this file cannot see. Counting the
+    // `...LOGOS` spreads is what makes this a real cross-check rather than a
+    // restatement of the keyframe. This is the assertion that would have
+    // caught a copy-count change made without its matching keyframe edit.
+    const source = readFileSync(
+      resolve(process.cwd(), "src", "pages", "LandingPage.tsx"),
+      "utf8",
+    );
+    const strip = source.match(/\{(\[\.\.\.LOGOS[^\]]*\])\.map\(/)?.[1];
+    expect(
+      strip,
+      "the logo strip must be built from ...LOGOS spreads",
+    ).toBeDefined();
+    const actual = (strip!.match(/\.\.\.LOGOS/g) ?? []).length;
+    expect(
+      actual,
+      `keyframe implies ${Math.round(copies)} copies but the strip builds ${actual}`,
+    ).toBe(Math.round(copies));
+    expect(actual).toBeGreaterThanOrEqual(2);
   });
 });

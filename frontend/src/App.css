@@ -1583,8 +1583,18 @@ body {
   background: linear-gradient(90deg, var(--blue), #7c3aed);
 }
 
-/* Logo marquee: the strip is duplicated in the JSX and translated -50% so the
-   loop is seamless. Edge fade via mask-image; pauses on hover. */
+/* Logo marquee: the strip carries three copies of the logo list and translates
+   -33.333%, so each cycle moves exactly one copy. Two copies moving -50% worked
+   arithmetically but read as a glitch: half the visible row had to be covered
+   before the strip could snap back to 0, and the two copy boundaries landing in
+   view at once made the row look like a single image tearing rather than
+   separate tags. One third of a cycle is a third of that travel, so a boundary
+   is much further out of frame when the reset happens.
+
+   Duration 28s -> 42s over the extra copy. Note this does make the loop ~30%
+   slower (~36px/s -> ~29px/s) rather than holding the old pace; that is
+   deliberate, since a slower drift hides the wrap better, but it is a real
+   change and not just a copy-count swap. */
 .logo-marquee {
   position: relative;
   overflow: hidden;
@@ -1602,7 +1612,7 @@ body {
   align-items: center;
   gap: 0;
   width: max-content;
-  animation: logo-scroll 28s linear infinite;
+  animation: logo-scroll 42s linear infinite;
 }
 
 @keyframes logo-scroll {
@@ -1610,7 +1620,10 @@ body {
     transform: translateX(0);
   }
   to {
-    transform: translateX(-50%);
+    /* One third of the track: the strip must hold exactly three copies of the
+       logo list, or the loop will not land back on a copy boundary and will
+       visibly jump. See .logo-strip in LandingPage.tsx. */
+    transform: translateX(-33.333333%);
   }
 }
 
@@ -1633,16 +1646,19 @@ body {
    The complaint was that these "look too much simple" and it was unclear
    whether the motion or the styling was at fault. It was the styling: the
    pill was flat --paper on --surface with a 1px --line edge, so at a glance
-   the row was just grey words on a grey band, and the 28s scroll added motion
+   the row was just grey words on a grey band, and the scroll added motion
    without adding any sense of craft.
 
    What changed is depth, not decoration. A diagonal brand-tinted gradient
    replaces the flat fill, the edge moves to --line-strong so the pill is
    actually delineated against the band, and the shadow becomes a real
    two-layer elevation. The diamond bullet picks up the same gradient as the
-   wordmark so the lockup reads as one object. The marquee itself is
-   untouched: same duration, same -50% seamless loop, same hover pause and
-   same reduced-motion static fallback. */
+   wordmark so the lockup reads as one object.
+
+   Note the pill itself is unchanged by the later marquee rework — that only
+   touched the strip's copy count, duration and keyframe percentage (see
+   .logo-strip above). The hover pause and reduced-motion static fallback are
+   likewise unchanged. */
 .logo-mark {
   position: relative;
   display: inline-flex;
@@ -1808,6 +1824,76 @@ body {
    the dark glow is brighter and tighter. */
 :root[data-theme="dark"] .stat-item strong {
   filter: drop-shadow(0 4px 20px rgb(96 165 250 / 0.28));
+}
+
+/* ── CountUp "alive" state ───────────────────────────────────────────────
+   While a stat is counting, the number shakes, sits 12% larger, and is muted
+   grey; as it reaches its target it settles to full ink at 1×. The point is
+   that the count reads as *doing* something rather than as a number that was
+   briefly wrong.
+
+   This targets the inner .count-up span, not the .stat-value <strong>. The
+   strong paints a gradient via background-clip: text with color: transparent,
+   so a colour rule on it would be invisible; the span has no clip of its own
+   and inherits nothing that would swallow the colour. */
+
+.count-up.animating {
+  /* transform does not apply to a non-replaced inline box. inline-block keeps
+     the text metrics identical to inline for a short numeric run. */
+  display: inline-block;
+  animation: count-shake 80ms ease-in-out infinite alternate;
+  font-size: 1.12em;
+  color: var(--muted);
+  transition:
+    font-size 0.35s var(--ease-standard),
+    color 0.5s var(--ease-standard);
+}
+
+.count-up:not(.animating) {
+  color: var(--ink);
+  font-size: 1em;
+  transition:
+    font-size 0.2s var(--ease-standard),
+    color 0.3s var(--ease-standard);
+}
+
+/* Subtle horizontal tremor. Deliberately tiny (sub-pixel) and horizontal only:
+   a larger or vertical jitter makes a large numeral look like it is failing to
+   render, and a transform here does not disturb layout, so the stat row never
+   reflows mid-count. */
+@keyframes count-shake {
+  from {
+    transform: translateX(-0.4px);
+  }
+  to {
+    transform: translateX(0.4px);
+  }
+}
+
+/* The dark theme needs the muted end lifted — --muted on the dark band is
+   already light, so the grey-to-ink ramp would read as brightening to a
+   dimmer colour. */
+:root[data-theme="dark"] .count-up.animating {
+  color: #93c5fd;
+}
+
+:root[data-theme="dark"] .count-up:not(.animating) {
+  color: #f1f5f9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* CountUp already renders the final value instantly under reduced motion, so
+     .animating is never applied there. These rules are the belt-and-braces
+     case: they guarantee the decorative state stays out even if the class
+     were ever applied by a future change. */
+  .count-up.animating,
+  .count-up:not(.animating) {
+    animation: none;
+    display: inline;
+    font-size: 1em;
+    color: inherit;
+    transition: none;
+  }
 }
 
 /* Honest-label note under the illustrative stats. */

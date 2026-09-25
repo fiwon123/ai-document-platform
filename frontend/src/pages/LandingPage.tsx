@@ -121,7 +121,14 @@ const SCREENSHOTS = [
   },
 ];
 
-const LOGOS = ["Northwind", "Lumina", "Vertex Labs", "Bluepeak", "Tesseract"];
+const LOGOS = [
+  "Northwind",
+  "Lumina",
+  "Vertex Labs",
+  "Bluepeak",
+  "Tesseract",
+  "mina",
+];
 
 /** Accent palettes for feature/step cards. Each card reads its own accent
  *  from a data attribute (see App.css), so colors are defined once in CSS
@@ -432,11 +439,15 @@ export function LandingPage() {
       <section className="landing-social" aria-label="Social proof">
         <Reveal variant="up">
           <p className="trusted-by">Trusted by teams who ship</p>
-          {/* The track is duplicated so the marquee can loop seamlessly by
-              translating -50%. aria-hidden: purely decorative text marks. */}
+          {/* Three copies of the logo list so the marquee can loop seamlessly by
+              translating -33.333%: each cycle advances exactly one copy. With
+              two copies at -50% the reset was a half-track jump and two copy
+              boundaries were often on screen together, which made the row read
+              as one image tearing rather than as separate tags.
+              aria-hidden: purely decorative text marks. */}
           <div className="logo-marquee" aria-hidden="true">
             <div className="logo-strip">
-              {[...LOGOS, ...LOGOS].map((logo, i) => (
+              {[...LOGOS, ...LOGOS, ...LOGOS].map((logo, i) => (
                 <span key={`${logo}-${i}`} className="logo-mark">
                   {logo}
                 </span>
