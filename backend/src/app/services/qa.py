@@ -7,7 +7,8 @@ from uuid import UUID
 from openai import OpenAI
 
 from app.cache.redis import redis_client
-from app.schemas.document import QAResponse, SearchResult
+from app.schemas.qa import QAResponse
+from app.schemas.search import SearchResult
 from app.services.search import SearchService, user_cache_version
 
 logger = logging.getLogger(__name__)

@@ -7,7 +7,7 @@ from app.models.chunk import DocumentChunk
 from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
 from app.repositories.search import SearchRepository
-from app.schemas.document import SearchResponse, SearchResult
+from app.schemas.search import SearchResponse, SearchResult
 from app.services.search import SearchService
 
 DIM = 1536

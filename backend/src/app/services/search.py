@@ -5,7 +5,7 @@ from uuid import UUID
 from app.cache.redis import redis_client
 from app.models.search import SearchHistory
 from app.repositories.search import SearchRepository
-from app.schemas.document import SearchResponse
+from app.schemas.search import SearchResponse
 from app.services.embedding import EmbeddingService
 
 logger = logging.getLogger(__name__)

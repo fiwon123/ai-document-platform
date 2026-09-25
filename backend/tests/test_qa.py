@@ -7,7 +7,8 @@ from app.models.chunk import DocumentChunk
 from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
 from app.repositories.search import SearchRepository
-from app.schemas.document import QARequest, QAResponse, SearchResult
+from app.schemas.qa import QARequest, QAResponse
+from app.schemas.search import SearchResult
 from app.services.qa import QAService
 
 DIM = 1536

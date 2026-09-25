@@ -1,41 +1,21 @@
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database.db import get_db
 from app.models.user import Role
 from app.repositories.user import UserRepository
 from app.routes.auth import get_current_user, pwd_context
-from app.schemas.user import UserResponse
+from app.schemas.user import (
+    UpdateActiveRequest,
+    UpdateRoleRequest,
+    UpdateUserRequest,
+    UserResponse,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
-
-
-class UpdateUserRequest(BaseModel):
-    username: str | None = Field(
-        default=None,
-        min_length=3,
-        max_length=20,
-        pattern=r"^[a-zA-Z0-9_]+$",
-        description="Username: 3-20 chars, letters/numbers/underscore only",
-    )
-    password: str | None = Field(
-        default=None,
-        min_length=8,
-        description="Password must be at least 8 characters",
-    )
-    confirm_password: str | None = None
-
-
-class UpdateRoleRequest(BaseModel):
-    role: Literal["customer", "admin"]
-
-
-class UpdateActiveRequest(BaseModel):
-    is_active: bool
 
 
 def get_current_admin(
