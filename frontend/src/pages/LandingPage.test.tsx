@@ -85,6 +85,25 @@ describe("LandingPage", () => {
     expect(screen.getByText("GDPR compliant")).toBeTruthy();
   });
 
+  it("labels the illustrative stats honestly as sample data", () => {
+    renderPage();
+    expect(
+      screen.getByText(
+        "Sample figures shown for illustration — your workspace shows your real numbers.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("organizes features into core and secondary groups", () => {
+    renderPage();
+    expect(screen.getByText("Core capabilities")).toBeTruthy();
+    expect(screen.getByText("More to explore")).toBeTruthy();
+    // Core trio renders as its own cards
+    expect(screen.getAllByText("Upload anything").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Semantic search").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Ask your documents").length).toBeGreaterThan(0);
+  });
+
   it("extended features list (8 cards) renders with icons", () => {
     renderPage();
     // Feature cards AND comparison-table rows share several names, so these

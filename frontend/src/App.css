@@ -851,6 +851,23 @@ body {
   position: relative;
   z-index: 1;
   width: min(100%, 880px);
+  animation: preview-float 9s ease-in-out infinite;
+}
+
+@keyframes preview-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-preview {
+    animation: none;
+  }
 }
 
 .preview-window {
@@ -1059,16 +1076,47 @@ body {
 }
 
 .stat-item strong {
-  font-size: 2rem;
+  font-size: clamp(2.4rem, 5vw, 3.4rem);
   font-weight: 800;
-  letter-spacing: -0.03em;
-  color: var(--ink);
+  letter-spacing: -0.04em;
+  color: var(--blue);
   font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+
+/* Soft glow pulse on the headline stat numbers. */
+@keyframes stat-glow {
+  0%,
+  100% {
+    text-shadow: 0 0 0 color-mix(in srgb, var(--blue) 0%, transparent);
+  }
+  50% {
+    text-shadow:
+      0 0 18px color-mix(in srgb, var(--blue) 35%, transparent),
+      0 0 42px color-mix(in srgb, var(--blue) 18%, transparent);
+  }
+}
+
+:root[data-theme="dark"] .stat-item strong {
+  color: #60a5fa;
+}
+
+.stat-item strong.stat-value {
+  animation: stat-glow 4.5s ease-in-out infinite;
 }
 
 .stat-item span {
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+/* Honest-label note under the illustrative stats. */
+.stats-demo-note {
+  margin: -14px 0 22px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-style: italic;
 }
 
 .trust-badges {
@@ -1124,6 +1172,39 @@ body {
   text-align: left;
 }
 
+/* Core capabilities: three wide cards with a blue accent edge. */
+.landing-grid-core {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  margin-top: 0;
+}
+
+.landing-card-core {
+  position: relative;
+  border-left: 3px solid var(--blue);
+}
+
+:root[data-theme="dark"] .landing-card-core {
+  border-left-color: #60a5fa;
+}
+
+/* Secondary features: more compact cards under their own heading. */
+.landing-grid-secondary {
+  margin-top: 12px;
+}
+
+.feature-category {
+  margin: 34px 0 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.feature-category-secondary {
+  margin-top: 40px;
+}
+
 .landing-card {
   padding: 26px;
   border: 1px solid var(--line);
@@ -1135,6 +1216,11 @@ body {
   display: block;
   margin-bottom: 16px;
   color: var(--blue);
+  transition: transform 0.25s var(--ease-spring);
+}
+
+.landing-card:hover .feature-icon {
+  transform: scale(1.14) rotate(-5deg);
 }
 
 :root[data-theme="dark"] .landing-card .feature-icon {
@@ -1478,12 +1564,19 @@ body {
 
 .faq-answer {
   display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.3s var(--ease-decelerate);
+  grid-template-rows: minmax(0, 0fr);
+  overflow: hidden;
+  /* visibility guarantees the panel is hidden even in browsers where the
+     0fr grid row does not fully collapse (older Safari). */
+  visibility: hidden;
+  transition:
+    grid-template-rows 0.3s var(--ease-decelerate),
+    visibility 0.3s var(--ease-decelerate);
 }
 
 .faq-item.open .faq-answer {
-  grid-template-rows: 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  visibility: visible;
 }
 
 .faq-answer p {
