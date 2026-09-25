@@ -39,7 +39,8 @@ function makeToken(expiresIn: number): string {
 
 /** Exposes the auth context through DOM nodes + buttons for assertions. */
 function Harness() {
-  const { user, token, isLoading, login, register, logout } = useAuth();
+  const { user, token, isLoading, login, register, logout, deleteAccount } =
+    useAuth();
   return (
     <div>
       <span data-testid="user">{user ? user.username : "none"}</span>
@@ -48,6 +49,7 @@ function Harness() {
       <button onClick={() => login("alice", "s3cret")}>login</button>
       <button onClick={() => register("bob", "s3cret", "s3cret")}>register</button>
       <button onClick={logout}>logout</button>
+      <button onClick={deleteAccount}>delete-account</button>
     </div>
   );
 }
@@ -167,6 +169,26 @@ describe("useAuth", () => {
     expect(screen.getByTestId("token").textContent).toBe("none");
     expect(localStorage.getItem("token")).toBeNull();
     expect(mockedLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the local session on account deletion without calling logout", async () => {
+    localStorage.setItem("token", makeToken(3600));
+    mockedGetMe.mockResolvedValue(testUser);
+
+    renderAuth();
+    await screen.findByText("alice");
+    expect(screen.getByTestId("token").textContent).not.toBe("none");
+
+    act(() => {
+      screen.getByText("delete-account").click();
+    });
+
+    expect(screen.getByTestId("user").textContent).toBe("none");
+    expect(screen.getByTestId("token").textContent).toBe("none");
+    expect(localStorage.getItem("token")).toBeNull();
+    // The server already deletes the account + refresh cookie; the client
+    // must not attempt a best-effort logout on top.
+    expect(mockedLogout).not.toHaveBeenCalled();
   });
 
   it("refreshes the access token proactively when it is about to expire", async () => {
