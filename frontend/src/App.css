@@ -312,7 +312,14 @@ html.theme-transitioning code {
 
 /* `transition` is not inherited, so pseudo-elements that carry themed
    color on their own (the logo bullet, badge dots) need the same
-   treatment as their host element. */
+   treatment as their host element.
+
+   .stat-item strong.stat-value is here for a different reason than the ones
+   above: it no longer paints a gradient, but its colour comes from
+   --card-accent, which the dark-theme accent blocks restate. A custom
+   property change is not itself interpolable, so without a `color`
+   transition each stat figure would snap to its dark-mode hue at the instant
+   the toggle lands while everything around it eases. */
 html.theme-transitioning .logo-mark::before,
 html.theme-transitioning .badge-dot,
 html.theme-transitioning .stat-item strong.stat-value,
@@ -1539,7 +1546,7 @@ body {
 
 /* Social proof: flowing logo marquee, animated stats, trust badges. */
 .landing-social {
-  padding: 72px 6vw 64px;
+  padding: 48px 6vw 44px;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   /* A faint brand wash instead of flat --surface, so the band reads as its
@@ -1554,55 +1561,66 @@ body {
   text-align: center;
 }
 
-/* Section eyebrow over the logo wall. Two changes from the previous version:
-   it was 0.82rem of muted grey centred under a centred band, which read as a
-   caption rather than a heading, and the reported complaint was that the
-   title needed to be bigger and pulled to the left. The band stays centred
-   (the logo row and stats are centred compositions) but the eyebrow now
-   anchors the left edge on its own, which also gives the section a reading
-   order: label, then proof, then figures. */
+/* Section eyebrow over the logo wall.
+   An earlier revision pulled this to the left edge, arguing the rest of the
+   band was a centred composition. It did not read as deliberate — it read as
+   a heading that had failed to centre, since the logo row and the stat row
+   beneath it are both centred. Centred, with the accent rule centred under it
+   too, the block now sits on the same axis as everything it introduces. */
 .trusted-by {
-  margin: 0 0 30px;
+  margin: 0 0 22px;
   color: var(--ink);
-  font-size: clamp(1.05rem, 1.6vw, 1.25rem);
+  font-size: clamp(1.05rem, 1.6vw, 1.2rem);
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: none;
-  text-align: left;
+  text-align: center;
 }
 
-/* Small accent rule under the eyebrow, so the left anchor reads as
-   deliberate rather than as an alignment accident. */
+/* Small accent rule under the eyebrow, centred to match. */
 .trusted-by::after {
   content: "";
   display: block;
   width: 44px;
   height: 3px;
-  margin-top: 12px;
+  margin: 12px auto 0;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--blue), #7c3aed);
 }
 
-/* Logo marquee: the strip is duplicated in the JSX and translated -50% so the
-   loop is seamless. Edge fade via mask-image; pauses on hover. */
+/* Logo marquee: the strip carries three copies of the logo list and translates
+   -33.333%, so each cycle moves exactly one copy. Two copies moving -50% worked
+   arithmetically but read as a glitch: half the visible row had to be covered
+   before the strip could snap back to 0, and the two copy boundaries landing in
+   view at once made the row look like a single image tearing rather than
+   separate tags. One third of a cycle is a third of that travel, so a boundary
+   is much further out of frame when the reset happens.
+
+   Duration 28s -> 42s over the extra copy. Note this does make the loop ~30%
+   slower (~36px/s -> ~29px/s) rather than holding the old pace; that is
+   deliberate, since a slower drift hides the wrap better, but it is a real
+   change and not just a copy-count swap. */
 .logo-marquee {
   position: relative;
   overflow: hidden;
-  margin-bottom: 56px;
+  margin-bottom: 34px;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
   mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
 }
 
-.logo-marquee:hover .logo-strip {
-  animation-play-state: paused;
-}
+/* No hover-pause. It used to stop the strip under the pointer, on the theory
+   that stopping motion on hover is polite. Here it fought the motion: the row
+   is a single continuous drift, and freezing it under the cursor left a dead
+   band mid-scroll that read as a stall rather than as a deliberate hold. The
+   strip is decorative, nothing is clickable in it, and it carries no focusable
+   content, so there is nothing to interrupt. */
 
 .logo-strip {
   display: flex;
   align-items: center;
   gap: 0;
   width: max-content;
-  animation: logo-scroll 28s linear infinite;
+  animation: logo-scroll 42s linear infinite;
 }
 
 @keyframes logo-scroll {
@@ -1610,7 +1628,10 @@ body {
     transform: translateX(0);
   }
   to {
-    transform: translateX(-50%);
+    /* One third of the track: the strip must hold exactly three copies of the
+       logo list, or the loop will not land back on a copy boundary and will
+       visibly jump. See .logo-strip in LandingPage.tsx. */
+    transform: translateX(-33.333333%);
   }
 }
 
@@ -1633,16 +1654,19 @@ body {
    The complaint was that these "look too much simple" and it was unclear
    whether the motion or the styling was at fault. It was the styling: the
    pill was flat --paper on --surface with a 1px --line edge, so at a glance
-   the row was just grey words on a grey band, and the 28s scroll added motion
+   the row was just grey words on a grey band, and the scroll added motion
    without adding any sense of craft.
 
    What changed is depth, not decoration. A diagonal brand-tinted gradient
    replaces the flat fill, the edge moves to --line-strong so the pill is
    actually delineated against the band, and the shadow becomes a real
    two-layer elevation. The diamond bullet picks up the same gradient as the
-   wordmark so the lockup reads as one object. The marquee itself is
-   untouched: same duration, same -50% seamless loop, same hover pause and
-   same reduced-motion static fallback. */
+   wordmark so the lockup reads as one object.
+
+   Note the pill itself is unchanged by the later marquee rework — that only
+   touched the strip's copy count, duration and keyframe percentage (see
+   .logo-strip above). The hover pause and reduced-motion static fallback are
+   likewise unchanged. */
 .logo-mark {
   position: relative;
   display: inline-flex;
@@ -1698,23 +1722,35 @@ body {
    and a wide horizontal rhythm: a centered number above its label, with
    vertical dividers between items. Inline-flex (not flex) on the item is
    what lets the divider ride the item's own border box. */
+/* Equal tracks, not flex items. This was `display: flex` with
+   `flex: 1 1 240px` on the children, and that is what made the row look
+   off-centre: a flex item's automatic minimum size (min-width: auto) floors it
+   at its min-content width, and "12,000+" / "48,000+" are unbreakable tokens
+   far wider than "99%". The two outer stats were therefore wider than the
+   middle one, so each figure's centre sat on a different axis — most visibly
+   the outer pair drifting off the centre of "48,000+ Questions answered".
+
+   `minmax(0, 1fr)` makes the three tracks exactly equal whatever the content,
+   so all three centres land on the section's centre line. The minmax(0, _)
+   matters: plain 1fr is minmax(auto, 1fr) and reintroduces the same
+   min-content floor. `max-width` stays so the row does not sprawl on wide
+   screens, but it no longer influences alignment. */
 .stat-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: stretch;
-  margin: 0 auto 40px;
-  max-width: 900px;
+  margin: 0 auto 26px;
+  max-width: 1080px;
 }
 
 .stat-item {
   position: relative;
   display: flex;
-  flex: 1 1 240px;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 8px 28px;
+  gap: 8px;
+  padding: 6px 16px;
+  min-width: 0;
 }
 
 /* Divider between neighbouring stats; hidden on the outer edges and on
@@ -1729,85 +1765,150 @@ body {
   background: linear-gradient(
     180deg,
     transparent,
-    color-mix(in srgb, var(--blue) 32%, var(--line)),
+    color-mix(in srgb, var(--line) 90%, transparent),
     transparent
   );
 }
 
-/* Headline stat numbers. Scale is up from clamp(3rem, 7.5vw, 5.25rem) to
-   clamp(3.5rem, 8.5vw, 6.25rem) — the figures are the point of this band and
-   they were reading smaller than the trust badges below them.
+/* Headline stat numbers.
+   Scale comes down from clamp(3.5rem, 8.5vw, 6.25rem): the section was three
+   figures and a disclaimer, and at the old display size it read as the
+   loudest thing on the page while carrying the least information. These now
+   sit below the hero headline in the hierarchy, which is where they belong.
 
-   The "highlight" is a layered one rather than a bigger box. background-clip:
-   text already paints the gradient, and a plain text-shadow on top of
-   clipped text renders as a smear, so the glow is a drop-shadow filter on the
-   element, which follows the gradient shape. The gradient is also pulled
-   slightly bluer at its start so the first glyph in each number has
-   something to hold onto. CountUp is untouched: it still animates, and still
-   bypasses animation entirely under prefers-reduced-motion. */
+   The colour is no longer a single shared blue->violet gradient. Each stat
+   declares its own data-accent, so it reads --card-accent from the same
+   accent system the feature and step cards use (App.css [data-accent]). That
+   means the three figures are distinguishable at a glance, and dark mode needs
+   no rule here at all: the existing :root[data-theme="dark"] [data-accent]
+   blocks already restate --card-accent for each hue, and a custom property is
+   resolved at computed-value time, so color: var(--card-accent) picks up
+   whichever value that element has.
+
+   The glow is a drop-shadow filter rather than a text-shadow, because a
+   text-shadow under solid glyph colour would sit behind the text as a
+   separate blurred copy rather than following the letterforms. */
 .stat-item strong {
-  font-size: clamp(3.5rem, 8.5vw, 6.25rem);
+  font-size: clamp(2.5rem, 6vw, 4.25rem);
   font-weight: 800;
   letter-spacing: -0.05em;
-  color: var(--blue);
+  color: var(--card-accent, var(--blue));
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  filter: drop-shadow(0 6px 22px color-mix(in srgb, var(--blue) 26%, transparent));
+  filter: drop-shadow(
+    0 5px 18px color-mix(in srgb, var(--card-accent, var(--blue)) 24%, transparent)
+  );
 }
 
-.stat-item span {
+/* Direct child only. The descendant selector `.stat-item span` also matched
+   CountUp's own <span class="count-up">, which is a *grandchild* of .stat-item
+   (it sits inside <strong class="stat-value">).
+
+   Most of the damage was masked: `.count-up:not(.animating)` is specificity
+   0,2,0 against this rule's 0,1,1, so font-size and colour were already won by
+   the .count-up rules. But font-weight and letter-spacing exist nowhere else
+   on the number, so the figure silently rendered in the *label's* weight 600
+   and +0.01em tracking instead of the display 800 / -0.05em from
+   `.stat-item strong` — thinner, looser digits than the design calls for,
+   which is what read as the number having "lost its formatting".
+
+   `>` separates them exactly: the label is a direct child, the number is not. */
+.stat-item > span {
   color: var(--muted);
-  font-size: 1.08rem;
+  font-size: 0.95rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   text-align: center;
 }
 
+/* Kept horizontal at every width by design: three figures in a row read as one
+   comparable set, and stacking them turned that set into three separate
+   statements. The old 720px breakpoint used to force `flex-basis: 100%` and
+   swap the dividers to horizontal rules; the row is now an equal 3-column
+   grid, so the only thing that has to give on a narrow screen is padding and
+   type size. The dividers therefore stay vertical and untouched. */
 @media (max-width: 720px) {
   .stat-item {
-    flex-basis: 100%;
+    padding: 6px 8px;
   }
 
-  .stat-item + .stat-item::before {
-    /* Stacked items: swap the side rule for a horizontal one. */
-    top: 0;
-    left: 50%;
-    width: 60%;
-    height: 1px;
-    transform: translateX(-50%);
-    background: linear-gradient(
-      90deg,
-      transparent,
-      color-mix(in srgb, var(--blue) 32%, var(--line)),
-      transparent
-    );
+  .stat-item strong {
+    font-size: clamp(1.6rem, 7.2vw, 2.4rem);
   }
 }
 
-/* Headline stat numbers: blue→violet gradient text for more visual weight
-   (CountUp already animates the counting). */
-.stat-item strong.stat-value {
-  background: linear-gradient(120deg, var(--blue) 5%, #7c3aed 88%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+/* ── CountUp "alive" state ───────────────────────────────────────────────
+   While a stat is counting, the number shakes, sits 12% larger, and is muted
+   grey; as it reaches its target it settles to full ink at 1×. The point is
+   that the count reads as *doing* something rather than as a number that was
+   briefly wrong.
+
+   This targets the inner .count-up span, not the .stat-value <strong>, which
+   owns the accent colour. The settled state must therefore be `inherit` and
+   not a literal colour: painting it --ink here would override the per-stat
+   accent the moment the count finished, so each figure would count up in grey
+   and then snap to black instead of holding its hue. */
+
+.count-up.animating {
+  /* transform does not apply to a non-replaced inline box. inline-block keeps
+     the text metrics identical to inline for a short numeric run. */
+  display: inline-block;
+  animation: count-shake 80ms ease-in-out infinite alternate;
+  font-size: 1.12em;
+  color: var(--muted);
+  transition:
+    font-size 0.35s var(--ease-standard),
+    color 0.5s var(--ease-standard);
 }
 
-:root[data-theme="dark"] .stat-item strong {
-  color: #60a5fa;
+/* Settled state. `inherit` rather than --ink: the surrounding .stat-value
+   <strong> owns the per-stat accent colour, so inheriting is what preserves
+   it. Hard-coding a colour here would repaint every figure black the instant
+   its count finished, undoing the accent work. */
+.count-up:not(.animating) {
+  color: inherit;
+  font-size: 1em;
+  transition:
+    font-size 0.2s var(--ease-standard),
+    color 0.3s var(--ease-standard);
 }
 
-:root[data-theme="dark"] .stat-item strong.stat-value {
-  background: linear-gradient(120deg, #60a5fa 5%, #c4b5fd 90%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+/* Subtle horizontal tremor. Deliberately tiny (sub-pixel) and horizontal only:
+   a larger or vertical jitter makes a large numeral look like it is failing to
+   render, and a transform here does not disturb layout, so the stat row never
+   reflows mid-count. */
+@keyframes count-shake {
+  from {
+    transform: translateX(-0.4px);
+  }
+  to {
+    transform: translateX(0.4px);
+  }
 }
 
-/* On the softened dark band a 26% blue drop-shadow is nearly invisible, so
-   the dark glow is brighter and tighter. */
-:root[data-theme="dark"] .stat-item strong {
-  filter: drop-shadow(0 4px 20px rgb(96 165 250 / 0.28));
+/* The dark theme needs the animating (grey) end lifted — --muted on the dark
+   band is already light, so the ramp would read as brightening to a dimmer
+   colour. The settled state is left alone: it inherits the per-stat accent,
+   and the :root[data-theme="dark"] [data-accent] blocks already restate each
+   one for dark. A literal colour here would flatten all three back to one
+   tone exactly when they should be most distinguishable. */
+:root[data-theme="dark"] .count-up.animating {
+  color: #93c5fd;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* CountUp already renders the final value instantly under reduced motion, so
+     .animating is never applied there. These rules are the belt-and-braces
+     case: they guarantee the decorative state stays out even if the class
+     were ever applied by a future change. */
+  .count-up.animating,
+  .count-up:not(.animating) {
+    animation: none;
+    display: inline;
+    font-size: 1em;
+    color: inherit;
+    transition: none;
+  }
 }
 
 /* Honest-label note under the illustrative stats. */

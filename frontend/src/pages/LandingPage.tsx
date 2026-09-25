@@ -121,7 +121,14 @@ const SCREENSHOTS = [
   },
 ];
 
-const LOGOS = ["Northwind", "Lumina", "Vertex Labs", "Bluepeak", "Tesseract"];
+const LOGOS = [
+  "Northwind",
+  "Lumina",
+  "Vertex Labs",
+  "Bluepeak",
+  "Tesseract",
+  "mina",
+];
 
 /** Accent palettes for feature/step cards. Each card reads its own accent
  *  from a data attribute (see App.css), so colors are defined once in CSS
@@ -432,33 +439,56 @@ export function LandingPage() {
       <section className="landing-social" aria-label="Social proof">
         <Reveal variant="up">
           <p className="trusted-by">Trusted by teams who ship</p>
-          {/* The track is duplicated so the marquee can loop seamlessly by
-              translating -50%. aria-hidden: purely decorative text marks. */}
+          {/* Three copies of the logo list so the marquee can loop seamlessly by
+              translating -33.333%: each cycle advances exactly one copy. With
+              two copies at -50% the reset was a half-track jump and two copy
+              boundaries were often on screen together, which made the row read
+              as one image tearing rather than as separate tags.
+              aria-hidden: purely decorative text marks. */}
           <div className="logo-marquee" aria-hidden="true">
             <div className="logo-strip">
-              {[...LOGOS, ...LOGOS].map((logo, i) => (
+              {[...LOGOS, ...LOGOS, ...LOGOS].map((logo, i) => (
                 <span key={`${logo}-${i}`} className="logo-mark">
                   {logo}
                 </span>
               ))}
             </div>
           </div>
+          {/* Each stat carries its own data-accent so the number picks up the
+              same accent palette the feature/step cards use (see App.css
+              [data-accent]) instead of one shared gradient. Documents = blue,
+              questions = violet, uptime = green, so the three read as a set
+              rather than as three copies of the same figure.
+
+              durationMs is staggered 1750 / 2000 / 2250 on purpose. All three
+              scroll into view together and start counting together; giving the
+              leftmost the shortest run means the row completes left to right.
+              The easing is symmetric, so a shorter duration is a genuinely
+              earlier arrival rather than a different-looking path. Combined
+              with the 1.12em "still counting" size in App.css, the viewer sees
+              the left figure settle and shrink back first, then the middle,
+              then the right — the eye is walked across the row instead of
+              being handed three numbers that all land at once.
+
+              Do not close this gap much further: under ~150ms the three
+              completions blur back into a single event, and the stagger stops
+              reading as an ordered sequence. */}
           <div className="stat-row">
-            <div className="stat-item">
+            <div className="stat-item" data-accent="blue">
               <strong className="stat-value">
-                <CountUp value={12000} suffix="+" />
+                <CountUp value={12000} suffix="+" durationMs={1750} />
               </strong>
               <span>Documents processed</span>
             </div>
-            <div className="stat-item">
+            <div className="stat-item" data-accent="violet">
               <strong className="stat-value">
-                <CountUp value={48000} suffix="+" />
+                <CountUp value={48000} suffix="+" durationMs={2000} />
               </strong>
               <span>Questions answered</span>
             </div>
-            <div className="stat-item">
+            <div className="stat-item" data-accent="green">
               <strong className="stat-value">
-                <CountUp value={99} suffix="%" />
+                <CountUp value={99} suffix="%" durationMs={2250} />
               </strong>
               <span>Search uptime</span>
             </div>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 type CountUpProps = {
   value: number;
-  /** Duration of the animation in milliseconds (default 1200). */
+  /** Duration of the animation in milliseconds (default 2000). */
   durationMs?: number;
   suffix?: string;
   /** Optional formatter; defaults to locale grouping (e.g. 12 400 → "12,400"). */
@@ -20,7 +20,7 @@ function prefersReducedMotion(): boolean {
 /** Animated number that counts up from 0 when it scrolls into view. Falls
  *  back to showing the final value immediately when IntersectionObserver is
  *  unavailable (jsdom, old browsers) or reduced motion is requested. */
-export function CountUp({ value, durationMs = 1200, suffix = "", format }: CountUpProps) {
+export function CountUp({ value, durationMs = 2000, suffix = "", format }: CountUpProps) {
   // Whether to animate at all, decided once per mount.
   //
   // It has to be frozen: re-testing on every render would restart the
@@ -69,8 +69,18 @@ export function CountUp({ value, durationMs = 1200, suffix = "", format }: Count
     const startTime = Date.now();
     const timer = window.setInterval(() => {
       const progress = Math.min((Date.now() - startTime) / durationMs, 1);
-      // easeOutCubic — fast start, gentle landing.
-      const eased = 1 - Math.pow(1 - progress, 3);
+      // easeInOutCubic — accelerate in, decelerate out.
+      //
+      // This was easeOutCubic ("fast start, gentle landing"), which front-loads
+      // ~66% of the value into the first 30% of the duration: 12,000 appeared to
+      // leap to 8,000 almost immediately and then crawl, so the figure read as
+      // a value being *revealed* rather than counted. Symmetric easing spends
+      // the middle of the run at a legible rate, which is what makes a number
+      // look like it is counting rather than snapping.
+      const eased =
+        progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
       setDisplay(Math.round(value * eased));
       if (progress >= 1) {
         window.clearInterval(timer);
@@ -82,8 +92,19 @@ export function CountUp({ value, durationMs = 1200, suffix = "", format }: Count
   const current = canAnimate ? display : value;
   const shown = format ? format(current) : current.toLocaleString();
 
+  // Drives the decorative "alive" styling (shake, grow, grey-to-ink colour
+  // shift) in App.css. Deliberately derived rather than stored in its own
+  // state: `display` is already the single source of truth for how far the
+  // count has progressed, and a parallel `isAnimating` flag could drift out of
+  // sync with it — e.g. stay true if the interval were cleared early.
+  //
+  // The class must stay off for the non-animating fallbacks (no
+  // IntersectionObserver, reduced motion), since those render the final value
+  // immediately and there is no count in progress to decorate.
+  const animating = canAnimate && started && display < value;
+
   return (
-    <span ref={ref} className="count-up">
+    <span ref={ref} className={animating ? "count-up animating" : "count-up"}>
       {shown}
       {suffix}
     </span>

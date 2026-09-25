@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -86,6 +88,52 @@ describe("LandingPage", () => {
     expect(screen.getByText("GDPR compliant")).toBeTruthy();
   });
 
+  it("gives each stat its own accent colour", () => {
+    // The three figures used to share one blue->violet gradient, so they read
+    // as three copies of the same number. They now declare data-accent and take
+    // --card-accent from the same accent system the cards use, which is what
+    // makes them distinguishable — and what makes dark mode work here without a
+    // dedicated rule.
+    renderPage();
+    const items = document.querySelectorAll(".stat-item");
+    expect(items.length).toBe(3);
+    expect([...items].map((i) => i.getAttribute("data-accent"))).toEqual([
+      "blue",
+      "violet",
+      "green",
+    ]);
+  });
+
+  it("staggers the stat counts so the row completes left to right", () => {
+    // The three figures scroll into view together and start counting together;
+    // the stagger comes from durationMs, which must therefore *increase* left
+    // to right. The easing is symmetric, so a shorter run is a genuinely
+    // earlier arrival, and App.css scales each number up 1.12em while it
+    // counts — so the leftmost settles and shrinks back first, and the eye is
+    // walked across the row rather than handed three numbers that land at once.
+    //
+    // This asserts the ordering, not the literals, so retuning the timings does
+    // not break it. A render test cannot see it: the durations are consumed by
+    // the interval, and the same three final strings appear either way.
+    const source = readFileSync(
+      resolve(process.cwd(), "src", "pages", "LandingPage.tsx"),
+      "utf8",
+    );
+    const durations = [
+      ...source.matchAll(/<CountUp\b[^>]*durationMs=\{(\d+)\}/g),
+    ].map((m) => Number(m[1]));
+
+    expect(durations).toHaveLength(3);
+    // Strictly increasing: equal durations collapse the stagger back into a
+    // single simultaneous landing, which is the regression being guarded.
+    expect(durations[0]).toBeLessThan(durations[1]!);
+    expect(durations[1]).toBeLessThan(durations[2]!);
+    // A gap too small to perceive is no better than none — under ~150ms the
+    // three completions blur into one event and the ordering stops reading.
+    expect(durations[1]! - durations[0]!).toBeGreaterThanOrEqual(150);
+    expect(durations[2]! - durations[1]!).toBeGreaterThanOrEqual(150);
+  });
+
   it("labels the illustrative stats honestly as sample data", () => {
     renderPage();
     expect(
@@ -95,20 +143,21 @@ describe("LandingPage", () => {
     ).toBeTruthy();
   });
 
-  it("keeps the logo marquee loop seamless by duplicating every mark", () => {
-    // The user asked to keep the marquee animation, so the -50% loop depends
-    // on the track being an exact doubling of the logo list. If the strip is
-    // ever de-duplicated the marquee visibly jumps at the wrap point.
+  it("keeps the logo marquee loop seamless by triplicating every mark", () => {
+    // The user asked to keep the marquee animation, so the -33.333% loop
+    // depends on the track being an exact tripling of the logo list. If the
+    // strip is ever de-duplicated the marquee visibly jumps at the wrap point.
+    // The copy count and the keyframe percentage must be changed together.
     const { container } = renderPage();
     const strip = container.querySelector(".logo-strip")!;
     const marks = [...strip.querySelectorAll(".logo-mark")].map(
       (m) => m.textContent,
     );
+    const third = marks.length / 3;
     expect(marks.length).toBeGreaterThan(0);
-    expect(marks.length % 2).toBe(0);
-    expect(marks.slice(0, marks.length / 2)).toEqual(
-      marks.slice(marks.length / 2),
-    );
+    expect(marks.length % 3).toBe(0);
+    expect(marks.slice(0, third)).toEqual(marks.slice(third, third * 2));
+    expect(marks.slice(third, third * 2)).toEqual(marks.slice(third * 2));
   });
 
   it("gives the closing CTA band a supporting line under the heading", () => {
