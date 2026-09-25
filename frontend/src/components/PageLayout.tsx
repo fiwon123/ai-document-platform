@@ -2,42 +2,51 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { LandingNavbar } from "./LandingNavbar";
 import { LandingFooter } from "./LandingFooter";
+import { Reveal } from "./Reveal";
 
 /**
  * Shared shell for every marketing page.
  *
- * The point is that a new page cannot forget the navbar, the footer, or the
- * max-width container: it supplies a title, an optional subtitle, and its own
- * sections, and inherits the same chrome and measure as every other page. That
- * is why all 13 new routes look like one site instead of 13.
- *
- * `activePath` marks the current section in the header dropdowns. It is the
- * page's own path, so the highlight follows automatically as pages are added.
+ * The point is that a new page cannot forget the navbar, the footer, the hero
+ * treatment, the entrance animation, or the max-width container: it supplies a
+ * title, an optional subtitle, and its own sections, and inherits the same
+ * chrome and measure as every other page. That is why all 13 routes look like
+ * one site instead of 13.
  */
 export function PageLayout({
   title,
   subtitle,
   eyebrow,
-  activePath,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   subtitle?: string;
   /** Small label above the title, e.g. "Product". */
   eyebrow?: string;
-  activePath?: string;
   children: ReactNode;
 }) {
   return (
-    <div className="landing-page marketing-page" data-active-path={activePath}>
+    <div className="landing-page marketing-page">
       <LandingNavbar />
 
       <main className="page-main">
         <header className="page-hero">
+          {/* Reused verbatim from the landing hero so the two read as one site. */}
+          <div className="hero-mesh" aria-hidden="true" />
           <div className="page-hero-inner">
-            {eyebrow && <p className="landing-eyebrow">{eyebrow}</p>}
-            <h1>{title}</h1>
-            {subtitle && <p className="landing-sub">{subtitle}</p>}
+            {eyebrow && (
+              <Reveal variant="up">
+                <p className="landing-eyebrow">{eyebrow}</p>
+              </Reveal>
+            )}
+            <Reveal variant="up" delay={eyebrow ? 80 : 0}>
+              <h1>{title}</h1>
+            </Reveal>
+            {subtitle && (
+              <Reveal variant="up" delay={eyebrow ? 160 : 80}>
+                <p className="landing-sub">{subtitle}</p>
+              </Reveal>
+            )}
           </div>
         </header>
 
@@ -61,14 +70,21 @@ export function PageCard({
   title,
   body,
   cta = "Read more",
+  accent,
 }: {
   to: string;
   title: string;
   body: string;
   cta?: string;
+  /** One of the palette names; tints the card's leading edge on hover. */
+  accent?: "blue" | "violet" | "green" | "amber" | "rose";
 }) {
   return (
-    <Link to={to} className="page-card card-hover">
+    <Link
+      to={to}
+      className="page-card card-hover"
+      data-accent={accent}
+    >
       <h2>{title}</h2>
       <p>{body}</p>
       <span className="page-card-cta">
@@ -79,7 +95,7 @@ export function PageCard({
 }
 
 /**
- * A prose section with a heading.
+ * A prose section with a heading, revealed as it scrolls into view.
  *
  * `level` lets a page keep a sensible heading outline — an h2 here, or an h3
  * when it sits under another heading — so pages don't jump from h1 straight to
@@ -96,11 +112,62 @@ export function PageSection({
 }) {
   const Heading = level === 2 ? "h2" : "h3";
   return (
-    <section className="page-section">
+    <Reveal as="section" variant="up" className="page-section">
       {title && <Heading className="page-section-title">{title}</Heading>}
       {children}
-    </section>
+    </Reveal>
   );
+}
+
+/**
+ * Closing call to action for a marketing page.
+ *
+ * The landing page ends on a full-bleed animated gradient band. Interior pages
+ * sit inside a max-width measure, so they get the contained equivalent — the
+ * same blue→violet tint held in a bordered panel — rather than a band that no
+ * longer reaches the viewport edge.
+ *
+ * Opt-in per page rather than automatic: a legal notice that ends with "Create
+ * free account" is tone-deaf, and an empty blog index should not advertise
+ * anything. Pages that sell something pass a `primary` action; pages that only
+ * inform omit the component and end on their own content.
+ */
+export function PageCta({
+  title,
+  body,
+  primary = { to: "/login", label: "Create free account" },
+  secondary = { to: "/demo", label: "Try the live demo" },
+}: {
+  title: string;
+  body: string;
+  primary?: { to: string; label: string };
+  secondary?: { to: string; label: string };
+}) {
+  return (
+    <Reveal as="section" variant="up" className="page-cta-band">
+      <h2>{title}</h2>
+      <p className="page-cta-band-sub">{body}</p>
+      <div className="page-cta-band-ctas">
+        <Link to={primary.to} className="btn btn-primary btn-lg">
+          {primary.label}
+        </Link>
+        <Link to={secondary.to} className="btn btn-secondary btn-lg">
+          {secondary.label}
+        </Link>
+      </div>
+    </Reveal>
+  );
+}
+
+/**
+ * Accent-tinted icon tile for a feature card.
+ *
+ * The tile is what turns a bare SVG into something that reads as a designed
+ * element — it is the same 52px accent-tinted square the landing page's feature
+ * cards use, so the two are visibly the same component.
+ */
+export function PageCardIcon({ children }: { children: ReactNode }) {
+  return <span className="page-card-icon">{children}</span>;
 }
 
 /**

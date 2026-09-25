@@ -1,6 +1,13 @@
 import { PageCard, PageLayout, PageSection } from "../components/PageLayout";
 import { NAV_COMPANY } from "../content/marketing";
 
+const ACCENTS = ["/about", "/blog", "/careers", "/contact"] as const;
+
+function accentFor(to: string) {
+  const i = ACCENTS.indexOf(to as (typeof ACCENTS)[number]);
+  return (["blue", "violet", "green", "amber"] as const)[i] ?? "blue";
+}
+
 const BLURBS: Record<string, string> = {
   "/about": "What AskDocs is, why it exists, and the principles behind how it is built.",
   "/blog": "Notes on retrieval, embeddings, and document pipelines.",
@@ -13,9 +20,13 @@ export function CompanyPage() {
   return (
     <PageLayout
       eyebrow="Company"
-      title="The people behind AskDocs"
+      title={
+        <>
+          The people behind{" "}
+          <span className="gradient-text">AskDocs</span>
+        </>
+      }
       subtitle="A small open-source project built around a simple idea: your documents should be answerable by the people who own them."
-      activePath="/company"
     >
       <PageSection title="Where to go next">
         <div className="page-grid">
@@ -25,6 +36,7 @@ export function CompanyPage() {
               to={item.to}
               title={item.label}
               body={BLURBS[item.to] ?? ""}
+              accent={accentFor(item.to)}
             />
           ))}
         </div>

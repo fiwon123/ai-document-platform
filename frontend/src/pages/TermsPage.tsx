@@ -85,7 +85,6 @@ export function TermsPage() {
       title="Terms of Service"
       intro="The agreement covering use of the platform, and the limits of what the service promises."
       sections={SECTIONS}
-      activePath="/terms"
     />
   );
 }

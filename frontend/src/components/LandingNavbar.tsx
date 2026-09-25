@@ -5,13 +5,6 @@ import { useAuth } from "../hooks/useAuth";
 import { BrandMark } from "./icons";
 import { NAV_COMPANY, NAV_PRODUCT } from "../content/marketing";
 
-type NavGroup = {
-  label: string;
-  /** The section hub — also the first item inside the menu. */
-  hub: string;
-  items: { label: string; to: string }[];
-};
-
 /**
  * Header section menu.
  *
@@ -21,12 +14,17 @@ type NavGroup = {
  * a half-implemented menu widget is worse for keyboard and screen-reader users
  * than a plain list of links. The disclosure gives the same result with the
  * links behaving like links.
- *
- * Opens on hover for pointer devices only (gated on `(hover: hover)` so touch
- * does not get a menu it cannot dismiss), and always on click, which is what
- * keyboard and touch users rely on.
  */
-function NavGroupMenu({ group }: { group: NavGroup }) {
+function NavGroupMenu({
+  label,
+  hub,
+  items,
+}: {
+  label: string;
+  /** The section hub — also the first item inside the menu. */
+  hub: string;
+  items: { label: string; to: string }[];
+}) {
   /* Openness is derived from which path the menu was opened *for* rather than
      stored as a boolean. A plain boolean needs an effect to close on
      navigation, and a setState-in-effect is a second render pass for something
@@ -35,15 +33,33 @@ function NavGroupMenu({ group }: { group: NavGroup }) {
   const [openedFor, setOpenedFor] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuId = useId();
   const { pathname } = useLocation();
 
   const open = openedFor === pathname;
-  const close = useCallback(() => setOpenedFor(null), []);
+
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }, []);
+
+  const close = useCallback(() => {
+    cancelClose();
+    setOpenedFor(null);
+  }, [cancelClose]);
+
+  const openNow = useCallback(() => setOpenedFor(pathname), [pathname]);
+
   const toggle = useCallback(
-    () => setOpenedFor((current) => (current === pathname ? null : pathname)),
+    () =>
+      setOpenedFor((current) => (current === pathname ? null : pathname)),
     [pathname],
   );
+
+  useEffect(() => cancelClose, [cancelClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -67,23 +83,51 @@ function NavGroupMenu({ group }: { group: NavGroup }) {
     };
   }, [open, close]);
 
-  // The hub counts as active too, otherwise visiting /pricing highlights
-  // nothing until you are on one of the child pages.
-  const active =
-    pathname === group.hub ||
-    group.items.some((item) => pathname === item.to);
-
-  const hoverable = () =>
+  /**
+   * Hover intent.
+   *
+   * The menu is offset 10px below the trigger so it reads as a separate surface
+   * rather than a continuation of the button. That offset creates a band of
+   * empty space between them, and because an absolutely positioned child does
+   * not contribute to its parent's hover box, the pointer is *outside* the
+   * container while crossing it. Closing on `mouseleave` therefore dismissed the
+   * menu before the pointer could arrive — the original bug.
+   *
+   * Two things fix it together:
+   *   1. A short grace period on the way out, so a diagonal path across the gap
+   *      is not treated as leaving.
+   *   2. An explicit hover bridge — a transparent strip owned by the container
+   *      that covers the gap, so the pointer is technically still inside.
+   *
+   * Only `(hover: hover)` devices opt in. A touch device has no hover, and
+   * `mouseleave` there would fire on tap, making the menu undismissable.
+   */
+  const hoverable =
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
     window.matchMedia("(hover: hover)").matches;
+
+  const scheduleClose = () => {
+    if (!hoverable) return;
+    cancelClose();
+    closeTimer.current = setTimeout(close, 140);
+  };
+
+  // The hub counts as active too, otherwise visiting a child page leaves the
+  // trigger looking unselected.
+  const active =
+    pathname === hub || items.some((item) => pathname === item.to);
 
   return (
     <div
       className="nav-group"
       ref={containerRef}
-      onMouseEnter={() => hoverable() && setOpenedFor(pathname)}
-      onMouseLeave={() => hoverable() && close()}
+      onMouseEnter={() => {
+        if (!hoverable) return;
+        cancelClose();
+        openNow();
+      }}
+      onMouseLeave={scheduleClose}
     >
       <button
         type="button"
@@ -94,7 +138,7 @@ function NavGroupMenu({ group }: { group: NavGroup }) {
         aria-current={active ? "true" : undefined}
         onClick={toggle}
       >
-        {group.label}
+        {label}
         <svg
           className="nav-group-chevron"
           viewBox="0 0 24 24"
@@ -115,11 +159,19 @@ function NavGroupMenu({ group }: { group: NavGroup }) {
       </button>
 
       {open && (
-        <div className="nav-group-menu" id={menuId}>
-          <Link to={group.hub} className="nav-group-overview">
-            {group.label} overview
+        <div
+          className="nav-group-menu"
+          id={menuId}
+          // Entering the menu cancels the pending close. Without this the
+          // 140ms grace period would close the menu out from under a pointer
+          // that made it across the gap but then paused inside.
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+        >
+          <Link to={hub} className="nav-group-overview">
+            {label} overview
           </Link>
-          {group.items.map((item) => (
+          {items.map((item) => (
             <Link
               key={item.to}
               to={item.to}
@@ -135,10 +187,11 @@ function NavGroupMenu({ group }: { group: NavGroup }) {
   );
 }
 
-const GROUPS: NavGroup[] = [
-  { label: "Product", hub: "/product", items: NAV_PRODUCT },
-  { label: "Company", hub: "/company", items: NAV_COMPANY },
-];
+/** Sections that get their own page. Product is one of them — a single click to
+ *  the hub is what a visitor expects, so it is a plain link rather than a menu
+ *  that only adds a click. */
+const PRODUCT_HUB = "/product";
+const COMPANY_HUB = "/company";
 
 /**
  * Marketing navigation shown on every public page. When the visitor is already
@@ -151,6 +204,7 @@ const GROUPS: NavGroup[] = [
  */
 export function LandingNavbar() {
   const { user } = useAuth();
+  const { pathname } = useLocation();
 
   return (
     <nav className="landing-navbar">
@@ -160,9 +214,25 @@ export function LandingNavbar() {
       </Link>
 
       <div className="landing-nav-links">
-        {GROUPS.map((group) => (
-          <NavGroupMenu key={group.label} group={group} />
-        ))}
+        {/* Derived from NAV_PRODUCT rather than a second hardcoded list, so
+            adding a Product page in the content module cannot leave the header
+            link looking unselected on that page. */}
+        <Link
+          to={PRODUCT_HUB}
+          className={`nav-direct-link${
+            pathname === PRODUCT_HUB ||
+            NAV_PRODUCT.some((item) => item.to === pathname)
+              ? " active"
+              : ""
+          }`}
+        >
+          Product
+        </Link>
+        <NavGroupMenu
+          label="Company"
+          hub={COMPANY_HUB}
+          items={NAV_COMPANY}
+        />
       </div>
 
       <div className="landing-nav-actions">

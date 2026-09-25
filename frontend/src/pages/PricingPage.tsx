@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { PageLayout, PageSection } from "../components/PageLayout";
+import {
+  PageCta,
+  PageLayout,
+  PageSection,
+} from "../components/PageLayout";
 import { PlanComparison } from "../components/landing/PlanComparison";
 import { FaqAccordion } from "../components/landing/FaqAccordion";
 import { FAQ_ITEMS, PLAN_DETAILS, PLANS } from "../content/marketing";
@@ -21,9 +25,13 @@ export function PricingPage() {
   return (
     <PageLayout
       eyebrow="Product"
-      title="Pricing that grows with you"
+      title={
+        <>
+          Pricing that{" "}
+          <span className="gradient-text">grows with you</span>
+        </>
+      }
       subtitle="Start free. Upgrade when the free limits start costing you more than the subscription."
-      activePath="/pricing"
     >
       <PageSection>
         <div className="billing-toggle">
@@ -95,6 +103,12 @@ export function PricingPage() {
       <PageSection title="Questions people actually ask">
         <FaqAccordion items={FAQ_ITEMS} />
       </PageSection>
+
+      <PageCta
+        title="Start on the free plan"
+        body="No card, no trial countdown. Upload documents, search them, and ask questions as long as the free limits hold."
+        secondary={{ to: "/how-it-works", label: "How it works" }}
+      />
     </PageLayout>
   );
 }

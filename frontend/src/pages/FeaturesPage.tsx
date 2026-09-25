@@ -1,5 +1,10 @@
 import { Link } from "react-router-dom";
-import { PageLayout, PageSection } from "../components/PageLayout";
+import {
+  PageCardIcon,
+  PageCta,
+  PageLayout,
+  PageSection,
+} from "../components/PageLayout";
 import { FeatureIcon } from "../components/landing/FeatureIcon";
 import { CORE_FEATURES, SECONDARY_FEATURES } from "../content/marketing";
 
@@ -15,15 +20,21 @@ export function FeaturesPage() {
   return (
     <PageLayout
       eyebrow="Product"
-      title="Everything you need to know your documents"
+      title={
+        <>
+          Everything you need to{" "}
+          <span className="gradient-text">know your documents</span>
+        </>
+      }
       subtitle="Upload, search, and ask — one private workspace per user. This page is the long version of the feature grid on the home page."
-      activePath="/features"
     >
       <PageSection title="Core capabilities">
         <div className="page-grid">
           {CORE_FEATURES.map((feature) => (
             <article key={feature.title} className="page-card-static" data-accent={feature.accent}>
-              <FeatureIcon path={feature.icon} />
+              <PageCardIcon>
+                <FeatureIcon path={feature.icon} />
+              </PageCardIcon>
               <h3>{feature.title}</h3>
               <p>{feature.body}</p>
             </article>
@@ -35,7 +46,9 @@ export function FeaturesPage() {
         <div className="page-grid page-grid-secondary">
           {SECONDARY_FEATURES.map((feature) => (
             <article key={feature.title} className="page-card-static" data-accent={feature.accent}>
-              <FeatureIcon path={feature.icon} />
+              <PageCardIcon>
+                <FeatureIcon path={feature.icon} />
+              </PageCardIcon>
               <h3>{feature.title}</h3>
               <p>{feature.body}</p>
             </article>
@@ -59,6 +72,12 @@ export function FeaturesPage() {
           read.
         </p>
       </PageSection>
+
+      <PageCta
+        title="See it on your own documents"
+        body="Create a workspace, upload a handful of files, and ask something only your documents can answer."
+      />
+
     </PageLayout>
   );
 }

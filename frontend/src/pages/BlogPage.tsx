@@ -16,7 +16,6 @@ export function BlogPage() {
       eyebrow="Company"
       title="Blog"
       subtitle="Notes on retrieval, embeddings, and the parts of document processing that are harder than they look."
-      activePath="/blog"
     >
       <PageSection>
         <div className="empty-state-panel">

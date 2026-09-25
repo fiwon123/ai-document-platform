@@ -1,5 +1,9 @@
 import { Link } from "react-router-dom";
-import { PageLayout, PageSection } from "../components/PageLayout";
+import {
+  PageCta,
+  PageLayout,
+  PageSection,
+} from "../components/PageLayout";
 import { SITE } from "../content/marketing";
 
 const PRINCIPLES = [
@@ -34,9 +38,12 @@ export function AboutPage() {
   return (
     <PageLayout
       eyebrow="Company"
-      title="About AskDocs"
+      title={
+        <>
+          About <span className="gradient-text">AskDocs</span>
+        </>
+      }
       subtitle="An AI document intelligence platform, built in the open because the interesting problems in retrieval are worth sharing."
-      activePath="/about"
     >
       <PageSection title="What this is">
         <p>
@@ -97,6 +104,12 @@ export function AboutPage() {
           maintainers.
         </p>
       </PageSection>
+
+      <PageCta
+        title="Read the code, not a pitch"
+        body="Everything described on this page is in the repository, and the commit history is the actual record of the decisions."
+        secondary={{ to: "/contact", label: "Ask a question" }}
+      />
     </PageLayout>
   );
 }

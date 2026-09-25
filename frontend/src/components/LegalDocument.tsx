@@ -29,20 +29,17 @@ export function LegalDocument({
   title,
   intro,
   sections,
-  activePath,
 }: {
   eyebrow: string;
   title: string;
   intro: string;
   sections: LegalSection[];
-  activePath: string;
 }) {
   return (
     <PageLayout
       eyebrow={eyebrow}
       title={title}
       subtitle={intro}
-      activePath={activePath}
     >
       <TemplateNotice>
         This page is a starting template, not a reviewed legal document. It
