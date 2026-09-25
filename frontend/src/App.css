@@ -632,7 +632,16 @@ body {
   border-bottom: 1px solid color-mix(in srgb, var(--paper) 12%, transparent);
 }
 
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .navbar-brand a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 1.15rem;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -641,14 +650,28 @@ body {
   white-space: nowrap;
 }
 
-.navbar-brand a::after {
-  content: "";
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-left: 6px;
-  border-radius: 50%;
-  background: var(--blue);
+/* Brand mark on the inverted app bar: --paper is light text on the dark bar
+   in light mode and dark text on the light bar in dark mode. */
+.navbar-brand-mark {
+  color: var(--paper);
+  flex: none;
+}
+
+/* "Workspace" pill next to the brand — same inverse-aware colors as the
+   navbar text so it stays legible on both themes. */
+.navbar-workspace-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--paper) 38%, transparent);
+  color: var(--paper);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .navbar-links {
@@ -676,6 +699,21 @@ body {
   background: color-mix(in srgb, var(--paper) 16%, transparent);
   opacity: 1;
   font-weight: 600;
+}
+
+/* "Back to site" exit link: slightly dimmer than the workspace links and
+   never highlighted as active (it leaves the app). The arrow keeps it from
+   reading as another workspace page. */
+.navbar-links a.navbar-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0.62;
+}
+
+.navbar-links a.navbar-back-link:hover {
+  opacity: 0.95;
+  background: color-mix(in srgb, var(--paper) 8%, transparent);
 }
 
 .navbar-user {
@@ -781,6 +819,13 @@ body {
 
 .navbar-toggle[aria-expanded="true"] .navbar-toggle-bar:nth-child(3) {
   transform: translateY(-6px) rotate(-45deg);
+}
+
+/* Brand row gets tight on small screens — drop the badge, keep icon + name. */
+@media (max-width: 768px) {
+  .navbar-workspace-badge {
+    display: none;
+  }
 }
 
 .navbar-user-mobile {

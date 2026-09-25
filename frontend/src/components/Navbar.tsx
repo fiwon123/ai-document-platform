@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { ThemeToggle } from "./ThemeToggle";
+import { ArrowLeftIcon, BrandMark } from "./icons";
 
 interface NavLinkDef {
   to: string;
@@ -9,13 +10,16 @@ interface NavLinkDef {
   /** True when the current pathname should mark this link active. */
   isActive: (pathname: string) => boolean;
   adminOnly?: boolean;
+  /** Exit link back to the public site — styled subtly and never active. */
+  backLink?: boolean;
 }
 
 const NAV_LINKS: NavLinkDef[] = [
   {
     to: "/",
-    label: "Home",
-    isActive: (pathname) => pathname === "/",
+    label: "Back to site",
+    isActive: () => false,
+    backLink: true,
   },
   {
     to: "/app",
@@ -95,9 +99,11 @@ export const Navbar = memo(function Navbar() {
   return (
     <nav className="navbar">
       <div className="navbar-brand">
-<Link to="/app" aria-label="AskDocs home" onClick={closeMenu}>
-          AskDocs
+        <Link to="/app" aria-label="AskDocs home" onClick={closeMenu}>
+          <BrandMark className="navbar-brand-mark" />
+          <span>AskDocs</span>
         </Link>
+        <span className="navbar-workspace-badge">Workspace</span>
       </div>
 
       <button
@@ -127,9 +133,10 @@ export const Navbar = memo(function Navbar() {
                 key={link.to}
                 to={link.to}
                 onClick={closeMenu}
-                className={active ? "active" : undefined}
+                className={link.backLink ? "navbar-back-link" : active ? "active" : undefined}
                 aria-current={active ? "page" : undefined}
               >
+                {link.backLink && <ArrowLeftIcon />}
                 {link.label}
               </Link>
             );
