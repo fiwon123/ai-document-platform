@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -100,6 +102,36 @@ describe("LandingPage", () => {
       "violet",
       "green",
     ]);
+  });
+
+  it("staggers the stat counts so the row completes left to right", () => {
+    // The three figures scroll into view together and start counting together;
+    // the stagger comes from durationMs, which must therefore *increase* left
+    // to right. The easing is symmetric, so a shorter run is a genuinely
+    // earlier arrival, and App.css scales each number up 1.12em while it
+    // counts — so the leftmost settles and shrinks back first, and the eye is
+    // walked across the row rather than handed three numbers that land at once.
+    //
+    // This asserts the ordering, not the literals, so retuning the timings does
+    // not break it. A render test cannot see it: the durations are consumed by
+    // the interval, and the same three final strings appear either way.
+    const source = readFileSync(
+      resolve(process.cwd(), "src", "pages", "LandingPage.tsx"),
+      "utf8",
+    );
+    const durations = [
+      ...source.matchAll(/<CountUp\b[^>]*durationMs=\{(\d+)\}/g),
+    ].map((m) => Number(m[1]));
+
+    expect(durations).toHaveLength(3);
+    // Strictly increasing: equal durations collapse the stagger back into a
+    // single simultaneous landing, which is the regression being guarded.
+    expect(durations[0]).toBeLessThan(durations[1]!);
+    expect(durations[1]).toBeLessThan(durations[2]!);
+    // A gap too small to perceive is no better than none — under ~150ms the
+    // three completions blur into one event and the ordering stops reading.
+    expect(durations[1]! - durations[0]!).toBeGreaterThanOrEqual(150);
+    expect(durations[2]! - durations[1]!).toBeGreaterThanOrEqual(150);
   });
 
   it("labels the illustrative stats honestly as sample data", () => {

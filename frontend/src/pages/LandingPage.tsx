@@ -458,23 +458,37 @@ export function LandingPage() {
               same accent palette the feature/step cards use (see App.css
               [data-accent]) instead of one shared gradient. Documents = blue,
               questions = violet, uptime = green, so the three read as a set
-              rather than as three copies of the same figure. */}
+              rather than as three copies of the same figure.
+
+              durationMs is staggered 1750 / 2000 / 2250 on purpose. All three
+              scroll into view together and start counting together; giving the
+              leftmost the shortest run means the row completes left to right.
+              The easing is symmetric, so a shorter duration is a genuinely
+              earlier arrival rather than a different-looking path. Combined
+              with the 1.12em "still counting" size in App.css, the viewer sees
+              the left figure settle and shrink back first, then the middle,
+              then the right — the eye is walked across the row instead of
+              being handed three numbers that all land at once.
+
+              Do not close this gap much further: under ~150ms the three
+              completions blur back into a single event, and the stagger stops
+              reading as an ordered sequence. */}
           <div className="stat-row">
             <div className="stat-item" data-accent="blue">
               <strong className="stat-value">
-                <CountUp value={12000} suffix="+" />
+                <CountUp value={12000} suffix="+" durationMs={1750} />
               </strong>
               <span>Documents processed</span>
             </div>
             <div className="stat-item" data-accent="violet">
               <strong className="stat-value">
-                <CountUp value={48000} suffix="+" />
+                <CountUp value={48000} suffix="+" durationMs={2000} />
               </strong>
               <span>Questions answered</span>
             </div>
             <div className="stat-item" data-accent="green">
               <strong className="stat-value">
-                <CountUp value={99} suffix="%" />
+                <CountUp value={99} suffix="%" durationMs={2250} />
               </strong>
               <span>Search uptime</span>
             </div>
