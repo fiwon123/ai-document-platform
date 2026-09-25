@@ -44,9 +44,24 @@ export const STEP_ICONS = {
   chat: "M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z",
 };
 
+/**
+ * Social glyphs, as SVG path data.
+ *
+ * GitHub is on a 16x16 grid and everything else is on 24x24, so its glyph MUST
+ * be given a matching `viewBox` (see `SocialLink` in LandingFooter) or it will
+ * render at two-thirds size next to its neighbours.
+ *
+ * The GitHub glyph is the Octicons "mark-github" — a solid disc with the Octocat
+ * knocked out — rather than the Octocat *silhouette* this used to ship. The two
+ * have almost identical bounding boxes (both ~0.975 w:h), so the silhouette's
+ * problem was never its aspect ratio; it was the silhouette itself. The Octocat
+ * is an egg-shaped blob, and an egg-shaped blob inside a round button reads as an
+ * oval next to a flat bird and a rounded square. A disc reads as a circle, which
+ * is what the surrounding button already is.
+ */
 export const SOCIAL_PATHS = {
   github:
-    "M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.58 9.58 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z",
+    "M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z",
   twitter:
     "M23.95 4.57a9.6 9.6 0 0 1-2.75.75 4.8 4.8 0 0 0 2.1-2.65 9.6 9.6 0 0 1-3.04 1.16 4.79 4.79 0 0 0-8.16 4.37A13.6 13.6 0 0 1 1.67 3.15a4.79 4.79 0 0 0 1.48 6.4 4.78 4.78 0 0 1-2.17-.6v.06a4.79 4.79 0 0 0 3.84 4.69 4.8 4.8 0 0 1-2.16.08 4.79 4.79 0 0 0 4.47 3.32A9.6 9.6 0 0 1 1.18 19a13.5 13.5 0 0 0 7.33 2.15c8.8 0 13.6-7.28 13.6-13.6l-.01-.62A9.7 9.7 0 0 0 23.95 4.57Z",
   linkedin:
