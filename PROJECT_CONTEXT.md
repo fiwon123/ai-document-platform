@@ -36,6 +36,7 @@ The platform allows users to:
 - Semantic caching (QA answers, dashboard statistics)
 - User and admin dashboards with system-wide statistics
 - User-specific document isolation
+- Public marketing site (product, company, and legal pages; no auth)
 - Rate limiting
 - Error handling and retries
 - Monitoring and logging
@@ -137,15 +138,22 @@ LLM and Embedding APIs
 ├── frontend/                   # React 19 / Vite / TypeScript SPA
 │   ├── src/                   # Source code
 │   │   ├── components/        # Navbar, ProtectedRoute, DocumentFilter, EmptyState,
-│   │   │                      # LandingNavbar, Markdown, Skeleton, Spinner
+│   │   │                      # LandingNavbar, LandingFooter, PageLayout,
+│   │   │                      # LegalDocument, Markdown, Skeleton, Spinner
+│   │   ├── content/           # marketing.ts — single source for marketing copy,
+│   │   │                      # navigation, the route list, and pricing data
 │   │   ├── context/           # ToastContext (toast notifications)
 │   │   ├── pages/             # Landing, Login, Register, Documents, Search, QA,
 │   │   │                      # Dashboard, Admin, Profile, Settings, Webhooks,
 │   │   │                      # Demo, NotFound
+│   │   │                      # Marketing: Product, Features, HowItWorks, Pricing,
+│   │   │                      # Company, About, Blog, Careers, Contact
+│   │   │                      # Legal: Privacy, Terms, Security, GDPR
 │   │   ├── hooks/             # useAuth, useTheme
 │   │   ├── services/api.ts    # Typed API client (auth, documents, search, qa, statistics, users)
 │   │   ├── types/index.ts     # Shared TypeScript types
-│   │   ├── App.tsx            # Main app with routing (+ LandingGate guard component)
+│   │   ├── App.tsx            # Main app with routing (public marketing routes +
+│   │   │                      # LandingGate guard component)
 │   │   ├── App.css, index.css # Styles
 │   │   ├── main.tsx           # Entry point
 │   │   └── *.test.ts(x)       # Colocated Vitest tests
@@ -287,6 +295,44 @@ LLM and Embedding APIs
 ### Health
 - `GET /v1/health` - Health check endpoint (checks PostgreSQL, Redis, MinIO)
 
+## Public marketing routes (frontend, no API)
+
+Served by the SPA at the site root (the backend mounts API routes under `/v1`
+only). Every route below is public — no auth — and every one is reachable from
+the header or footer.
+
+| Section | Route | Page |
+|---|---|---|
+| — | `/` | Landing (hero, features, pipeline, pricing, FAQ) |
+| — | `/demo` | Live demo |
+| Product | `/product` | Product hub |
+| Product | `/features` | Feature catalogue |
+| Product | `/how-it-works` | Pipeline walkthrough |
+| Product | `/pricing` | Plans, limits, comparison, FAQ |
+| Company | `/company` | Company hub |
+| Company | `/about` | About |
+| Company | `/blog` | Blog (index; no posts published yet) |
+| Company | `/careers` | Open roles and working model |
+| Company | `/contact` | Contact (GitHub + `mailto:`) |
+| Legal | `/privacy` | Privacy Policy |
+| Legal | `/terms` | Terms of Service |
+| Legal | `/security` | Security |
+| Legal | `/gdpr` | GDPR |
+
+Navigation rules:
+
+- **Header** carries Product and Company only, as disclosure menus. Legal pages
+  are footer-only by design.
+- **Footer** carries all three columns, each starting with its section overview.
+- `frontend/src/content/marketing.ts` is the single source for the route list,
+  the navigation, and the marketing copy, so the header, footer, hub pages, and
+  the routing test cannot disagree about what exists.
+
+> **Before publishing the legal pages**: they are templates and carry a visible
+> review notice. `SITE` in `content/marketing.ts` still holds placeholder
+> values — `*.example` email addresses, the entity name, and the jurisdiction —
+> which must be replaced, and the text reviewed by a qualified lawyer.
+
 ## Environment configuration
 
 ### Backend (backend/src/app/.env)
@@ -366,6 +412,16 @@ when done; `make check` before every push; only `dev-up` requires opencode
   per-user cache versions, so document changes invalidate stale cache entries
 - **PDF thumbnails**: First-page previews rendered with PyMuPDF in the background
   worker (best-effort; `has_thumbnail` flag on the document)
+- **Marketing content in one module**: `frontend/src/content/marketing.ts` holds
+  the route list, navigation, pricing, and copy, so the header, footer, hub
+  pages, and the routing test cannot disagree about what exists
+- **Disclosure menus, not ARIA menus**: Header section menus are a button with
+  `aria-expanded` revealing ordinary links, which needs no roving focus or
+  type-ahead. Open state is derived from the current path rather than reset in an
+  effect, so navigating closes the menu without a second render pass
+- **Honest absent affordances**: Social icons for accounts that do not exist
+  render as non-interactive blocks (no `href`, no tab stop) instead of links
+  that go nowhere; the blog shows an empty state rather than fabricated posts
 - **Production deployment**: Multi-stage production Docker images,
   Kustomize overlays, and a standalone Helm chart for Kubernetes
 
@@ -403,13 +459,16 @@ when done; `make check` before every push; only `dev-up` requires opencode
 - [x] Logging middleware
 - [x] CORS configuration (env-driven via `CORS_ORIGINS`; dev ports 5173, 5175, 3000)
 - [x] Frontend React app with routing (landing, login, register, documents, search, QA, dashboard, admin, profile, settings, demo)
+- [x] Multi-page marketing site (13 public routes: Product, Features, How it works,
+      Pricing, Company, About, Blog, Careers, Contact, Privacy, Terms, Security,
+      GDPR) with header disclosure menus and a full footer — see the route table above
 - [x] Frontend auth pages (login/register)
 - [x] Frontend document management page (upload incl. bulk, thumbnail previews, delete)
 - [x] Frontend search UI with pagination and CSV/JSON export
 - [x] Frontend Q&A chat interface
 - [x] User admin dashboard (role changes, activation toggle, user deletion, system statistics)
 - [x] User dashboard (documents by status, chunks, recent documents)
-- [x] Testing suite (200 backend tests, 129 frontend tests)
+- [x] Testing suite (334 backend tests, 415 frontend tests)
 - [x] CI/CD pipeline (GitHub Actions: backend tests + ruff lint; frontend lint + build + tests)
 - [x] Production Docker images (backend, worker, frontend with nginx)
 - [x] Kubernetes deployment (Kustomize base + dev/production overlays, standalone Helm chart, Kind cluster scripts)
