@@ -463,6 +463,137 @@ body {
   flex-shrink: 0;
 }
 
+/* ── Documents page toolbar (name search + status chips) ──────────────
+   Sits between the dropzone and the grid. The search field grows, the
+   chips wrap, and the "Showing X of Y" line stays compact. */
+.documents-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  margin: 16px 0 20px;
+}
+
+.documents-search {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.documents-search svg {
+  position: absolute;
+  left: 12px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.documents-search input {
+  width: 100%;
+  padding: 9px 14px 9px 36px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.9rem;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.documents-search input:focus-visible {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-15, rgba(37, 99, 235, 0.15));
+}
+
+.documents-search input::placeholder {
+  color: var(--muted);
+}
+
+.documents-search-clear {
+  position: absolute;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.documents-search-clear:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+
+.documents-search-clear:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.status-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.filter-chip.is-selected .chip-count {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--paper);
+}
+
+.documents-result-count {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.documents-filter-clear {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--blue);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.documents-filter-clear:hover {
+  color: var(--blue-hover);
+}
+
+.documents-filter-clear:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .typing {
   display: inline-flex;
   align-items: center;
