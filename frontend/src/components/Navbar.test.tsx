@@ -41,15 +41,24 @@ describe("Navbar", () => {
     logout.mockClear();
   });
 
-  it("shows the brand and core navigation links", () => {
+  it("shows the brand, workspace badge and core navigation links", () => {
     renderNavbar();
     expect(screen.getByText("AskDocs")).toBeTruthy();
-    expect(screen.getByText("Home")).toBeTruthy();
+    expect(screen.getByText("Workspace")).toBeTruthy();
+    expect(screen.getByText("Back to site")).toBeTruthy();
     expect(screen.getByText("Dashboard")).toBeTruthy();
     expect(screen.getByText("Documents")).toBeTruthy();
     expect(screen.getByText("Search")).toBeTruthy();
     expect(screen.getByText("Q&A")).toBeTruthy();
     expect(screen.getByText("Settings")).toBeTruthy();
+  });
+
+  it("renders the AskDocs brand mark next to the name", () => {
+    const { container } = renderNavbar();
+    expect(container.querySelector(".navbar-brand-mark")).toBeTruthy();
+    expect(
+      container.querySelector(".navbar-brand a span")?.textContent,
+    ).toBe("AskDocs");
   });
 
   it("only renders the Users link for admins", () => {
@@ -66,7 +75,9 @@ describe("Navbar", () => {
     expect(
       screen.getByRole("link", { name: "AskDocs home" }).getAttribute("href"),
     ).toBe("/app");
-    expect(screen.getByRole("link", { name: "Home" }).getAttribute("href")).toBe("/");
+    expect(
+      screen.getByRole("link", { name: "Back to site" }).getAttribute("href"),
+    ).toBe("/");
     expect(screen.getByRole("link", { name: "Dashboard" }).getAttribute("href")).toBe("/app");
     expect(screen.getByRole("link", { name: "Documents" }).getAttribute("href")).toBe("/app/documents");
     expect(screen.getByRole("link", { name: "Search" }).getAttribute("href")).toBe("/app/search");
@@ -98,8 +109,10 @@ describe("Navbar", () => {
     });
 
     fireEvent.click(toggle);
-    // Focus lands on the first menu link (Home).
-    expect(document.activeElement).toBe(screen.getByRole("link", { name: "Home" }));
+    // Focus lands on the first menu link (Back to site).
+    expect(document.activeElement).toBe(
+      screen.getByRole("link", { name: "Back to site" }),
+    );
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByRole("button", {
@@ -123,8 +136,18 @@ describe("Navbar", () => {
       screen.getByRole("link", { name: "Dashboard" }).getAttribute("aria-current"),
     ).toBeNull();
     expect(
-      screen.getByRole("link", { name: "Home" }).getAttribute("aria-current"),
+      screen.getByRole("link", { name: "Back to site" }).getAttribute("aria-current"),
     ).toBeNull();
+  });
+
+  it("styles the back link as an exit link (never active, arrow included)", () => {
+    const { container } = renderNavbar();
+    const backLink = screen.getByRole("link", { name: "Back to site" });
+    expect(backLink.className).toContain("navbar-back-link");
+    // The arrow icon renders inside the link.
+    expect(backLink.querySelector("svg")).toBeTruthy();
+    // The back link does not sit inside the .navbar-brand block.
+    expect(container.querySelector(".navbar-brand")?.contains(backLink)).toBe(false);
   });
 
   it("marks the dashboard link active on the /app index", () => {
