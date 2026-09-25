@@ -6221,31 +6221,6 @@ body {
   position: relative;
 }
 
-/* A section that is a single page needs no menu — it is a link. Styled from the
-   same tokens as the trigger so the header reads as one row rather than one
-   link next to one button. */
-.nav-direct-link {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 0;
-  color: var(--muted);
-  font-size: 0.92rem;
-  font-weight: 600;
-  text-decoration: none;
-  transition: color 0.2s;
-}
-
-.nav-direct-link:hover,
-.nav-direct-link.active {
-  color: var(--ink);
-}
-
-.nav-direct-link:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: 3px;
-  border-radius: 4px;
-}
-
 .nav-group-trigger {
   display: inline-flex;
   align-items: center;
