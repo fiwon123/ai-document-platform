@@ -8,6 +8,22 @@ vi.mock("../components/DocumentFilter", () => ({
   DocumentFilter: () => <div data-testid="document-filter" />,
 }));
 
+// Mutable URL-params holder: tests can seed params before render and the
+// mock setter ("navigate") records/replaces them like the real router.
+const urlParamsHolder = vi.hoisted(() => {
+  const holder = {
+    params: new URLSearchParams(),
+    setParams: vi.fn((next: URLSearchParams) => {
+      holder.params = next;
+    }),
+  };
+  return holder;
+});
+
+vi.mock("react-router-dom", () => ({
+  useSearchParams: () => [urlParamsHolder.params, urlParamsHolder.setParams],
+}));
+
 vi.mock("../services/api", () => ({
   search: { search: vi.fn(), exportResults: vi.fn() },
 }));
@@ -44,6 +60,8 @@ function byFullText(text: string) {
 
 describe("SearchPage", () => {
   beforeEach(() => {
+    urlParamsHolder.params = new URLSearchParams();
+    urlParamsHolder.setParams.mockClear();
     mockedSearch.mockResolvedValue({
       query: "",
       results: [result],
@@ -431,5 +449,49 @@ describe("SearchPage", () => {
       });
     });
     expect(screen.queryByRole("status", { name: "Searching" })).toBeNull();
+  });
+
+  it("shows the match-strength legend once results are on screen", async () => {
+    await runSearch("q3 planning");
+    expect(screen.getByText("Match strength:")).toBeTruthy();
+    expect(screen.getByText(/strong 65%\+/)).toBeTruthy();
+    expect(screen.getByText(/partial 35–64%/)).toBeTruthy();
+    expect(screen.getByText(/weak below 35%/)).toBeTruthy();
+  });
+
+  it("colours the match chip by its score tone", async () => {
+    await runSearch("q3 planning");
+    // 0.92 distance → 8% similarity → the weak (red) tone.
+    const chip = screen.getByText("8% match");
+    expect(chip.className).toContain("tone-weak");
+  });
+
+  it("hydrates query and document scope from URL params on mount", async () => {
+    mockedSearch.mockResolvedValue({
+      query: "security",
+      results: [result],
+      total_count: 1,
+      has_more: false,
+    });
+    urlParamsHolder.params = new URLSearchParams("q=security&doc=d-9");
+
+    renderWithClient(<SearchPage />);
+    await act(async () => {});
+
+    expect(
+      screen.getByPlaceholderText("Search your documents..."),
+    ).toHaveValue("security");
+    // The search fires immediately with the deep-linked scope.
+    expect(mockedSearch).toHaveBeenCalledWith("security", 5, ["d-9"], 0);
+  });
+
+  it("mirrors the live search state back into the URL", async () => {
+    await runSearch("q3 planning");
+    expect(urlParamsHolder.setParams).toHaveBeenCalledWith(
+      expect.any(URLSearchParams),
+      { replace: true },
+    );
+    const written = urlParamsHolder.setParams.mock.calls.at(-1)?.[0] as URLSearchParams;
+    expect(written.get("q")).toBe("q3 planning");
   });
 });

@@ -19,6 +19,13 @@ function renderDemo() {
   );
 }
 
+/** Matches by full textContent containment — needed when a snippet is split
+ *  into <mark>/<span> children by query-term highlighting. */
+function byContainedText(text: string) {
+  return (_content: string, element: Element | null) =>
+    element?.textContent?.includes(text) === true;
+}
+
 async function runSearch(query: string) {
   fireEvent.change(screen.getByPlaceholderText("Search sample documents..."), {
     target: { value: query },
@@ -64,10 +71,13 @@ describe("DemoPage", () => {
     await runSearch("benefits");
 
     expect(
-      screen.getByText(/Review the full benefits catalog in Workday/i),
-    ).toBeTruthy();
+      screen.getAllByText(byContainedText("Review the full benefits catalog in Workday")).length,
+    ).toBeGreaterThan(0);
     expect(screen.getByText("Results (1)")).toBeTruthy();
-    expect(screen.getByText("Score: 95.0%")).toBeTruthy();
+    // The match chip renders the fake relevance as a percentage; query terms
+    // are wrapped in <mark> inside the snippet.
+    expect(screen.getByText("95% match")).toBeTruthy();
+    expect(document.querySelectorAll("mark").length).toBeGreaterThan(0);
     // The filename shows in the document card and in the result card header.
     expect(screen.getAllByText("company-handbook.pdf").length).toBeGreaterThan(1);
     expect(screen.getByText("9 searches left")).toBeTruthy();

@@ -5,6 +5,12 @@ import { renderWithClient } from "../test/renderWithClient";
 import { documents, qa } from "../services/api";
 import type { QAResponse } from "../types";
 
+const navigateMock = vi.hoisted(() => vi.fn());
+
+vi.mock("react-router-dom", () => ({
+  useNavigate: () => navigateMock,
+}));
+
 vi.mock("../services/api", () => ({
   qa: { ask: vi.fn(), getModels: vi.fn() },
   documents: { list: vi.fn() },
@@ -13,6 +19,13 @@ vi.mock("../services/api", () => ({
 const mockedAsk = vi.mocked(qa.ask);
 const mockedList = vi.mocked(documents.list);
 const mockedGetModels = vi.mocked(qa.getModels);
+
+/** Matches full textContent — needed when the preview is split into
+ *  <mark>/<span> children by query-term highlighting. */
+function byFullText(text: string) {
+  return (_content: string, element: Element | null) =>
+    element?.textContent === text;
+}
 
 function ask(
   question: string,
@@ -213,17 +226,22 @@ describe("QAPage", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
-    expect(await screen.findByText("Sources:")).toBeTruthy();
+    expect(await screen.findByText(/Sources — why this document/)).toBeTruthy();
     expect(screen.getByText("annual-report.pdf")).toBeTruthy();
+    // 0.93 distance → 7% similarity → the weak tone chip.
+    expect(screen.getByText("7% match")).toBeTruthy();
     expect(
-      screen.getByText(/Revenue grew by 20% in Q4 across all segments/),
+      screen.getByText(/closest semantic match to your question/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(byFullText("Revenue grew by 20% in Q4 across all segments.")),
     ).toBeTruthy();
   });
 
   it("omits the sources section when the answer has no sources", async () => {
     ask("Hi", "No sources here", null);
     await askQuestion("Hi");
-    expect(screen.queryByText("Sources:")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sources — why this document/)).not.toBeInTheDocument();
   });
 
   it("passes the persisted model from localStorage to the API", async () => {
@@ -247,6 +265,50 @@ describe("QAPage", () => {
     ask("Default model?", "The default.", null);
     await askQuestion("Default model?");
     expect(mockedAsk).toHaveBeenCalledWith("Default model?", undefined, undefined);
+  });
+
+  it("highlights the question terms inside the source preview", async () => {
+    const sources: QAResponse["sources"] = [
+      {
+        chunk_id: "chunk-2",
+        document_id: "doc-2",
+        document_filename: "notes.txt",
+        content: "Q3 planning meeting notes about revenue and growth.",
+        score: 0.08,
+        metadata_: null,
+      },
+    ];
+    ask("What about Q3?", "Revenue grew.", null, sources);
+    await askQuestion("What about Q3?");
+
+    // The preview is clipped to 240 chars and query terms are <mark>ed
+    // (tokens shorter than 3 chars like "Q3" are skipped by the matcher).
+    expect(
+      screen.getByText(byFullText("Q3 planning meeting notes about revenue and growth.")),
+    ).toBeTruthy();
+    const marks = document.querySelectorAll("mark");
+    expect(marks.length).toBeGreaterThan(0);
+    expect(marks[0]!.textContent).toBe("about");
+  });
+
+  it("navigates to a search scoped to the source document on click", async () => {
+    const sources: QAResponse["sources"] = [
+      {
+        chunk_id: "chunk-3",
+        document_id: "doc-9",
+        document_filename: "security.txt",
+        content: "Security policies live in the handbook.",
+        score: 0.2,
+        metadata_: null,
+      },
+    ];
+    ask("Where is security covered?", "In the handbook.", null, sources);
+    await askQuestion("Where is security covered?");
+
+    fireEvent.click(screen.getByRole("button", { name: /security\.txt/ }));
+    expect(navigateMock).toHaveBeenCalledWith(
+      "/app/search?q=Where%20is%20security%20covered%3F&doc=doc-9",
+    );
   });
 
   it("limits the question to the selected documents from the filter", async () => {
