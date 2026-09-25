@@ -1,8 +1,23 @@
-.PHONY: help setup host-tools infra-up infra-down preflight dev-up dev-build dev-down dev-restart \
+.PHONY: help setup host-tools infra-up infra-down check-identity preflight dev-up dev-build dev-down dev-restart \
         dev-log dev-exec dev-agent opencode shell sandbox reset \
         test test-backend test-frontend lint lint-fix format typecheck build check
 
 COMPOSE := docker compose
+
+# Run bind-mounted dev services as the host developer instead of root. Derive
+# the identity from the workspace owner (not the current process) so invoking
+# Make inside an already-running bind-mounted container still uses the host
+# identity. The id fallback is only for unusual filesystems without stat.
+HOST_UID ?= $(shell stat -c '%u' . 2>/dev/null || stat -f '%u' . 2>/dev/null || id -u)
+HOST_GID ?= $(shell stat -c '%g' . 2>/dev/null || stat -f '%g' . 2>/dev/null || id -g)
+HOST_HOME ?= $(HOME)
+HOST_PROJECT_DIR ?= $(abspath .)
+DOCKER_GID ?= $(shell stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null || printf '999')
+export HOST_UID HOST_GID HOST_HOME HOST_PROJECT_DIR DOCKER_GID
+
+check-identity:
+	@test "$(HOST_UID)" != "0" || { echo "ERROR: refusing to run the dev sandbox as UID 0; repair workspace ownership or set HOST_UID to the host user." >&2; exit 1; }
+
 BACKEND_DIR := backend
 FRONTEND_DIR := frontend
 
@@ -42,32 +57,34 @@ OPENCODE_BIN ?= $(HOME)/.opencode/bin/opencode
 #   make opencode OPENCODE_ARGS="run 'task' --auto"     # one-shot non-interactive
 OPENCODE_ARGS ?= --auto
 
-preflight: ## (internal) Require host opencode + pre-create mounted config paths
-	@test -x "$(OPENCODE_BIN)" || { echo "ERROR: opencode not found at $(OPENCODE_BIN)" >&2; \
+preflight: check-identity ## (internal) Require host opencode + pre-create mounted config paths
+	@test -x "$(HOST_HOME)/.opencode/bin/opencode" || { echo "ERROR: opencode not found at $(HOST_HOME)/.opencode/bin/opencode" >&2; \
 	  echo "  Install: curl -fsSL https://opencode.ai/install | bash" >&2; exit 1; }
-	@mkdir -p "$(HOME)/.config/opencode" "$(HOME)/.config/gh" && touch "$(HOME)/.gitconfig"
+	@mkdir -p "$(HOST_HOME)/.config/opencode" "$(HOST_HOME)/.config/gh" && touch "$(HOST_HOME)/.gitconfig"
 
 dev-up: preflight ## Start the isolated dev sandbox (uvicorn + vite + worker + infra)
-	$(COMPOSE) up dev worker
+	$(COMPOSE) up --build dev worker
 
-dev-build: ## Rebuild the dev image after Dockerfile/pyproject/uv.lock changes
-	$(COMPOSE) build dev
+dev-build: check-identity ## Rebuild the dev images after Dockerfile/pyproject/uv.lock changes
+	$(COMPOSE) build dev worker
 
 dev-down: ## Stop the dev sandbox (keeps volumes)
 	$(COMPOSE) down
 
 dev-restart: preflight ## Stop and restart the dev sandbox in one step (volumes kept)
 	$(COMPOSE) down
-	$(COMPOSE) up dev worker
+	$(COMPOSE) up --build dev worker
 
 dev-log: ## Tail dev sandbox logs
 	$(COMPOSE) logs -f dev
 
-dev-exec: ## Open a shell inside the dev sandbox
+dev-exec: preflight ## Open a shell inside the dev sandbox
+	$(COMPOSE) up -d --build dev worker
 	$(COMPOSE) exec dev zsh
 
 opencode: preflight ## Run the AI coding agent (opencode) inside the dev sandbox
-	@if [ -z "$$($(COMPOSE) ps -q dev)" ]; then echo "[opencode] starting dev stack..."; $(COMPOSE) up -d dev; fi
+	@echo "[opencode] ensuring dev stack is built and running..."
+	$(COMPOSE) up -d --build dev worker
 	@if [ -t 0 ]; then $(COMPOSE) exec -it dev zsh -lc "cd /sandbox/ai-document-platform && opencode $(OPENCODE_ARGS)"; else $(COMPOSE) exec -T dev zsh -lc "cd /sandbox/ai-document-platform && opencode $(OPENCODE_ARGS)"; fi
 
 # Alias kept for compatibility with earlier dev-sandbox docs.

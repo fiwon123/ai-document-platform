@@ -6,6 +6,45 @@ between the host and the `dev` container — you, the AI coding agent, and the
 running app all see the same files. This cheatsheet covers the daily loop. Full
 architecture and conventions live in `AGENTS.md` / `PROJECT_CONTEXT.md`.
 
+## Host identity and bind mounts
+
+The `dev` and `worker` services run as the host developer's UID/GID. Files
+created in the shared workspace by opencode, npm, Python, or migrations are
+therefore editable in VS Code without `sudo`. The trusted `dev` service also
+receives the host Docker socket's group so the sandboxed agent can use Docker.
+
+Use the Make targets below: they export `HOST_UID`, `HOST_GID`, `HOST_HOME`,
+`HOST_PROJECT_DIR`, and `DOCKER_GID` automatically, and their startup targets
+pass `--build` so a stale image cannot carry another user's identity. If
+invoking `docker compose` directly, export the same values and build before
+starting (the defaults target the common UID/GID 1000 setup). On Fedora/Linux,
+for example:
+
+```bash
+export HOST_UID="$(id -u)"
+export HOST_GID="$(id -g)"
+export DOCKER_GID="$(stat -c '%g' /var/run/docker.sock)"
+docker compose up --build dev worker
+```
+
+The running `dev` service receives `HOST_HOME` and `HOST_PROJECT_DIR` as
+well, so an agent invoking Docker Compose from inside the sandbox still sends
+host paths to the host Docker daemon. The values also let Make derive the host
+identity from the workspace owner when invoked inside an existing sandbox.
+The sandbox targets refuse UID 0 so an unrepaired root-owned checkout cannot
+silently recreate the original problem. On macOS, use `stat -f '%g'` for
+`DOCKER_GID` when necessary.
+
+The first run after upgrading from the old root-running sandbox may need a
+one-time ownership repair for files already created by root:
+
+```bash
+sudo chown -R "$(id -u):$(id -g)" .
+```
+
+Run it from the repository root once, then use the normal non-root sandbox
+workflow. This repair is not needed on a fresh clone.
+
 ## Golden rules
 
 1. `make dev-up` to start → `make dev-log` (2nd terminal) → `make dev-down` when done
@@ -33,11 +72,11 @@ container** (`make opencode`). Both see the same files.
 ## Start / stop
 
 ```bash
-make dev-up        # START: build (once) + dev + worker + postgres + redis + minio
-                   # foreground with combined logs — Ctrl+C stops it
+make dev-up        # START: build/cache-check + dev + worker + postgres + redis + minio
+                    # foreground with combined logs — Ctrl+C stops it
 make dev-log       # tail the dev sandbox logs (uvicorn + vite; worker: compose logs -f worker)
 make dev-down      # STOP: tear down the stack (postgres data volume kept)
-make dev-restart   # RESTART: down + up in one step, no rebuild, data still there
+make dev-restart   # RESTART: down + up --build in one step, data still there
 make infra-up      # infra only (postgres/redis/minio) for the host-native loop
 make infra-down    # stop infra only
 
@@ -114,11 +153,8 @@ make build        # frontend typecheck + production build
 - Known pre-existing failure: `test_metrics_endpoint_exposes_process_and_http_metrics`
   (worker heartbeat invisible to the test Redis DB — 231/232 pass). Unrelated to
   app code; tracked as a separate fix.
-- After heavy in-container builds (`make opencode` + builds), files the
-  container wrote as root inside `/sandbox/ai-document-platform` (e.g. `frontend/dist`,
-  `node_modules/.vite`, `__pycache__`) may need `sudo chown -R $(whoami) .` on
-  the host before re-building there. They are all gitignored, so git is never
-  affected.
+- Existing root-owned files from pre-migration sandboxes are covered by the
+  one-time repair above; new sandbox writes use the host developer's ownership.
 
 ## Tools
 
