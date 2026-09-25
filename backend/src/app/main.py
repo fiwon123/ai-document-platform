@@ -7,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+# Registers the operational gauges (worker heartbeat, stale documents, Redis
+# memory) that back the platform alerting rules.
+from . import system_metrics  # noqa: F401
 from .errors import register_exception_handlers
 from .logging_config import setup_logging
 from .middleware import LoggingMiddleware, RateLimitMiddleware

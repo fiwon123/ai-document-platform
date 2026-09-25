@@ -71,3 +71,16 @@ def test_metrics_expose_database_pool_gauges(client):
     assert "pool_checked_in" in body
     assert "pool_checked_out" in body
     assert "pool_overflow" in body
+
+
+def test_metrics_expose_operational_gauges(client):
+    """The system-status gauges backing the alert rules are present.
+
+    The values are read at scrape time from Redis/PostgreSQL and guarded
+    (0/false when the dependency is unreachable), so the test only pins
+    presence — the monitorability contract for the alerting rules.
+    """
+    body = client.get("/metrics").text
+    assert "app_worker_up" in body
+    assert "app_documents_stale" in body
+    assert "redis_memory_used_bytes" in body

@@ -99,6 +99,8 @@ jobs:
     # the cluster can always deploy dev HEAD.
     if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -127,6 +129,56 @@ jobs:
             docker tag "${image}:${TAG}" "${image}:latest"
             docker push "${image}:latest"
           done
+
+  scan-images:
+    name: Scan images (Trivy)
+    # Runs on the same label-gated events as build-images, always after the
+    # images are pushed. Fails the release PR when HIGH/CRITICAL
+    # vulnerabilities WITH a known fix are found (`ignore-unfixed`), so
+    # actionable findings block the merge until the base images are bumped.
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
+    needs: build-images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull images
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.build-images.outputs.tag }}"
+          for img in backend worker frontend; do
+            docker pull "ghcr.io/fiwon123/ai-platform/${img}:${TAG}"
+          done
+
+      - name: Scan backend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/fiwon123/ai-platform/backend:${{ needs.build-images.outputs.tag }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Scan worker image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/fiwon123/ai-platform/worker:${{ needs.build-images.outputs.tag }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Scan frontend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/fiwon123/ai-platform/frontend:${{ needs.build-images.outputs.tag }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
 
   smoke:
     name: Smoke test (Kind)

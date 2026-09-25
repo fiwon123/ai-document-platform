@@ -14,6 +14,18 @@ workerReplicas: 1
 # -- Number of frontend replicas
 frontendReplicas: 1
 
+serviceAccount:
+  # -- Render a ServiceAccount (plus the migrate-waiter Role/RoleBinding
+  # that lets pods observe the migrate Job status). Set false to provide
+  # your own account via serviceAccount.name.
+  create: true
+  # -- Name of the ServiceAccount to use. Empty = derived from the release
+  # name; useful when reusing a pre-created account (create: false).
+  name: ""
+  # -- Extra annotations on the ServiceAccount (e.g. IRSA/EKS or GKE/WI
+  # workload-identity annotations).
+  annotations: {}
+
 image:
   repository: ghcr.io/EXAMPLE/ai-platform
   tag: latest

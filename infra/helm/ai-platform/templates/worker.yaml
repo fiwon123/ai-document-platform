@@ -19,7 +19,7 @@ spec:
         {{- include "ai-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: worker
     spec:
-      serviceAccountName: {{ include "ai-platform.fullname" . }}
+      serviceAccountName: {{ include "ai-platform.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:

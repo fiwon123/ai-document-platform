@@ -42,6 +42,14 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
+ServiceAccount name: explicit value wins, otherwise derived from the full
+name. Used by every workload that needs migrate-waiting permissions.
+*/}}
+{{- define "ai-platform.serviceAccountName" -}}
+{{- default (include "ai-platform.fullname" .) .Values.serviceAccount.name }}
+{{- end }}
+
+{{/*
 Resolve the PostgreSQL host: auto-derived from the release name when the
 in-cluster postgres is enabled, otherwise the explicitly configured host
 (required when postgres.enabled=false, i.e. an external database).
