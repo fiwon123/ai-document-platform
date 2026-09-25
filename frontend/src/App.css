@@ -93,6 +93,31 @@
   color-scheme: dark;
 }
 
+/* Smooth theme switch: added to <html> by useTheme for the duration of a
+   toggle (see hooks/useTheme.ts). Only the color-ish properties animate so
+   layout/transform transitions stay untouched; the class is removed right
+   after the flip so normal hover/focus transitions are unaffected. */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition:
+    background-color 0.35s var(--ease-standard),
+    color 0.35s var(--ease-standard),
+    border-color 0.35s var(--ease-standard),
+    fill 0.35s var(--ease-standard),
+    stroke 0.35s var(--ease-standard) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transitioning,
+  html.theme-transitioning *,
+  html.theme-transitioning *::before,
+  html.theme-transitioning *::after {
+    transition: none !important;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
