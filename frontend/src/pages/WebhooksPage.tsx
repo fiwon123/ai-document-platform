@@ -14,6 +14,28 @@ const EVENT_OPTIONS: { value: WebhookEvent; label: string }[] = [
   { value: "document.deleted", label: "Document deleted" },
 ];
 
+const PY_VERIFY_SNIPPET = `import hashlib
+import hmac
+
+def verify(secret: str, raw_body: bytes, signature: str) -> bool:
+    expected = hmac.new(
+        secret.encode(), raw_body, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)`;
+
+const JS_VERIFY_SNIPPET = `const crypto = require("crypto");
+
+function verify(secret, rawBody, signature) {
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(rawBody)
+    .digest("hex");
+  return crypto.timingSafeEqual(
+    Buffer.from(expected, "hex"),
+    Buffer.from(signature, "hex"),
+  );
+}`;
+
 interface Notice {
   type: "success" | "error";
   text: string;
@@ -61,6 +83,11 @@ export function WebhooksPage() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, string>>({});
+  // The "How webhooks work" card auto-expands while the user has no
+  // subscriptions and collapses as soon as they create one. Closing it
+  // manually stays respected even with an empty list.
+  const [tutorialDismissed, setTutorialDismissed] = useState(false);
+  const hasSubscriptions = optimisticSubs.length > 0;
 
   function toggleEvent(event: WebhookEvent) {
     setSelectedEvents((current) =>
@@ -182,6 +209,75 @@ export function WebhooksPage() {
         <h1>Webhooks</h1>
         <p>Get notified when your documents change processing state</p>
       </header>
+
+      <details
+        className="webhook-tutorial"
+        open={!hasSubscriptions && !tutorialDismissed}
+        onToggle={(e) => {
+          // Remember manual closes so an empty list does not force the card
+          // back open on every visit.
+          if (!(e.currentTarget as HTMLDetailsElement).open) {
+            setTutorialDismissed(true);
+          }
+        }}
+      >
+        <summary>
+          <span className="webhook-tutorial-title">How webhooks work</span>
+          <span className="webhook-tutorial-hint">3 steps · ~2 min</span>
+        </summary>
+
+        <ol className="webhook-steps">
+          <li>
+            <span className="webhook-step-num">1</span>
+            <div>
+              <strong>Create a subscription</strong>
+              <p>
+                Paste the receiver URL that accepts HTTP POST requests and pick
+                the events that matter to you — for example{" "}
+                <code>document.ready</code>.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span className="webhook-step-num">2</span>
+            <div>
+              <strong>We deliver signed events</strong>
+              <p>
+                Whenever one of those events fires, we POST the JSON payload to
+                your URL with the <code>X-Webhook-Signature</code> header — an
+                HMAC-SHA256 of the raw request body signed with your
+                subscription secret.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span className="webhook-step-num">3</span>
+            <div>
+              <strong>Verify before you trust</strong>
+              <p>
+                Recompute the HMAC on your side and compare it with the
+                signature. If they match, the payload really came from the
+                platform and was not tampered with.
+              </p>
+            </div>
+          </li>
+        </ol>
+
+        <div className="webhook-snippets">
+          <details className="webhook-snippet">
+            <summary>Verify in Python (FastAPI / Flask)</summary>
+            <pre>
+              <code>{PY_VERIFY_SNIPPET}</code>
+            </pre>
+          </details>
+          <details className="webhook-snippet">
+            <summary>Verify in JavaScript (Node / Express)</summary>
+            <pre>
+              <code>{JS_VERIFY_SNIPPET}</code>
+            </pre>
+          </details>
+        </div>
+      </details>
 
       <section className="settings-card">
         <h2>New webhook</h2>

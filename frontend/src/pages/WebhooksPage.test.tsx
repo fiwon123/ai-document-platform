@@ -59,8 +59,13 @@ describe("WebhooksPage", () => {
     await settle();
 
     expect(screen.getByText("https://example.com/hook")).toBeInTheDocument();
-    expect(screen.getByText("document.ready")).toBeInTheDocument();
-    expect(screen.getByText("document.failed")).toBeInTheDocument();
+    // The tutorial also mentions document.ready, so scope to the event tags.
+    expect(
+      screen.getByText("document.ready", { selector: ".webhook-event-tag" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("document.failed", { selector: ".webhook-event-tag" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
   });
 
@@ -140,5 +145,74 @@ describe("WebhooksPage", () => {
     expect(
       screen.queryByText("https://example.com/hook"),
     ).not.toBeInTheDocument();
+  });
+
+  it("auto-expands the tutorial when there are no subscriptions", async () => {
+    mockedList.mockResolvedValue([]);
+    renderWithClient(<WebhooksPage />);
+    await settle();
+
+    const details = screen
+      .getByText("How webhooks work")
+      .closest("details") as HTMLDetailsElement;
+    expect(details.open).toBe(true);
+    expect(screen.getByText(/Create a subscription/)).toBeTruthy();
+  });
+
+  it("keeps the tutorial collapsed once a subscription exists", async () => {
+    renderWithClient(<WebhooksPage />);
+    await settle();
+
+    const details = screen
+      .getByText("How webhooks work")
+      .closest("details") as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    // The summary stays visible so users can still open the card.
+    expect(screen.getByText("How webhooks work")).toBeTruthy();
+  });
+
+  it("stays collapsed after a manual close even with zero subscriptions", async () => {
+    mockedList.mockResolvedValue([]);
+    renderWithClient(<WebhooksPage />);
+    await settle();
+
+    const details = screen
+      .getByText("How webhooks work")
+      .closest("details") as HTMLDetailsElement;
+    expect(details.open).toBe(true);
+
+    fireEvent.click(screen.getByText("How webhooks work"));
+    await settle();
+    expect(details.open).toBe(false);
+  });
+
+  it("expands and collapses the Python verification snippet", async () => {
+    mockedList.mockResolvedValue([]);
+    renderWithClient(<WebhooksPage />);
+    await settle();
+
+    const snippet = screen
+      .getByText("Verify in Python (FastAPI / Flask)")
+      .closest("details") as HTMLDetailsElement;
+    expect(snippet.open).toBe(false);
+    fireEvent.click(screen.getByText("Verify in Python (FastAPI / Flask)"));
+    await settle();
+    expect(snippet.open).toBe(true);
+    expect(screen.getByText(/hmac\.new\(/)).toBeTruthy();
+    expect(screen.getByText(/compare_digest/)).toBeTruthy();
+  });
+
+  it("shows the JavaScript verification snippet", async () => {
+    mockedList.mockResolvedValue([]);
+    renderWithClient(<WebhooksPage />);
+    await settle();
+
+    const snippet = screen
+      .getByText("Verify in JavaScript (Node / Express)")
+      .closest("details") as HTMLDetailsElement;
+    fireEvent.click(screen.getByText("Verify in JavaScript (Node / Express)"));
+    await settle();
+    expect(snippet.open).toBe(true);
+    expect(screen.getByText(/createHmac\("sha256"/)).toBeTruthy();
   });
 });

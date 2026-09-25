@@ -4720,3 +4720,117 @@ body {
 .webhook-notice-success {
   color: var(--success, #16a34a);
 }
+
+/* Webhooks how-it-works tutorial */
+.webhook-tutorial {
+  max-width: 640px;
+  margin-bottom: 24px;
+  padding: 14px 20px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.webhook-tutorial summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.webhook-tutorial summary::-webkit-details-marker {
+  display: none;
+}
+
+.webhook-tutorial-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.webhook-tutorial-hint {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.webhook-steps {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.webhook-steps li {
+  display: flex;
+  gap: 12px;
+}
+
+.webhook-step-num {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.webhook-steps strong {
+  display: block;
+  font-size: 0.85rem;
+}
+
+.webhook-steps p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.webhook-steps code {
+  font-size: 0.75rem;
+}
+
+.webhook-snippets {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+.webhook-snippet {
+  font-size: 0.85rem;
+}
+
+.webhook-snippet summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.webhook-snippet summary:hover {
+  color: var(--ink);
+}
+
+.webhook-snippet pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  overflow-x: auto;
+  max-height: 280px;
+  overflow-y: auto;
+}
