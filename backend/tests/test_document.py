@@ -280,6 +280,52 @@ class TestDeleteDocument:
         assert resp.status_code == 404
         assert resp.json()["error"]["code"] == "not_found"
 
+    def test_delete_processed_document_removes_its_chunks(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
+        """Deleting a document that was already processed (has chunks) must
+        succeed and remove the chunks — regression for the NotNullViolation
+        on document_chunks.document_id caused by the ORM nullifying the FK
+        before the DB CASCADE (no passive_deletes on the relationship)."""
+        from app.models.chunk import DocumentChunk
+        from app.models.document import DocumentDB
+        from app.storage.storage import storage as app_storage
+
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        doc_id = created["id"]
+
+        deleted = []
+        monkeypatch.setattr(app_storage, "delete", lambda object_key: deleted.append(object_key))
+
+        # Simulate the worker having processed the document: attach chunks
+        # directly, as extraction + chunking would.
+        doc = db_session.query(DocumentDB).filter(DocumentDB.id == doc_id).one()
+        db_session.add_all(
+            [
+                DocumentChunk(
+                    document_id=doc.id,
+                    content=f"chunk {i} of the processed document",
+                    chunk_index=i,
+                )
+                for i in range(3)
+            ]
+        )
+        db_session.commit()
+
+        resp = client.delete(f"/v1/documents/{doc_id}", headers=auth_headers)
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["document_id"] == doc_id
+        # Both storage objects (document + thumbnail) were removed.
+        assert len(deleted) == 2
+        remaining = (
+            db_session.query(DocumentChunk)
+            .filter(DocumentChunk.document_id == doc_id)
+            .count()
+        )
+        assert remaining == 0
+
     def test_delete_ownership_isolation(self, client, auth_headers, monkeypatch):
         from app.storage.storage import storage as app_storage
 

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 
 from app.database.db import Base
 
@@ -55,4 +55,14 @@ class DocumentChunk(Base):
         nullable=False,
     )
 
-    document = relationship("DocumentDB", backref="chunks")
+    # passive_deletes: the FK is ON DELETE CASCADE at the DB level, so the
+    # ORM must NOT try to null out the loaded chunk collection when the
+    # parent is deleted (document_id is NOT NULL — the nullification would
+    # raise NotNullViolation, and the DB cascade handles cleanup anyway).
+    # The option must sit on the parent-side backref (chunks) too, because
+    # that is the collection the unit of work consults on parent deletes.
+    document = relationship(
+        "DocumentDB",
+        backref=backref("chunks", passive_deletes=True),
+        passive_deletes=True,
+    )
