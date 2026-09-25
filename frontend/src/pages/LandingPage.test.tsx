@@ -221,19 +221,56 @@ describe("LandingPage", () => {
     expect(screen.getByText("Made for people who love their documents.")).toBeTruthy();
   });
 
-  it("points the GitHub social to the repository and marks the rest coming-soon", () => {
+  it("keeps only GitHub as a link and makes the missing accounts inert", () => {
     renderPage();
     const github = screen.getByLabelText("AskDocs on GitHub") as HTMLAnchorElement;
     expect(github.href).toBe("https://github.com/fiwon123/ai-document-platform");
     expect(github.target).toBe("_blank");
 
-    const twitter = screen.getByLabelText("AskDocs on Twitter") as HTMLAnchorElement;
-    expect(twitter.getAttribute("data-coming-soon")).toBe("true");
-    expect(twitter.title).toBe("Coming soon");
+    // Twitter and LinkedIn used to render as <a href="/#"> — a link that went
+    // nowhere. They are now non-interactive blocks: no href, no tab stop, no
+    // click handler, so there is nothing for a keyboard user to activate.
+    for (const network of ["Twitter", "LinkedIn"] as const) {
+      const placeholder = screen.getByLabelText(
+        new RegExp(`AskDocs on ${network}`),
+      );
+      expect(placeholder.tagName).not.toBe("A");
+      expect(placeholder).not.toHaveAttribute("href");
+      expect(placeholder).not.toHaveAttribute("tabindex");
+      expect(placeholder.getAttribute("data-coming-soon")).toBe("true");
+      expect(placeholder.getAttribute("title")).toBe("Coming soon");
+      expect(screen.queryByRole("link", { name: new RegExp(network) })).toBeNull();
+    }
+  });
 
-    const linkedin = screen.getByLabelText("AskDocs on LinkedIn") as HTMLAnchorElement;
-    expect(linkedin.getAttribute("data-coming-soon")).toBe("true");
-    expect(linkedin.title).toBe("Coming soon");
+  it("links every footer column to a real route instead of the home page", () => {
+    renderPage();
+    const hrefsIn = (label: string) =>
+      within(screen.getByRole("navigation", { name: label }))
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"));
+
+    expect(hrefsIn("Product")).toEqual([
+      "/product",
+      "/features",
+      "/how-it-works",
+      "/pricing",
+      "/demo",
+    ]);
+    expect(hrefsIn("Company")).toEqual([
+      "/company",
+      "/about",
+      "/blog",
+      "/careers",
+      "/contact",
+    ]);    // The old footer pointed every Legal link at "/", so a visitor could never
+    // leave the landing page from there.
+    expect(hrefsIn("Legal")).toEqual([
+      "/privacy",
+      "/terms",
+      "/security",
+      "/gdpr",
+    ]);
   });
 
   /* The accent system (#377) drives every per-card color from a

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { LandingNavbar } from "../components/LandingNavbar";
+import { LandingFooter } from "../components/LandingFooter";
 import { Markdown } from "../components/Markdown";
 import { Badge } from "../components/Badge";
 import { HighlightedText } from "../components/HighlightedText";
@@ -349,6 +350,10 @@ export function DemoPage() {
           </div>
         </section>
       </main>
+
+      {/* The demo was the one public page without the footer, so it offered no
+          way to reach Pricing, Contact, or anything legal. */}
+      <LandingFooter />
     </div>
   );
 }
