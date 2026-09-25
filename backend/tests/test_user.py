@@ -132,6 +132,113 @@ class TestUpdateCurrentUser:
         resp = client.put("/v1/users/me", json={"username": "x_x_x"})
         assert resp.status_code == 401
 
+    def test_short_password_rejected_on_register(self, client):
+        """The 8-character minimum is enforced server-side, not just in the UI."""
+        resp = client.post(
+            "/v1/auth/register",
+            json={"username": "shorty", "password": "abc1234", "confirm_password": "abc1234"},
+        )
+        assert resp.status_code == 422
+
+    def test_common_password_rejected_on_register(self, client):
+        """Known-compromised passwords are refused even when long enough."""
+        resp = client.post(
+            "/v1/auth/register",
+            json={
+                "username": "weakling",
+                "password": "password123",
+                "confirm_password": "password123",
+            },
+        )
+        assert resp.status_code == 422
+        assert "too common" in resp.text
+
+    def test_common_password_match_is_case_insensitive(self, client):
+        resp = client.post(
+            "/v1/auth/register",
+            json={
+                "username": "shouty",
+                "password": "PassWord123",
+                "confirm_password": "PassWord123",
+            },
+        )
+        assert resp.status_code == 422
+        assert "too common" in resp.text
+
+    def test_password_over_bcrypt_limit_rejected_on_register(self, client):
+        """bcrypt truncates past 72 bytes, so longer inputs are refused.
+
+        Without this, two passwords sharing a 72-byte prefix would hash
+        identically and authenticate each other.
+        """
+        long_password = "a1b2c3d4e5" * 8  # 80 chars, comfortably over the limit
+        assert len(long_password) > 72
+        resp = client.post(
+            "/v1/auth/register",
+            json={
+                "username": "toolong",
+                "password": long_password,
+                "confirm_password": long_password,
+            },
+        )
+        assert resp.status_code == 422
+        assert "truncated" in resp.text
+
+    def test_multibyte_password_over_byte_limit_rejected(self, client):
+        """The limit is measured in UTF-8 bytes, not characters.
+
+        30 four-byte characters is 120 bytes but only 30 chars — well under a
+        character cap while still over the bcrypt boundary.
+        """
+        multibyte = "\U0001f600" * 30
+        assert len(multibyte) == 30
+        assert len(multibyte.encode("utf-8")) == 120
+        resp = client.post(
+            "/v1/auth/register",
+            json={
+                "username": "emojiuser",
+                "password": multibyte,
+                "confirm_password": multibyte,
+            },
+        )
+        assert resp.status_code == 422
+        assert "truncated" in resp.text
+
+    def test_password_just_under_bcrypt_limit_accepted(self, client):
+        """72 bytes exactly is the boundary and must be allowed."""
+        exact = "a1b2c3d4e5" * 7 + "ab"  # 72 chars
+        assert len(exact) == 72
+        resp = client.post(
+            "/v1/auth/register",
+            json={"username": "exact72", "password": exact, "confirm_password": exact},
+        )
+        assert resp.status_code == 201
+
+    def test_common_password_rejected_on_password_change(self, client):
+        _register(client, "changer")
+        headers = _login(client, "changer")
+
+        resp = client.put(
+            "/v1/users/me",
+            json={"password": "12345678", "confirm_password": "12345678"},
+            headers=headers,
+        )
+        assert resp.status_code == 422
+        assert "too common" in resp.text
+
+    def test_overlong_password_rejected_on_password_change(self, client):
+        _register(client, "changer2")
+        headers = _login(client, "changer2")
+
+        long_password = "x9y8z7w6v5" * 8
+        resp = client.put(
+            "/v1/users/me",
+            json={"password": long_password, "confirm_password": long_password},
+            headers=headers,
+        )
+        assert resp.status_code == 422
+        assert "truncated" in resp.text
+
 
 class TestDeleteCurrentUser:
     def test_delete_own_account(self, client, db_session):
