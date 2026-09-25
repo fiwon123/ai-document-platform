@@ -198,8 +198,12 @@ describe("WebhooksPage", () => {
     fireEvent.click(screen.getByText("Verify in Python (FastAPI / Flask)"));
     await settle();
     expect(snippet.open).toBe(true);
-    expect(screen.getByText(/hmac\.new\(/)).toBeTruthy();
-    expect(screen.getByText(/compare_digest/)).toBeTruthy();
+    // The snippet is now tokenized into colored spans — assert on the text
+    // content of the code element rather than exact-text matching.
+    const code = snippet.querySelector("pre code");
+    expect(code?.textContent).toMatch(/hmac\.new\(/);
+    expect(code?.textContent).toMatch(/compare_digest/);
+    expect(snippet.querySelector(".tok-keyword")?.textContent).toBe("import");
   });
 
   it("shows the JavaScript verification snippet", async () => {
@@ -213,6 +217,8 @@ describe("WebhooksPage", () => {
     fireEvent.click(screen.getByText("Verify in JavaScript (Node / Express)"));
     await settle();
     expect(snippet.open).toBe(true);
-    expect(screen.getByText(/createHmac\("sha256"/)).toBeTruthy();
+    const code = snippet.querySelector("pre code");
+    expect(code?.textContent).toContain('createHmac("sha256"');
+    expect(code?.textContent).toContain("timingSafeEqual");
   });
 });
