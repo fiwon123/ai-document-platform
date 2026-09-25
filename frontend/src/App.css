@@ -2783,12 +2783,74 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 8px;
 }
 
 .search-export-actions {
   display: flex;
   gap: 8px;
+}
+
+.search-status {
+  margin: 0 0 20px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* Example-query chips */
+.search-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -12px 0 20px;
+}
+
+.search-form + .search-suggestions,
+.empty-state-action .search-suggestions {
+  margin: 0;
+}
+
+.suggestion-chip {
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.suggestion-chip:hover:not(:disabled) {
+  border-color: var(--blue);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--blue) 8%, var(--surface));
+}
+
+.suggestion-chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.empty-state-action .suggestion-chip {
+  margin: 0 4px 4px 0;
+}
+
+/* Shimmering placeholder cards while a search is in flight. */
+.search-skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.search-skeleton .skeleton {
+  height: 14px;
+}
+
+.search-skeleton .skeleton-card-header .skeleton:last-child {
+  height: 22px;
+  border-radius: 999px;
 }
 
 .search-result-card {
@@ -2813,18 +2875,26 @@ body {
 }
 
 .result-document {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-weight: 600;
   color: var(--blue);
   overflow-wrap: anywhere;
 }
 
-.result-score {
+.result-document svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.result-match-chip {
   flex-shrink: 0;
   font: 500 11px "DM Mono", monospace;
-  color: var(--muted);
+  color: var(--green);
   padding: 3px 10px;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--green) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--green) 35%, var(--line));
   border-radius: 999px; /* pill badge */
   white-space: nowrap;
 }
@@ -2864,7 +2934,14 @@ body {
 .search-load-more {
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 14px;
   margin-top: 8px;
+}
+
+.search-load-info {
+  font: 500 11px "DM Mono", monospace;
+  color: var(--muted);
 }
 
 /* QA Page */
