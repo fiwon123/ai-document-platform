@@ -34,6 +34,13 @@ def search_documents(
     service: Annotated[SearchService, Depends(get_search_service)],
     owner_id: Annotated[UUID, Depends(get_current_user_id)],
 ):
+    """Semantically search the current user's document chunks.
+
+    Embed the query, rank the user's chunks by vector similarity, and
+    return the top hits (paginated with ``top_k`` + ``offset``, optional
+    ``document_ids`` scope). ``total_count``/``has_more`` describe the full
+    result set. Also records a search-history entry.
+    """
     return service.search(
         user_id=owner_id,
         query=request.query,
