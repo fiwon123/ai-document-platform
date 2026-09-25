@@ -10,6 +10,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from .errors import register_exception_handlers
 from .logging_config import setup_logging
 from .middleware import LoggingMiddleware, RateLimitMiddleware
+from .middleware.caching import ETagCacheMiddleware
 from .middleware.rate_limit import RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW
 from .routes import auth, document, health, qa, search, statistics, users, webhook
 from .storage.storage import storage
@@ -88,11 +89,56 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# Tag descriptions enrich the OpenAPI docs (Swagger UI groups endpoints by
+# router tag and shows these blurbs under each heading).
+_OPENAPI_TAGS = [
+    {
+        "name": "auth",
+        "description": "Register, log in, refresh the session, and manage your profile identity.",
+    },
+    {
+        "name": "documents",
+        "description": "Upload, inspect, preview, download, reprocess, and delete documents.",
+    },
+    {
+        "name": "users",
+        "description": "Self-service account management; admin-only user administration.",
+    },
+    {
+        "name": "search",
+        "description": "Semantic search over documents with pagination, filtering, and export.",
+    },
+    {
+        "name": "qa",
+        "description": "Ask questions about your documents and list available answering models.",
+    },
+    {
+        "name": "statistics",
+        "description": "Dashboard summaries for the user, or system-wide aggregates for admins.",
+    },
+    {
+        "name": "webhooks",
+        "description": "Subscribe to document events with signed, retried deliveries.",
+    },
+    {
+        "name": "health",
+        "description": "Liveness/readiness checks for the API and its infrastructure dependencies.",
+    },
+]
+
 app = FastAPI(
     title="AI Document Intelligence Platform",
     description="Upload, process, search, and ask questions about your documents",
     version="1.0.0",
     lifespan=lifespan,
+    contact={
+        "name": "AI Document Intelligence Platform",
+        "url": "https://github.com/fiwon123/ai-document-platform",
+    },
+    # A relative server URL keeps the docs valid on any origin: the dev
+    # sandbox (localhost:8001) and the production ingress alike.
+    servers=[{"url": "/", "description": "Served from the current origin"}],
+    openapi_tags=_OPENAPI_TAGS,
 )
 
 register_exception_handlers(app)
@@ -104,6 +150,10 @@ app.add_middleware(
     requests=RATE_LIMIT_REQUESTS,
     window=RATE_LIMIT_WINDOW,
 )
+# ETag/Cache-Control for the select endpoints in middleware/caching.py.
+# Registered inside CORS so 304 responses still carry CORS headers, and
+# outside the app so request logging + rate limiting still see every hit.
+app.add_middleware(ETagCacheMiddleware)
 _cors_origins = parse_cors_origins(os.getenv("CORS_ORIGINS"))
 app.add_middleware(
     CORSMiddleware,
@@ -127,6 +177,7 @@ app.include_router(webhook.router, prefix="/v1")
 
 @app.get("/")
 def root():
+    """Welcome endpoint for the API root (the API itself lives under /v1)."""
     return {"msg": "backend live on!"}
 
 

@@ -150,6 +150,12 @@ def register(
     request: CreateUserRequest,
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Create a new user account.
+
+    Validates that the password confirmation matches and that the username
+    is not already taken, then stores a bcrypt-hashed password. Returns the
+    created user (credentials are not issued here — call ``/v1/auth/login``).
+    """
     repo = UserRepository(db)
 
     if request.password != request.confirm_password:
@@ -179,6 +185,13 @@ def login(
     db: Annotated[Session, Depends(get_db)],
     response: Response,
 ):
+    """Exchange credentials for a Bearer access token.
+
+    Accepts the OAuth2 password flow (``application/x-www-form-urlencoded``
+    with ``username``/``password``). On success, a rotation-ready refresh
+    token is set as an httpOnly cookie scoped to ``/v1/auth/refresh`` and an
+    access token plus the user profile are returned in the body.
+    """
     repo = UserRepository(db)
     user = repo.get_by_username(form_data.username)
 
@@ -290,4 +303,5 @@ def logout(response: Response):
 def read_current_user(
     current_user: Annotated[UserResponse, Depends(get_current_user)],
 ):
+    """Return the profile of the currently authenticated user."""
     return current_user

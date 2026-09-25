@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 
 @router.get("/health")
 def health_check(db: Annotated[Session, Depends(get_db)]):
+    """Liveness/readiness probe for the API and its dependencies.
+
+    Checks PostgreSQL, Redis, the document-processing worker heartbeat, and
+    object storage. Responds 200 ``healthy`` when every dependency is up, or
+    503 ``degraded`` (with per-service errors) otherwise — orchestration and
+    uptime monitors key off that status code.
+    """
     checks = {
         "status": "healthy",
         "services": {

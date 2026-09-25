@@ -72,6 +72,12 @@ def update_current_user(
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Update the current user's own username and/or password.
+
+    When changing the username, a conflict (409) is returned if another
+    account already uses it. Changing the password requires an 8+ character
+    value and a matching ``confirm_password``.
+    """
     repo = UserRepository(db)
     update_data: dict = {}
 
@@ -108,6 +114,12 @@ def delete_current_user(
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Permanently delete the current user's own account.
+
+    Removes the user record (documents/chunks are cleaned up by the
+    cascading relationships). The client must sign out afterwards — this
+    deletes the row backing the JWT immediately.
+    """
     repo = UserRepository(db)
     repo.delete(current_user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -118,6 +130,7 @@ def list_users(
     _admin: Annotated[UserResponse, Depends(get_current_admin)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """List every registered user (admin only)."""
     return UserRepository(db).get_all()
 
 
@@ -128,6 +141,12 @@ def update_user_role(
     _admin: Annotated[UserResponse, Depends(get_current_admin)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Change a user's role between ``customer`` and ``admin`` (admin only).
+
+    The role is read from the database on every request, so the change
+    takes effect immediately (and revoking admin rights applies at the next
+    request too).
+    """
     repo = UserRepository(db)
     user = repo.get_by_id(user_id)
     if user is None:
@@ -147,6 +166,11 @@ def update_user_active(
     _admin: Annotated[UserResponse, Depends(get_current_admin)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Enable or disable a user account (admin only).
+
+    Disabled users can no longer authenticate. Deactivating your own
+    account is rejected (400) to keep an admin from locking themselves out.
+    """
     repo = UserRepository(db)
     user = repo.get_by_id(user_id)
     if user is None:
@@ -170,6 +194,7 @@ def delete_user(
     _admin: Annotated[UserResponse, Depends(get_current_admin)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Delete another user's account (admin only)."""
     repo = UserRepository(db)
     if repo.delete(user_id) is None:
         raise HTTPException(

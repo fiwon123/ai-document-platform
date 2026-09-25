@@ -28,6 +28,14 @@ def ask_question(
     service: Annotated[QAService, Depends(get_qa_service)],
     owner_id: Annotated[UUID, Depends(get_current_user_id)],
 ):
+    """Ask a question about your documents and receive an LLM answer.
+
+    Searches the user's document chunks for the most relevant context,
+    passes it to the selected provider (OpenAI or Groq — or a
+    bring-your-own ``api_key``) and returns the generated answer, including
+    the cached/stored response when one exists. Optionally restrict the
+    search to ``document_ids``.
+    """
     if request.model is not None and request.model not in AVAILABLE_MODELS:
         raise HTTPException(
             status_code=400,

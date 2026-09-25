@@ -59,3 +59,15 @@ def test_metrics_endpoint_is_not_instrumented(client):
 
     body = client.get("/metrics").text
     assert 'path="/metrics"' not in body
+
+
+def test_metrics_expose_database_pool_gauges(client):
+    """The SQLAlchemy connection pool publishes checked_in/out/overflow."""
+    # Hitting an endpoint that uses get_db exercises the pool lifecycle.
+    resp = client.get("/v1/health")
+    assert resp.status_code == 200
+
+    body = client.get("/metrics").text
+    assert "pool_checked_in" in body
+    assert "pool_checked_out" in body
+    assert "pool_overflow" in body
