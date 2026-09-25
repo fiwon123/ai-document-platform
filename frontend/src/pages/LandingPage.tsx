@@ -123,7 +123,7 @@ const SCREENSHOTS = [
 
 const LOGOS = ["Northwind", "Lumina", "Vertex Labs", "Bluepeak", "Tesseract"];
 
-const FEATURES: { title: string; body: string; icon: string }[] = [
+const CORE_FEATURES: { title: string; body: string; icon: string }[] = [
   {
     title: "Upload anything",
     body: "PDF, TXT, JSON, and CSV up to 25 MB. Files are processed in the background while you keep working.",
@@ -139,6 +139,9 @@ const FEATURES: { title: string; body: string; icon: string }[] = [
     body: "Get direct answers grounded in your own files, with source context. No more scanning pages by hand.",
     icon: ICONS.chat,
   },
+];
+
+const SECONDARY_FEATURES: { title: string; body: string; icon: string }[] = [
   {
     title: "Private by design",
     body: "Documents are isolated per user. Only you can search and ask questions about what you upload.",
@@ -399,24 +402,28 @@ export function LandingPage() {
           </div>
           <div className="stat-row">
             <div className="stat-item">
-              <strong>
+              <strong className="stat-value">
                 <CountUp value={12000} suffix="+" />
               </strong>
               <span>Documents processed</span>
             </div>
             <div className="stat-item">
-              <strong>
+              <strong className="stat-value">
                 <CountUp value={48000} suffix="+" />
               </strong>
               <span>Questions answered</span>
             </div>
             <div className="stat-item">
-              <strong>
+              <strong className="stat-value">
                 <CountUp value={99} suffix="%" />
               </strong>
               <span>Search uptime</span>
             </div>
           </div>
+          <p className="stats-demo-note">
+            Sample figures shown for illustration — your workspace shows your
+            real numbers.
+          </p>
           <ul className="trust-badges">
             {TRUST_BADGES.map((badge) => (
               <li key={badge}>
@@ -435,9 +442,28 @@ export function LandingPage() {
             From upload to grounded answers — one private workspace.
           </p>
         </Reveal>
-        <div className="landing-grid">
-          {FEATURES.map((feature, i) => (
-            <Reveal key={feature.title} variant="up" delay={Math.min(i * 60, 240)}>
+        <Reveal variant="up" delay={60}>
+          <h3 className="feature-category">Core capabilities</h3>
+        </Reveal>
+        <div className="landing-grid landing-grid-core">
+          {CORE_FEATURES.map((feature, i) => (
+            <Reveal key={feature.title} variant="up" delay={Math.min(i * 60, 120)}>
+              <article className="landing-card landing-card-core card-hover">
+                <FeatureIcon path={feature.icon} />
+                <h3>{feature.title}</h3>
+                <p>{feature.body}</p>
+              </article>
+            </Reveal>
+          ))}
+        </div>
+        <Reveal variant="up" delay={60}>
+          <h3 className="feature-category feature-category-secondary">
+            More to explore
+          </h3>
+        </Reveal>
+        <div className="landing-grid landing-grid-secondary">
+          {SECONDARY_FEATURES.map((feature, i) => (
+            <Reveal key={feature.title} variant="up" delay={Math.min(i * 50, 200)}>
               <article className="landing-card card-hover">
                 <FeatureIcon path={feature.icon} />
                 <h3>{feature.title}</h3>
