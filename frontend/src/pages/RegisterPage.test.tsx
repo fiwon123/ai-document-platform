@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { RegisterPage } from "./RegisterPage";
+import { RegisterPage, TERMS_ERROR } from "./RegisterPage";
 
 const register = vi.fn();
 
@@ -35,6 +35,7 @@ async function submitRegistration(
   fireEvent.change(screen.getByLabelText("Confirm Password"), {
     target: { value: confirmPassword },
   });
+  fireEvent.click(screen.getByLabelText(/I agree/));
   fireEvent.click(screen.getByRole("button", { name: "Register" }));
   await act(async () => {});
 }
@@ -53,6 +54,7 @@ describe("RegisterPage", () => {
     expect(
       screen.getByRole("button", { name: "Register" }),
     ).toBeTruthy();
+    expect(screen.getByLabelText(/I agree/)).toBeTruthy();
   });
 
   it("calls register with the entered credentials", async () => {
@@ -100,6 +102,7 @@ describe("RegisterPage", () => {
     expect(screen.getByText("Username already taken")).toBeTruthy();
 
     // Submit again with matching passwords — the error must be cleared.
+    // (The terms box is still checked from the first submission.)
     fireEvent.change(screen.getByLabelText("Username"), {
       target: { value: "alice" },
     });
@@ -134,6 +137,7 @@ describe("RegisterPage", () => {
     fireEvent.change(screen.getByLabelText("Confirm Password"), {
       target: { value: "s3cret123" },
     });
+    fireEvent.click(screen.getByLabelText(/I agree/));
     fireEvent.click(screen.getByRole("button", { name: "Register" }));
 
     expect(screen.getByText("Creating account...")).toBeTruthy();
@@ -162,5 +166,82 @@ describe("RegisterPage", () => {
     renderPage();
     const loginLink = screen.getByRole("link", { name: "Login" });
     expect(loginLink.getAttribute("href")).toBe("/login");
+  });
+
+  it("offers a back-to-home link", () => {
+    renderPage();
+    const backLink = screen.getByRole("link", { name: "Back to home" });
+    expect(backLink.getAttribute("href")).toBe("/");
+  });
+
+  it("reveals and hides the password with the visibility toggle", async () => {
+    renderPage();
+    const passwordInput = screen.getByLabelText("Password");
+    expect(passwordInput).toHaveAttribute("type", "password");
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Password" }));
+    expect(passwordInput).toHaveAttribute("type", "text");
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide Password" }));
+    expect(passwordInput).toHaveAttribute("type", "password");
+  });
+
+  it("shows the strength meter and checklist while typing a password", () => {
+    renderPage();
+    expect(screen.queryByRole("meter")).toBeNull();
+
+    // "Ab" — mixed case only: 1 of 4 segments (25%).
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "Ab" },
+    });
+    const meter = screen.getByRole("meter");
+    expect(meter).toHaveAttribute("aria-valuenow", "25");
+    expect(screen.getByText("At least 8 characters")).toBeTruthy();
+    expect(screen.getByText("Upper & lower case letters")).toBeTruthy();
+    expect(screen.getByText("At least one number")).toBeTruthy();
+    expect(meter.querySelectorAll(".strength-seg.lit")).toHaveLength(1);
+
+    // "Abcdef12" — length + mixed + digit: 3 of 4 segments (75%).
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "Abcdef12" },
+    });
+    expect(meter).toHaveAttribute("aria-valuenow", "75");
+    expect(meter.querySelectorAll(".strength-seg.lit")).toHaveLength(3);
+  });
+
+  it("shows a live password match indicator", () => {
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "abcd1234" },
+    });
+    fireEvent.change(screen.getByLabelText("Confirm Password"), {
+      target: { value: "abcd9999" },
+    });
+    const indicator = screen.getByText("Passwords don't match");
+    expect(indicator.className).toContain("match-bad");
+
+    fireEvent.change(screen.getByLabelText("Confirm Password"), {
+      target: { value: "abcd1234" },
+    });
+    expect(screen.getByText("Passwords match").className).toContain("match-ok");
+  });
+
+  it("blocks submission until the terms checkbox is accepted", async () => {
+    register.mockResolvedValue(undefined);
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Username"), {
+      target: { value: "alice" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "s3cret123" },
+    });
+    fireEvent.change(screen.getByLabelText("Confirm Password"), {
+      target: { value: "s3cret123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Register" }));
+    await act(async () => {});
+
+    expect(register).not.toHaveBeenCalled();
+    expect(screen.getByText(TERMS_ERROR)).toBeTruthy();
   });
 });
