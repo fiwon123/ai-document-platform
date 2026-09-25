@@ -61,7 +61,7 @@ ARG MISE_VERSION=2025.4.10
 COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise
 
 # Isolate mise state under /opt so it never mixes with the bind-mounted
-# workspace or the /root gh config.
+# workspace or the container's gh config.
 ENV MISE_DATA_DIR=/opt/mise/data \
     MISE_CONFIG_DIR=/opt/mise/config \
     MISE_CACHE_DIR=/opt/mise/cache
@@ -107,6 +107,28 @@ WORKDIR /sandbox/ai-document-platform
 ENV UV_PROJECT_ENVIRONMENT=/opt/backend-venv
 COPY backend/ /sandbox/ai-document-platform/backend/
 RUN cd /sandbox/ai-document-platform/backend && uv sync --frozen
+
+# Build-time dependency installation above remains root-only. At runtime the
+# Compose services use the host developer's UID/GID so files written through the
+# bind mount are not created as root on Linux hosts. Build args are supplied by
+# the Make targets; the defaults keep direct Compose usage usable for UID/GID
+# 1000 hosts.
+ARG HOST_UID=1000
+ARG HOST_GID=1000
+RUN test "${HOST_UID}" != "0" \
+    && groupadd --non-unique --gid "${HOST_GID}" appuser \
+    && useradd --non-unique --uid "${HOST_UID}" --gid appuser --create-home --shell /usr/bin/zsh appuser \
+    && cp /root/.zshrc /home/appuser/.zshrc \
+    && cp /root/.bashrc /home/appuser/.bashrc \
+    && cp /root/.zprofile /home/appuser/.zprofile \
+    && chown -R "${HOST_UID}:${HOST_GID}" /home/appuser /opt/backend-venv /opt/mise \
+    && git config --system --add safe.directory /sandbox/ai-document-platform
+
+ENV HOME=/home/appuser
+
+# Default to the non-root image user even when Compose is bypassed. The
+# Compose services still set the same host identity explicitly.
+USER appuser
 
 # Keep the container alive when started without an explicit command; the dev
 # and worker compose services override this with their real entrypoints.

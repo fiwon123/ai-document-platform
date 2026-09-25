@@ -6,17 +6,45 @@ set -euo pipefail
 # `docker compose stop`/Ctrl-C shuts both down cleanly.
 #
 # Interactive shell inside the sandbox:
-#   docker compose run --rm --entrypoint bash dev
+#   docker compose run --rm --entrypoint zsh dev
 #
 # Backend deps are baked at image build into /opt/backend-venv (outside the
-# bind mount); the script re-syncs only when the baked venv is missing (e.g.
+# bind mount); the script re-syncs only when the baked venv is incomplete (e.g.
 # a pyproject change that predates an image rebuild — prefer `make dev-build`).
 # Frontend deps are shared with the host in the workspace; npm ci runs only
 # when missing.
 
-BACKEND_DIR=/sandbox/ai-document-platform/backend
-FRONTEND_DIR=/sandbox/ai-document-platform/frontend
+PROJECT_DIR=/sandbox/ai-document-platform
+BACKEND_DIR=$PROJECT_DIR/backend
+FRONTEND_DIR=$PROJECT_DIR/frontend
 BACKEND_VENV="${UV_PROJECT_ENVIRONMENT:-/opt/backend-venv}"
+
+# Refuse to run as root. Compose and the image both select appuser; failing
+# loudly here prevents a bypassed or stale configuration from recreating the
+# root-owned bind-mount files this setup is designed to prevent.
+if [[ "$(id -u)" == 0 ]]; then
+    echo "[dev] Refusing to start as root; rebuild with make dev-build (issue #365)." >&2
+    exit 1
+fi
+
+if [[ ! -d "$HOME" || ! -w "$HOME" ]]; then
+    echo "[dev] Sandbox home '$HOME' is not writable as uid $(id -u); rebuild with make dev-build." >&2
+    exit 1
+fi
+
+if [[ ! -d "$BACKEND_VENV" || ! -w "$BACKEND_VENV" ]]; then
+    echo "[dev] Backend environment '$BACKEND_VENV' is not writable as uid $(id -u); rebuild with make dev-build." >&2
+    exit 1
+fi
+
+# Fail early with an actionable message when an old root-created workspace is
+# still mounted. New files then inherit the host identity, never root.
+if ! write_probe="$(mktemp "$PROJECT_DIR/.dev-sandbox-write-probe.XXXXXX")"; then
+    echo "[dev] Workspace '$PROJECT_DIR' is not writable as uid $(id -u):$(id -g)." >&2
+    echo "      On the host, run: sudo chown -R \"\$(id -u):\$(id -g)\" ." >&2
+    exit 1
+fi
+rm -f "$write_probe"
 
 # --- Bootstrap dependencies if missing (first run on a fresh workspace) ---
 if [[ ! -x "$BACKEND_VENV/bin/uvicorn" ]]; then

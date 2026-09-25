@@ -104,12 +104,15 @@ make check                # Full local gate: lint + tests + build
 
 ### Docker Compose (dev sandbox)
 
-The stack has four services: `dev` (uvicorn + vite, foreground, hot reload),
+The stack has five services: `dev` (uvicorn + vite, foreground, hot reload),
 `worker` (arq document processor), `postgres`, `redis`, `minio`.
 
 ```bash
 # Start the full isolated dev sandbox (dev + worker + infra)
-docker compose up dev
+# From the host, use make so UID/GID and host paths are derived automatically:
+make dev-up
+# Direct Compose users must export HOST_UID/HOST_GID/DOCKER_GID first:
+docker compose up --build dev worker
 
 # Start only infrastructure services (host-native path)
 docker compose up -d postgres redis minio
@@ -119,7 +122,7 @@ docker compose logs -f dev
 docker compose logs -f worker
 
 # Shell inside the sandbox
-docker compose exec dev bash
+docker compose exec dev zsh
 
 # Stop all services / wipe volumes (clean slate)
 docker compose down
@@ -161,7 +164,7 @@ Two equivalent loops, same files (bind-mounted workspace):
 - Run backend commands: `uv`, `python`
 - Run frontend commands: `npm`, `npx`, `node`
 - Run git commands: `git`, `gh`
-- Drive the dev sandbox: `make dev-up`, `make dev-log`, `docker compose exec dev bash`, ...
+- Drive the dev sandbox: `make dev-up`, `make dev-log`, `docker compose exec dev zsh`, ...
 - Run sandboxed coding sessions: `make opencode` (agent inside the dev
   container — same files via the bind mount, stack at `:8000`/`:5173`)
 - Run the host-native loop: `make infra-up`, then uvicorn/vite directly

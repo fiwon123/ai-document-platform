@@ -10,6 +10,9 @@
 #
 # `name` is pinned so project volumes/networks keep the
 # ai-document-platform_* prefix regardless of where the compose file lives.
+# The Make targets export host identity and host path variables. Direct
+# `docker compose` users should set HOST_UID/HOST_GID/DOCKER_GID and use
+# `--build` before starting the services.
 
 name: ai-document-platform
 
@@ -21,6 +24,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    # Match the host identity so bind-mounted workspace writes do not become
+    # root-owned files. The trusted dev service also needs the host Docker
+    # socket group to drive Compose from inside the sandbox.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    group_add:
+      - "${DOCKER_GID:-999}"
     command: ["/sandbox/ai-document-platform/dev-entrypoint.sh"]
     ports:
       # Host ports avoid conflicts with other local projects' containers
@@ -30,6 +42,12 @@ services:
       - "8001:8000"
       - "5175:5173"
     environment:
+      HOME: /home/appuser
+      HOST_UID: ${HOST_UID:-1000}
+      HOST_GID: ${HOST_GID:-1000}
+      HOST_HOME: ${HOST_HOME:-${HOME}}
+      HOST_PROJECT_DIR: ${HOST_PROJECT_DIR:-.}
+      DOCKER_GID: ${DOCKER_GID:-999}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       POSTGRES_DB: ${POSTGRES_DB:-mydb}
@@ -60,18 +78,18 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - .:/sandbox/ai-document-platform:cached
+      - ${HOST_PROJECT_DIR:-.}:/sandbox/ai-document-platform:cached
       # Sandboxed AI coding agent (trusted-agent model — see DEVELOPMENT.md):
       # mount the host Docker socket so opencode INSIDE the dev container can
       # drive Docker/compose, and share the host gh auth, opencode binary +
       # config, and git identity read-only. `make dev-up` pre-creates
-      # ${HOME}/.config/opencode and ${HOME}/.gitconfig so these mounts never
-      # fail on a fresh machine. The `worker` service gets none of these.
+      # ${HOST_HOME}/.config/opencode and ${HOST_HOME}/.gitconfig so these mounts
+      # never fail on a fresh machine. The `worker` service gets none of these.
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${HOME}/.config/gh:/root/.config/gh:ro
-      - ${HOME}/.opencode/bin/opencode:/usr/local/bin/opencode:ro
-      - ${HOME}/.config/opencode:/root/.config/opencode:ro
-      - ${HOME}/.gitconfig:/root/.gitconfig:ro
+      - ${HOST_HOME:-${HOME}}/.config/gh:/home/appuser/.config/gh:ro
+      - ${HOST_HOME:-${HOME}}/.opencode/bin/opencode:/usr/local/bin/opencode:ro
+      - ${HOST_HOME:-${HOME}}/.config/opencode:/home/appuser/.config/opencode:ro
+      - ${HOST_HOME:-${HOME}}/.gitconfig:/home/appuser/.gitconfig:ro
     healthcheck:
       # python:3.14-slim ships no curl; urllib is stdlib and always present.
       # /v1/health returns 503 when degraded (e.g. no worker heartbeat yet).
@@ -111,9 +129,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    # The worker also writes Python caches in the bind-mounted workspace, so it
+    # must use the same host identity as the dev service.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     command: ["/opt/backend-venv/bin/arq", "app.worker.WorkerSettings"]
     working_dir: /sandbox/ai-document-platform/backend
     environment:
+      HOME: /home/appuser
+      HOST_HOME: ${HOST_HOME:-${HOME}}
+      HOST_PROJECT_DIR: ${HOST_PROJECT_DIR:-.}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       POSTGRES_DB: ${POSTGRES_DB:-mydb}
@@ -147,7 +174,7 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - .:/sandbox/ai-document-platform:cached
+      - ${HOST_PROJECT_DIR:-.}:/sandbox/ai-document-platform:cached
     restart: unless-stopped
     deploy:
       resources:
