@@ -24,12 +24,20 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
 from app.database.db import SessionLocal
 from app.models.document import DocumentDB
 from app.models.webhook import WebhookSubscription
 from app.repositories.webhook import WebhookRepository
-from app.schemas.webhook import WebhookEvent
+from app.schemas.webhook import (
+    WebhookEvent,
+    WebhookSubscriptionCreate,
+    WebhookSubscriptionResponse,
+    WebhookSubscriptionUpdate,
+    WebhookTestResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -424,3 +432,167 @@ async def deliver_test_payload(
             return delivered, response.status_code, message
     except Exception as e:  # noqa: BLE001 - report the failure to the caller
         return False, None, str(e)
+
+
+# --- Subscription management ------------------------------------------------
+
+
+class WebhookService:
+    """Subscription CRUD and manual test delivery.
+
+    Sits between the webhook routes and ``WebhookRepository``, mirroring
+    ``UserService``: the routes depend on this class, this class owns the
+    business rules, and only this class touches the repository.
+
+    The module-level helpers above (signing, SSRF-checked delivery, event
+    dispatch) are the transport half and are also used directly by the
+    document pipeline and the arq worker, so they stay free functions.
+
+    Unlike ``UserService`` this returns response schemas rather than ORM
+    models, because "the full signing secret is shown exactly once" is a
+    domain rule. Keeping the masking here means list/update cannot
+    accidentally leak a secret by forgetting to mask, and create cannot
+    accidentally hide it.
+    """
+
+    def __init__(self, repository: WebhookRepository):
+        self.repo = repository
+
+    @classmethod
+    def from_session(cls, db: Session) -> WebhookService:
+        """Build a service bound to a request-scoped session."""
+        return cls(repository=WebhookRepository(db))
+
+    # --- reads --------------------------------------------------------------
+
+    def list_for_user(self, owner_id: UUID) -> list[WebhookSubscriptionResponse]:
+        """List a user's subscriptions, newest first, with secrets masked."""
+        return [
+            self._masked(subscription)
+            for subscription in self.repo.list_for_user(owner_id)
+        ]
+
+    # --- writes -------------------------------------------------------------
+
+    def create(
+        self, owner_id: UUID, request: WebhookSubscriptionCreate
+    ) -> WebhookSubscription:
+        """Subscribe a user to document events at a receiver URL.
+
+        Returns the ORM object rather than a response schema: this is the
+        one path that must carry the unmasked secret so the caller can
+        configure signature verification. Capture-once — the value is
+        never retrievable again, and rotating it means delete + recreate.
+        """
+        self._ensure_valid_url(request.url)
+        return self.repo.create(
+            user_id=owner_id,
+            url=request.url,
+            events=_events_as_strings(request.events),
+            secret=generate_secret(),
+        )
+
+    def update(
+        self,
+        subscription_id: UUID,
+        owner_id: UUID,
+        request: WebhookSubscriptionUpdate,
+    ) -> WebhookSubscriptionResponse:
+        """Change the URL, subscribed events, or active flag.
+
+        Only the fields actually provided are touched, so a partial update
+        cannot clear an unrelated column. The secret is never reissued
+        here; it is masked in the response like every other read.
+        """
+        subscription = self._get_or_404(subscription_id, owner_id)
+
+        if request.url is not None:
+            self._ensure_valid_url(request.url)
+
+        updated = self.repo.update(
+            subscription,
+            url=request.url,
+            events=(
+                _events_as_strings(request.events)
+                if request.events is not None
+                else None
+            ),
+            is_active=request.is_active,
+        )
+        return self._masked(updated)
+
+    def delete(self, subscription_id: UUID, owner_id: UUID) -> None:
+        """Delete one of the caller's own subscriptions."""
+        self.repo.delete(self._get_or_404(subscription_id, owner_id))
+
+    # --- manual test -------------------------------------------------------
+
+    async def send_test(
+        self, subscription_id: UUID, owner_id: UUID
+    ) -> WebhookTestResponse:
+        """Deliver a one-off ``ping`` and record the outcome.
+
+        The attempt is recorded in the subscription's delivery stats, so a
+        manual test doubles as a health probe: a receiver that has started
+        failing shows up as ``last_status='failed'`` with a rising
+        ``failure_count`` even before the next real event is dispatched.
+        """
+        subscription = self._get_or_404(subscription_id, owner_id)
+        delivered, status_code, message = await deliver_test_payload(subscription)
+        self.repo.record_delivery(
+            subscription,
+            success=delivered,
+            status_code=status_code,
+        )
+        return WebhookTestResponse(
+            delivered=delivered,
+            event="ping",
+            status_code=status_code,
+            message=message,
+        )
+
+    # --- internals ---------------------------------------------------------
+
+    def _get_or_404(
+        self, subscription_id: UUID, owner_id: UUID
+    ) -> WebhookSubscription:
+        """Fetch one of the caller's own subscriptions, or raise 404.
+
+        Scoping the lookup by owner is what enforces per-user isolation —
+        another user's subscription is reported as missing rather than
+        forbidden, so ids are not probeable.
+        """
+        subscription = self.repo.get_for_user(subscription_id, owner_id)
+        if subscription is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Webhook subscription not found",
+            )
+        return subscription
+
+    @staticmethod
+    def _ensure_valid_url(url: str) -> None:
+        """Reject receiver URLs that are not public http(s) endpoints.
+
+        Guards SSRF: the worker POSTs to whatever the user configured, from
+        inside our network, so a loopback or link-local target would be an
+        internal port scan.
+        """
+        if not is_valid_webhook_url(url):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="URL must be a public http:// or https:// endpoint "
+                "(internal/private addresses are not allowed)",
+            )
+
+    @staticmethod
+    def _masked(subscription: WebhookSubscription) -> WebhookSubscriptionResponse:
+        """Serialize a subscription with a masked signing secret."""
+        response = WebhookSubscriptionResponse.model_validate(subscription)
+        response.secret = mask_secret(subscription.secret)
+        return response
+
+
+def _events_as_strings(events: list[WebhookEvent]) -> list[str]:
+    """Flatten the event enum to the dotted strings stored in the JSONB column."""
+    return [event.value for event in events]

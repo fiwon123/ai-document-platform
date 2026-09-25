@@ -11,6 +11,8 @@ import ipaddress
 import uuid
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.schemas.webhook import WebhookEvent
 
 TEST_URL = "https://example.com/hook"
@@ -427,3 +429,233 @@ class TestDeleteEvent:
         assert str(info.document_id) == created["id"]
         assert info.filename == "notes.txt"
         assert info.owner_id == uuid.UUID(_current_user_id(client, auth_headers))
+
+class TestWebhookService:
+    """Unit tests for the service seam added in #369.
+
+    The endpoint tests above already cover this behaviour over HTTP; these
+    pin the rules the extraction moved into ``WebhookService`` — above all
+    the capture-once secret invariant and the partial-update contract —
+    without going through FastAPI, so a regression points at the service
+    rather than at routing.
+    """
+
+    def _service(self, db_session):
+        from app.services.webhook import WebhookService
+
+        return WebhookService.from_session(db_session)
+
+    def _user(self, db_session, username=None):
+        from app.models.user import Role, UserDB
+        from app.services.user import pwd_context
+
+        user = UserDB(
+            username=username or f"svc_{uuid.uuid4().hex[:10]}",
+            hashed_password=pwd_context.hash("testpass123"),
+            role=Role.customer,
+        )
+        db_session.add(user)
+        db_session.commit()
+        return user
+
+    def _create_request(self, url=TEST_URL, events=None):
+        from app.schemas.webhook import WebhookSubscriptionCreate
+
+        return WebhookSubscriptionCreate(
+            url=url,
+            events=events or [WebhookEvent.READY, WebhookEvent.FAILED],
+        )
+
+    def test_create_returns_the_unmasked_secret_but_listing_masks_it(
+        self, db_session
+    ):
+        """The one path that must carry the real secret, and it is the only one."""
+        from app.schemas.webhook import WebhookSubscriptionResponse
+
+        service = self._service(db_session)
+        user = self._user(db_session)
+
+        created = service.create(user.id, self._create_request())
+
+        # create hands back the raw value so the caller can configure
+        # signature verification (mask_secret() would insert "...") ...
+        assert "..." not in created.secret
+        assert len(created.secret) > 8
+
+        # ... and every later read is masked.
+        listed = service.list_for_user(user.id)
+        assert len(listed) == 1
+        assert isinstance(listed[0], WebhookSubscriptionResponse)
+        assert listed[0].id == created.id
+        assert listed[0].secret != created.secret
+        assert "..." in listed[0].secret
+        # a recognizable prefix/suffix survives so an owner can tell keys apart
+        assert listed[0].secret.startswith(created.secret[:5])
+        assert listed[0].secret.endswith(created.secret[-4:])
+
+    def test_created_secret_is_stored_verbatim(self, db_session):
+        """Masking happens on the way out only; the row keeps the real key."""
+        service = self._service(db_session)
+        user = self._user(db_session)
+
+        created = service.create(user.id, self._create_request())
+
+        from app.repositories.webhook import WebhookRepository
+
+        stored = WebhookRepository(db_session).get_for_user(created.id, user.id)
+        assert stored is not None
+        assert stored.secret == created.secret
+
+    def test_listing_is_scoped_to_the_owner(self, db_session):
+        service = self._service(db_session)
+        owner = self._user(db_session)
+        other = self._user(db_session)
+
+        service.create(owner.id, self._create_request())
+
+        assert len(service.list_for_user(owner.id)) == 1
+        assert service.list_for_user(other.id) == []
+
+    def test_update_touches_only_the_provided_fields(self, db_session):
+        """An omitted field must be passed through as None, not overwritten."""
+        from app.schemas.webhook import WebhookSubscriptionUpdate
+
+        service = self._service(db_session)
+        user = self._user(db_session)
+        created = service.create(user.id, self._create_request())
+
+        response = service.update(
+            created.id, user.id, WebhookSubscriptionUpdate(is_active=False)
+        )
+
+        assert response.is_active is False
+        # url and events were omitted, so they must survive untouched
+        assert response.url == created.url
+        assert response.events == list(created.events)
+
+    def test_update_can_replace_url_and_events(self, db_session):
+        from app.schemas.webhook import WebhookSubscriptionUpdate
+
+        service = self._service(db_session)
+        user = self._user(db_session)
+        created = service.create(user.id, self._create_request())
+
+        response = service.update(
+            created.id,
+            user.id,
+            WebhookSubscriptionUpdate(
+                # example.com is used rather than a made-up host because
+                # is_valid_webhook_url() resolves the hostname, and an
+                # unresolvable one is rejected as a possible SSRF target.
+                url="https://example.com/hook/v2",
+                events=[WebhookEvent.DELETED],
+            ),
+        )
+
+        assert response.url == "https://example.com/hook/v2"
+        assert response.events == [WebhookEvent.DELETED.value]
+
+    def test_update_and_delete_reject_another_users_subscription(self, db_session):
+        """A foreign id is reported as missing, so ids are not probeable."""
+        from fastapi import HTTPException
+
+        from app.schemas.webhook import WebhookSubscriptionUpdate
+
+        service = self._service(db_session)
+        owner = self._user(db_session)
+        other = self._user(db_session)
+        created = service.create(owner.id, self._create_request())
+
+        for call in (
+            lambda: service.update(
+                created.id, other.id, WebhookSubscriptionUpdate(is_active=False)
+            ),
+            lambda: service.delete(created.id, other.id),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                call()
+            assert exc.value.status_code == 404
+
+        # and the owner's subscription is still there
+        assert len(service.list_for_user(owner.id)) == 1
+
+    def test_create_rejects_internal_urls_before_touching_the_repo(self, db_session):
+        from fastapi import HTTPException
+
+        service = self._service(db_session)
+        user = self._user(db_session)
+
+        with pytest.raises(HTTPException) as exc:
+            service.create(user.id, self._create_request(url="http://127.0.0.1/x"))
+
+        assert exc.value.status_code == 422
+        assert service.list_for_user(user.id) == []
+
+    def test_delete_removes_the_subscription(self, db_session):
+        service = self._service(db_session)
+        user = self._user(db_session)
+        created = service.create(user.id, self._create_request())
+
+        service.delete(created.id, user.id)
+
+        assert service.list_for_user(user.id) == []
+
+    def test_send_test_records_delivery_stats(self, db_session, monkeypatch):
+        """A manual ping doubles as a health probe, so the result is recorded."""
+        import app.services.webhook as webhook_module
+
+        service = self._service(db_session)
+        user = self._user(db_session)
+        created = service.create(user.id, self._create_request())
+
+        async def fake_post(client, url, body, signature, event):
+            response = MagicMock()
+            response.status_code = 204
+            return response
+
+        monkeypatch.setattr(webhook_module, "_post_payload", fake_post)
+
+        result = asyncio.run(service.send_test(created.id, user.id))
+
+        assert result.delivered is True
+        assert result.event == "ping"
+        assert result.status_code == 204
+
+        db_session.refresh(created)
+        assert created.last_status == "success"
+        assert created.last_delivered_at is not None
+
+    def test_send_test_records_failure(self, db_session, monkeypatch):
+        import app.services.webhook as webhook_module
+
+        service = self._service(db_session)
+        user = self._user(db_session)
+        created = service.create(user.id, self._create_request())
+
+        async def fake_post(client, url, body, signature, event):
+            raise RuntimeError("connection refused")
+
+        monkeypatch.setattr(webhook_module, "_post_payload", fake_post)
+
+        result = asyncio.run(service.send_test(created.id, user.id))
+
+        assert result.delivered is False
+        assert result.status_code is None
+        assert "connection refused" in result.message
+
+        db_session.refresh(created)
+        assert created.last_status == "failed"
+        assert created.failure_count == 1
+
+    def test_send_test_rejects_another_users_subscription(self, db_session):
+        from fastapi import HTTPException
+
+        service = self._service(db_session)
+        owner = self._user(db_session)
+        other = self._user(db_session)
+        created = service.create(owner.id, self._create_request())
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(service.send_test(created.id, other.id))
+
+        assert exc.value.status_code == 404
