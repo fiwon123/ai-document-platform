@@ -40,11 +40,34 @@
     0 20px 40px rgba(15, 23, 42, 0.08);
 
   /* Motion: durations + easing curves */
+  --duration-instant: 50ms;
   --duration-fast: 120ms;
   --duration-base: 200ms;
   --duration-slow: 400ms;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-emphasized: cubic-bezier(0.2, 0, 0, 1.4); /* slight overshoot for pops */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* bouncy micro-interactions */
+  --ease-decelerate: cubic-bezier(0, 0, 0.2, 1); /* enter: ease out */
+  --ease-accelerate: cubic-bezier(0.4, 0, 1, 1); /* exit: ease in */
+
+  /* Typography scale (heads-up: headings use their own sizes below) */
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.875rem; /* 14px */
+  --text-base: 1rem; /* 16px */
+  --text-lg: 1.125rem; /* 18px */
+  --text-xl: 1.25rem; /* 20px */
+  --text-2xl: 1.5rem; /* 24px */
+  --text-3xl: 1.875rem; /* 30px */
+  --text-4xl: 2.25rem; /* 36px */
+  --text-5xl: 3rem; /* 48px */
+
+  --leading-tight: 1.15;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  --tracking-tight: -0.03em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.05em;
 
   font: 16px/145% var(--sans);
   letter-spacing: 0.18px;
@@ -65,9 +88,12 @@
 :root[data-theme="dark"] {
   --text: #e2e8f0;
   --text-h: #f1f5f9;
-  --bg: #0f172a;
-  --border: #1e293b;
-  --code-bg: #1e293b;
+  /* Softened dark backgrounds: lifted from pure near-black (#0f172a) so the
+     scope feels less stark, with higher-tone line/code tokens that stay
+     visible against the lighter paper. */
+  --bg: #121927;
+  --border: #2c3a52;
+  --code-bg: #1b2639;
   --accent: #3b82f6;
   --shadow: rgba(0, 0, 0, 0.55) 0 10px 15px -3px,
     rgba(0, 0, 0, 0.35) 0 4px 6px -2px;
