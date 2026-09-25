@@ -1,0 +1,86 @@
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ScreenshotCarousel, type CarouselSlide } from "./ScreenshotCarousel";
+
+const SLIDES: CarouselSlide[] = [
+  { src: "/screenshots/dashboard.png", alt: "Dashboard view", caption: "Dashboard" },
+  { src: "/screenshots/search.png", alt: "Search results", caption: "Search" },
+];
+
+let matchMediaMock: ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+  matchMediaMock = vi.fn().mockReturnValue({ matches: false });
+  vi.stubGlobal("matchMedia", matchMediaMock);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+describe("ScreenshotCarousel", () => {
+  it("renders all slides as images with captions (inactive slides are aria-hidden)", () => {
+    const { container } = render(<ScreenshotCarousel slides={SLIDES} />);
+    expect(container.querySelectorAll(".carousel-slide img")).toHaveLength(2);
+    expect(screen.getByText("Dashboard")).toBeTruthy();
+    expect(screen.getByText("Search")).toBeTruthy();
+  });
+
+  it("marks only the active slide as visible", () => {
+    render(<ScreenshotCarousel slides={SLIDES} />);
+    const activeFigure = screen
+      .getAllByRole("img")
+      .find((img) => img.closest("figure")?.classList.contains("active"));
+    expect(activeFigure).toBeTruthy();
+  });
+
+  it("advances automatically after the interval", async () => {
+    vi.useFakeTimers();
+    render(<ScreenshotCarousel slides={SLIDES} intervalMs={2000} />);
+    expect(screen.getByLabelText("Go to slide 1").getAttribute("aria-current")).toBe("true");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2100);
+    });
+    expect(screen.getByLabelText("Go to slide 2").getAttribute("aria-current")).toBe("true");
+  });
+
+  it("does not auto-advance when paused on hover", async () => {
+    vi.useFakeTimers();
+    render(<ScreenshotCarousel slides={SLIDES} intervalMs={2000} />);
+    fireEvent.mouseEnter(screen.getByRole("group", { name: "Product screenshots" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(screen.getByLabelText("Go to slide 1").getAttribute("aria-current")).toBe("true");
+  });
+
+  it("navigates with the arrow buttons and wraps around", () => {
+    render(<ScreenshotCarousel slides={SLIDES} />);
+    fireEvent.click(screen.getByLabelText("Previous screenshot"));
+    expect(screen.getByLabelText("Go to slide 2").getAttribute("aria-current")).toBe("true");
+    fireEvent.click(screen.getByLabelText("Next screenshot"));
+    expect(screen.getByLabelText("Go to slide 1").getAttribute("aria-current")).toBe("true");
+  });
+
+  it("jumps to a slide via its dot", () => {
+    render(<ScreenshotCarousel slides={SLIDES} />);
+    fireEvent.click(screen.getByLabelText("Go to slide 2"));
+    expect(screen.getByLabelText("Go to slide 2").getAttribute("aria-current")).toBe("true");
+  });
+
+  it("disables auto-advance for reduced-motion users", async () => {
+    matchMediaMock.mockReturnValue({ matches: true });
+    vi.useFakeTimers();
+    render(<ScreenshotCarousel slides={SLIDES} intervalMs={2000} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    expect(screen.getByLabelText("Go to slide 1").getAttribute("aria-current")).toBe("true");
+  });
+
+  it("renders nothing for an empty slide set", () => {
+    const { container } = render(<ScreenshotCarousel slides={[]} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+});
