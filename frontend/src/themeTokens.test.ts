@@ -199,4 +199,61 @@ describe("design tokens", () => {
       ).toMatch(/--card-accent\s*:/);
     }
   });
+
+  it("gives the three stat figures equal tracks so they share one centre axis", () => {
+    // Regression guard for the row reading as off-centre. This was a flex row
+    // with `flex: 1 1 240px` on the children, and a flex item's automatic
+    // minimum size (min-width: auto) floors it at its min-content width.
+    // "12,000+" and "48,000+" are unbreakable tokens much wider than "99%", so
+    // the outer items came out wider than the middle one and each figure's
+    // centre landed on a different axis.
+    //
+    // Equal `minmax(0, 1fr)` tracks fix it. The 0 matters as much as the repeat:
+    // a bare `1fr` is minmax(auto, 1fr) and reinstates the same min-content
+    // floor, so the guard pins the zero rather than just counting columns.
+    const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8");
+    const row = css.match(/\.stat-row\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(row, ".stat-row must still be styled").not.toBe("");
+    expect(row, "stat figures must sit in equal, content-independent tracks").toMatch(
+      /grid-template-columns:\s*repeat\(\s*3\s*,\s*minmax\(\s*0\s*,\s*1fr\s*\)\s*\)/,
+    );
+  });
+
+  it("keeps the label selector off CountUp's own span", () => {
+    // The label rule was `.stat-item span`, which also matches CountUp's
+    // <span class="count-up"> — a *grandchild* of .stat-item, since it sits
+    // inside <strong class="stat-value">. The number then inherited the label's
+    // font-weight 600 and +0.01em tracking instead of the display 800 / -0.05em,
+    // which is what read as the figure having lost its formatting.
+    //
+    // font-size and colour happened to survive (the .count-up rules outrank
+    // this selector), so a render test would not catch a regression here.
+    const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8");
+    expect(
+      css,
+      "label styling must not reach the animated number",
+    ).toMatch(/\.stat-item\s*>\s*span\s*\{/);
+    expect(
+      css,
+      "a bare `.stat-item span` re-couples the label to CountUp's span",
+    ).not.toMatch(/\.stat-item\s+span\s*\{/);
+  });
+
+  it("never stacks the stat row, so the three figures stay comparable", () => {
+    // Stacking turned one comparable set into three separate statements. The
+    // old 720px rule forced `flex-basis: 100%` and rotated the dividers to
+    // horizontal; on a grid row that declaration is inert, so its absence is
+    // the real guarantee, and the vertical divider orientation proves the
+    // rotation was not reintroduced under another breakpoint.
+    const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8");
+    expect(
+      css,
+      "no breakpoint may force the stat items onto their own row",
+    ).not.toMatch(/\.stat-item\s*\{[^}]*flex-basis:\s*100%/);
+    const divider = css.match(/\.stat-item\s*\+\s*\.stat-item::before\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(divider, "the stat divider must still be styled").not.toBe("");
+    expect(divider, "dividers stay vertical so the row needs no breakpoint").toMatch(
+      /width:\s*1px/,
+    );
+  });
 });

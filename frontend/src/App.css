@@ -1722,23 +1722,35 @@ body {
    and a wide horizontal rhythm: a centered number above its label, with
    vertical dividers between items. Inline-flex (not flex) on the item is
    what lets the divider ride the item's own border box. */
+/* Equal tracks, not flex items. This was `display: flex` with
+   `flex: 1 1 240px` on the children, and that is what made the row look
+   off-centre: a flex item's automatic minimum size (min-width: auto) floors it
+   at its min-content width, and "12,000+" / "48,000+" are unbreakable tokens
+   far wider than "99%". The two outer stats were therefore wider than the
+   middle one, so each figure's centre sat on a different axis — most visibly
+   the outer pair drifting off the centre of "48,000+ Questions answered".
+
+   `minmax(0, 1fr)` makes the three tracks exactly equal whatever the content,
+   so all three centres land on the section's centre line. The minmax(0, _)
+   matters: plain 1fr is minmax(auto, 1fr) and reintroduces the same
+   min-content floor. `max-width` stays so the row does not sprawl on wide
+   screens, but it no longer influences alignment. */
 .stat-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: stretch;
   margin: 0 auto 26px;
-  max-width: 900px;
+  max-width: 1080px;
 }
 
 .stat-item {
   position: relative;
   display: flex;
-  flex: 1 1 240px;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 6px 24px;
+  padding: 6px 16px;
+  min-width: 0;
 }
 
 /* Divider between neighbouring stats; hidden on the outer edges and on
@@ -1788,7 +1800,20 @@ body {
   );
 }
 
-.stat-item span {
+/* Direct child only. The descendant selector `.stat-item span` also matched
+   CountUp's own <span class="count-up">, which is a *grandchild* of .stat-item
+   (it sits inside <strong class="stat-value">).
+
+   Most of the damage was masked: `.count-up:not(.animating)` is specificity
+   0,2,0 against this rule's 0,1,1, so font-size and colour were already won by
+   the .count-up rules. But font-weight and letter-spacing exist nowhere else
+   on the number, so the figure silently rendered in the *label's* weight 600
+   and +0.01em tracking instead of the display 800 / -0.05em from
+   `.stat-item strong` — thinner, looser digits than the design calls for,
+   which is what read as the number having "lost its formatting".
+
+   `>` separates them exactly: the label is a direct child, the number is not. */
+.stat-item > span {
   color: var(--muted);
   font-size: 0.95rem;
   font-weight: 600;
@@ -1796,24 +1821,19 @@ body {
   text-align: center;
 }
 
+/* Kept horizontal at every width by design: three figures in a row read as one
+   comparable set, and stacking them turned that set into three separate
+   statements. The old 720px breakpoint used to force `flex-basis: 100%` and
+   swap the dividers to horizontal rules; the row is now an equal 3-column
+   grid, so the only thing that has to give on a narrow screen is padding and
+   type size. The dividers therefore stay vertical and untouched. */
 @media (max-width: 720px) {
   .stat-item {
-    flex-basis: 100%;
+    padding: 6px 8px;
   }
 
-  .stat-item + .stat-item::before {
-    /* Stacked items: swap the side rule for a horizontal one. */
-    top: 0;
-    left: 50%;
-    width: 60%;
-    height: 1px;
-    transform: translateX(-50%);
-    background: linear-gradient(
-      90deg,
-      transparent,
-      color-mix(in srgb, var(--line) 90%, transparent),
-      transparent
-    );
+  .stat-item strong {
+    font-size: clamp(1.6rem, 7.2vw, 2.4rem);
   }
 }
 
