@@ -106,26 +106,93 @@
 }
 
 /* Smooth theme switch: added to <html> by useTheme for the duration of a
-   toggle (see hooks/useTheme.ts). Only the color-ish properties animate so
-   layout/transform transitions stay untouched; the class is removed right
-   after the flip so normal hover/focus transitions are unaffected. */
+   toggle (see hooks/useTheme.ts), then removed so normal hover/focus
+   transitions are unaffected again.
+
+   Scope matters here. The obvious version of this rule is
+   `html.theme-transitioning *` — every element in the document, with
+   !important so it beats each component's own transition. That is a
+   well-known anti-pattern: the style/paint cost scales with total DOM
+   size, so the toggle stutters on content-heavy pages (the Documents
+   grid alone renders one card per document).
+
+   Instead we enumerate the surfaces that actually recolor on a theme
+   flip. `html.theme-transitioning <sel>` outranks a bare `<sel>` on
+   specificity, so the crossfade wins during the 220ms window without
+   needing !important — meaning a component's own transition-duration is
+   left intact, just overridden for those four properties. If you add a
+   new themed surface, add it here too. */
 html.theme-transitioning,
-html.theme-transitioning *,
-html.theme-transitioning *::before,
-html.theme-transitioning *::after {
+html.theme-transitioning body,
+html.theme-transitioning #root,
+html.theme-transitioning .main-content,
+html.theme-transitioning .page,
+html.theme-transitioning .page-header,
+html.theme-transitioning .landing-page,
+html.theme-transitioning .navbar,
+html.theme-transitioning .landing-navbar,
+html.theme-transitioning .theme-toggle,
+html.theme-transitioning .navbar-toggle,
+html.theme-transitioning .navbar-workspace-badge,
+/* Surfaces */
+html.theme-transitioning .document-card,
+html.theme-transitioning .stat-card,
+html.theme-transitioning .quick-action,
+html.theme-transitioning .search-result-card,
+html.theme-transitioning .faq-item,
+html.theme-transitioning .landing-card,
+html.theme-transitioning .landing-step,
+html.theme-transitioning .landing-plan,
+html.theme-transitioning .recent-item,
+html.theme-transitioning .preview-window,
+html.theme-transitioning .carousel-arrow,
+html.theme-transitioning .landing-table,
+html.theme-transitioning .dropzone,
+html.theme-transitioning .skeleton-card,
+html.theme-transitioning .skeleton-table,
+html.theme-transitioning .modal,
+/* Bands & chrome */
+html.theme-transitioning .landing-social,
+html.theme-transitioning .landing-section-alt,
+html.theme-transitioning .landing-footer,
+html.theme-transitioning .landing-cta-band,
+/* Controls */
+html.theme-transitioning input,
+html.theme-transitioning textarea,
+html.theme-transitioning select,
+html.theme-transitioning .btn,
+html.theme-transitioning .badge,
+html.theme-transitioning .filter-chip,
+html.theme-transitioning .suggestion-chip,
+html.theme-transitioning .chip-count,
+html.theme-transitioning .logo-mark,
+html.theme-transitioning .trust-badges li,
+html.theme-transitioning code {
   transition:
     background-color 0.22s var(--ease-standard),
     color 0.22s var(--ease-standard),
     border-color 0.22s var(--ease-standard),
     fill 0.22s var(--ease-standard),
-    stroke 0.22s var(--ease-standard) !important;
+    stroke 0.22s var(--ease-standard);
+}
+
+/* `transition` is not inherited, so pseudo-elements that carry themed
+   color on their own (the logo bullet, badge dots) need the same
+   treatment as their host element. */
+html.theme-transitioning .logo-mark::before,
+html.theme-transitioning .badge-dot,
+html.theme-transitioning .recent-tile,
+html.theme-transitioning .file-icon,
+html.theme-transitioning .file-icon::before {
+  transition:
+    background-color 0.22s var(--ease-standard),
+    color 0.22s var(--ease-standard),
+    border-color 0.22s var(--ease-standard);
 }
 
 @media (prefers-reduced-motion: reduce) {
   html.theme-transitioning,
-  html.theme-transitioning *,
-  html.theme-transitioning *::before,
-  html.theme-transitioning *::after {
+  html.theme-transitioning * {
     transition: none !important;
   }
 }
@@ -1183,32 +1250,51 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Arrows sit INSIDE the frame: .preview-window has overflow:hidden, so
+   negative offsets put them outside the clip and they get cut off by the
+   window's rounded border. An inset position keeps them fully visible, and
+   the translucent + blurred backdrop keeps them readable over any
+   screenshot (a solid --paper disc would disappear against a light UI). */
 .carousel-arrow {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--line);
+  border: 1px solid color-mix(in srgb, var(--paper) 30%, transparent);
   border-radius: 50%;
-  background: var(--paper);
-  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
+  color: var(--paper);
   cursor: pointer;
-  box-shadow: 0 4px 14px rgb(15 23 42 / 0.18);
-  transition: transform 0.2s, background 0.2s, border-color 0.2s;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 14px rgb(15 23 42 / 0.28);
+  transition:
+    transform 0.2s,
+    background-color 0.2s,
+    border-color 0.2s,
+    color 0.2s;
 }
 
 .carousel-arrow:hover {
   border-color: var(--blue);
-  color: var(--blue);
-  transform: translateY(-50%) scale(1.06);
+  background: var(--blue);
+  color: white;
+  transform: translateY(-50%) scale(1.08);
 }
 
-.carousel-arrow-prev { left: -19px; }
-.carousel-arrow-next { right: -19px; }
+.carousel-arrow:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* Inset 14px from each edge — clear of the caption/count/dots that also
+   live in the lower band, and well inside the rounded corner radius. */
+.carousel-arrow-prev { left: 14px; }
+.carousel-arrow-next { right: 14px; }
 
 .carousel-dots {
   position: absolute;
