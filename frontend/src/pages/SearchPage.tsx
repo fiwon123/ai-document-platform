@@ -5,9 +5,17 @@ import { EmptyState } from "../components/EmptyState";
 import { HighlightedText } from "../components/HighlightedText";
 import { search } from "../services/api";
 import type { SearchResult } from "../types";
-import { Spinner } from "../components/Spinner";
 
 const SEARCH_QUERY_KEY = ["search"] as const;
+
+/** Example queries shown as clickable chips until the first search / when no
+ *  results match — they fill the input and run the search immediately. */
+const SUGGESTIONS = [
+  "How does document processing work?",
+  "Which documents mention security?",
+  "Summarize the key onboarding steps",
+  "What are the product highlights?",
+];
 
 interface SearchParams {
   q: string;
@@ -28,14 +36,40 @@ const SearchResultCard = memo(function SearchResultCard({
   result,
   query,
 }: SearchResultCardProps) {
+  const matchPct = Math.max(0, (1 - result.score) * 100);
   return (
     <div className="search-result-card">
       <div className="result-header">
         <span className="result-document">
+          <svg
+            viewBox="0 0 24 24"
+            width="15"
+            height="15"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path
+              d="M6 3h8l4 4v14H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M14 3v4h4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+            />
+          </svg>
           {result.document_filename}
         </span>
-        <span className="result-score">
-          Similarity: {Math.max(0, (1 - result.score) * 100).toFixed(1)}%
+        <span
+          className="result-match-chip"
+          title={`Similarity: ${((1 - result.score) * 100).toFixed(1)}%`}
+        >
+          {matchPct.toFixed(0)}% match
         </span>
       </div>
       <p className="result-content">
@@ -53,6 +87,50 @@ const SearchResultCard = memo(function SearchResultCard({
     </div>
   );
 });
+
+/** Shimmering placeholders shown while a search is in flight. */
+function SearchSkeletons() {
+  return (
+    <div className="search-skeletons" role="status" aria-label="Searching">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="skeleton-card search-skeleton">
+          <div className="skeleton-card-header">
+            <span className="skeleton" style={{ width: "40%" }} />
+            <span className="skeleton" style={{ width: "15%" }} />
+          </div>
+          <div className="skeleton-card-body">
+            <span className="skeleton" style={{ width: "100%" }} />
+            <span className="skeleton" style={{ width: "82%" }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SuggestionChips({
+  onPick,
+  disabled,
+}: {
+  onPick: (suggestion: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="search-suggestions" aria-label="Suggested searches">
+      {SUGGESTIONS.map((suggestion) => (
+        <button
+          key={suggestion}
+          type="button"
+          className="suggestion-chip"
+          onClick={() => onPick(suggestion)}
+          disabled={disabled}
+        >
+          {suggestion}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const DEBOUNCE_MS = 300;
 const PAGE_SIZE = 5;
@@ -129,11 +207,21 @@ export function SearchPage() {
     void searchQuery.fetchNextPage();
   }
 
+  function runSearch(nextQuery: string) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSearchParams({ q: nextQuery.trim(), ids: idKey });
+  }
+
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     // Explicit submit bypasses the debounce: run the search right away.
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    setSearchParams({ q: query.trim(), ids: idKey });
+    runSearch(query);
+  }
+
+  function handleSuggestion(suggestion: string) {
+    // A picked chip fills the input AND searches immediately (no debounce).
+    startTransition(() => setQuery(suggestion));
+    runSearch(suggestion);
   }
 
   async function handleExport(format: "csv" | "json") {
@@ -150,6 +238,10 @@ export function SearchPage() {
       setIsExporting(null);
     }
   }
+
+  // Suggest example queries until a search returns results (or errors).
+  const showSuggestions =
+    hasSearched && !isLoading && !errorMessage && results.length === 0;
 
   return (
     <div className="page">
@@ -178,18 +270,37 @@ export function SearchPage() {
         </div>
       </form>
 
+      {!hasSearched && !isLoading && (
+        <EmptyState
+          title="Search your documents"
+          description="Find anything across your uploads in natural language — try one of these:"
+          >
+          <div className="search-suggestions">
+            {SUGGESTIONS.map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                className="suggestion-chip"
+                onClick={() => handleSuggestion(suggestion)}
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        </EmptyState>
+      )}
+
       <DocumentFilter selected={selectedIds} onChange={setSelectedIds} />
+
+      {showSuggestions && hasSearched && (
+        <SuggestionChips onPick={handleSuggestion} disabled={isLoading} />
+      )}
 
       {errorMessage && <p className="error-message" role="alert">{errorMessage}</p>}
 
-      {isLoading && (
-        <div className="loading">
-          <Spinner size={20} label="Searching" />
-          <span>Searching…</span>
-        </div>
-      )}
+      {isLoading && <SearchSkeletons />}
 
-      {!isLoading && hasSearched && results.length === 0 && (
+      {!isLoading && hasSearched && results.length === 0 && !errorMessage && (
         <EmptyState
           title="No results found"
           description={`Nothing matched "${query}". Try different keywords.`}
@@ -220,6 +331,9 @@ export function SearchPage() {
               </button>
             </div>
           </div>
+          <p className="search-status">
+            Showing {results.length} of {totalCount} result{totalCount === 1 ? "" : "s"}
+          </p>
           {results.map((result) => (
             <SearchResultCard
               key={result.chunk_id}
@@ -229,6 +343,9 @@ export function SearchPage() {
           ))}
           {hasMore && (
             <div className="search-load-more">
+              <span className="search-load-info">
+                Loaded {results.length} of {totalCount}
+              </span>
               <button
                 type="button"
                 className="btn btn-secondary"

@@ -348,4 +348,88 @@ describe("SearchPage", () => {
 
     expect(screen.getByText("Export backend down")).toBeTruthy();
   });
+
+  it("shows suggestion chips before the first search and runs them instantly", async () => {
+    renderWithClient(<SearchPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "How does document processing work?" }),
+    );
+    await act(async () => {});
+
+    expect(mockedSearch).toHaveBeenCalledWith(
+      "How does document processing work?",
+      5,
+      [],
+      0,
+    );
+    // The mocked result renders (getAllByText: the snippet may be wrapped in
+    // a single span when the query terms don't occur inside the content).
+    expect(
+      screen.getAllByText(byFullText("meeting minutes about Q3 planning"))
+        .length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("keeps suggestions visible when a search returns no results", async () => {
+    mockedSearch.mockResolvedValue({
+      query: "nothing here",
+      results: [],
+      total_count: 0,
+      has_more: false,
+    });
+    await runSearch("nothing here");
+
+    expect(screen.getByText("No results found")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Which documents mention security?" }),
+    ).toBeTruthy();
+  });
+
+  it("shows a status line with the loaded result counts", async () => {
+    mockedSearch.mockResolvedValue({
+      query: "q3 planning",
+      results: [result],
+      total_count: 3,
+      has_more: true,
+    });
+    await runSearch("q3 planning");
+
+    expect(screen.getByText("Showing 1 of 3 results")).toBeTruthy();
+    expect(screen.getByText("Loaded 1 of 3")).toBeTruthy();
+  });
+
+  it("renders a match-percentage chip on result cards", async () => {
+    await runSearch("q3 planning");
+    expect(screen.getByText("8% match")).toBeTruthy();
+  });
+
+  it("shows skeleton placeholders while a search is pending", async () => {
+    let resolveSearch: (value: SearchResponse) => void = () => {};
+    mockedSearch.mockReturnValue(
+      new Promise<SearchResponse>((resolve) => {
+        resolveSearch = resolve;
+      }),
+    );
+
+    renderWithClient(<SearchPage />);
+    fireEvent.change(
+      screen.getByPlaceholderText("Search your documents..."),
+      { target: { value: "q3 planning" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    const skeletons = screen.getByRole("status", { name: "Searching" });
+    expect(skeletons.querySelectorAll(".search-skeleton")).toHaveLength(3);
+
+    await act(async () => {
+      resolveSearch({
+        query: "q3 planning",
+        results: [result],
+        total_count: 1,
+        has_more: false,
+      });
+    });
+    expect(screen.queryByRole("status", { name: "Searching" })).toBeNull();
+  });
 });
