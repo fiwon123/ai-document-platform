@@ -34,7 +34,14 @@ const AdminUserRow = memo(function AdminUserRow({
 }: AdminUserRowProps) {
   return (
     <tr>
-      <td>{user.username}</td>
+      <td>
+        <span className="admin-user-cell">
+          <span className="admin-user-avatar" aria-hidden="true">
+            {user.username.charAt(0).toUpperCase()}
+          </span>
+          {user.username}
+        </span>
+      </td>
       <td>
         <select
           value={user.role === "admin" ? "admin" : "customer"}
@@ -89,6 +96,101 @@ type OptimisticUserAction =
   | { type: "role"; userId: string; role: Role }
   | { type: "toggle-active"; user: User; isActive: boolean }
   | { type: "delete"; userId: string };
+
+/* 16px Feather-style glyphs for the stat cards, hand-rolled (no icon
+   library). The shared .stat-icon tile expects a centered svg; all icons are
+   aria-hidden because they accompany visible text. */
+const STAT_GLYPHS: Record<string, React.JSX.Element> = {
+  users: (
+    <>
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </>
+  ),
+  userCheck: (
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="8.5" cy="7" r="4" />
+      <path d="m17 11 2 2 4-4" />
+    </>
+  ),
+  userX: (
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="8.5" cy="7" r="4" />
+      <path d="m18 8 5 5" />
+      <path d="m23 8-5 5" />
+    </>
+  ),
+  file: (
+    <>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+      <path d="M9 13h6" />
+      <path d="M9 17h6" />
+    </>
+  ),
+  check: (
+    <>
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <path d="m9 11 3 3L22 4" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M3 21v-5h5" />
+    </>
+  ),
+  alert: (
+    <>
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </>
+  ),
+  layers: (
+    <>
+      <path d="m12 2 10 6-10 6L2 8Z" />
+      <path d="m2 14 10 6 10-6" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
+    </>
+  ),
+};
+
+function StatIcon({ name }: { name: keyof typeof STAT_GLYPHS }) {
+  return (
+    <span className="stat-icon">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        focusable="false"
+      >
+        {STAT_GLYPHS[name]}
+      </svg>
+    </span>
+  );
+}
 
 export function AdminPage() {
   const { user: currentUser } = useAuth();
@@ -221,42 +323,52 @@ export function AdminPage() {
         {stats ? (
           <div className="stats-grid">
             <div className="stat-card stat-users">
+              <StatIcon name="users" />
               <span className="stat-value">{stats.total_users}</span>
               <span className="stat-label">Users</span>
             </div>
             <div className="stat-card stat-users">
+              <StatIcon name="userCheck" />
               <span className="stat-value">{stats.active_users}</span>
               <span className="stat-label">Active</span>
             </div>
             <div className="stat-card stat-users">
+              <StatIcon name="userX" />
               <span className="stat-value">{stats.disabled_users}</span>
               <span className="stat-label">Disabled</span>
             </div>
             <div className="stat-card stat-total">
+              <StatIcon name="file" />
               <span className="stat-value">{stats.total_documents}</span>
               <span className="stat-label">Documents</span>
             </div>
             <div className="stat-card stat-ready">
+              <StatIcon name="check" />
               <span className="stat-value">{stats.ready_documents}</span>
               <span className="stat-label">Ready</span>
             </div>
             <div className="stat-card stat-pending">
+              <StatIcon name="clock" />
               <span className="stat-value">{stats.pending_documents}</span>
               <span className="stat-label">Pending</span>
             </div>
             <div className="stat-card stat-processing">
+              <StatIcon name="refresh" />
               <span className="stat-value">{stats.processing_documents}</span>
               <span className="stat-label">Processing</span>
             </div>
             <div className="stat-card stat-failed">
+              <StatIcon name="alert" />
               <span className="stat-value">{stats.failed_documents}</span>
               <span className="stat-label">Failed</span>
             </div>
             <div className="stat-card stat-chunks">
+              <StatIcon name="layers" />
               <span className="stat-value">{stats.total_chunks}</span>
               <span className="stat-label">Chunks indexed</span>
             </div>
             <div className="stat-card stat-chunks">
+              <StatIcon name="search" />
               <span className="stat-value">{stats.total_searches}</span>
               <span className="stat-label">Searches</span>
             </div>

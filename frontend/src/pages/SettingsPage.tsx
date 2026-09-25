@@ -20,6 +20,52 @@ interface Notice {
   text: string;
 }
 
+/* 18px Feather-style glyphs for the section headers, aria-hidden because
+   each icon accompanies a visible heading. */
+function SectionIcon({ children }: { children: React.ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function UserIcon() {
+  return (
+    <SectionIcon>
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </SectionIcon>
+  );
+}
+
+function CpuIcon() {
+  return (
+    <SectionIcon>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <rect x="9" y="9" width="6" height="6" />
+      <path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3" />
+    </SectionIcon>
+  );
+}
+
+function KeyIcon() {
+  return (
+    <SectionIcon>
+      <path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4" />
+    </SectionIcon>
+  );
+}
+
 export function SettingsPage() {
   const { user } = useAuth();
   const modelsQuery = useQAModels();
@@ -72,8 +118,11 @@ export function SettingsPage() {
         <p>Manage your account, model, and API access</p>
       </header>
 
-      <section className="settings-card">
-        <h2>Profile</h2>
+      <section className="settings-card" aria-label="Profile settings">
+        <h2>
+          <UserIcon />
+          Profile
+        </h2>
         <p className="settings-desc">
           Signed in as <strong>{user?.username ?? ""}</strong>
         </p>
@@ -82,8 +131,11 @@ export function SettingsPage() {
         </Link>
       </section>
 
-      <section className="settings-card">
-        <h2>Model</h2>
+      <section className="settings-card" aria-label="Model settings">
+        <h2>
+          <CpuIcon />
+          Model
+        </h2>
         <p className="settings-desc">
           Choose the AI model used to answer your questions on the Q&A page.
         </p>
@@ -137,8 +189,11 @@ export function SettingsPage() {
         )}
       </section>
 
-      <section className="settings-card">
-        <h2>Custom API key</h2>
+      <section className="settings-card" aria-label="API key settings">
+        <h2>
+          <KeyIcon />
+          Custom API key
+        </h2>
         <p className="settings-desc">
           Bring your own API key to use with your questions. It is stored only
           in your browser.
