@@ -1,16 +1,64 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { ThemeToggle } from "./ThemeToggle";
 
+interface NavLinkDef {
+  to: string;
+  label: string;
+  /** True when the current pathname should mark this link active. */
+  isActive: (pathname: string) => boolean;
+  adminOnly?: boolean;
+}
+
+const NAV_LINKS: NavLinkDef[] = [
+  {
+    to: "/",
+    label: "Home",
+    isActive: (pathname) => pathname === "/",
+  },
+  {
+    to: "/app",
+    label: "Dashboard",
+    isActive: (pathname) => pathname === "/app" || pathname === "/app/",
+  },
+  {
+    to: "/app/documents",
+    label: "Documents",
+    isActive: (pathname) => pathname.startsWith("/app/documents"),
+  },
+  {
+    to: "/app/search",
+    label: "Search",
+    isActive: (pathname) => pathname.startsWith("/app/search"),
+  },
+  {
+    to: "/app/qa",
+    label: "Q&A",
+    isActive: (pathname) => pathname.startsWith("/app/qa"),
+  },
+  {
+    to: "/app/settings",
+    label: "Settings",
+    isActive: (pathname) => pathname.startsWith("/app/settings"),
+  },
+  {
+    to: "/app/webhooks",
+    label: "Webhooks",
+    isActive: (pathname) => pathname.startsWith("/app/webhooks"),
+  },
+  { to: "/app/admin", label: "Users", isActive: (p) => p.startsWith("/app/admin"), adminOnly: true },
+];
+
 /**
- * Memoized app navbar: it takes no props, so parent re-renders (route
- * changes, page state) are skipped entirely; only the auth/theme contexts
- * it consumes can trigger a re-render.
+ * Memoized app navbar: it takes no props, so parent re-renders (page state)
+ * are skipped; only the auth/theme contexts it consumes and route changes
+ * (needed for the active link state) trigger a re-render.
  */
 export const Navbar = memo(function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -71,31 +119,21 @@ export const Navbar = memo(function Navbar() {
         className={`navbar-links${menuOpen ? " navbar-links-open" : ""}`}
         id="navbar-links"
       >
-        <Link to="/" onClick={closeMenu}>
-          Home
-        </Link>
-        <Link to="/app" onClick={closeMenu}>
-          Dashboard
-        </Link>
-        <Link to="/app/documents" onClick={closeMenu}>
-          Documents
-        </Link>
-        <Link to="/app/search" onClick={closeMenu}>
-          Search
-        </Link>
-        <Link to="/app/qa" onClick={closeMenu}>
-          Q&A
-        </Link>
-        <Link to="/app/settings" onClick={closeMenu}>
-          Settings
-        </Link>
-        <Link to="/app/webhooks" onClick={closeMenu}>
-          Webhooks
-        </Link>
-        {user?.role === "admin" && (
-          <Link to="/app/admin" onClick={closeMenu}>
-            Users
-          </Link>
+        {NAV_LINKS.filter((link) => !link.adminOnly || user?.role === "admin").map(
+          (link) => {
+            const active = link.isActive(pathname);
+            return (
+              <Link
+                key={link.to}
+                to={link.to}
+                onClick={closeMenu}
+                className={active ? "active" : undefined}
+                aria-current={active ? "page" : undefined}
+              >
+                {link.label}
+              </Link>
+            );
+          },
         )}
         {user && (
           <div className="navbar-user-mobile">
