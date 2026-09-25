@@ -6,6 +6,7 @@ import type { WebhookEvent, WebhookSubscription } from "../types";
 import { Spinner } from "../components/Spinner";
 import { Badge } from "../components/Badge";
 import { useWebhooks, WEBHOOKS_QUERY_KEY } from "../hooks/useWebhooks";
+import { CodeBlock } from "../components/CodeBlock";
 
 const EVENT_OPTIONS: { value: WebhookEvent; label: string }[] = [
   { value: "document.processing", label: "Processing started" },
@@ -266,15 +267,11 @@ export function WebhooksPage() {
         <div className="webhook-snippets">
           <details className="webhook-snippet">
             <summary>Verify in Python (FastAPI / Flask)</summary>
-            <pre>
-              <code>{PY_VERIFY_SNIPPET}</code>
-            </pre>
+            <CodeBlock code={PY_VERIFY_SNIPPET} language="python" />
           </details>
           <details className="webhook-snippet">
             <summary>Verify in JavaScript (Node / Express)</summary>
-            <pre>
-              <code>{JS_VERIFY_SNIPPET}</code>
-            </pre>
+            <CodeBlock code={JS_VERIFY_SNIPPET} language="javascript" />
           </details>
         </div>
       </details>

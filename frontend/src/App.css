@@ -61,6 +61,12 @@
   --danger-line: #fecaca;
   --success-soft: #f0fdf4;
   --success-line: #bbf7d0;
+  /* Syntax highlighting tokens (webhook tutorial code blocks) */
+  --code-keyword: #6d28d9; /* violet-700 */
+  --code-string: #15803d; /* green-700 */
+  --code-comment: #64748b; /* slate-500 */
+  --code-func: #1d4ed8; /* blue-700 */
+  --code-number: #b45309; /* amber-700 */
 
   color-scheme: light;
 }
@@ -89,6 +95,12 @@
   --danger-line: rgb(220 38 38 / 0.35);
   --success-soft: rgb(22 163 74 / 0.14);
   --success-line: rgb(22 163 74 / 0.35);
+  /* Syntax highlighting tokens (webhook tutorial code blocks) */
+  --code-keyword: #c4b5fd; /* violet-300 */
+  --code-string: #86efac; /* green-300 */
+  --code-comment: #8296ab; /* slate-400ish */
+  --code-func: #93c5fd; /* blue-300 */
+  --code-number: #fcd34d; /* amber-300 */
 
   color-scheme: dark;
 }
@@ -4805,10 +4817,10 @@ body {
 .webhook-tutorial {
   max-width: 640px;
   margin-bottom: 24px;
-  padding: 14px 20px 16px;
+  padding: 16px 20px 18px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
 }
 
 .webhook-tutorial summary {
@@ -4842,31 +4854,69 @@ body {
   margin: 14px 0 0;
   padding: 0;
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
+/* Step cards: each step is a raised panel that lights up on hover so the
+   3-step flow reads at a glance. */
 .webhook-steps li {
   display: flex;
-  gap: 12px;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  transition:
+    border-color 0.2s var(--ease-standard),
+    box-shadow 0.2s var(--ease-standard),
+    transform 0.2s var(--ease-standard);
+}
+
+.webhook-steps li:hover {
+  border-color: var(--blue);
+  box-shadow: 0 4px 16px rgb(37 99 235 / 0.14);
+  transform: translateX(3px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .webhook-steps li {
+    transition: none;
+    transform: none;
+  }
+}
+
+:root[data-theme="dark"] .webhook-steps li {
+  /* Cards on var(--paper) equal the page background in dark mode — a shadow
+     keeps the raised panels apart from the tutorial's surface band. */
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.35);
 }
 
 .webhook-step-num {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  margin-top: 2px;
+  margin-top: 1px;
   border-radius: 50%;
   background: var(--blue);
   color: #fff;
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 700;
+  box-shadow: 0 3px 8px rgb(37 99 235 / 0.3);
+}
+
+/* White on --blue needs the darker 600-weight accent in dark mode (the
+   bright 400-weight blue is too light for white text). */
+:root[data-theme="dark"] .webhook-step-num {
+  background: #2563eb;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.4);
 }
 
 .webhook-steps strong {
   display: block;
-  font-size: 0.85rem;
+  font-size: 0.88rem;
 }
 
 .webhook-steps p {
@@ -4913,4 +4963,74 @@ body {
   overflow-x: auto;
   max-height: 280px;
   overflow-y: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   Syntax-highlighted code blocks (webhook tutorial snippets)
+   --------------------------------------------------------------------------- */
+
+.code-block {
+  position: relative;
+  margin-top: 8px;
+}
+
+.code-block-label {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 1;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 18px 14px 12px;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  overflow-x: auto;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.code-block code {
+  display: block;
+  padding: 0;
+  background: none;
+  color: var(--ink);
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre;
+}
+
+.code-block .tok-keyword {
+  color: var(--code-keyword);
+  font-weight: 500;
+}
+
+.code-block .tok-string {
+  color: var(--code-string);
+}
+
+.code-block .tok-comment {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.code-block .tok-function {
+  color: var(--code-func);
+}
+
+.code-block .tok-number {
+  color: var(--code-number);
 }
