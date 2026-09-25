@@ -10,17 +10,9 @@ interface NavLinkDef {
   /** True when the current pathname should mark this link active. */
   isActive: (pathname: string) => boolean;
   adminOnly?: boolean;
-  /** Exit link back to the public site — styled subtly and never active. */
-  backLink?: boolean;
 }
 
 const NAV_LINKS: NavLinkDef[] = [
-  {
-    to: "/",
-    label: "Back to site",
-    isActive: () => false,
-    backLink: true,
-  },
   {
     to: "/app",
     label: "Dashboard",
@@ -98,6 +90,20 @@ export const Navbar = memo(function Navbar() {
 
   return (
     <nav className="navbar">
+      {/* The exit link lives beside the brand, not in the page row: it leaves
+          the app entirely, so grouping it with "Dashboard / Documents / ..."
+          made it read as one more workspace page and broke the brand lockup.
+          It is rendered before the brand and stays out of NAV_LINKS so it can
+          never pick up the active-page treatment. */}
+      <Link
+        to="/"
+        className="navbar-back-link"
+        onClick={closeMenu}
+      >
+        <ArrowLeftIcon />
+        <span className="navbar-back-link-text">Back to site</span>
+      </Link>
+
       <div className="navbar-brand">
         <Link to="/app" aria-label="AskDocs home" onClick={closeMenu}>
           <BrandMark className="navbar-brand-mark" />
@@ -133,10 +139,9 @@ export const Navbar = memo(function Navbar() {
                 key={link.to}
                 to={link.to}
                 onClick={closeMenu}
-                className={link.backLink ? "navbar-back-link" : active ? "active" : undefined}
+                className={active ? "active" : undefined}
                 aria-current={active ? "page" : undefined}
               >
-                {link.backLink && <ArrowLeftIcon />}
                 {link.label}
               </Link>
             );

@@ -39,21 +39,30 @@
 :root {
   /* AskDocs brand palette: white, blue, black, green */
   --ink: #0f172a; /* slate-900 — near-black for text and dark surfaces */
-  --muted: #64748b; /* slate-500 */
-  --line: #e2e8f0; /* slate-200 */
-  /* Stronger border for card edges. --line stays the default hairline; this
-     is the one to reach for when a surface needs a visible outline. Kept
-     deliberately quiet in light mode — #cbd5e1 on white is ~1.5:1, which is
-     the conventional weight for a light-UI divider and is not meant to read
-     as a WCAG 1.4.11 boundary. The dark override below is the one tuned to
-     an actual target. */
-  --line-strong: #cbd5e1; /* slate-300 */
+  /* Darkened from slate-500 (#64748b). The old value measured 4.34:1 on the
+     new --surface below — just under the 4.5:1 AA threshold — so every piece
+     of secondary text sitting on a panel (dates, hints, table sub-labels) was
+     technically failing while looking "fine" on pure white. #5f6f85 clears
+     AA on both the page (5.12:1) and a panel (4.68:1). */
+  --muted: #5f6f85;
+  /* Hairline: table row rules, input edges, dividers between stacked items. */
+  --line: #cbd5e1; /* slate-300 */
+  /* Card and container boundary. This was slate-300 (1.48:1 on white) with a
+     comment explicitly saying it was "not meant to read as a WCAG 1.4.11
+     boundary" — which is exactly why cards, tables and boxes were hard to
+     find in light mode. The user reported precisely that. It now measures
+     3.46:1 on white, clearing the 3:1 non-text target, without going as
+     heavy as slate-500 (4.76:1) and shouting at every edge. */
+  --line-strong: #7c8ba1;
   --paper: #ffffff; /* white background */
-  --surface: #f8fafc; /* slate-50 */
-  /* Surface hierarchy: base page bands → raised panels → floating elevations.
-     --surface stays the historic "second surface" (inputs, alt sections). */
-  --surface-2: #f1f5f9; /* slate-100 — raised panels on --surface */
-  --surface-3: #eef2f8; /* deepest tint — modal headers, sticky bars */
+  /* Surface ladder: page bands -> inputs/panels -> raised -> floating.
+     Every step below is one slate notch darker than it was. The old values
+     (slate-50/100/#eef2f8) spanned barely 2% of luminance across four named
+     levels, so "raised panel" and "floating elevation" were indistinguishable
+     and inputs looked identical to the cards around them. */
+  --surface: #f1f5f9; /* slate-100 — inputs, chips, alt sections */
+  --surface-2: #e2e8f0; /* slate-200 — raised panels */
+  --surface-3: #d5dde8; /* deepest tint — modal headers, sticky bars */
   --blue: #2563eb; /* blue-600 — primary accent */
   --blue-hover: #1d4ed8; /* blue-700 */
   --blue-soft: #eff6ff; /* blue-50 — tinted backgrounds */
@@ -63,7 +72,7 @@
   --warning: #d97706;
   --danger: #dc2626;
   --info: #2563eb;
-  --code-bg: #f1f5f9;
+  --code-bg: #eef2f7;
   --danger-soft: #fef2f2;
   --danger-line: #fecaca;
   --success-soft: #f0fdf4;
@@ -120,27 +129,47 @@
   color-scheme: dark;
 }
 
-/* ── Dark-mode surface ladder ─────────────────────────────────────────
-   The core dark-mode readability problem: --paper (#121927) is the same
-   value as the page background, so the cards painted with it —
-   .document-card, .search-result-card, .settings-card, .profile-hero —
-   float on nothing and depend entirely on a faint --line border (1.54:1
-   against the page) to exist at all. The cards already on --surface
-   (.profile-stat, .quick-action, .recent-item) are a step higher, but that
-   border was still their only defined edge. --surface / --surface-2 /
-   --surface-3 are a deliberate ladder; this rule is about *using* it.
+/* ── Surface ladder for cards (both themes) ──────────────────────────────
+   The core readability problem, in both directions:
 
-   One grouped rule rather than thirty scattered overrides. :is() keeps
-   the selector readable and the specificity predictable — the highest
-   argument (.document-card) plus :root[data-theme="dark"] comfortably
-   beats any single-component base rule, so no !important is needed.
+   Dark: --paper (#121927) is the same value as the page background, so the
+   cards painted with it — .document-card, .search-result-card,
+   .settings-card, .profile-hero — floated on nothing and depended entirely on
+   a faint --line border (1.54:1) to exist at all. #378 fixed this with a
+   surface -> surface-2 gradient plus --line-strong.
+
+   Light had the mirror-image bug and never got the fix: body paints
+   var(--paper) = #fff and .document-card also paints var(--paper) = #fff, so
+   the card and the page were *literally the same colour* (1.00:1) and only a
+   slate-200 hairline separated them. The user reported exactly this — cards,
+   boxes and table cells hard to make out in light mode.
+
+   One grouped rule rather than thirty scattered overrides. :is() keeps the
+   selector readable and the specificity predictable, so no !important is
+   needed against any single-component base rule.
 
    Two things happen at once, per the agreed design:
-     1. a shallow surface -> surface-2 gradient, which gives the card a
-        direction and separates it from the flat page;
-     2. a brighter border, because a gradient alone still leaves the
-        card edge ambiguous where the gradient is near the page value.
+     1. a shallow gradient, which gives the card a direction and separates it
+        from the flat page;
+     2. --line-strong, because a gradient alone still leaves the card edge
+        ambiguous where the gradient is near the page value. In light mode
+        this is now the load-bearing change: the fill gradient is deliberately
+        near-white, so the 3.46:1 edge is what actually draws the card.
    Extend this list when adding a new card surface. */
+:is(
+  .document-card,
+  .search-result-card,
+  .settings-card,
+  .profile-hero,
+  .profile-stat,
+  .quick-action,
+  .recent-item,
+  .stat-skeleton,
+  .skeleton-card
+) {
+  border-color: var(--line-strong);
+}
+
 :root[data-theme="dark"] :is(
   .document-card,
   .search-result-card,
@@ -153,7 +182,27 @@
   .skeleton-card
 ) {
   background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
-  border-color: var(--line-strong);
+}
+
+/* Light mode keeps the card essentially white — a white card on a white page
+   is the convention users expect — and leans on a barely-there cool tint plus
+   the stronger edge for separation. */
+:is(
+  .document-card,
+  .search-result-card,
+  .settings-card,
+  .profile-hero,
+  .profile-stat,
+  .quick-action,
+  .recent-item,
+  .stat-skeleton,
+  .skeleton-card
+) {
+  background: linear-gradient(
+    180deg,
+    var(--paper) 0%,
+    color-mix(in srgb, var(--surface) 45%, var(--paper)) 100%
+  );
 }
 
 /* Tables get a stronger edge and a filled header instead of a gradient:
@@ -860,34 +909,55 @@ body {
   background: color-mix(in srgb, var(--paper) 8%, transparent);
 }
 
-/* Active tab. The old state was a 16% tint of --paper over the bar, which
-   in dark mode is a nearly-invisible dark wash — the reported "tab is the
-   same colour as the header". Two changes: a stronger fill, and a solid
-   accent underline so the current page is marked by shape and not only by
-   tint (Theme Rule: never rely on a subtle background alone to carry
-   state). Note this is a hierarchy fix, not a compliance fix — the label
-   text itself already met AA. */
+/* Active tab. Two rounds of history here. First it was a 16% tint of --paper,
+   which in dark mode is a nearly-invisible dark wash ("tab is the same colour
+   as the header"). That was strengthened to a 22% fill plus a 2px inset
+   underline. The user then reported the active item still "looks too much like
+   a tag" — a translucent pill plus a hairline underline is exactly the shape
+   of the status badges, so the nav state and the badge language had collided.
+
+   The underline is gone: a 3D edge on a pill is what makes it read as a chip.
+   The active page is now a solid --blue fill with white text, which is the
+   one treatment in the app that is not available to a badge, so nav state and
+   badge state can no longer be confused. Shape and fill both carry it, not
+   tint alone. Contrast is 5.17:1 (white on #2563eb), clearing AA. */
 .navbar-links a.active,
 .navbar-links a[aria-current="page"] {
-  background: color-mix(in srgb, var(--paper) 22%, transparent);
+  background: var(--blue);
+  color: #fff;
   opacity: 1;
   font-weight: 600;
-  box-shadow: inset 0 -2px 0 var(--blue);
 }
 
-/* "Back to site" exit link: slightly dimmer than the workspace links and
-   never highlighted as active (it leaves the app). The arrow keeps it from
-   reading as another workspace page. */
-.navbar-links a.navbar-back-link {
+/* "Back to site" exit link, now the leftmost element beside the brand rather
+   than the first item in the page row. It leaves the app entirely, so it is
+   dimmer than the workspace links and can never take the active treatment.
+   The divider separates it from the brand lockup without adding a second
+   clickable surface. */
+.navbar-back-link {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  opacity: 0.62;
+  flex: none;
+  padding: 6px 10px 6px 8px;
+  border-radius: 8px;
+  color: var(--paper);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0.68;
+  transition: opacity 0.2s, background-color 0.2s;
 }
 
-.navbar-links a.navbar-back-link:hover {
-  opacity: 0.95;
-  background: color-mix(in srgb, var(--paper) 8%, transparent);
+.navbar-back-link:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--paper) 10%, transparent);
+}
+
+.navbar-back-link + .navbar-brand {
+  padding-left: 14px;
+  border-left: 1px solid color-mix(in srgb, var(--paper) 20%, transparent);
 }
 
 .navbar-user {
@@ -1051,6 +1121,31 @@ body {
 
   .navbar-user-mobile a {
     opacity: 1;
+  }
+
+  /* The brand row is already tight with the back link + brand + Workspace
+     pill + hamburger, so the back link drops its label on the narrowest
+     screens and keeps only the arrow. It stays a real link with an
+     accessible name (aria-label) — the text is hidden visually, not removed
+     from the accessibility tree. */
+  .navbar-back-link-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .navbar-back-link {
+    padding: 6px;
+  }
+
+  .navbar-back-link + .navbar-brand {
+    padding-left: 10px;
   }
 }
 
@@ -3702,38 +3797,58 @@ body {
 /* Shared status badge (Badge component). Tone pairs: 100-level tinted
    background + 700/800-level text in light mode; soft tinted background +
    300-level text in dark mode (both keep WCAG AA contrast). */
+/* Badge tones.
+   The diagnosis here is not what it looks like. Measured, the *text* was
+   never the problem — every light pairing cleared AA (red 5.30:1, amber
+   6.37:1, blue 7.15:1, green 4.57:1, gray 8.33:1). What failed was the badge
+   *shape*: the tints sat 1.10-1.24:1 from the white card they sit on, so the
+   pill had no visible boundary and the status read as floating text. Same
+   story in dark mode — 16% alpha over the card gradient gave 1.16-1.33:1.
+
+   So this change is about the edge, not the ink:
+     - tints move one step deeper (200-level) in light, 16% -> 26% in dark;
+     - every badge gains a 1px border in its own tone, which is what actually
+       draws the pill against the card.
+   Text colors were deepened at the same time, which also buys headroom.
+   Green is the one to watch: the obvious --green (#15803d) on a 200-level
+   green tint is 4.14:1 and would have *introduced* a failure, so green text
+   steps down to #166534 (5.88:1). */
 :root {
-  --badge-blue-bg: #dbeafe;
-  --badge-blue-text: #1e40af;
-  --badge-green-bg: #dcfce7;
-  --badge-green-text: #15803d;
-  --badge-amber-bg: #fef3c7;
-  --badge-amber-text: #92400e;
-  --badge-red-bg: #fee2e2;
-  --badge-red-text: #b91c1c;
-  --badge-gray-bg: #e5e7eb;
-  --badge-gray-text: #374151;
+  --badge-blue-bg: #bfdbfe;
+  --badge-blue-text: #1e3a8a;
+  --badge-green-bg: #bbf7d0;
+  --badge-green-text: #166534;
+  --badge-amber-bg: #fde68a;
+  --badge-amber-text: #78350f;
+  --badge-red-bg: #fecaca;
+  --badge-red-text: #991b1b;
+  --badge-gray-bg: #d1d5db;
+  --badge-gray-text: #1f2937;
 }
 
 :root[data-theme="dark"] {
-  --badge-blue-bg: rgba(59, 130, 246, 0.16);
+  --badge-blue-bg: rgba(59, 130, 246, 0.26);
   --badge-blue-text: #93c5fd;
-  --badge-green-bg: rgba(34, 197, 94, 0.16);
+  --badge-green-bg: rgba(34, 197, 94, 0.26);
   --badge-green-text: #86efac;
-  --badge-amber-bg: rgba(245, 158, 11, 0.16);
+  --badge-amber-bg: rgba(245, 158, 11, 0.26);
   --badge-amber-text: #fcd34d;
-  --badge-red-bg: rgba(239, 68, 68, 0.16);
+  --badge-red-bg: rgba(239, 68, 68, 0.26);
   --badge-red-text: #fca5a5;
-  --badge-gray-bg: rgba(148, 163, 184, 0.16);
+  --badge-gray-bg: rgba(148, 163, 184, 0.26);
   --badge-gray-text: #cbd5e1;
 }
 
+/* The 1px tone border is what makes the pill visible against its card — see
+   the note on the tone variables. currentColor carries the text tone, so each
+   border is automatically the same hue as its own badge. */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
   border-radius: 999px;
+  border: 1px solid color-mix(in srgb, currentColor 34%, transparent);
   color: var(--ink);
   font-size: 0.75rem;
   font-weight: 600;
@@ -3790,12 +3905,36 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Failure reason on a document card ("Processing did not complete within the
+   timeout"). This is the single most important string on the card — the user
+   is trying to work out what went wrong — and it was painted --danger
+   (#dc2626) on --danger-soft (#fef2f2), 4.02:1, under AA, with no border and
+   no padding rhythm, so it read as a slightly pink smear next to the muted
+   "Uploaded:" line. Now: a 3px danger rule down the leading edge, real
+   padding, a defined box, and text deepened to 7.60:1 in light / 7.44:1 in
+   dark. The left rule carries the severity at a glance for anyone who cannot
+   separate the red. */
 .error-detail {
-  padding: 8px;
-  margin: 8px 0;
+  padding: 10px 12px;
+  margin: 10px 0;
   background: var(--danger-soft);
-  color: var(--danger);
+  border: 1px solid var(--danger-line);
+  border-left: 3px solid var(--danger);
+  border-radius: 6px;
+  color: var(--error-text);
   font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+:root {
+  /* Deepened from --danger (#dc2626) for text use on --danger-soft: 7.60:1 in
+     light. --danger itself is kept for borders, rules and iconography, where
+     a brighter red is wanted. */
+  --error-text: #991b1b;
+}
+
+:root[data-theme="dark"] {
+  --error-text: #fca5a5;
 }
 
 .date {
@@ -3845,6 +3984,61 @@ body {
   height: 36px;
   padding: 0;
   border-radius: 8px;
+}
+
+/* Per-action accents for the document card footer.
+   The icons themselves were always outline/stroke-only — that was never the
+   problem. The problem was that Reprocess, Preview and Download were all
+   `btn-secondary`, i.e. the same grey, so the only button that read as an
+   action was the red Delete. Three identical grey squares gave no clue which
+   icon did what before hovering, and no help at all for anyone who cannot
+   rely on the shape of the glyph.
+
+   Each action now owns a hue: blue = re-run, violet = inspect, green =
+   retrieve, red = destroy. That is a redundant encoding — the icon shape
+   still carries the meaning on its own, and the colour only reinforces it —
+   so nothing depends on colour perception to use the card. Delete keeps
+   btn-danger's solid fill, which stays visually heavier on purpose: it is the
+   only destructive action and should not sit at the same weight as the rest.
+
+   Light values measure 5.17 / 5.70 / 5.02:1 on the card; dark values
+   5.97 / 5.58 / 8.71:1. All clear the 3:1 non-text target with room. */
+.btn-icon-accent {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, currentColor 32%, var(--line));
+  transition:
+    background-color 0.2s,
+    border-color 0.2s,
+    color 0.2s;
+}
+
+.btn-icon-accent:hover:not(:disabled) {
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.btn-icon-blue {
+  color: var(--blue);
+}
+
+.btn-icon-violet {
+  color: #7c3aed;
+}
+
+.btn-icon-green {
+  color: #15803d;
+}
+
+:root[data-theme="dark"] .btn-icon-blue {
+  color: #60a5fa;
+}
+
+:root[data-theme="dark"] .btn-icon-violet {
+  color: #a78bfa;
+}
+
+:root[data-theme="dark"] .btn-icon-green {
+  color: #4ade80;
 }
 
 /* Document preview modal */
