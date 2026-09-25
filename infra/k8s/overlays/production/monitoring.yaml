@@ -75,6 +75,44 @@ spec:
           annotations:
             summary: "Backend p95 latency above 2s"
             description: "Pod {{ $labels.pod }} p95 request latency exceeded 2s for 10 minutes."
+        # Worker health. The backend exports app_worker_up (1 when the arq
+        # worker heartbeat key exists in Redis) — see backend/src/app/system_metrics.py.
+        - alert: WorkerDown
+          expr: min(app_worker_up{namespace="ai-platform"}) == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "No document-processing worker alive"
+            description: "No arq worker heartbeat has been seen for 5 minutes. Document uploads will stay pending/processing forever. Check the worker Deployment (CrashLoopBackOff, image pull failure, resource limits)."
+        - alert: WorkerStaleDocuments
+          expr: max(app_documents_stale{namespace="ai-platform"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Documents stuck in pending/processing"
+            description: "{{ $value | humanize }} document(s) have been pending/processing past the staleness threshold. The worker may be unhealthy or the queue backed up."
+        # PostgreSQL pool exhaustion. The backend exports pool_overflow
+        # (checkouts beyond pool_size) — see backend/src/app/database/db.py.
+        - alert: PostgresConnectionPoolExhausted
+          expr: max(pool_overflow{namespace="ai-platform"}) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Postgres connection pool exhausted"
+            description: "All pool_size connections are checked out and overflow connections are in use for 10 minutes. Requests may start timing out; consider raising DB_POOL_SIZE or scaling replicas."
+        # Redis memory (used_memory from INFO memory, exported by the backend).
+        # 400 MB keeps headroom under the chart's 512Mi limit.
+        - alert: RedisMemoryHigh
+          expr: max(redis_memory_used_bytes{namespace="ai-platform"}) > 400000000
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Redis memory usage above 400 MB"
+            description: "Redis used_memory exceeded 400 MB for 10 minutes. Cache eviction (and with it stale-cache recomputation) may start; consider raising the Redis memory limit or reducing cache TTLs."
 
 ---
 # Alert routing (example: email via SMTP)
