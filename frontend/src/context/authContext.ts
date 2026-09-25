@@ -14,6 +14,8 @@ export interface AuthContextType {
   ) => Promise<void>;
   logout: () => void;
   updateUser: (user: User) => void;
+  /** Clear the local session after the server has deleted the account. */
+  deleteAccount: () => void;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);

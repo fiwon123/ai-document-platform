@@ -128,9 +128,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(updated);
   };
 
+  /** Account self-delete: the server already removed the account and the
+   *  refresh cookie, so this only clears the local session. */
+  const deleteAccount = () => {
+    clearRefreshTimer();
+    localStorage.removeItem("token");
+    setToken(null);
+    setUser(null);
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, token, isLoading, login, register, logout, updateUser }}
+      value={{
+        user,
+        token,
+        isLoading,
+        login,
+        register,
+        logout,
+        updateUser,
+        deleteAccount,
+      }}
     >
       {children}
     </AuthContext.Provider>

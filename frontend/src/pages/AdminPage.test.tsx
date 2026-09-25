@@ -30,6 +30,7 @@ vi.mock("../hooks/useAuth", () => ({
     register: vi.fn(),
     logout: vi.fn(),
     updateUser: vi.fn(),
+    deleteAccount: vi.fn(),
   })),
 }));
 
@@ -77,6 +78,7 @@ describe("AdminPage", () => {
       register: vi.fn(),
       logout: vi.fn(),
       updateUser: vi.fn(),
+    deleteAccount: vi.fn(),
     });
     mockedListUsers.mockResolvedValue([adminSelf, alice]);
     mockedGetAdmin.mockResolvedValue(sampleAdminStats);
@@ -270,6 +272,7 @@ describe("AdminPage", () => {
       register: vi.fn(),
       logout: vi.fn(),
       updateUser: vi.fn(),
+    deleteAccount: vi.fn(),
     });
 
     renderWithClient(<AdminPage />);
