@@ -3204,6 +3204,32 @@ body {
   margin-top: var(--sp-7);
 }
 
+.recent-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.recent-heading h2 {
+  margin: 0;
+}
+
+.recent-view-all {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--blue);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  padding: var(--sp-1) var(--sp-2);
+}
+
+.recent-view-all:hover {
+  text-decoration: underline;
+  color: var(--blue-hover);
+}
+
 .recent-list {
   list-style: none;
   margin: 0;
@@ -3215,6 +3241,7 @@ body {
 
 .recent-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-4);
   padding: var(--sp-4) var(--sp-5);
@@ -3228,6 +3255,37 @@ body {
   flex: 1;
   font-weight: 600;
   overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.recent-filename a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.recent-filename a:hover {
+  color: var(--blue);
+  text-decoration: underline;
+}
+
+/* Inline progress (processing) and action buttons (ready/failed) in the
+   recently-uploaded rows — mirrors the documents-page card affordances. */
+.recent-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 120px;
+}
+
+.recent-progress .progress-track {
+  width: 120px;
+  height: 5px;
+}
+
+.recent-actions {
+  display: flex;
+  gap: var(--sp-2);
+  flex-shrink: 0;
 }
 
 .recent-date {
