@@ -76,11 +76,14 @@ class TestModelsPolicy:
 
 
 class TestStatisticsPolicy:
-    def test_private_short_ttl_with_vary(self, mini_client):
+    def test_private_revalidate_with_vary(self, mini_client):
         resp = mini_client.get("/v1/statistics/me")
 
         assert resp.status_code == 200
-        assert resp.headers["cache-control"] == "private, max-age=60"
+        # The body changes the moment the user's document set changes, so
+        # the browser must always revalidate instead of serving a fixed
+        # max-age window of the stale body.
+        assert resp.headers["cache-control"] == "private, no-cache"
         # Weak ETag: the body may legitimately change between generations.
         assert resp.headers["etag"].startswith('W/"')
         assert resp.headers["vary"] == "Authorization"
@@ -93,18 +96,51 @@ class TestStatisticsPolicy:
         )
 
         assert resp.status_code == 304
-        assert resp.headers["cache-control"] == "private, max-age=60"
+        assert resp.headers["cache-control"] == "private, no-cache"
         assert resp.headers["vary"] == "Authorization"
+
+    def test_changed_body_never_serves_the_old_etag(self):
+        """A document upload must invalidate the cached summary body.
+
+        The middleware derives the ETag from the current body, so once the
+        statistics change (new document) the cached pre-change ETag MUST NOT
+        match — the client gets a fresh 200, never the stale 304/body.
+        """
+        app = FastAPI()
+        counter = {"docs": 0}
+
+        @app.get("/v1/statistics/me")
+        def stats():
+            return {"total_documents": counter["docs"]}
+
+        app.add_middleware(ETagCacheMiddleware)
+        with TestClient(app) as client:
+            before = client.get("/v1/statistics/me")
+            stale_etag = before.headers["etag"]
+            assert before.json()["total_documents"] == 0
+
+            # The user uploads a document; the summary changes server-side.
+            counter["docs"] = 1
+
+            after = client.get(
+                "/v1/statistics/me",
+                headers={"If-None-Match": stale_etag},
+            )
+
+            assert after.status_code == 200
+            assert after.json()["total_documents"] == 1
+            assert after.headers["etag"] != stale_etag
 
 
 class TestThumbnailPolicy:
-    def test_private_capped_ttl_with_vary(self, mini_client):
+    def test_private_revalidate_with_vary(self, mini_client):
         resp = mini_client.get(THUMBNAIL_PATH)
 
         assert resp.status_code == 200
-        # TTL capped below the 1 h presign validity so a cached URL is
-        # always still valid when a client reuses it.
-        assert resp.headers["cache-control"] == "private, max-age=900"
+        # Revalidate on every use so the presigned URL is always fresh (and
+        # a deleted document's URL stops resolving on the next use, rather
+        # than lingering for a fixed max-age window).
+        assert resp.headers["cache-control"] == "private, no-cache"
         assert resp.headers["etag"].startswith('"')
         assert resp.headers["vary"] == "Authorization"
 
@@ -115,6 +151,7 @@ class TestThumbnailPolicy:
 
         assert resp.status_code == 304
         assert resp.headers["etag"] == etag
+        assert resp.headers["cache-control"] == "private, no-cache"
 
 
 class TestPassThrough:

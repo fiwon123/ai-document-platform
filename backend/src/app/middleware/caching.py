@@ -5,9 +5,10 @@ endpoints benefit from explicit caching semantics (see the issue #315
 acceptance criteria):
 
 - ``/v1/qa/models``          — static per-process config → long-lived, public
-- ``/v1/statistics/me``      — per-user dashboard → short TTL, private
-- ``/v1/documents/{id}/thumbnail`` — immutable image, but the response holds
-  a *time-limited presigned URL*, so it is capped at the presign validity
+- ``/v1/statistics/me``      — per-user dashboard → store, revalidate always
+- ``/v1/documents/{id}/thumbnail`` — time-limited presigned URL → store,
+  revalidate always so the returned URL never goes stale and deleted
+  documents stop resolving promptly
 
 The ETag is derived from the CURRENT response body on every request, so no
 cross-request state is needed: per-user/per-response content stays correct,
@@ -27,6 +28,15 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # Weak ETags are used where the body can legitimately change between
 # generations (statistics); strong ETags guarantee byte-identity (models
 # list, presigned thumbnail URL — the exact URL string is the payload).
+#
+# Statistics and thumbnails are per-user responses whose content changes
+# the moment the user's document set changes (upload, delete, processing,
+# re-render of a thumbnail). They MUST NOT be marked fresh for a fixed
+# max-age window — the backend invalidates those caches explicitly, and a
+# ``max-age`` directive would let the browser keep serving the stale body
+# without ever asking again. ``no-cache`` stores the response but always
+# revalidates via the ETag, so unchanged bodies keep the cheap 304 path
+# while changed ones are always delivered fresh.
 _CACHE_POLICIES: list[tuple[re.Pattern[str], str, bool]] = [
     (
         re.compile(r"^/v1/qa/models$"),
@@ -35,15 +45,16 @@ _CACHE_POLICIES: list[tuple[re.Pattern[str], str, bool]] = [
     ),
     (
         re.compile(r"^/v1/statistics/me$"),
-        "private, max-age=60",
+        "private, no-cache",
         True,
     ),
     (
         # The thumbnail RESPONSE is the presigned URL (valid for 1 h), not
-        # the image itself — caching it for longer would hand out expired
-        # URLs. The ETag still guarantees a fresh URL on revalidation.
+        # the image itself. Revalidating on every use hands out a fresh URL,
+        # which also removes a deleted document's cached URL within one
+        # revalidation instead of serving it for a 15-minute max-age.
         re.compile(r"^/v1/documents/[0-9a-fA-F-]{36}/thumbnail$"),
-        "private, max-age=900",
+        "private, no-cache",
         False,
     ),
 ]
