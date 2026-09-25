@@ -52,6 +52,12 @@ export function QAPage() {
   );
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  // Monotonic message ids from a ref rather than Date.now(): a wall-clock id
+  // is not guaranteed unique (two turns created in the same millisecond
+  // collide, which breaks the React key and the copied-message tracking), and
+  // reading the clock from component code is what the purity rule flags.
+  const nextMessageId = useRef(0);
+  const allocateMessageId = () => `msg-${nextMessageId.current++}`;
 
   /** The user question that produced the message at `index` (walk back). */
   function questionFor(index: number): string {
@@ -95,7 +101,7 @@ export function QAPage() {
     if (!trimmed || isLoading) return;
 
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: allocateMessageId(),
       type: "user",
       content: trimmed,
     };
@@ -108,7 +114,7 @@ export function QAPage() {
     try {
       const response: QAResponse = await askMutation.mutateAsync(trimmed);
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: allocateMessageId(),
         type: "assistant",
         content: response.answer,
         sources: response.sources,

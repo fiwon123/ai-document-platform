@@ -60,6 +60,25 @@ describe("CountUp", () => {
     expect(screen.getByText("512")).toBeTruthy();
   });
 
+  it("never animates under reduced motion, even though the observer fires", async () => {
+    // Regression guard. The observer mock above reports isIntersecting
+    // immediately, so the old code set both the final value and `started` from
+    // the same effect — the animation effect then took over and counted up
+    // from 0, which is precisely what a visitor who asked for reduced motion
+    // does not want. The value must stay pinned at the target for the whole
+    // animation window, not just on first paint.
+    vi.useFakeTimers();
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    render(<CountUp value={512} durationMs={1000} />);
+
+    expect(screen.getByText("512")).toBeTruthy();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(screen.getByText("512")).toBeTruthy();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(screen.getByText("512")).toBeTruthy();
+    expect(screen.queryByText("0")).toBeNull();
+  });
+
   it("applies a custom formatter", () => {
     vi.stubGlobal(
       "matchMedia",

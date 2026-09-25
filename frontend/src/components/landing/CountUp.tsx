@@ -21,25 +21,36 @@ function prefersReducedMotion(): boolean {
  *  back to showing the final value immediately when IntersectionObserver is
  *  unavailable (jsdom, old browsers) or reduced motion is requested. */
 export function CountUp({ value, durationMs = 1200, suffix = "", format }: CountUpProps) {
+  // Whether to animate at all, decided once per mount.
+  //
+  // It has to be frozen: re-testing on every render would restart the
+  // animation each time the parent re-rendered, and the decision cannot
+  // change mid-flight anyway (the media query and the API are both stable
+  // for the life of the page). A lazy state initializer runs exactly once,
+  // unlike a ref, whose `.current` must not be read during render.
+  //
+  // When it is false the component renders `value` directly and never touches
+  // animation state at all. The previous version instead set the final value
+  // *and* flipped `started` from the same effect, so the animation effect
+  // immediately overwrote it and counted up anyway — the opposite of what
+  // "reduced motion" is supposed to do.
+  const [canAnimate] = useState(
+    () => typeof IntersectionObserver !== "undefined" && !prefersReducedMotion(),
+  );
+
   const [display, setDisplay] = useState(0);
   const [started, setStarted] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
+    if (!canAnimate) return;
     const element = ref.current;
     if (!element) return;
 
-    if (
-      typeof IntersectionObserver === "undefined" ||
-      prefersReducedMotion()
-    ) {
-      // No observer (jsdom, old browsers) or reduced motion: show the final
-      // value immediately instead of animating.
-      setStarted(true);
-      setDisplay(value);
-      return;
-    }
-
+    // setStarted is called from the observer callback rather than the effect
+    // body: the callback is the external system telling us the element became
+    // visible, which is exactly what an effect is for. A synchronous setState
+    // in the effect body would just schedule a second render.
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) {
@@ -51,10 +62,10 @@ export function CountUp({ value, durationMs = 1200, suffix = "", format }: Count
     );
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [canAnimate]);
 
   useEffect(() => {
-    if (!started) return;
+    if (!canAnimate || !started) return;
     const startTime = Date.now();
     const timer = window.setInterval(() => {
       const progress = Math.min((Date.now() - startTime) / durationMs, 1);
@@ -66,9 +77,10 @@ export function CountUp({ value, durationMs = 1200, suffix = "", format }: Count
       }
     }, 16);
     return () => window.clearInterval(timer);
-  }, [started, value, durationMs]);
+  }, [canAnimate, started, value, durationMs]);
 
-  const shown = format ? format(display) : display.toLocaleString();
+  const current = canAnimate ? display : value;
+  const shown = format ? format(current) : current.toLocaleString();
 
   return (
     <span ref={ref} className="count-up">

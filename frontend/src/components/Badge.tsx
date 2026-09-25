@@ -16,15 +16,11 @@ interface BadgeProps {
 
 /**
  * Tuned per `DocumentStatus` so pages can map a document status to a
- * consistent badge tone without repeating the mapping. Falls back to `gray`
- * for unknown statuses (e.g. old or provider-specific values).
+ * consistent badge tone without repeating the mapping. See
+ * `documentStatusTone.ts` for the mapping itself — it is kept out of this
+ * file so `Badge.tsx` exports only a component, which keeps Fast Refresh
+ * working while editing the badge.
  */
-export const DOCUMENT_STATUS_TONE: Record<string, BadgeTone> = {
-  pending: "amber",
-  processing: "blue",
-  ready: "green",
-  failed: "red",
-};
 
 /**
  * Accessible status pill. Each tone pairs a 100-level tinted background with

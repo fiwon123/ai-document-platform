@@ -15,7 +15,8 @@ import type { Document, DocumentPreview, DocumentStatusResponse } from "../types
 import { SkeletonCard } from "../components/Skeleton";
 import { Spinner } from "../components/Spinner";
 import { EmptyState } from "../components/EmptyState";
-import { Badge, DOCUMENT_STATUS_TONE } from "../components/Badge";
+import { Badge } from "../components/Badge";
+import { DOCUMENT_STATUS_TONE } from "../components/documentStatusTone";
 import { PreviewModal } from "../components/PreviewModal";
 import { RefreshIcon, EyeIcon, DownloadIcon, SearchIcon } from "../components/icons";
 import { formatElapsed } from "../utils/time";
@@ -26,9 +27,16 @@ import { useQueryClient } from "@tanstack/react-query";
 
 /** How often to re-check documents that are still processing. */
 const POLL_INTERVAL_MS = 3000;
-
 /** Maximum files the backend accepts per bulk request. */
 const MAX_BULK_UPLOAD_FILES = 20;
+
+/**
+ * Stable empty list for `docsQuery.data ?? EMPTY_DOCS`.
+ *
+ * An inline `?? []` allocates a fresh array on every render, so effects
+ * depending on it re-ran each time. Exported for the page's own tests.
+ */
+const EMPTY_DOCS: Document[] = [];
 
 /** Statuses offered as filter chips, in pipeline order. */
 const STATUS_FILTERS: Document["status"][] = [
@@ -235,7 +243,11 @@ export function DocumentsPage() {
   // same cache entry, and every mutation below (poll, upload, delete,
   // reprocess) updates it in place so the grid reflects changes instantly.
   const docsQuery = useDocuments();
-  const docs = docsQuery.data ?? [];
+  // Shared empty fallback so the identity stays stable while the query has no
+  // data yet. A `?? []` inline literal would hand the two polling effects a new
+  // array on every render, which cleared and re-created the poll interval each
+  // time — starving it whenever the page re-rendered faster than POLL_INTERVAL_MS.
+  const docs = docsQuery.data ?? EMPTY_DOCS;
   // Optimistic layer: delete/reprocess/upload apply to the visible grid
   // instantly and are dropped again once the real cache update (or a
   // failure) lands. Polling and thumbnails keep reading the non-optimistic
@@ -538,7 +550,7 @@ export function DocumentsPage() {
         setDeletingId(null);
       }
     });
-  }, [queryClient, toast]);
+  }, [queryClient, toast, addOptimistic]);
 
   // All handlers use only stable references (settiers, the API client,
   // toast), so they keep their identity across renders and memoized cards
@@ -611,7 +623,7 @@ export function DocumentsPage() {
         setReprocessingId(null);
       }
     });
-  }, [queryClient, toast]);
+  }, [queryClient, toast, addOptimistic]);
 
   const clearThumbnailUrl = useCallback((id: string) => {
     setThumbnailUrls((prev) => {

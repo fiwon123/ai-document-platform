@@ -20,25 +20,33 @@ export function useScrollReveal<T extends HTMLElement = HTMLDivElement>(
 ) {
   const { threshold = 0.15, rootMargin = "0px 0px -10% 0px" } = options;
   const ref = useRef<T | null>(null);
-  const [isVisible, setIsVisible] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+
+  // Whether a reveal animation is possible at all, decided once per mount.
+  // When it is not, the content is simply reported as visible and no observer
+  // is created — rather than flipping state from the effect body, which the
+  // react(set-state-in-effect) rule flags because it schedules a redundant
+  // second render on every mount. The lazy initializer runs once, and unlike a
+  // ref it needs no `.current` read during render.
+  const [canReveal] = useState(
+    () =>
+      typeof IntersectionObserver === "function" &&
+      !(typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches),
+  );
 
   useEffect(() => {
+    if (!canReveal) return;
     const element = ref.current;
     if (!element) return;
 
-    const prefersReducedMotion =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    if (typeof IntersectionObserver !== "function" || prefersReducedMotion) {
-      setIsVisible(true);
-      return;
-    }
-
+    // setRevealed fires from the observer callback, i.e. from the external
+    // system reporting that the element scrolled into view — the case effects
+    // exist for. It is not a synchronous setState in the effect body.
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
-          setIsVisible(true);
+          setRevealed(true);
           observer.disconnect();
         }
       },
@@ -47,7 +55,7 @@ export function useScrollReveal<T extends HTMLElement = HTMLDivElement>(
 
     observer.observe(element);
     return () => observer.disconnect();
-  }, [threshold, rootMargin]);
+  }, [canReveal, threshold, rootMargin]);
 
-  return { ref, isVisible };
+  return { ref, isVisible: canReveal ? revealed : true };
 }

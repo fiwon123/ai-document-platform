@@ -252,7 +252,7 @@ export function AdminPage() {
         setBusyId(null);
       }
     });
-  }, [queryClient]);
+  }, [queryClient, addOptimistic]);
 
   const handleDelete = useCallback((userId: string, username: string) => {
     if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
@@ -272,7 +272,7 @@ export function AdminPage() {
         setBusyId(null);
       }
     });
-  }, [queryClient]);
+  }, [queryClient, addOptimistic]);
 
   const handleToggleActive = useCallback((user: User) => {
     setBusyId(user.id);
@@ -296,7 +296,7 @@ export function AdminPage() {
         setBusyId(null);
       }
     });
-  }, [queryClient]);
+  }, [queryClient, addOptimistic]);
 
   if (!isAdmin) {
     return (

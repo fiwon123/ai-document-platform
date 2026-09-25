@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { Badge, DOCUMENT_STATUS_TONE } from "./Badge";
+import { Badge } from "./Badge";
+import { DOCUMENT_STATUS_TONE } from "./documentStatusTone";
 
 describe("Badge", () => {
   it("renders its label with the tone class", () => {

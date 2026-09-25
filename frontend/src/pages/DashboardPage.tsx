@@ -5,7 +5,8 @@ import { useMyStatistics, MY_STATISTICS_QUERY_KEY } from "../hooks/useStatistics
 import { documents } from "../services/api";
 import type { DocumentPreview, DocumentStatus } from "../types";
 import { EmptyState } from "../components/EmptyState";
-import { Badge, DOCUMENT_STATUS_TONE } from "../components/Badge";
+import { Badge } from "../components/Badge";
+import { DOCUMENT_STATUS_TONE } from "../components/documentStatusTone";
 import { Skeleton, SkeletonList } from "../components/Skeleton";
 import { Spinner } from "../components/Spinner";
 import { PreviewModal } from "../components/PreviewModal";
