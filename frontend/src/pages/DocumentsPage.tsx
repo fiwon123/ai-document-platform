@@ -13,6 +13,7 @@ import type { Document, DocumentPreview, DocumentStatusResponse } from "../types
 import { SkeletonCard } from "../components/Skeleton";
 import { Spinner } from "../components/Spinner";
 import { EmptyState } from "../components/EmptyState";
+import { Badge, DOCUMENT_STATUS_TONE } from "../components/Badge";
 import { useToast } from "../hooks/useToast";
 import { useDocuments, DOCUMENTS_QUERY_KEY } from "../hooks/useDocuments";
 import { useQueryClient } from "@tanstack/react-query";
@@ -51,14 +52,6 @@ type OptimisticDocumentAction =
   | { type: "delete"; id: string }
   | { type: "reprocess"; id: string }
   | { type: "upload"; files: File[] };
-
-const statusColors: Record<string, string> = {
-  // -600 weight shades keep white text WCAG AA (>= 4.5:1) in both themes.
-  pending: "#b45309",
-  processing: "#2563eb",
-  ready: "#16a34a",
-  failed: "#dc2626",
-};
 
 /**
  * Small inline action glyphs for the document-card footer (16px, Feather
@@ -209,12 +202,9 @@ const DocumentCard = memo(function DocumentCard({
         <div className="status-row">
           <span>Status:</span>
           <span className="status-badge-group">
-            <span
-              className="status-badge"
-              style={{ backgroundColor: statusColors[doc.status] || "#6b7280" }}
-            >
+            <Badge tone={DOCUMENT_STATUS_TONE[doc.status] ?? "gray"}>
               {doc.status}
-            </span>
+            </Badge>
             {isProcessing(doc.status) && (
               <span
                 className="status-elapsed"

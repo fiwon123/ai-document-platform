@@ -2,20 +2,13 @@ import { useMyStatistics } from "../hooks/useStatistics";
 import type { DocumentStatus } from "../types";
 import { Spinner } from "../components/Spinner";
 import { EmptyState } from "../components/EmptyState";
+import { Badge, DOCUMENT_STATUS_TONE } from "../components/Badge";
 
 const STATUS_LABELS: Record<DocumentStatus, string> = {
   pending: "Pending",
   processing: "Processing",
   ready: "Ready",
   failed: "Failed",
-};
-
-const STATUS_COLORS: Record<DocumentStatus, string> = {
-  // -600 weight shades keep white text WCAG AA (>= 4.5:1) in both themes.
-  pending: "#b45309",
-  processing: "#2563eb",
-  ready: "#16a34a",
-  failed: "#dc2626",
 };
 
 export function DashboardPage() {
@@ -94,12 +87,9 @@ export function DashboardPage() {
             {stats.recent_documents.map((doc) => (
               <li key={doc.id} className="recent-item">
                 <span className="recent-filename">{doc.filename}</span>
-                <span
-                  className="status-badge"
-                  style={{ backgroundColor: STATUS_COLORS[doc.status] }}
-                >
+                <Badge tone={DOCUMENT_STATUS_TONE[doc.status] ?? "gray"}>
                   {STATUS_LABELS[doc.status]}
-                </span>
+                </Badge>
                 <span className="recent-date">
                   {new Date(doc.created_at).toLocaleDateString()}
                 </span>
