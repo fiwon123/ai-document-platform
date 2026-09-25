@@ -13,17 +13,16 @@ from fastapi import (
 )
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.database.db import get_db
-from app.repositories.user import UserRepository
 from app.schemas.user import (
     CreateUserRequest,
     LogoutResponse,
     TokenResponse,
     UserResponse,
 )
+from app.services.user import UserService
 
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 if not SECRET_KEY:
@@ -44,7 +43,6 @@ REFRESH_COOKIE_SECURE = os.getenv("REFRESH_COOKIE_SECURE", "true").lower() in {
     "on",
 }
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl="/v1/auth/login")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -131,9 +129,8 @@ def get_current_user(
     except JWTError:
         raise credentials_exception from None
 
-    repo = UserRepository(db)
-    user = repo.get_by_id(UUID(user_id))
-    if user is None or not user.is_active:
+    user = UserService.from_session(db).get_active_by_id(UUID(user_id))
+    if user is None:
         raise credentials_exception
 
     return UserResponse.model_validate(user)
@@ -145,10 +142,16 @@ def get_current_user_id(
     return current_user.id
 
 
+def get_user_service(
+    db: Annotated[Session, Depends(get_db)],
+) -> UserService:
+    return UserService.from_session(db)
+
+
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=UserResponse)
 def register(
     request: CreateUserRequest,
-    db: Annotated[Session, Depends(get_db)],
+    service: Annotated[UserService, Depends(get_user_service)],
 ):
     """Create a new user account.
 
@@ -156,34 +159,19 @@ def register(
     is not already taken, then stores a bcrypt-hashed password. Returns the
     created user (credentials are not issued here — call ``/v1/auth/login``).
     """
-    repo = UserRepository(db)
-
-    if request.password != request.confirm_password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Passwords do not match",
-        )
-
-    existing = repo.get_by_username(request.username)
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Username already registered",
-        )
-
-    user = repo.create(
+    user = service.register(
         username=request.username,
-        hashed_password=pwd_context.hash(request.password),
+        password=request.password,
+        confirm_password=request.confirm_password,
     )
-
     return UserResponse.model_validate(user)
 
 
 @router.post("/login", response_model=TokenResponse)
 def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
-    db: Annotated[Session, Depends(get_db)],
     response: Response,
+    service: Annotated[UserService, Depends(get_user_service)],
 ):
     """Exchange credentials for a Bearer access token.
 
@@ -192,21 +180,7 @@ def login(
     token is set as an httpOnly cookie scoped to ``/v1/auth/refresh`` and an
     access token plus the user profile are returned in the body.
     """
-    repo = UserRepository(db)
-    user = repo.get_by_username(form_data.username)
-
-    if user is None or not pwd_context.verify(form_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is disabled",
-        )
+    user = service.authenticate(form_data.username, form_data.password)
 
     role = user.role.value if user.role else "customer"
     token = create_access_token(
@@ -233,7 +207,7 @@ def login(
 def refresh_access_token(
     request: Request,
     response: Response,
-    db: Annotated[Session, Depends(get_db)],
+    service: Annotated[UserService, Depends(get_user_service)],
 ):
     """Exchange a valid refresh cookie for a fresh access token.
 
@@ -263,9 +237,8 @@ def refresh_access_token(
             detail="Invalid or expired refresh token",
         ) from None
 
-    repo = UserRepository(db)
-    user = repo.get_by_id(user_id)
-    if user is None or not user.is_active:
+    user = service.get_active_by_id(user_id)
+    if user is None:
         _clear_refresh_cookie(response)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
