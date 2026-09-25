@@ -2253,6 +2253,8 @@ body {
   min-height: 200px;
   padding: 38px;
   border: 1px dashed var(--muted);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2260,14 +2262,18 @@ body {
   gap: 11px;
   text-align: center;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
 }
 
 .dropzone:hover,
 .dropzone.is-dragging {
   background: var(--blue-soft);
   border-color: var(--blue);
-  border-color: var(--blue);
+}
+
+.dropzone.is-dragging {
+  border-style: solid;
+  transform: scale(1.01);
 }
 
 .dropzone.is-uploading {
@@ -2280,9 +2286,29 @@ body {
 }
 
 .upload-symbol {
-  font-size: 2.4rem;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
   color: var(--blue);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--blue) 14%, transparent),
+    color-mix(in srgb, #7c3aed 14%, transparent)
+  );
+  transition: transform 0.2s var(--ease-standard);
+}
+
+.upload-symbol svg {
+  width: 28px;
+  height: 28px;
+}
+
+.dropzone:hover .upload-symbol,
+.dropzone.is-dragging .upload-symbol {
+  transform: translateY(-3px);
 }
 
 .dropzone strong {
@@ -2473,9 +2499,44 @@ body {
   place-items: center;
   width: 48px;
   height: 58px;
-  border: 1px solid var(--ink);
-  font: 500 9px "DM Mono", monospace;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--blue) 10%, transparent),
+    color-mix(in srgb, #7c3aed 10%, transparent)
+  );
+  font: 700 10px "DM Mono", monospace;
+  letter-spacing: 0.04em;
+  color: var(--ink);
   flex-shrink: 0;
+}
+
+/* Indeterminate processing indicator under the status row. */
+.progress-track {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--blue) 18%, transparent);
+}
+
+.progress-bar {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--blue);
+  animation: progress-slide 1.1s var(--ease-standard) infinite;
+}
+
+@keyframes progress-slide {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(280%);
+  }
 }
 
 /* Rendered first-page preview of PDF documents. Matches the .file-icon
