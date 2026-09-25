@@ -74,6 +74,19 @@ WORKER_HEALTH_CHECK_INTERVAL = 15  # seconds
 _ENQUEUE_RETRIES = 3
 _ENQUEUE_BACKOFF_SECONDS = 0.4
 
+# Stale-document recovery. A document that is pending/processing while the
+# worker is *down* is not stuck — processing simply is not running — so the
+# recovery cron re-enqueues it instead of failing it. The re-enqueue is
+# bounded per document so a genuinely wedged/broken document still reaches
+# FAILED with a descriptive message rather than being re-enqueued forever.
+#
+# The TTL must comfortably exceed ``STALE_RECOVER_MAX_ATTEMPTS`` × the cron
+# period (5 min), otherwise the counter would expire between attempts and the
+# budget would reset, making the bound meaningless. 1h vs ~20 min of attempts.
+STALE_RECOVER_MAX_ATTEMPTS = 3
+STALE_RECOVER_COUNTER_TTL_SECONDS = 60 * 60  # 1h window per recovery attempt
+_STALE_RECOVER_KEY_PREFIX = "stale-recover:"
+
 
 def worker_redis_settings() -> RedisSettings:
     """Build arq RedisSettings from the shared app environment variables."""
@@ -431,18 +444,118 @@ def process_document_task(document_id: UUID) -> None:
         process_document_sync(document_id)
 
 
+async def _worker_is_alive(redis) -> bool:
+    """True when the arq worker's health-check heartbeat is fresh.
+
+    Reuses the same key ``/v1/health`` and ``system_metrics.py`` read, so the
+    recovery cron and the health endpoint can never disagree about liveness.
+
+    Best-effort: a missing/unavailable Redis or an absent key reads as "not
+    alive". That is the safe direction for this caller — treating an unknown
+    worker as alive would risk re-enqueueing into a queue nobody is draining.
+    """
+    if redis is None:
+        return False
+    try:
+        return bool(await redis.exists(WORKER_HEALTH_CHECK_KEY))
+    except Exception as e:  # noqa: BLE001 - liveness is best-effort
+        logger.debug(f"Worker liveness check failed: {e}")
+        return False
+
+
+async def _recover_stale_document(
+    document: DocumentDB, redis, *, worker_alive: bool
+) -> None:
+    """Re-enqueue (bounded) or fail a single stale document.
+
+    Split out of the sweep so the cron body only ever owns the query/commit
+    while every Redis/enqueue side effect lives here.
+    """
+    # Without Redis we can neither read the worker's heartbeat nor track the
+    # budget, and ``_enqueue_with_retry`` needs the same Redis. Re-enqueueing
+    # anyway would be an unbounded retry loop, so keep the previous
+    # fail-fast behaviour.
+    if redis is None:
+        _mark_stale_failed(document)
+        return
+
+    budget_key = f"{_STALE_RECOVER_KEY_PREFIX}{document.id}"
+    try:
+        attempts = await redis.incr(budget_key)
+        if attempts == 1:
+            await redis.expire(budget_key, STALE_RECOVER_COUNTER_TTL_SECONDS)
+    except Exception as e:  # noqa: BLE001 - budget is best-effort
+        # Cannot bound the retries, so do not start one: fail now.
+        logger.warning(
+            f"Stale-recovery budget unavailable for {document.id}: {e}"
+        )
+        _mark_stale_failed(document)
+        return
+
+    if attempts > STALE_RECOVER_MAX_ATTEMPTS:
+        _mark_stale_failed(document)
+        return
+
+    try:
+        await _enqueue_with_retry(document.id)
+    except Exception as e:  # noqa: BLE001 - enqueue is best-effort
+        logger.warning(f"Re-enqueue of stale document {document.id} failed: {e}")
+        _mark_stale_failed(document)
+        return
+
+    # Intentionally leave status/error_message untouched: the re-enqueued job
+    # owns them from here, and a successful run will flip the row to READY.
+    logger.warning(
+        f"Re-enqueued stale document {document.id} "
+        f"(status={document.status.value}, worker_alive={worker_alive}, "
+        f"attempt={attempts}/{STALE_RECOVER_MAX_ATTEMPTS})"
+    )
+
+
+def _mark_stale_failed(document: DocumentDB) -> None:
+    """Fail a stale document that cannot be recovered."""
+    logger.warning(
+        f"Recovering stale document {document.id} "
+        f"(status={document.status.value}, created={document.created_at})"
+    )
+    document.status = DocumentStatus.FAILED
+    # A real recorded error (e.g. from a failed final retry) is more useful
+    # than the generic timeout text, so only fill in the generic message when
+    # the worker did not manage to record one.
+    if not document.error_message:
+        document.error_message = (
+            "Processing did not complete within the timeout. "
+            "The worker may have stopped, or a transient error "
+            "exhausted the retries. Try reprocessing the document."
+        )
+    _invalidate_caches(document)
+    _schedule_webhook(WebhookEvent.FAILED, document)
+
+
 async def recover_stale_documents(ctx: dict) -> None:
-    """Mark documents stuck in pending/processing as failed.
+    """Recover documents stuck in pending/processing.
 
     Runs periodically via the arq cron. Covers jobs that never started
-    (enqueue failed/lost) or workers that crashed mid-flight. A document
-    that has been pending/processing for longer than
-    ``RECOVERY_TIMEOUT_MINUTES`` is marked FAILED so it never stays stuck
-    forever. When the worker recorded a real error before dying (e.g. on a
-    failed final retry that was not persisted), that message is preserved
-    instead of the generic timeout text so users see what actually went
-    wrong.
+    (enqueue failed/lost) or workers that crashed mid-flight.
+
+    Historically this blindly marked every stale document FAILED, which
+    meant a routine worker restart or deploy failed every in-flight upload
+    even though the documents were fine. Recovery is now liveness-aware and
+    re-enqueue-based:
+
+    * The worker's arq health-check heartbeat is read first. When the worker
+      is simply down the documents are not stuck, so they are re-enqueued for
+      the next healthy worker instead of being failed.
+    * Re-enqueues are bounded per document by a Redis counter, so a
+      genuinely wedged document still lands in FAILED with a descriptive
+      message instead of looping forever.
+    * When the worker *is* alive, a wedged job is re-enqueued while budget
+      remains; arq's own retry already covers transient failures, and the
+      budget is what stops a permanent failure.
     """
+    redis = ctx.get("redis")
+    worker_alive = await _worker_is_alive(redis)
+
     cutoff = datetime.now(UTC) - timedelta(minutes=RECOVERY_TIMEOUT_MINUTES)
     db: Session = SessionLocal()
     try:
@@ -457,22 +570,15 @@ async def recover_stale_documents(ctx: dict) -> None:
             .all()
         )
         for document in stale:
-            logger.warning(
-                f"Recovering stale document {document.id} "
-                f"(status={document.status.value}, created={document.created_at})"
+            await _recover_stale_document(
+                document, redis=redis, worker_alive=worker_alive
             )
-            document.status = DocumentStatus.FAILED
-            if not document.error_message:
-                document.error_message = (
-                    "Processing did not complete within the timeout. "
-                    "The worker may have stopped, or a transient error "
-                    "exhausted the retries. Try reprocessing the document."
-                )
-            _invalidate_caches(document)
-            _schedule_webhook(WebhookEvent.FAILED, document)
         if stale:
             db.commit()
-            logger.info(f"Recovered {len(stale)} stale document(s)")
+            logger.info(
+                f"Recovered {len(stale)} stale document(s) "
+                f"(worker_alive={worker_alive})"
+            )
     finally:
         db.close()
 
