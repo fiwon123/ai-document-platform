@@ -17,8 +17,12 @@ from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
 from app.services.chunking import TextChunk
 from app.worker import (
+    STALE_RECOVER_COUNTER_TTL_SECONDS,
+    STALE_RECOVER_MAX_ATTEMPTS,
+    WORKER_HEALTH_CHECK_KEY,
     WorkerSettings,
     _recovery_timeout_minutes,
+    _worker_is_alive,
     process_document,
     process_document_task,
     recover_stale_documents,
@@ -450,6 +454,56 @@ class TestUploadRouteEnqueues:
         assert "extraction boom" not in body["error_message"]
 
 
+class _FakeRedis:
+    """Minimal async stand-in for the worker's arq Redis client.
+
+    Implements only what the stale-recovery sweep calls — ``exists`` for
+    liveness and ``incr``/``expire`` for the bounded recovery budget — so
+    the liveness-aware contract can be pinned without a real Redis.
+    """
+
+    def __init__(
+        self,
+        budgets: dict[str, int] | None = None,
+        *,
+        health_key: bool = False,
+        fail_incr: bool = False,
+        fail_exists: bool = False,
+    ):
+        self._budgets = dict(budgets or {})
+        self._health_key = health_key
+        self._fail_incr = fail_incr
+        self._fail_exists = fail_exists
+        self.expired: list[int] = []
+
+    async def exists(self, key: str) -> int:
+        if self._fail_exists:
+            raise RuntimeError("redis down")
+        if key == WORKER_HEALTH_CHECK_KEY:
+            return int(self._health_key)
+        return int(key in self._budgets)
+
+    async def incr(self, key: str) -> int:
+        if self._fail_incr:
+            raise RuntimeError("redis down")
+        self._budgets[key] = self._budgets.get(key, 0) + 1
+        return self._budgets[key]
+
+    async def expire(self, key: str, ttl: int) -> bool:
+        self.expired.append(ttl)
+        return True
+
+
+def _patch_enqueue(monkeypatch, sink: list) -> None:
+    """Record re-enqueue attempts instead of touching a real queue."""
+    enqueued: list = sink
+
+    async def _fake_enqueue(document_id):
+        enqueued.append(document_id)
+
+    monkeypatch.setattr("app.worker._enqueue_with_retry", _fake_enqueue)
+
+
 class TestRecoverStaleDocuments:
     def _seed(self, db_session, status, minutes_old):
         from datetime import UTC, datetime, timedelta
@@ -525,3 +579,187 @@ class TestRecoverStaleDocuments:
         db_session.refresh(ready)
         assert recent_pending.status == DocumentStatus.PENDING
         assert ready.status == DocumentStatus.READY
+
+    # ── Liveness-aware, bounded recovery ─────────────────────────────────
+    #
+    # With a real arq ctx (Redis always present) the sweep re-enqueues instead
+    # of blind-failing. These tests pin that contract, plus the two
+    # fail-fast paths that keep the bound from becoming an infinite loop.
+
+    def test_re_enqueues_stale_documents_when_worker_down(self, db_session, monkeypatch):
+        """Worker down ⇒ re-enqueue, do NOT blind-fail.
+
+        The regression this guards: a routine worker restart used to fail
+        every in-flight upload, even though those documents were fine.
+        """
+        old_pending = self._seed(db_session, DocumentStatus.PENDING, 120)
+        old_processing = self._seed(db_session, DocumentStatus.PROCESSING, 120)
+        redis = _FakeRedis(health_key=False)
+        enqueued: list = []
+        _patch_enqueue(monkeypatch, enqueued)
+
+        asyncio.run(recover_stale_documents({"redis": redis}))
+
+        db_session.refresh(old_pending)
+        db_session.refresh(old_processing)
+        # Re-enqueued, and deliberately left in their current status: the
+        # re-enqueued job owns the row from here.
+        assert set(enqueued) == {old_pending.id, old_processing.id}
+        assert old_pending.status == DocumentStatus.PENDING
+        assert old_processing.status == DocumentStatus.PROCESSING
+        assert not old_pending.error_message
+
+    def test_re_enqueues_when_worker_alive_until_budget_exhausted(
+        self, db_session, monkeypatch
+    ):
+        """Worker alive ⇒ still re-enqueue, but only within the budget."""
+        doc = self._seed(db_session, DocumentStatus.PROCESSING, 120)
+        redis = _FakeRedis(health_key=True)
+        enqueued = []
+        _patch_enqueue(monkeypatch, enqueued)
+
+        for _ in range(STALE_RECOVER_MAX_ATTEMPTS):
+            asyncio.run(recover_stale_documents({"redis": redis}))
+
+        db_session.refresh(doc)
+        assert doc.status == DocumentStatus.PROCESSING
+        assert len(enqueued) == STALE_RECOVER_MAX_ATTEMPTS
+
+        # One tick past the budget ⇒ failed for real.
+        asyncio.run(recover_stale_documents({"redis": redis}))
+
+        db_session.refresh(doc)
+        assert doc.status == DocumentStatus.FAILED
+        assert "Processing did not complete within the timeout" in (
+            doc.error_message or ""
+        )
+        assert len(enqueued) == STALE_RECOVER_MAX_ATTEMPTS
+
+    def test_fails_stale_document_when_budget_exhausted(self, db_session, monkeypatch):
+        """Pre-seeded exhausted budget ⇒ fail without re-enqueueing."""
+        doc = self._seed(db_session, DocumentStatus.PROCESSING, 120)
+        redis = _FakeRedis(
+            health_key=False,
+            budgets={f"stale-recover:{doc.id}": STALE_RECOVER_MAX_ATTEMPTS + 1},
+        )
+        enqueued = []
+        _patch_enqueue(monkeypatch, enqueued)
+
+        asyncio.run(recover_stale_documents({"redis": redis}))
+
+        db_session.refresh(doc)
+        assert doc.status == DocumentStatus.FAILED
+        assert enqueued == []
+
+    def test_recovery_budget_preserves_real_error_on_fail_path(
+        self, db_session, monkeypatch
+    ):
+        """A recorded error must survive the bounded-recovery fail path too.
+
+    The re-enqueue rework must not regress the pre-existing behaviour where a
+    genuine failure message is kept instead of the generic timeout text.
+        """
+        doc = self._seed(db_session, DocumentStatus.PROCESSING, 120)
+        doc.error_message = "openai: connection reset"
+        db_session.commit()
+        redis = _FakeRedis(
+            health_key=False,
+            budgets={f"stale-recover:{doc.id}": STALE_RECOVER_MAX_ATTEMPTS + 1},
+        )
+        _patch_enqueue(monkeypatch, [])
+
+        asyncio.run(recover_stale_documents({"redis": redis}))
+
+        db_session.refresh(doc)
+        assert doc.status == DocumentStatus.FAILED
+        assert doc.error_message == "openai: connection reset"
+
+    def test_fails_when_enqueue_itself_fails(self, db_session, monkeypatch):
+        """A failed re-enqueue falls back to FAILED, never a silent retry."""
+        doc = self._seed(db_session, DocumentStatus.PROCESSING, 120)
+        redis = _FakeRedis(health_key=False)
+
+        async def _boom(_document_id):
+            raise RuntimeError("redis down")
+
+        monkeypatch.setattr("app.worker._enqueue_with_retry", _boom)
+
+        asyncio.run(recover_stale_documents({"redis": redis}))
+
+        db_session.refresh(doc)
+        assert doc.status == DocumentStatus.FAILED
+
+    def test_fails_when_budget_store_unavailable(self, db_session, monkeypatch):
+        """If the budget cannot be counted, do not start an unbounded retry."""
+        doc = self._seed(db_session, DocumentStatus.PROCESSING, 120)
+        redis = _FakeRedis(health_key=False, fail_incr=True)
+        enqueued = []
+        _patch_enqueue(monkeypatch, enqueued)
+
+        asyncio.run(recover_stale_documents({"redis": redis}))
+
+        db_session.refresh(doc)
+        assert doc.status == DocumentStatus.FAILED
+        assert enqueued == []
+
+    def test_leaves_recent_documents_alone_with_redis_present(
+        self, db_session, monkeypatch
+    ):
+        """The cutoff still applies on the re-enqueue path."""
+        recent = self._seed(db_session, DocumentStatus.PENDING, 5)
+        ready = self._seed(db_session, DocumentStatus.READY, 120)
+        redis = _FakeRedis(health_key=False)
+        enqueued = []
+        _patch_enqueue(monkeypatch, enqueued)
+
+        asyncio.run(recover_stale_documents({"redis": redis}))
+
+        db_session.refresh(recent)
+        db_session.refresh(ready)
+        assert recent.status == DocumentStatus.PENDING
+        assert ready.status == DocumentStatus.READY
+        assert enqueued == []
+
+    def test_budget_counter_gets_a_ttl_on_first_attempt(self, db_session, monkeypatch):
+        """No TTL ⇒ the counter outlives nothing and the bound never trips."""
+        self._seed(db_session, DocumentStatus.PROCESSING, 120)
+        redis = _FakeRedis(health_key=False)
+        _patch_enqueue(monkeypatch, [])
+
+        asyncio.run(recover_stale_documents({"redis": redis}))
+
+        assert redis.expired == [STALE_RECOVER_COUNTER_TTL_SECONDS]
+
+    def test_no_redis_in_ctx_fails_fast_without_enqueueing(
+        self, db_session, monkeypatch
+    ):
+        """No Redis ⇒ no budget, no enqueue ⇒ previous fail-fast behaviour."""
+        doc = self._seed(db_session, DocumentStatus.PROCESSING, 120)
+        enqueued = []
+        _patch_enqueue(monkeypatch, enqueued)
+
+        asyncio.run(recover_stale_documents({}))
+
+        db_session.refresh(doc)
+        assert doc.status == DocumentStatus.FAILED
+        assert enqueued == []
+
+
+class TestWorkerLiveness:
+    def test_reads_the_shared_health_check_key(self):
+        redis = _FakeRedis(health_key=True)
+        assert asyncio.run(_worker_is_alive(redis)) is True
+
+    def test_absent_key_means_not_alive(self):
+        assert asyncio.run(_worker_is_alive(_FakeRedis(health_key=False))) is False
+
+    def test_missing_redis_means_not_alive(self):
+        assert asyncio.run(_worker_is_alive(None)) is False
+
+    def test_redis_error_means_not_alive(self):
+        redis = _FakeRedis(health_key=True, fail_exists=True)
+        assert asyncio.run(_worker_is_alive(redis)) is False
+
+    def test_uses_the_same_key_as_the_health_endpoint(self):
+        """Liveness must not drift from /v1/health's notion of 'alive'."""
+        assert WORKER_HEALTH_CHECK_KEY == "arq:queue:health-check"
