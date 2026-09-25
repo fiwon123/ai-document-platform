@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { LandingNavbar } from "../components/LandingNavbar";
 import { Markdown } from "../components/Markdown";
+import { Badge } from "../components/Badge";
 import { DEMO_DOCUMENTS } from "./demoData";
 import type { DemoSampleDoc } from "./demoData";
 
@@ -196,9 +197,9 @@ export function DemoPage() {
             limited per session — sign up for unlimited access.
           </p>
           <p className="demo-usage">
-            <span className="status-badge">{DEMO_DOCUMENTS.length} sample docs</span>
-            <span className="status-badge">{searchesLeft} searches left</span>
-            <span className="status-badge">{qaLeft} questions left</span>
+            <Badge tone="blue">{DEMO_DOCUMENTS.length} sample docs</Badge>
+            <Badge tone="blue">{searchesLeft} searches left</Badge>
+            <Badge tone="blue">{qaLeft} questions left</Badge>
           </p>
         </header>
 
@@ -217,9 +218,7 @@ export function DemoPage() {
                 <div className="document-card-body">
                   <div className="status-row">
                     <span>Status:</span>
-                    <span className="status-badge" style={{ backgroundColor: "#16a34a" }}>
-                      {doc.status}
-                    </span>
+                    <Badge tone="green">{doc.status}</Badge>
                   </div>
                   <p className="date">{doc.chunks.length} indexed chunks</p>
                 </div>

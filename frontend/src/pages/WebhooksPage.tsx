@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { webhooks } from "../services/api";
 import type { WebhookEvent, WebhookSubscription } from "../types";
 import { Spinner } from "../components/Spinner";
+import { Badge } from "../components/Badge";
 import { useWebhooks, WEBHOOKS_QUERY_KEY } from "../hooks/useWebhooks";
 
 const EVENT_OPTIONS: { value: WebhookEvent; label: string }[] = [
@@ -256,14 +257,9 @@ export function WebhooksPage() {
             <article key={sub.id} className="settings-card webhook-card">
               <div className="webhook-card-header">
                 <code className="webhook-url">{sub.url}</code>
-                <span
-                  className="status-badge"
-                  style={{
-                    backgroundColor: sub.is_active ? "#16a34a" : "#6b7280",
-                  }}
-                >
+                <Badge tone={sub.is_active ? "green" : "gray"}>
                   {sub.is_active ? "Active" : "Paused"}
-                </span>
+                </Badge>
               </div>
 
               <div className="webhook-events-tags">
