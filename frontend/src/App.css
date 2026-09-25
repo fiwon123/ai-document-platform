@@ -43,6 +43,10 @@
   --line: #e2e8f0; /* slate-200 */
   --paper: #ffffff; /* white background */
   --surface: #f8fafc; /* slate-50 */
+  /* Surface hierarchy: base page bands → raised panels → floating elevations.
+     --surface stays the historic "second surface" (inputs, alt sections). */
+  --surface-2: #f1f5f9; /* slate-100 — raised panels on --surface */
+  --surface-3: #eef2f8; /* deepest tint — modal headers, sticky bars */
   --blue: #2563eb; /* blue-600 — primary accent */
   --blue-hover: #1d4ed8; /* blue-700 */
   --blue-soft: #eff6ff; /* blue-50 — tinted backgrounds */
@@ -62,20 +66,25 @@
 }
 
 /* Dark theme: the ink/paper pair inverts (bg becomes dark, text light) and
-   the navbar renders as a light bar on dark pages. */
+   the navbar renders as a light bar on dark pages. Backgrounds are softened
+   off pure black (#0f172a → #121927) so surfaces read as shades of deep
+   slate rather than a single flat void; line/surface pairs step up the
+   ladder so borders stay visible (inputs, cards, modals). */
 :root[data-theme="dark"] {
   --ink: #e2e8f0; /* slate-200 — light text on dark surfaces */
   --muted: #94a3b8; /* slate-400 */
-  --line: #1e293b; /* slate-800 */
-  --paper: #0f172a; /* slate-900 — dark background */
-  --surface: #1e293b; /* slate-800 */
+  --line: #2c3a52; /* visible border on the softened backgrounds */
+  --paper: #121927; /* deep slate — page background */
+  --surface: #1b2639; /* inputs, chips, alt sections — one step up */
+  --surface-2: #242f47; /* raised panels */
+  --surface-3: #2b3a55; /* floating elevations (modals, tooltips) */
   --blue: #60a5fa; /* blue-400 — brighter accent for dark backgrounds */
   --blue-hover: #93c5fd; /* blue-300 */
   --blue-soft: rgb(37 99 235 / 0.16);
   --green: #22c55e; /* green-500 */
   --green-soft: rgb(34 197 94 / 0.12);
   --info: #60a5fa;
-  --code-bg: #1e293b;
+  --code-bg: #1b2639;
   --danger-soft: rgb(220 38 38 / 0.14);
   --danger-line: rgb(220 38 38 / 0.35);
   --success-soft: rgb(22 163 74 / 0.14);
@@ -86,6 +95,119 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* ============================================================================
+   DESIGN SYSTEM UTILITIES (Package 1)
+   Scroll-reveal (pair with hooks/useScrollReveal + components/Reveal),
+   gradient text, card hover lift, section dividers, layout containers and
+   button press feedback. All tokens-driven; reduced-motion safe.
+   ---------------------------------------------------------------------------- */
+
+/* Scroll-reveal: elements start hidden and flip to .is-revealed when the
+   IntersectionObserver fires (see useScrollReveal). Without IO support or
+   under prefers-reduced-motion they are visible immediately — content is
+   never permanently hidden. --reveal-delay (set via the Reveal component)
+   staggers lists. */
+.reveal,
+.reveal-left,
+.reveal-right,
+.reveal-scale {
+  opacity: 0;
+  transition:
+    opacity var(--duration-slow) var(--ease-decelerate),
+    transform var(--duration-slow) var(--ease-decelerate);
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+.reveal {
+  transform: translateY(14px);
+}
+
+.reveal-left {
+  transform: translateX(-18px);
+}
+
+.reveal-right {
+  transform: translateX(18px);
+}
+
+.reveal-scale {
+  transform: scale(0.96);
+}
+
+.reveal.is-revealed,
+.reveal-left.is-revealed,
+.reveal-right.is-revealed,
+.reveal-scale.is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/* Gradient headline accent (blue → violet; brighter pair in dark mode). */
+.gradient-text {
+  background: linear-gradient(100deg, var(--blue), #7c3aed);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+:root[data-theme="dark"] .gradient-text {
+  background: linear-gradient(100deg, #60a5fa, #a78bfa);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* Card hover: lift + soft shadow + accent-tinted border in both themes. */
+.card-hover {
+  transition:
+    transform var(--duration-base) var(--ease-standard),
+    box-shadow var(--duration-base) var(--ease-standard),
+    border-color var(--duration-base) var(--ease-standard);
+}
+
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: color-mix(in srgb, var(--blue) 35%, var(--line));
+}
+
+/* Soft gradient divider between sections. */
+.section-divider {
+  height: 1px;
+  border: 0;
+  margin: 0;
+  background: linear-gradient(90deg, transparent, var(--line), transparent);
+}
+
+/* Layout containers. */
+.container-wide {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.container-narrow {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Button press feedback: every button squishes slightly on :active. The .btn
+   base rule already transitions transform, so this is a pure value swap. */
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Reduced motion: reveal elements are always visible, no transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal-left,
+  .reveal-right,
+  .reveal-scale {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }
 
 body {
