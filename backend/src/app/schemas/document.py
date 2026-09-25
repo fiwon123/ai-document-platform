@@ -1,40 +1,9 @@
 from datetime import datetime
-from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.models.document import DocumentStatus
-
-
-class SearchExportFormat(StrEnum):
-    """Supported export serialization formats for search results."""
-
-    csv = "csv"
-    json = "json"
-
-
-class SearchExportRequest(BaseModel):
-    """Request to export search results as a downloadable file."""
-
-    query: str = Field(min_length=1, max_length=1000, description="Search query")
-    top_k: int = Field(default=5, ge=1, le=20, description="Number of results")
-    offset: int = Field(
-        default=0,
-        ge=0,
-        description="Number of results to skip (pagination cursor)",
-    )
-    document_ids: list[UUID] | None = Field(
-        default=None,
-        description=(
-            "Optional document IDs to restrict the search to. "
-            "None (default) searches all of the user's documents."
-        ),
-    )
-    format: SearchExportFormat = Field(
-        default=SearchExportFormat.csv,
-        description="Output format: csv or json",
-    )
 
 
 class FileResponse(BaseModel):
@@ -77,71 +46,6 @@ class DocumentChunkResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
-
-
-class SearchRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=1000, description="Search query")
-    top_k: int = Field(default=5, ge=1, le=20, description="Number of results")
-    offset: int = Field(
-        default=0,
-        ge=0,
-        description="Number of results to skip (pagination cursor)",
-    )
-    document_ids: list[UUID] | None = Field(
-        default=None,
-        description=(
-            "Optional document IDs to restrict the search to. "
-            "None (default) searches all of the user's documents."
-        ),
-    )
-
-
-class SearchResult(BaseModel):
-    chunk_id: UUID
-    document_id: UUID
-    document_filename: str
-    content: str
-    score: float
-    metadata_: dict | None = None
-
-
-class SearchResponse(BaseModel):
-    query: str
-    results: list[SearchResult]
-    total_count: int
-    has_more: bool
-
-
-class QARequest(BaseModel):
-    question: str = Field(min_length=1, max_length=2000, description="Question to ask")
-    document_ids: list[UUID] | None = Field(
-        default=None,
-        description="Specific document IDs to search (None = all documents)",
-    )
-    model: str | None = Field(
-        default=None,
-        description="Model override; defaults to OPENAI_MODEL",
-    )
-    api_key: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=200,
-        description=(
-            "Optional bring-your-own-key. When provided, the user's key is "
-            "used for this request instead of the server's key for the "
-            "chosen provider. Never stored or logged."
-        ),
-    )
-
-
-class QAResponse(BaseModel):
-    question: str
-    answer: str
-    sources: list[SearchResult]
-    model: str | None = Field(
-        default=None,
-        description="Model that produced the answer",
-    )
 
 
 class DocumentPreviewResponse(BaseModel):

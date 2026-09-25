@@ -19,7 +19,9 @@ from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
 from app.repositories.document import DocumentRepository
 from app.repositories.search import SearchRepository
-from app.schemas.document import FileResponse, QAResponse, SearchResponse, SearchResult
+from app.schemas.document import FileResponse
+from app.schemas.qa import QAResponse
+from app.schemas.search import SearchResponse, SearchResult
 from app.services.document import DocumentService
 from app.services.qa import QAService
 from app.services.search import (

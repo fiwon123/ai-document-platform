@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.repositories.search import SearchRepository
 from app.routes.auth import get_current_user_id
-from app.schemas.document import (
+from app.schemas.search import (
     SearchExportFormat,
     SearchExportRequest,
     SearchRequest,

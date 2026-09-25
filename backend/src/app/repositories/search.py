@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.chunk import DocumentChunk
 from app.models.document import DocumentDB
 from app.models.search import SearchHistory
-from app.schemas.document import SearchResult
+from app.schemas.search import SearchResult
 
 
 class SearchRepository:

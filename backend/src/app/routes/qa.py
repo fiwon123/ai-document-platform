@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.repositories.search import SearchRepository
 from app.routes.auth import get_current_user_id
-from app.schemas.document import QARequest, QAResponse
+from app.schemas.qa import QARequest, QAResponse
 from app.services.qa import AVAILABLE_MODELS, QAService
 from app.services.search import SearchService
 

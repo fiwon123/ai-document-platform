@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -16,6 +17,30 @@ class CreateUserRequest(BaseModel):
         description="Password must be at least 8 characters",
     )
     confirm_password: str
+
+
+class UpdateUserRequest(BaseModel):
+    username: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=20,
+        pattern=r"^[a-zA-Z0-9_]+$",
+        description="Username: 3-20 chars, letters/numbers/underscore only",
+    )
+    password: str | None = Field(
+        default=None,
+        min_length=8,
+        description="Password must be at least 8 characters",
+    )
+    confirm_password: str | None = None
+
+
+class UpdateRoleRequest(BaseModel):
+    role: Literal["customer", "admin"]
+
+
+class UpdateActiveRequest(BaseModel):
+    is_active: bool
 
 
 class LoginRequest(BaseModel):
