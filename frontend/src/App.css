@@ -1303,6 +1303,13 @@ body {
   color: var(--ink);
 }
 
+/* The landing page's primary content sits between the navbar and the footer,
+   neither of which belongs inside <main> (they are banner/contentinfo
+   landmarks). Mirrors .page-main, which does the same job for PageLayout. */
+.landing-main {
+  display: block;
+}
+
 /* Hero — centered content over an animated gradient mesh. */
 .landing-hero {
   position: relative;
