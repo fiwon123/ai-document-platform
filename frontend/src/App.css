@@ -45,6 +45,19 @@
      technically failing while looking "fine" on pure white. #5f6f85 clears
      AA on both the page (5.12:1) and a panel (4.68:1). */
   --muted: #5f6f85;
+  /* Secondary text on an inverted var(--ink) bar — the browser-chrome preview
+     strip. --muted cannot be reused there: it is tuned for the page and panel
+     backgrounds and measures 2.16:1 against the bar, because the bar paints
+     var(--ink), which inverts with the theme. The value has to invert with it.
+     slate-300 measures 7.44:1 on the light-theme bar. */
+  --on-ink-muted: #cbd5e1; /* slate-300 */
+  /* Green as TEXT on a --green-soft chip. --green stays the accent for borders,
+     icons and fills, where the 3:1 non-text threshold applies; as small text
+     it measured 3.15:1 on the green-50 chip, under AA's 4.5:1. The chip labels
+     are 11.5-12.8px bold, well under the 18.66px bold that "large text" needs
+     to qualify for 3:1, so 4.5:1 is the bar that applies. green-700 -> 4.79:1,
+     the smallest step that clears it. */
+  --green-text: #15803d; /* green-700 */
   /* Hairline: table row rules, input edges, dividers between stacked items. */
   --line: #cbd5e1; /* slate-300 */
   /* Card and container boundary. This was slate-300 (1.48:1 on white) with a
@@ -95,6 +108,14 @@
 :root[data-theme="dark"] {
   --ink: #e2e8f0; /* slate-200 — light text on dark surfaces */
   --muted: #94a3b8; /* slate-400 */
+  /* The preview bar paints var(--ink), which is LIGHT in this theme, so the
+     muted-on-bar foreground has to be dark. The bar's effective background is
+     the ink with a 16% paper wash on top (#c1c7d0); slate-600 lands at 4.46:1,
+     a hair under AA, so this steps down to slate-700 at 6.09:1. */
+  --on-ink-muted: #334155; /* slate-700 */
+  /* green-500 already clears 6.31:1 on the dark green chip, so the text token
+     matches --green here; only the light theme needed darkening. */
+  --green-text: #22c55e; /* green-500 */
   --line: #2c3a52; /* visible border on the softened backgrounds */
   /* Brighter than --line. On #121927 the default hairline measures 1.54:1
      against the page, so every card painted var(--paper) floated on nothing
@@ -1382,7 +1403,7 @@ body {
   padding: 6px 14px;
   border-radius: 20px;
   background: var(--green-soft);
-  color: var(--green);
+  color: var(--green-text);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -1485,7 +1506,9 @@ body {
   padding: 2px 10px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--paper) 16%, transparent);
-  color: var(--muted);
+  /* --muted, not this: the bar behind the chip paints var(--ink), which
+     inverts with the theme, so the foreground has to invert too. */
+  color: var(--on-ink-muted);
   font-size: 0.72rem;
   letter-spacing: 0.02em;
 }
@@ -2459,7 +2482,7 @@ body {
   padding: 2px 8px;
   border-radius: 20px;
   background: var(--green-soft);
-  color: var(--green);
+  color: var(--green-text);
   font-size: 0.72rem;
   font-style: normal;
   font-weight: 800;

@@ -32,6 +32,20 @@ const css = ["App.css", "index.css"]
   // would re-trip the guard on its own explanation.
   .replace(/\/\*[\s\S]*?\*\//g, "");
 
+/** Body of a top-level rule, e.g. `:root` or `:root[data-theme="dark"]`. */
+const ruleBody = (selector: string): string => {
+  const m = css.match(new RegExp(`(?:^|[}\\n])\\s*${selector}\\s*\\{([^}]*)\\}`));
+  if (!m?.[1]) throw new Error(`no ${selector} block in the stylesheet`);
+  return m[1];
+};
+
+/** A single custom property's declared value. */
+const token = (body: string, name: string): string => {
+  const m = body.match(new RegExp(`${name}\\s*:\\s*([^;]+);`));
+  if (!m?.[1]) throw new Error(`${name} is not declared in this block`);
+  return m[1].trim();
+};
+
 describe("design tokens", () => {
   it("every referenced custom property is declared or has a fallback", () => {
     // matchAll groups are `string | undefined` under noUncheckedIndexedAccess;
@@ -255,5 +269,132 @@ describe("design tokens", () => {
     expect(divider, "dividers stay vertical so the row needs no breakpoint").toMatch(
       /width:\s*1px/,
     );
+  });
+
+  it("keeps small text on tinted chips and inverted bars above 4.5:1 in both themes", () => {
+    // Three labels failed WCAG AA as text: the green eyebrow and the plan
+    // "Save" badge (--green on --green-soft, 3.15:1 in light) and the preview
+    // URL chip (--muted on the bar, 2.16:1 light).
+    //
+    // The assertions compute the ratio from the values actually in the
+    // stylesheet, so a *passing* recolour does not have to be pinned to a hex:
+    // only falling back under the threshold fails. A pinned-hex test would be
+    // satisfied by the colour it was written against and would break on any
+    // legitimate darkening, which is the opposite of what this guard is for.
+    //
+    // The two backgrounds are composites, so they are modelled rather than
+    // hardcoded. The chip is --green-soft over the page; the bar paints --ink
+    // with a 16% --paper wash (the color-mix in the .preview-url rule). The
+    // model reproduces the colours Chrome actually reports — #f0fdf4 /
+    // #142e2e for the chip and #353c4c / #c1c7d0 for the bar — so a failure
+    // here means a real failure, not a modelling artefact.
+    type Rgb = { r: number; g: number; b: number; a: number };
+    const parse = (raw: string): Rgb => {
+      const hex = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+      if (hex) {
+        const h = hex[1]!.length === 3 ? [...hex[1]!].map((c) => c + c).join("") : hex[1]!;
+        return {
+          r: parseInt(h.slice(0, 2), 16),
+          g: parseInt(h.slice(2, 4), 16),
+          b: parseInt(h.slice(4, 6), 16),
+          a: 1,
+        };
+      }
+      const fn = raw.match(/^rgba?\(([^)]+)\)$/);
+      if (fn) {
+        const parts = fn[1]!.split(/[\s/]+/).filter(Boolean).map(Number);
+        return {
+          r: parts[0] ?? 0,
+          g: parts[1] ?? 0,
+          b: parts[2] ?? 0,
+          a: parts[3] ?? 1,
+        };
+      }
+      throw new Error(`unsupported colour syntax: ${raw}`);
+    };
+    const over = (fg: Rgb, bg: Rgb): Rgb => ({
+      r: fg.r * fg.a + bg.r * (1 - fg.a),
+      g: fg.g * fg.a + bg.g * (1 - fg.a),
+      b: fg.b * fg.a + bg.b * (1 - fg.a),
+      a: 1,
+    });
+    const luminance = ({ r, g, b }: Rgb): number => {
+      const channel = (v: number): number => {
+        const n = v / 255;
+        return n <= 0.03928 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+    };
+    const contrast = (a: Rgb, b: Rgb): number => {
+      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [
+        number,
+        number,
+      ];
+      return (hi + 0.05) / (lo + 0.05);
+    };
+
+    for (const { name, body } of [
+      { name: "light", body: ruleBody(":root") },
+      { name: "dark", body: ruleBody(':root\\[data-theme="dark"\\]') },
+    ]) {
+      const page = parse(token(body, "--paper"));
+
+      // Green chip: --green-text on --green-soft over the page.
+      const chipBg = over(parse(token(body, "--green-soft")), page);
+      const greenText = contrast(parse(token(body, "--green-text")), chipBg);
+      expect(
+        greenText,
+        `--green-text on --green-soft in the ${name} theme is ${greenText.toFixed(2)}:1, under AA's 4.5:1`,
+      ).toBeGreaterThanOrEqual(4.5);
+
+      // Preview bar: --on-ink-muted on var(--ink) with a 16% --paper wash.
+      const barBg = over(
+        { ...parse(token(body, "--paper")), a: 0.16 },
+        parse(token(body, "--ink")),
+      );
+      const barText = contrast(parse(token(body, "--on-ink-muted")), barBg);
+      expect(
+        barText,
+        `--on-ink-muted on the preview bar in the ${name} theme is ${barText.toFixed(2)}:1, under AA's 4.5:1`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("keeps --muted readable on the page and panel backgrounds", () => {
+    // --muted was deliberately tuned to clear 4.5:1 on both --paper and
+    // --surface, and that is exactly why the preview-bar labels needed their
+    // own token instead of a global darkening: the bar paints var(--ink),
+    // which inverts per theme, and a value that works there cannot also work
+    // here. This guards the token against being "fixed" for the bar and
+    // pushed under AA everywhere else.
+    const light = ruleBody(":root");
+    const hex = (name: string): string => {
+      const m = light.match(new RegExp(`${name}\\s*:\\s*(#[0-9a-f]{6})`, "i"));
+      if (!m?.[1]) throw new Error(`${name} must be a hex colour`);
+      return m[1];
+    };
+    const relLuminance = (hexValue: string): number => {
+      const h = hexValue.replace("#", "");
+      const channel = (i: number): number => {
+        const n = parseInt(h.slice(i, i + 2), 16) / 255;
+        return n <= 0.03928 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+    };
+    const ratio = (a: string, b: string): number => {
+      const [hi, lo] = [relLuminance(a), relLuminance(b)].sort((x, y) => y - x) as [
+        number,
+        number,
+      ];
+      return (hi + 0.05) / (lo + 0.05);
+    };
+
+    for (const surface of ["--paper", "--surface"]) {
+      const value = ratio(hex("--muted"), hex(surface));
+      expect(
+        value,
+        `--muted on ${surface} is ${value.toFixed(2)}:1, under AA's 4.5:1`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });
