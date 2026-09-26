@@ -10,6 +10,7 @@ set -euo pipefail
 #   - config: ${HOST_HOME}/.config/opencode                → /home/appuser/.config/opencode
 #   - git identity: ${HOST_HOME}/.gitconfig                 → /home/appuser/.gitconfig
 #   - gh auth: ${HOST_HOME}/.config/gh                      → /home/appuser/.config/gh
+#   - GitHub token: forwarded as GH_TOKEN (see resolve-gh-token.sh below)
 #   - Docker socket: /var/run/docker.sock              → /var/run/docker.sock
 #     (docker CLI + compose plugin are baked into the image; see Dockerfile)
 #
@@ -45,6 +46,20 @@ if [ -z "${DOCKER_GID:-}" ]; then
     DOCKER_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null || printf '999')"
 fi
 export DOCKER_GID
+
+# GitHub passthrough: the `dev` service forwards the host's GitHub token so the
+# sandboxed agent can drive the issue → branch → PR workflow. The read-only
+# ~/.config/gh mount cannot do that on its own — the host token normally lives in
+# the OS keyring, so hosts.yml carries no `oauth_token` and the container (no
+# keyring socket) ends up unauthenticated. Resolve and validate the credential
+# here as well, since this script starts the stack directly rather than going
+# through `make dev-up`. A rejected credential is fatal; an absent one only warns.
+# The token is never printed.
+"$SCRIPT_DIR/resolve-gh-token.sh" --check
+sandbox_gh_token="$("$SCRIPT_DIR/resolve-gh-token.sh" 2>/dev/null || true)"
+if [ -n "$sandbox_gh_token" ]; then
+    export GH_TOKEN="$sandbox_gh_token"
+fi
 
 # Keep direct invocations equivalent to `make sandbox`: the read-only mounts
 # must exist before Compose creates the container.
