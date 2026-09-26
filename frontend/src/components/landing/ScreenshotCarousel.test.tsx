@@ -1,4 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ScreenshotCarousel, type CarouselSlide } from "./ScreenshotCarousel";
 
@@ -112,5 +114,54 @@ describe("ScreenshotCarousel", () => {
   it("renders nothing for an empty slide set", () => {
     const { container } = render(<ScreenshotCarousel slides={[]} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("gives each dot a 24x24 target while keeping the visible dot at 8px", () => {
+    // WCAG 2.5.8 Target Size (Minimum) failed on the dots at 8x8. The target
+    // is the <button>, not the 8px dot inside it, so the button has to carry
+    // the 24x24 box — an absolutely positioned ::before would widen the
+    // clickable area without changing the bounding box the audit measures.
+    //
+    // jsdom does not lay out, so this reads the stylesheet: the declarations
+    // are the only thing standing between the dots and a target-size failure.
+    const css = readFileSync(resolve(__dirname, "../../App.css"), "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    const body = (selector: string): string => {
+      const rule = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) =>
+        (m[1] ?? "").split(",").some((s) => s.trim() === selector),
+      );
+      if (!rule) throw new Error(`no ${selector} rule in App.css`);
+      return rule[2] ?? "";
+    };
+    const px = (declarations: string, property: string, selector: string): number => {
+      const m = declarations.match(new RegExp(`${property}\\s*:\\s*([^;]+)`));
+      const raw = m?.[1]?.trim();
+      if (!raw) {
+        throw new Error(
+          `${selector} declares no ${property}, so the dot has no ${property} and its ` +
+            `target is smaller than WCAG 2.5.8's 24px minimum`,
+        );
+      }
+      const n = raw.match(/^(\d+(?:\.\d+)?)px$/);
+      if (!n?.[1]) throw new Error(`${selector} ${property} is "${raw}", not a px length`);
+      return Number(n[1]);
+    };
+
+    const target = body(".carousel-dot");
+    expect(px(target, "width", ".carousel-dot"), "dot target width").toBeGreaterThanOrEqual(24);
+    expect(px(target, "height", ".carousel-dot"), "dot target height").toBeGreaterThanOrEqual(24);
+    // The button is 24px with no padding/border, so the box it exposes to the
+    // audit is exactly that.
+    expect(target).toMatch(/padding\s*:\s*0/);
+    expect(target).toMatch(/border\s*:\s*none/);
+
+    // The appearance must not change to satisfy the audit: the visible dot
+    // stays 8px, centred inside the larger target (centering verified in the
+    // browser — 10px when the active dot's scale(1.25) is applied).
+    expect(px(body(".carousel-dot span"), "width", ".carousel-dot span")).toBe(8);
+    expect(px(body(".carousel-dot span"), "height", ".carousel-dot span")).toBe(8);
+    expect(target).toMatch(/place-items\s*:\s*center/);
   });
 });

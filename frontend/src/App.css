@@ -1629,13 +1629,27 @@ body {
 .carousel-dots {
   position: absolute;
   left: 50%;
-  bottom: 14px;
+  /* The row is 24px tall now that each target is 24x24, with the 8px dot
+     centred inside it. Pulling the row down by the 8px of extra height keeps
+     the visible dots exactly where they were relative to the slide edge. */
+  bottom: 6px;
   transform: translateX(-50%);
   display: flex;
   gap: 8px;
 }
 
 .carousel-dot {
+  /* WCAG 2.5.8 Target Size (Minimum). The target is the <button>, not the 8px
+     dot inside it, so the button carries the 24x24 hit area and the visible
+     dot is centred within it. Growing the element itself is deliberate: an
+     absolutely positioned ::before would widen the clickable area without
+     changing the bounding box, and the audit measures the bounding box — so
+     the pseudo-element version would still fail. The dot stays 8px, so only
+     the gap between dots grows. */
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
   background: none;
