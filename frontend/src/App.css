@@ -6710,7 +6710,9 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: 780px;
+  /* Was 780px, which stranded the `clamp(…, 3.4rem)` headline in a narrow
+     column on a large monitor. Widened to sit just under the page measure. */
+  max-width: 960px;
   margin: 0 auto;
 }
 
@@ -6726,8 +6728,23 @@ body {
   font-size: clamp(1.02rem, 1.5vw, 1.15rem);
 }
 
+/* The marketing measure, shared by all 13 `PageLayout` routes.
+
+   `box-sizing: border-box` (line 386), so this 1200px is the WHOLE box and the
+   `6vw` gutter sits inside it rather than being added to it. At a 1920px
+   viewport that leaves 1200 − 2×115.2 = ~970px of content, which is exactly
+   `.main-content`'s measure at the same width — marketing and the workspace now
+   share one column instead of the marketing pages sitting at 900px (670px of
+   content, 46.9% of the screen, which is what read as "too small on a PC").
+
+   Raising this also promotes `.page-grid` from 2 columns to 3 on its own: it
+   is `repeat(auto-fit, minmax(260px, 1fr))`, and 3×260 + 2×18 = 816px fits in
+   970px while 4×260 + 3×18 = 1094px does not. No media query needed.
+
+   Prose does NOT follow this width — see the `52ch` cap on `.page-body p`
+   below. A wide container and a readable line are different things. */
 .page-body {
-  max-width: 900px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 24px 6vw 88px;
 }
@@ -6773,7 +6790,12 @@ body {
   text-wrap: balance;
 }
 
-.page-cta-band-sub {
+/* Scoped through `.page-body` deliberately. `.page-body p` now carries its own
+   52ch measure, and `(0,1,1)` beats this rule's former `(0,1,0)` — so unscoped,
+   the band would silently inherit the prose cap instead of the 54ch it was
+   given. The CTA band is centred text, not a reading measure, so it keeps its
+   own tighter cap and stays out of the prose rule's way. */
+.page-body .page-cta-band-sub {
   margin: 0 auto 28px;
   max-width: 54ch;
   color: var(--muted);
@@ -6800,6 +6822,22 @@ body {
   color: var(--muted);
   font-size: 1rem;
   line-height: 1.72;
+  /* Prose measure, deliberately independent of the container width above.
+
+     52ch, NOT 70ch, and the number is not a typo. `ch` is the width of the "0"
+     glyph, not of an average character: measured in Manrope at 16px, 1ch is
+     10.0px while the average character in running prose is 7.37px, so 1ch ≈
+     1.36 real characters. 52ch therefore lands at ~516px ≈ **70 characters**
+     per line. Writing `70ch` here — the intuitive "70 characters" — resolves to
+     700px ≈ 94 characters, which is WIDER than the 670px it replaced. The
+     uncapped paragraph ran at ~90 real characters, so the cap is fixing a
+     pre-existing problem rather than creating one.
+
+     The cap is inert inside `.page-grid`/`.page-card-static` because those are
+     narrower than 52ch, so card copy is unaffected. Left-aligned on purpose: it
+     matches `.page-section`'s existing alignment, so headings and the text they
+     head stay flush. */
+  max-width: 52ch;
 }
 
 .page-body p strong {
@@ -6819,6 +6857,8 @@ body {
   padding-left: 22px;
   color: var(--muted);
   line-height: 1.7;
+  /* Same measure cap as the paragraphs, for the same reason. */
+  max-width: 52ch;
 }
 
 .page-body li {
@@ -7190,6 +7230,15 @@ body {
 }
 
 /* ── Legal documents ──────────────────────────────────────────────────────── */
+
+/* The four legal routes are the prose-heaviest pages in the site, so the cap
+   goes on the *container* rather than on the paragraphs (which `.page-body p`
+   already caps). Capping the container keeps each `.legal-section h2` flush
+   left with the text it heads; capping only the `<p>`s would leave every heading
+   spanning the full 970px while its own paragraph stopped at ~575px. */
+.legal-body {
+  max-width: 52ch;
+}
 
 .template-notice {
   margin-bottom: 28px;
