@@ -1,8 +1,11 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LandingNavbar } from "./LandingNavbar";
+import { NAV_PRODUCT } from "../content/marketing";
 
 vi.mock("../hooks/useAuth", () => ({
   useAuth: () => ({ user }),
@@ -50,78 +53,114 @@ afterEach(() => {
 });
 
 describe("LandingNavbar", () => {
-  it("shows the brand and both section menus", () => {
+  it("shows the brand, the flat Product links, and the Company menu", () => {
     renderNavbar();
     expect(screen.getByText("AskDocs")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Product/ })).toBeTruthy();
+    // Product is a flat list, not a second menu: its destinations are the
+    // header's primary content and must be visible without interaction.
+    for (const label of ["Overview", "Features", "How it works", "Pricing", "Live demo"]) {
+      expect(screen.getByRole("link", { name: label }), label).toBeTruthy();
+    }
+    expect(screen.queryByRole("button", { name: /Product/ })).toBeNull();
     expect(screen.getByRole("button", { name: /Company/ })).toBeTruthy();
   });
 
-  it("keeps child pages hidden until a menu is opened", async () => {
+  it("points each flat Product link at its own page", () => {
     renderNavbar();
-    // Flat links are always visible. They live behind the menus, so nothing is on
-    // screen that the visitor did not ask for.
-    expect(screen.queryByRole("link", { name: "Features" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Pricing" })).toBeNull();
-
-    await userEvent.click(screen.getByRole("button", { name: /Product/ }));
-    expect(screen.getByRole("link", { name: "Features" }).getAttribute("href")).toBe(
-      "/features",
-    );
-    expect(screen.getByRole("link", { name: "How it works" }).getAttribute("href")).toBe(
-      "/how-it-works",
-    );
-    expect(screen.getByRole("link", { name: "Pricing" }).getAttribute("href")).toBe(
-      "/pricing",
-    );
-    expect(screen.getByRole("link", { name: "Live demo" }).getAttribute("href")).toBe(
-      "/demo",
-    );
+    for (const [label, href] of [
+      ["Overview", "/product"],
+      ["Features", "/features"],
+      ["How it works", "/how-it-works"],
+      ["Pricing", "/pricing"],
+      ["Live demo", "/demo"],
+    ] as const) {
+      expect(screen.getByRole("link", { name: label }).getAttribute("href"), label).toBe(
+        href,
+      );
+    }
   });
 
-  it("exposes each section hub as the overview link", async () => {
+  it("keeps the Company menu's children hidden until it is opened", async () => {
     renderNavbar();
-    await userEvent.click(screen.getByRole("button", { name: /Product/ }));
-    expect(screen.getByRole("link", { name: "Product overview" }).getAttribute("href")).toBe(
-      "/product",
-    );
+    // The Company section is still a disclosure, so nothing of its is on screen
+    // that the visitor did not ask for.
+    expect(screen.queryByRole("link", { name: "Careers" })).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: /Company/ }));
-    expect(screen.getByRole("link", { name: "Company overview" }).getAttribute("href")).toBe(
-      "/company",
-    );
     expect(screen.getByRole("link", { name: "Careers" }).getAttribute("href")).toBe(
       "/careers",
     );
   });
 
-  it("marks a section trigger active on its own routes", () => {
-    for (const [path, section] of [
-      ["/product", /Product/],
-      ["/features", /Product/],
-      ["/how-it-works", /Product/],
-      ["/pricing", /Product/],
-      ["/demo", /Product/],
-      ["/company", /Company/],
-      ["/about", /Company/],
-      ["/careers", /Company/],
+  it("exposes the Company hub as the overview link", async () => {
+    renderNavbar();
+    await userEvent.click(screen.getByRole("button", { name: /Company/ }));
+    expect(screen.getByRole("link", { name: "Company overview" }).getAttribute("href")).toBe(
+      "/company",
+    );
+  });
+
+  it("composes the Overview link instead of adding one to NAV_PRODUCT", () => {
+    renderNavbar();
+    // The header composes its Overview link rather than adding one to
+    // NAV_PRODUCT, because the footer derives the same link from its column's
+    // `hub` field. Editing the shared array would render it twice down there.
+    const navLinks = document.querySelectorAll(".nav-flat a");
+    expect(navLinks.length).toBe(NAV_PRODUCT.length + 1);
+    expect(NAV_PRODUCT.map((item) => item.to)).not.toContain("/product");
+  });
+
+  it("lets the flat group wrap instead of overflowing on a narrow row", () => {
+    // Five links plus a menu will not fit on a phone. jsdom does not lay out, so
+    // this reads the stylesheet: `flex-wrap` is the only thing standing between
+    // the wider flat list and a horizontally scrolling header.
+    const css = readFileSync(resolve(__dirname, "../App.css"), "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    const rule = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) =>
+      (m[1] ?? "").split(",").some((s) => s.trim() === ".nav-flat"),
+    );
+    expect(rule, "no .nav-flat rule in App.css").toBeDefined();
+    expect(rule?.[2] ?? "").toMatch(/flex-wrap\s*:\s*wrap/);
+  });
+
+  it("marks the current flat link, not a menu trigger, on Product routes", () => {
+    for (const [path, label] of [
+      ["/product", "Overview"],
+      ["/features", "Features"],
+      ["/how-it-works", "How it works"],
+      ["/pricing", "Pricing"],
+      ["/demo", "Live demo"],
     ] as const) {
       const { unmount } = renderNavbar(path);
-      const trigger = screen.getByRole("button", { name: section });
+      const current = screen.getByRole("link", { name: label });
+      expect(current.getAttribute("aria-current"), `aria-current on ${path}`).toBe(
+        "page",
+      );
+      expect(current.className, `active class on ${path}`).toMatch(/active/);
+      unmount();
+    }
+  });
+
+  it("marks the Company trigger active on its own routes", () => {
+    for (const path of ["/company", "/about", "/careers", "/contact"]) {
+      const { unmount } = renderNavbar(path);
       expect(
-        trigger.className,
-        `expected ${section} to be active on ${path}`,
+        screen.getByRole("button", { name: /Company/ }).className,
+        `expected Company to be active on ${path}`,
       ).toMatch(/active/);
       unmount();
     }
   });
 
-  it("does not mark a section active on another section's routes", () => {
+  it("leaves nothing marked active on an unrelated route", () => {
     renderNavbar("/privacy");
-    for (const section of [/Product/, /Company/]) {
-      expect(screen.getByRole("button", { name: section }).className).not.toMatch(
-        /active/,
-      );
+    expect(screen.getByRole("button", { name: /Company/ }).className).not.toMatch(
+      /active/,
+    );
+    for (const link of document.querySelectorAll(".nav-flat a")) {
+      expect(link.className).not.toMatch(/active/);
     }
   });
 
@@ -156,14 +195,13 @@ describe("LandingNavbar", () => {
     expect(screen.queryByRole("link", { name: "Careers" })).toBeNull();
   });
 
-  // Both header sections are disclosure menus, so the hover-gap behaviour has to
-  // hold for each of them. Parameterised rather than duplicated: the gap bug is
-  // not a Company-specific quirk, and a test that only covered one trigger would
-  // not have caught a regression in the other.
-  for (const [section, child] of [
-    [/Product/, "Features"],
-    [/Company/, "Careers"],
-  ] as const) {
+  // Company is the only header disclosure left — Product is a flat list — so the
+  // hover-gap behaviour is asserted against its one remaining trigger. The gap bug
+  // was never a section-specific quirk: it lives in `NavGroupMenu`, and any future
+  // section that reuses that component inherits the same coverage from here.
+  {
+    const section = /Company/;
+    const child = "Careers";
     it(`opens on hover for pointer devices (${section.source})`, async () => {
       stubHoverPointer(true);
       renderNavbar();
