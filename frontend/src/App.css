@@ -2902,14 +2902,25 @@ body {
   text-transform: uppercase;
 }
 
-.footer-col a {
+/* Scoped to the nav columns on purpose — see `.footer-social` below. As a bare
+   `.footer-col a` this selector also matched the social buttons in the brand
+   column, where it outranked `.footer-social` (0,1,1 vs 0,1,0) and applied
+   `width: fit-content`, squashing the GitHub button's 34px width into its
+   content width while `height: 34px` survived — a 20x36px ellipse under
+   `border-radius: 50%`.
+
+   `width: fit-content` is a no-op for the links it was written for: they are
+   non-replaced inline `<a>` elements, and `width` does not apply to those. So
+   narrowing the selector to `nav` changes no nav behaviour — it only stops the
+   leak. */
+.footer-col nav a {
   color: var(--muted);
   text-decoration: none;
   width: fit-content;
   transition: color 0.2s;
 }
 
-.footer-col a:hover {
+.footer-col nav a:hover {
   color: var(--blue);
 }
 
@@ -2931,6 +2942,11 @@ body {
   margin-top: 6px;
 }
 
+/* A circle needs a square box: the equal `width`/`height` are load-bearing, not
+   incidental. This element is an `<a>` for GitHub and a `<span>` for the
+   not-yet-live accounts, so it must be self-sufficient — it cannot rely on a
+   `.footer-col a` rule for `text-decoration: none`, because that rule both
+   outranks this one and only reaches the link by accident. */
 .footer-social {
   display: inline-flex;
   align-items: center;
@@ -2940,6 +2956,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 50%;
   color: var(--muted);
+  text-decoration: none;
   transition: color 0.2s, border-color 0.2s, transform 0.2s;
 }
 
