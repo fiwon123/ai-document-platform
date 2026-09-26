@@ -21,6 +21,10 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Navbar } from "./components/Navbar";
 import { queryClient } from "./lib/queryClient";
+import {
+  getViewTransitionStart,
+  ignoreTransitionRejection,
+} from "./lib/viewTransition";
 import "./App.css";
 
 // Route pages are code-split so each loads on demand.
@@ -109,25 +113,9 @@ const pageFallback = <div className="loading">Loading page…</div>;
 
 /* ---------------------------------------------------------------------------
    View transitions
-   The route tree renders against a *stored* location so navigation can run
-   through the View Transition API: React renders the new page inside
-   document.startViewTransition() (flushed synchronously) and the browser
-   cross-fades the outgoing/incoming snapshots. Without API support the
-   location updates immediately — the app behaves exactly as before.
+   See lib/viewTransition.ts for the stored-location pattern and for why all
+   three of a transition's promises have to be handled.
    --------------------------------------------------------------------------- */
-
-type ViewTransitionLike = { finished: Promise<void> };
-
-function getViewTransitionStart():
-  | ((update: () => void) => ViewTransitionLike)
-  | null {
-  const doc = document as unknown as {
-    startViewTransition?: (update: () => void) => ViewTransitionLike;
-  };
-  return typeof doc.startViewTransition === "function"
-    ? doc.startViewTransition.bind(doc)
-    : null;
-}
 
 /** The location the route tree currently renders for (see above). */
 const DisplayLocationContext = createContext<Location | null>(null);
@@ -150,7 +138,7 @@ function ViewTransitionRoutes({ children }: { children: ReactNode }) {
         });
         // A navigation racing this one aborts the previous transition; the
         // render callback already ran, so swallow the rejection.
-        transition.finished.catch(() => {});
+        ignoreTransitionRejection(transition);
       } catch {
         setDisplayLocation(location);
       }
