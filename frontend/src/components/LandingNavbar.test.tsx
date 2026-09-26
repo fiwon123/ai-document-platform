@@ -48,6 +48,122 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
 });
 
+/**
+ * App.css with comments stripped — a comment quoting a selector would otherwise
+ * satisfy a guard that is only looking for the text.
+ *
+ * Read from disk rather than Vite's `?raw`: this vitest config stubs CSS, so
+ * `?raw` resolves to an empty string.
+ */
+const css = readFileSync(resolve(__dirname, "../App.css"), "utf8").replace(
+  /\/\*[\s\S]*?\*\//g,
+  "",
+);
+
+/** Body of every `@media (max-width: Npx)` block, with the width it applies to. */
+function maxWidthBlocks(): { width: number; body: string }[] {
+  const blocks: { width: number; body: string }[] = [];
+  for (const match of css.matchAll(/@media[^{]*\(max-width:\s*(\d+)px\)[^{]*\{/g)) {
+    // Count braces rather than matching to the next `}`: a media body holds
+    // nested rules, so a non-greedy regex would stop inside the block.
+    let depth = 1;
+    let i = match.index + match[0].length;
+    for (; i < css.length && depth > 0; i += 1) {
+      if (css[i] === "{") depth += 1;
+      else if (css[i] === "}") depth -= 1;
+    }
+    blocks.push({
+      width: Number(match[1]),
+      body: css.slice(match.index + match[0].length, i - 1),
+    });
+  }
+  return blocks;
+}
+
+/** The single `@media (max-width: Npx)` block matching `predicate`. */
+function maxWidthBlockWhere(predicate: (body: string) => boolean): {
+  width: number;
+  body: string;
+} {
+  const found = maxWidthBlocks().filter((b) => predicate(b.body));
+  if (found.length !== 1) {
+    throw new Error(
+      `expected exactly one @media (max-width) block to match, found ${found.length} at ${found
+        .map((b) => `${b.width}px`)
+        .join(", ")}`,
+    );
+  }
+  return found[0] as { width: number; body: string };
+}
+
+/** Declarations of the first rule whose selector list contains `selector`. */
+function declarationsFor(selector: string): string[] {
+  for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = (match[1] ?? "").split(",").map((s) => s.trim());
+    if (selectors.includes(selector)) {
+      return (match[2] ?? "")
+        .split(";")
+        .map((d) => d.trim())
+        .filter(Boolean);
+    }
+  }
+  throw new Error(`no rule found for selector "${selector}" in App.css`);
+}
+
+/** Declarations of the first rule *inside `body`* carrying `selector`. */
+function declarationsIn(body: string, selector: string): string[] {
+  for (const match of body.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = (match[1] ?? "").split(",").map((s) => s.trim());
+    if (selectors.includes(selector)) {
+      return (match[2] ?? "")
+        .split(";")
+        .map((d) => d.trim())
+        .filter(Boolean);
+    }
+  }
+  throw new Error(`no rule found for selector "${selector}" in the block`);
+}
+
+/** Declarations from *every* rule carrying `selector`, media blocks included. */
+function allDeclarationsFor(selector: string): string[] {
+  const found: string[] = [];
+  for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = (match[1] ?? "").split(",").map((s) => s.trim());
+    if (selectors.includes(selector)) {
+      found.push(
+        ...(match[2] ?? "")
+          .split(";")
+          .map((d) => d.trim())
+          .filter(Boolean),
+      );
+    }
+  }
+  if (found.length === 0) {
+    throw new Error(`no rule found for selector "${selector}" in App.css`);
+  }
+  return found;
+}
+
+/** The numeric value of `prop` within `decls`, e.g. 8 for "gap: 8px". */
+function valueOf(decls: string[], prop: string): number {
+  const decl = decls.find((d) => d.startsWith(`${prop}:`));
+  if (decl === undefined) {
+    throw new Error(`no "${prop}" in [${decls.join("; ")}]`);
+  }
+  return Number.parseFloat(decl.slice(prop.length + 1));
+}
+
+/** The horizontal component of a `padding` shorthand, e.g. "6vw". */
+function paddingX(decls: string[]): string {
+  const decl = decls.find((d) => d.startsWith("padding:"));
+  if (decl === undefined) {
+    throw new Error(`no "padding" in [${decls.join("; ")}]`);
+  }
+  return decl
+    .slice("padding:".length)
+    .trim()
+    .split(/\s+/)[1] as string;
+}
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -114,15 +230,94 @@ describe("LandingNavbar", () => {
     // Five links plus a menu will not fit on a phone. jsdom does not lay out, so
     // this reads the stylesheet: `flex-wrap` is the only thing standing between
     // the wider flat list and a horizontally scrolling header.
-    const css = readFileSync(resolve(__dirname, "../App.css"), "utf8").replace(
-      /\/\*[\s\S]*?\*\//g,
-      "",
-    );
     const rule = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) =>
       (m[1] ?? "").split(",").some((s) => s.trim() === ".nav-flat"),
     );
     expect(rule, "no .nav-flat rule in App.css").toBeDefined();
     expect(rule?.[2] ?? "").toMatch(/flex-wrap\s*:\s*wrap/);
+  });
+
+  // The three tests below cover the 850-1024px wrapping band. jsdom performs no
+  // layout, so none of them can assert "one row" — a `scrollWidth === clientWidth`
+  // assertion would pass vacuously (0 === 0). Each pins the MECHANISM in the
+  // stylesheet instead, and the invariant itself was verified in headless
+  // Chromium: the flat list measures one row (one distinct rounded `top` among
+  // its children) and 80.2px of navbar at every width from 901px to 1200px, in
+  // both the logged-out and the logged-in state, with 0px deficit and nothing
+  // clipped. See the comment on each test for the measurement it rests on.
+
+  it("buys its width in the compact band instead of wrapping the navbar", () => {
+    // Measured at a 1024px viewport before this band existed: the flat group
+    // needed 409px and the row gave it 371px, so the last link wrapped and the
+    // navbar grew 82px -> 105px. Gaps alone recover ~100px, so the band also
+    // drops the secondary CTA — the one button the footer still links to.
+    const band = maxWidthBlockWhere((body) => body.includes(".nav-flat"));
+
+    // Relational, not pinned numbers: any tightening counts, so a later design
+    // tweak need not edit this test. What must not happen is the band re-widening
+    // the spacing it exists to shrink.
+    expect(
+      valueOf(declarationsIn(band.body, ".nav-flat"), "gap"),
+      "band .nav-flat gap",
+    ).toBeLessThan(valueOf(declarationsFor(".nav-flat"), "gap"));
+    expect(
+      valueOf(declarationsIn(band.body, ".landing-navbar"), "gap"),
+      "band .landing-navbar gap",
+    ).toBeLessThan(valueOf(declarationsFor(".landing-navbar"), "gap"));
+    expect(
+      valueOf(declarationsIn(band.body, ".landing-nav-links"), "gap"),
+      "band .landing-nav-links gap",
+    ).toBeLessThan(valueOf(declarationsFor(".landing-nav-links"), "gap"));
+
+    // The band has to hide a CTA to reach one row; assert it does rather than
+    // leaving the shortfall to be discovered in a browser again.
+    expect(declarationsIn(band.body, ".landing-nav-actions .btn-secondary")).toContain(
+      "display: none",
+    );
+
+    // And it has to reach past the widest width in the bug report. The old
+    // gap-only steps stopped at 1200px but still left a ~37px deficit from 1025px
+    // to ~1051px, so a band ending below 1024px would leave those widths on the
+    // base spacing that wrapped.
+    expect(band.width).toBeGreaterThanOrEqual(1024);
+  });
+
+  it("collapses the navbar and the Company menu at the same width", () => {
+    // The two breakpoints are one contract: when the nav row wraps to full
+    // width, an absolutely positioned dropdown opens off-screen. Measured: the
+    // menu is `position: static` at <=900px and `absolute` at 901px, fully inside
+    // the viewport either way. Raising one block and not the other reintroduces
+    // an off-screen panel that no DOM test can see, so pin the equality rather
+    // than either width.
+    const collapse = maxWidthBlockWhere(
+      (body) => body.includes(".landing-navbar") && /flex-wrap\s*:\s*wrap/.test(body),
+    );
+    const dropdown = maxWidthBlockWhere(
+      (body) => body.includes(".nav-group-menu") && /position\s*:\s*static/.test(body),
+    );
+    expect(
+      collapse.width,
+      "navbar wrap and dropdown breakpoints must match",
+    ).toBe(dropdown.width);
+  });
+
+  it("keeps the navbar gutter aligned with the page's own gutter", () => {
+    // The compact band tightens gaps but must NOT narrow the navbar's horizontal
+    // padding: `.landing-section` pads by the same `6vw`, so a narrower navbar
+    // gutter would pull the brand and links out of line with the copy directly
+    // below them. Asserted as "the same horizontal value", not "6vw", so a
+    // deliberate change to both stays legal; and declared exactly once, so no
+    // breakpoint can quietly re-narrow one side only.
+    const navbarPads = allDeclarationsFor(".landing-navbar").filter((d) =>
+      d.startsWith("padding"),
+    );
+    expect(
+      navbarPads,
+      "padding declared more than once for .landing-navbar — a breakpoint is re-narrowing the gutter",
+    ).toHaveLength(1);
+    expect(paddingX(declarationsFor(".landing-navbar"))).toBe(
+      paddingX(declarationsFor(".landing-section")),
+    );
   });
 
   it("marks the current flat link, not a menu trigger, on Product routes", () => {
