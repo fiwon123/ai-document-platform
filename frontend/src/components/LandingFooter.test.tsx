@@ -90,34 +90,23 @@ describe("LandingFooter social icons", () => {
 });
 
 /**
- * Why the glyph tests above were not enough.
+ * Two stylesheet-level guards follow, one per defect that a render assertion
+ * cannot see: the social button's box (#401) and the subscribe row's alignment
+ * (#402). jsdom does not cascade the real stylesheet, and both failure modes
+ * are structural — a rule outranking another, a flex alignment — so these read
+ * App.css from disk, the same approach themeTokens.test.ts uses (and the reason
+ * tsconfig.app.json includes the "node" types). The DOM assertions above pass
+ * happily against a broken stylesheet.
  *
- * #398 fixed the *glyph*: the Octocat silhouette was swapped for the Octicons
- * `mark-github` disc, and GitHub was given a 16x16 viewBox. The icon still read
- * as an oval afterwards, because the oval was never the glyph — the disc was
- * already round to within 2.5%. The actual defect was a CSS specificity
- * conflict one level up, in the button's own box.
- *
- * `.footer-col a` (0,1,1) also matched the brand column's social links and
- * declared `width: fit-content`, outranking `.footer-social` (0,1,0) and its
- * `width: 34px`. `height: 34px` was uncontested, so the button resolved to
- * 20x36px and `border-radius: 50%` drew an ellipse. Twitter and LinkedIn were
- * immune only because they are `<span>` placeholders and the rule matches `a`.
- *
- * These guards read App.css because jsdom does not cascade the real stylesheet
- * (same reason themeTokens.test.ts reads from disk), and because the failure
- * mode is structural: a rule outranking another, which no render assertion can
- * see. The DOM assertions above pass happily against the broken stylesheet.
+ * Read from disk rather than Vite's `?raw`: CSS imports are stubbed under this
+ * vitest config, so `?raw` resolves to an empty string.
  */
-
-// Read from disk rather than Vite's `?raw`: CSS imports are stubbed under this
-// vitest config, so `?raw` resolves to an empty string.
 const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8").replace(
   /\/\*[\s\S]*?\*\//g,
   "",
 );
 
-/** Declarations of the rule whose selector list contains `selector` exactly. */
+/** Declarations of the first rule whose selector list contains `selector`. */
 function declarationsFor(selector: string): string[] {
   for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const selectors = (match[1] ?? "").split(",").map((s) => s.trim());
@@ -131,10 +120,39 @@ function declarationsFor(selector: string): string[] {
   throw new Error(`no rule found for selector "${selector}" in App.css`);
 }
 
-const valueOf = (decls: string[], prop: string): string | undefined =>
+/** Declarations from *every* rule carrying `selector`. `.newsletter` appears in
+ *  the base rule and again in the <=820px media query, and a `center` in either
+ *  one re-creates the float, so both have to be seen. */
+function allDeclarationsFor(selector: string): string[] {
+  const found: string[] = [];
+  for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = (match[1] ?? "").split(",").map((s) => s.trim());
+    if (selectors.includes(selector)) {
+      found.push(
+        ...(match[2] ?? "")
+          .split(";")
+          .map((d) => d.trim())
+          .filter(Boolean),
+      );
+    }
+  }
+  if (found.length === 0) {
+    throw new Error(`no rule found for selector "${selector}" in App.css`);
+  }
+  return found;
+}
+
+/** All values declared for `prop` — a rule may set it more than once across
+ *  breakpoints, so this stays a list. */
+const valuesOf = (decls: string[], prop: string): string[] =>
   decls
     .filter((d) => d.startsWith(`${prop}:`))
-    .map((d) => d.slice(prop.length + 1).trim())[0];
+    .map((d) => d.slice(prop.length + 1).trim());
+
+/** First value declared for `prop`, for properties that are not breakpoint-
+ *  dependent. */
+const valueOf = (decls: string[], prop: string): string | undefined =>
+  valuesOf(decls, prop)[0];
 
 describe("LandingFooter social button box", () => {
   it("gives .footer-social an explicitly square box and a fully rounded border", () => {
@@ -156,6 +174,13 @@ describe("LandingFooter social button box", () => {
     // simulation: any rule that sets `width` on a link inside a footer column
     // must be scoped to `nav`, so it cannot leak into the brand column where
     // the social buttons live.
+    //
+    // `.footer-col a` (0,1,1) matched the brand column's social links and
+    // declared `width: fit-content`, outranking `.footer-social` (0,1,0) and its
+    // `width: 34px`. `height: 34px` was uncontested, so the button resolved to
+    // 20x36px and `border-radius: 50%` drew an ellipse. Twitter and LinkedIn
+    // were immune only because they are `<span>` placeholders and the rule
+    // matches `a`.
     const offenders: string[] = [];
     for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
       const body = match[2] ?? "";
@@ -179,5 +204,37 @@ describe("LandingFooter social button box", () => {
     // accident — exactly the coupling that caused this bug.
     const decls = declarationsFor(".footer-social");
     expect(valueOf(decls, "text-decoration")).toBe("none");
+  });
+});
+
+describe("LandingFooter subscribe row", () => {
+  it("top-aligns the form row with the heading rather than centring it", () => {
+    // The copy block is 49.24px (strong 24.36 + 4px gap + span 20.88) and the
+    // form row is 42.88px, so `center` left the row straddling the block's
+    // midpoint. `flex-start` puts it level with "Stay in the loop".
+    expect(valuesOf(declarationsFor(".newsletter"), "align-items")).toEqual([
+      "flex-start",
+    ]);
+  });
+
+  it("never re-centres the row at any breakpoint", () => {
+    const alignments = valuesOf(allDeclarationsFor(".newsletter"), "align-items");
+    // Guard against the declaration disappearing altogether as much as against
+    // it coming back: an absent `align-items` would fall through to `normal`.
+    expect(alignments.length).toBeGreaterThan(0);
+    expect(alignments).not.toContain("center");
+  });
+
+  it("keeps the input and button in one flex row so their heights can match", () => {
+    renderFooter();
+    // The input and the button are already the same height — the input is
+    // intrinsically 42.88px, and the button (40.88px, `border: none`) stretches
+    // to match under `.newsletter-form`'s default `align-items: stretch`. That
+    // is load-bearing, not incidental: pull the button out of the row and the
+    // two controls are 2px apart with nothing left to equalise them.
+    const form = document.querySelector(".newsletter-form");
+    expect(form, "newsletter form row").not.toBeNull();
+    expect(form?.querySelector("input"), "input inside the row").not.toBeNull();
+    expect(form?.querySelector("button"), "button inside the row").not.toBeNull();
   });
 });
