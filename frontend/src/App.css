@@ -2838,10 +2838,19 @@ body {
   );
 }
 
+/* Top-aligned, not centred. The two children are different heights — the copy
+   block is 49.24px (strong 24.36 + 4px gap + span 20.88) and the form row is
+   42.88px — so `center` left the form straddling the block's midpoint, floating
+   between the heading and the sub-line and aligning with neither. `flex-start`
+   puts the input and Subscribe level with "Stay in the loop".
+
+   The input and the button are already the same height without help: the input
+   is intrinsically 42.88px, and the button (40.88px, `border: none`) stretches
+   to match under `.newsletter-form`'s default `align-items: stretch`. */
 .newsletter {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
   margin-bottom: 44px;
@@ -2987,7 +2996,6 @@ body {
 
   .newsletter {
     flex-direction: column;
-    align-items: flex-start;
   }
 
   .newsletter-form {

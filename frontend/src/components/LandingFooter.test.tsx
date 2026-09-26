@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -84,5 +86,96 @@ describe("LandingFooter social icons", () => {
         screen.getByRole("img", { name: new RegExp(label) });
       expect(el.className, label).toContain("footer-social");
     }
+  });
+});
+
+/**
+ * The subscribe row's alignment, guarded at the stylesheet level.
+ *
+ * The row used to be centred against a taller text block, so the input and the
+ * Subscribe button floated *between* the two lines of copy and lined up with
+ * neither. jsdom does not cascade the real stylesheet, and no amount of DOM
+ * querying can see a flex alignment, so this reads App.css from disk — the same
+ * approach themeTokens.test.ts uses, and the reason
+ * tsconfig.app.json includes the "node" types. (Vite's `?raw` is no use here:
+ * CSS imports are stubbed under this vitest config, so `?raw` is empty.)
+ */
+
+// Read from disk rather than via a CSS import: see the note above.
+const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8").replace(
+  /\/\*[\s\S]*?\*\//g,
+  "",
+);
+
+/** Declarations of the first rule whose selector list contains `selector`. */
+function declarationsFor(selector: string): string[] {
+  for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = (match[1] ?? "").split(",").map((s) => s.trim());
+    if (selectors.includes(selector)) {
+      return (match[2] ?? "")
+        .split(";")
+        .map((d) => d.trim())
+        .filter(Boolean);
+    }
+  }
+  throw new Error(`no rule found for selector "${selector}" in App.css`);
+}
+
+/** Declarations from *every* rule carrying `selector`. `.newsletter` appears in
+ *  the base rule and again in the <=820px media query, and a `center` in either
+ *  one re-creates the float, so both have to be seen. */
+function allDeclarationsFor(selector: string): string[] {
+  const found: string[] = [];
+  for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = (match[1] ?? "").split(",").map((s) => s.trim());
+    if (selectors.includes(selector)) {
+      found.push(
+        ...(match[2] ?? "")
+          .split(";")
+          .map((d) => d.trim())
+          .filter(Boolean),
+      );
+    }
+  }
+  if (found.length === 0) {
+    throw new Error(`no rule found for selector "${selector}" in App.css`);
+  }
+  return found;
+}
+
+const valuesOf = (decls: string[], prop: string): string[] =>
+  decls
+    .filter((d) => d.startsWith(`${prop}:`))
+    .map((d) => d.slice(prop.length + 1).trim());
+
+describe("LandingFooter subscribe row", () => {
+  it("top-aligns the form row with the heading rather than centring it", () => {
+    // The copy block is 49.24px (strong 24.36 + 4px gap + span 20.88) and the
+    // form row is 42.88px, so `center` left the row straddling the block's
+    // midpoint. `flex-start` puts it level with "Stay in the loop".
+    expect(valuesOf(declarationsFor(".newsletter"), "align-items")).toEqual([
+      "flex-start",
+    ]);
+  });
+
+  it("never re-centres the row at any breakpoint", () => {
+    const alignments = valuesOf(allDeclarationsFor(".newsletter"), "align-items");
+    // Guard against the declaration disappearing altogether as much as against
+    // it coming back: an absent `align-items` would fall through to `normal`.
+    expect(alignments.length).toBeGreaterThan(0);
+    expect(alignments).not.toContain("center");
+  });
+
+  it("keeps the input and button in one flex row so their heights can match", () => {
+    renderFooter();
+    // The input and the button are already the same height — the input is
+    // intrinsically 42.88px, and the button (40.88px, `border: none`) stretches
+    // to match under `.newsletter-form`'s default `align-items: stretch`. That
+    // is load-bearing, not incidental: pull the button out of the row and the
+    // two controls are 2px apart with nothing left to equalise them.
+    const form = document.querySelector(".newsletter-form");
+    expect(form, "newsletter form row").not.toBeNull();
+    expect(form?.querySelector("input"), "input inside the row").not.toBeNull();
+    expect(form?.querySelector("button"), "button inside the row").not.toBeNull();
   });
 });
