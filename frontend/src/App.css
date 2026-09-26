@@ -97,6 +97,21 @@
   --code-func: #1d4ed8; /* blue-700 */
   --code-number: #b45309; /* amber-700 */
 
+  /* Workspace app bar. These deliberately do NOT invert with the theme.
+     The navbar used to paint var(--ink)/var(--paper), so dark mode turned the
+     header into a glaring near-white slab and dropped the active tab to 2.54:1
+     (white on --blue #60a5fa, which the dark theme brightens). Holding the bar
+     dark in both themes is what dark UIs do anyway, and it keeps the active
+     pill legible and identical across themes. The light values below are
+     exactly what the bar rendered before, so light mode does not change. */
+  --appbar-bg: #0f172a; /* = --ink in the light theme */
+  --appbar-fg: #ffffff; /* = --paper in the light theme */
+  --appbar-muted: #94a3b8; /* secondary text on the bar */
+  --appbar-line: rgb(255 255 255 / 0.14);
+  --appbar-active-bg: #2563eb; /* white on this = 5.17:1 in BOTH themes */
+  --appbar-active-fg: #ffffff;
+  --appbar-wash: rgb(255 255 255 / 0.12); /* hover / affordance wash */
+
   color-scheme: light;
 }
 
@@ -129,6 +144,18 @@
   --surface: #1b2639; /* inputs, chips, alt sections — one step up */
   --surface-2: #242f47; /* raised panels */
   --surface-3: #2b3a55; /* floating elevations (modals, tooltips) */
+  /* The app bar stays dark in this theme too (see the light-theme note).
+     #0a0f1a sits a shade below the #121927 page, so the bar still reads as a
+     distinct bar without the glare of a light slab, and --appbar-line keeps
+     its edge against the page scrolling underneath. */
+  --appbar-bg: #0a0f1a;
+  --appbar-fg: #e2e8f0;
+  --appbar-muted: #94a3b8;
+  --appbar-line: rgb(226 232 240 / 0.16);
+  --appbar-active-bg: #2563eb; /* NOT --blue: #60a5fa with white is 2.54:1 */
+  --appbar-active-fg: #ffffff;
+  --appbar-wash: rgb(226 232 240 / 0.14);
+
   --blue: #60a5fa; /* blue-400 — brighter accent for dark backgrounds */
   --blue-hover: #93c5fd; /* blue-300 */
   --blue-soft: rgb(37 99 235 / 0.16);
@@ -875,17 +902,17 @@ body {
   align-items: center;
   gap: 32px;
   padding: 16px 6vw;
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--appbar-bg);
+  color: var(--appbar-fg);
   /* Sticky app bar: translucent ink with a blur so content scrolling under
      it stays legible. falls back to solid ink when color-mix is unsupported. */
   position: sticky;
   top: 0;
   z-index: 50;
-  background: color-mix(in srgb, var(--ink) 92%, transparent);
+  background: color-mix(in srgb, var(--appbar-bg) 92%, transparent);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid color-mix(in srgb, var(--paper) 12%, transparent);
+  border-bottom: 1px solid var(--appbar-line);
 }
 
 .navbar-brand {
@@ -901,28 +928,29 @@ body {
   font-size: 1.15rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: var(--paper);
+  color: var(--appbar-fg);
   text-decoration: none;
   white-space: nowrap;
 }
 
-/* Brand mark on the inverted app bar: --paper is light text on the dark bar
-   in light mode and dark text on the light bar in dark mode. */
+/* Brand mark on the app bar. The bar is dark in both themes now, so this is
+   simply the bar's foreground rather than an inverted pair. */
 .navbar-brand-mark {
-  color: var(--paper);
+  color: var(--appbar-fg);
   flex: none;
 }
 
-/* "Workspace" pill next to the brand — same inverse-aware colors as the
-   navbar text so it stays legible on both themes. */
+/* "Workspace" pill next to the brand — reads as an outline on the bar in both
+   themes. The border is brighter than the fill so the pill has a visible edge
+   at 9.92px, where a wash alone disappears into the bar. */
 .navbar-workspace-badge {
   display: inline-flex;
   align-items: center;
   padding: 3px 9px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--paper) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--paper) 38%, transparent);
-  color: var(--paper);
+  background: var(--appbar-wash);
+  border: 1px solid var(--appbar-line);
+  color: var(--appbar-fg);
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -936,7 +964,7 @@ body {
 }
 
 .navbar-links a {
-  color: var(--paper);
+  color: var(--appbar-fg);
   text-decoration: none;
   font-size: 0.9rem;
   padding: 6px 12px;
@@ -949,7 +977,9 @@ body {
 
 .navbar-links a:hover {
   opacity: 1;
-  background: color-mix(in srgb, var(--paper) 8%, transparent);
+  /* An explicit wash, not 8% of a colour that inverts: 8% of the dark ink was
+     indistinguishable from no change at all on the dark bar. */
+  background: var(--appbar-wash);
 }
 
 /* Active tab. Two rounds of history here. First it was a 16% tint of --paper,
@@ -960,14 +990,20 @@ body {
    of the status badges, so the nav state and the badge language had collided.
 
    The underline is gone: a 3D edge on a pill is what makes it read as a chip.
-   The active page is now a solid --blue fill with white text, which is the
-   one treatment in the app that is not available to a badge, so nav state and
+   The active page is now a solid fill with white text, which is the one
+   treatment in the app that is not available to a badge, so nav state and
    badge state can no longer be confused. Shape and fill both carry it, not
-   tint alone. Contrast is 5.17:1 (white on #2563eb), clearing AA. */
+   tint alone.
+
+   The fill is --appbar-active-bg rather than --blue. --blue is theme-dependent
+   (#2563eb light, #60a5fa dark) and white on the dark-theme value measures
+   2.54:1 — the active tab was the one thing failing AA on the bar, and it is
+   exactly what you look at to know where you are. #2563eb gives 5.17:1 with
+   white in both themes, so the tab is also identical across themes. */
 .navbar-links a.active,
 .navbar-links a[aria-current="page"] {
-  background: var(--blue);
-  color: #fff;
+  background: var(--appbar-active-bg);
+  color: var(--appbar-active-fg);
   opacity: 1;
   font-weight: 600;
 }
@@ -984,7 +1020,7 @@ body {
   flex: none;
   padding: 6px 10px 6px 8px;
   border-radius: 8px;
-  color: var(--paper);
+  color: var(--appbar-fg);
   text-decoration: none;
   font-size: 0.85rem;
   font-weight: 600;
@@ -997,12 +1033,12 @@ body {
 
 .navbar-back-link:hover {
   opacity: 1;
-  background: color-mix(in srgb, var(--paper) 10%, transparent);
+  background: var(--appbar-wash);
 }
 
 .navbar-back-link + .navbar-brand {
   padding-left: 14px;
-  border-left: 1px solid color-mix(in srgb, var(--paper) 20%, transparent);
+  border-left: 1px solid var(--appbar-line);
 }
 
 .navbar-user {
@@ -1013,14 +1049,14 @@ body {
 }
 
 .navbar-user span {
-  color: var(--muted);
+  color: var(--appbar-muted);
   font-size: 0.9rem;
 }
 
 /* Username link in the navbar — styled to match .navbar-links a so it is
    visible on both themes instead of falling back to browser-default blue. */
 .navbar-username {
-  color: var(--paper);
+  color: var(--appbar-fg);
   text-decoration: none;
   font-size: 0.9rem;
   font-weight: 600;
@@ -1045,7 +1081,7 @@ body {
   background: transparent;
   border: 1px solid currentColor;
   border-radius: 8px;
-  color: var(--paper);
+  color: var(--appbar-fg);
   opacity: 0.85;
   cursor: pointer;
   transition: opacity 0.2s;
@@ -1083,7 +1119,7 @@ body {
   padding: 8px;
   margin-left: auto;
   background: transparent;
-  border: 1px solid var(--line);
+  border: 1px solid var(--appbar-line);
   border-radius: 8px;
   cursor: pointer;
 }
@@ -1092,7 +1128,7 @@ body {
   display: block;
   width: 100%;
   height: 2px;
-  background: var(--paper);
+  background: var(--appbar-fg);
   border-radius: 2px;
   transition:
     transform 0.2s,
@@ -1143,7 +1179,7 @@ body {
     gap: 4px;
     width: 100%;
     padding: 8px 0 4px;
-    border-top: 1px solid var(--line);
+    border-top: 1px solid var(--appbar-line);
   }
 
   .navbar-links.navbar-links-open {
@@ -1162,7 +1198,7 @@ body {
     gap: 10px;
     padding: 14px 6px 6px;
     margin-top: 6px;
-    border-top: 1px solid var(--line);
+    border-top: 1px solid var(--appbar-line);
   }
 
   .navbar-user-mobile a {
@@ -3296,7 +3332,14 @@ body {
 /* Secondary buttons on dark surfaces (navbar) keep light text. The CTA
    band is an always-dark gradient and styles its own secondary buttons. */
 .navbar .btn-secondary {
-  color: var(--paper);
+  color: var(--appbar-fg);
+}
+
+/* .btn-secondary:hover mixes 8% of --ink, which on the bar is a wash of the
+   bar's own colour in light mode — no visible change. Override it with the
+   bar's wash so hover reads on the bar in both themes. */
+.navbar .btn-secondary:hover:not(:disabled) {
+  background: var(--appbar-wash);
 }
 
 .btn-danger {
