@@ -116,7 +116,15 @@ export function ScreenshotCarousel({
               <path d="M9 4l8 8-8 8" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          <div className="carousel-dots" role="tablist" aria-label="Choose screenshot">
+          {/* A labelled group of buttons, not a tablist. role="tablist"
+              obliges the children to be role="tab" and needs matching
+              role="tabpanel" slides, roving tabindex and arrow-key handling;
+              the dots were plain buttons, so the role was a claim the markup
+              did not keep, and it failed the aria-required-children audit.
+              The current slide is conveyed with aria-current instead. Same
+              reasoning as the header's disclosure menus: do not claim an ARIA
+              pattern you have not fully implemented. */}
+          <div className="carousel-dots" role="group" aria-label="Choose screenshot">
             {slides.map((slide, i) => (
               <button
                 key={slide.src}
