@@ -79,6 +79,36 @@ describe("ScreenshotCarousel", () => {
     expect(screen.getByLabelText("Go to slide 1").getAttribute("aria-current")).toBe("true");
   });
 
+  it("groups the dots without claiming the ARIA tabs pattern", () => {
+    // role="tablist" obliges the children to be role="tab" and requires
+    // matching tabpanels, roving tabindex and arrow-key handling. The dots are
+    // plain buttons switching a single visible slide, so declaring a tablist was
+    // a claim the markup did not keep and it failed aria-required-children.
+    // `group` names the set without demanding a child role.
+    const { container } = render(<ScreenshotCarousel slides={SLIDES} />);
+    const dots = container.querySelector(".carousel-dots");
+    expect(dots?.getAttribute("role")).toBe("group");
+    expect(dots?.getAttribute("aria-label")).toBe("Choose screenshot");
+    // No ARIA role may demand a specific child role unless the children have it.
+    const REQUIRED_CHILD_ROLES: Record<string, string> = {
+      tablist: "tab",
+      listbox: "option",
+      menu: "menuitem",
+      radiogroup: "radio",
+      tree: "treeitem",
+    };
+    for (const el of container.querySelectorAll("[role]")) {
+      const required = REQUIRED_CHILD_ROLES[el.getAttribute("role") ?? ""];
+      if (!required) continue;
+      for (const child of el.children) {
+        expect(
+          child.getAttribute("role"),
+          `${el.getAttribute("role")} child must be role="${required}"`,
+        ).toBe(required);
+      }
+    }
+  });
+
   it("renders nothing for an empty slide set", () => {
     const { container } = render(<ScreenshotCarousel slides={[]} />);
     expect(container).toBeEmptyDOMElement();
