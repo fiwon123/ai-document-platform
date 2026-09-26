@@ -170,17 +170,18 @@
   border-color: var(--line-strong);
 }
 
-:root[data-theme="dark"] :is(
-  .document-card,
-  .search-result-card,
-  .settings-card,
-  .profile-hero,
-  .profile-stat,
-  .quick-action,
-  .recent-item,
-  .stat-skeleton,
-  .skeleton-card
-) {
+:root[data-theme="dark"]
+  :is(
+    .document-card,
+    .search-result-card,
+    .settings-card,
+    .profile-hero,
+    .profile-stat,
+    .quick-action,
+    .recent-item,
+    .stat-skeleton,
+    .skeleton-card
+  ) {
   background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
 }
 
@@ -220,14 +221,8 @@
 
 /* Inputs sit on the darkest rung and get an inner shadow for depth: a flat
    fill against a gradient card reads as a hole rather than a field. */
-:root[data-theme="dark"] :is(
-  input,
-  textarea,
-  select,
-  .documents-search input,
-  .search-input,
-  .filter-chip
-) {
+:root[data-theme="dark"]
+  :is(input, textarea, select, .documents-search input, .search-input, .filter-chip) {
   border-color: var(--line-strong);
 }
 
@@ -653,7 +648,10 @@ body {
   font-weight: 500;
   line-height: 1.4;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .filter-chip:hover {
@@ -737,7 +735,9 @@ body {
   color: var(--ink);
   font-family: inherit;
   font-size: 0.9rem;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .documents-search input:focus-visible {
@@ -771,7 +771,9 @@ body {
   font-size: 1rem;
   line-height: 1;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 
 .documents-search-clear:hover {
@@ -919,7 +921,9 @@ body {
   padding: 6px 12px;
   border-radius: 999px;
   opacity: 0.8;
-  transition: opacity 0.2s, background-color 0.2s;
+  transition:
+    opacity 0.2s,
+    background-color 0.2s;
 }
 
 .navbar-links a:hover {
@@ -965,7 +969,9 @@ body {
   font-weight: 600;
   white-space: nowrap;
   opacity: 0.68;
-  transition: opacity 0.2s, background-color 0.2s;
+  transition:
+    opacity 0.2s,
+    background-color 0.2s;
 }
 
 .navbar-back-link:hover {
@@ -1008,7 +1014,6 @@ body {
 .navbar-username:hover {
   opacity: 1;
 }
-
 
 .theme-toggle {
   display: inline-flex;
@@ -1068,7 +1073,9 @@ body {
   height: 2px;
   background: var(--paper);
   border-radius: 2px;
-  transition: transform 0.2s, opacity 0.2s;
+  transition:
+    transform 0.2s,
+    opacity 0.2s;
 }
 
 .navbar-toggle[aria-expanded="true"] .navbar-toggle-bar:nth-child(1) {
@@ -1316,9 +1323,21 @@ body {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(38% 46% at 22% 28%, color-mix(in srgb, var(--blue) 20%, transparent) 0, transparent 70%),
-    radial-gradient(42% 52% at 78% 36%, color-mix(in srgb, #7c3aed 20%, transparent) 0, transparent 70%),
-    radial-gradient(30% 40% at 50% 78%, color-mix(in srgb, var(--green) 12%, transparent) 0, transparent 70%);
+    radial-gradient(
+      38% 46% at 22% 28%,
+      color-mix(in srgb, var(--blue) 20%, transparent) 0,
+      transparent 70%
+    ),
+    radial-gradient(
+      42% 52% at 78% 36%,
+      color-mix(in srgb, #7c3aed 20%, transparent) 0,
+      transparent 70%
+    ),
+    radial-gradient(
+      30% 40% at 50% 78%,
+      color-mix(in srgb, var(--green) 12%, transparent) 0,
+      transparent 70%
+    );
   animation: mesh-drift 16s ease-in-out infinite alternate;
 }
 
@@ -1330,8 +1349,12 @@ body {
 }
 
 @keyframes mesh-drift {
-  from { transform: translate3d(-1.5%, -1%, 0) scale(1); }
-  to   { transform: translate3d(1.5%, 1.5%, 0) scale(1.08); }
+  from {
+    transform: translate3d(-1.5%, -1%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(1.5%, 1.5%, 0) scale(1.08);
+  }
 }
 
 /* The drifting mesh is decorative and now sits behind every marketing hero as
@@ -1566,8 +1589,12 @@ body {
 
 /* Inset 14px from each edge — clear of the caption/count/dots that also
    live in the lower band, and well inside the rounded corner radius. */
-.carousel-arrow-prev { left: 14px; }
-.carousel-arrow-next { right: 14px; }
+.carousel-arrow-prev {
+  left: 14px;
+}
+.carousel-arrow-next {
+  right: 14px;
+}
 
 .carousel-dots {
   position: absolute;
@@ -1591,7 +1618,9 @@ body {
   height: 8px;
   border-radius: 50%;
   background: rgb(148 163 184 / 0.7);
-  transition: background 0.2s, transform 0.2s;
+  transition:
+    background 0.2s,
+    transform 0.2s;
 }
 
 .carousel-dot:hover span {
@@ -2194,11 +2223,7 @@ body {
   inset: 0;
   pointer-events: none;
   opacity: 0;
-  background: radial-gradient(
-    120% 90% at 0% 0%,
-    var(--card-accent-soft) 0,
-    transparent 60%
-  );
+  background: radial-gradient(120% 90% at 0% 0%, var(--card-accent-soft) 0, transparent 60%);
   transition: opacity 0.3s var(--ease-standard);
 }
 
@@ -2232,7 +2257,9 @@ body {
   border-radius: 14px;
   background: color-mix(in srgb, var(--card-accent) 12%, var(--surface));
   color: var(--card-accent);
-  transition: transform 0.25s var(--ease-spring), background-color 0.25s;
+  transition:
+    transform 0.25s var(--ease-spring),
+    background-color 0.25s;
 }
 
 .landing-card:hover .feature-icon {
@@ -2340,7 +2367,9 @@ body {
   border-radius: 14px;
   background: color-mix(in srgb, var(--card-accent) 12%, var(--paper));
   color: var(--card-accent);
-  transition: transform 0.3s var(--ease-spring), background-color 0.25s;
+  transition:
+    transform 0.3s var(--ease-spring),
+    background-color 0.25s;
 }
 
 .landing-step:hover .landing-step-icon {
@@ -2731,7 +2760,9 @@ body {
 .faq-chevron {
   flex: none;
   color: var(--muted);
-  transition: transform 0.25s var(--ease-decelerate), color 0.25s;
+  transition:
+    transform 0.25s var(--ease-decelerate),
+    color 0.25s;
 }
 
 .faq-item.open .faq-chevron {
@@ -2788,15 +2819,25 @@ body {
   background:
     radial-gradient(120% 140% at 50% 118%, rgb(255 255 255 / 0.16) 0, transparent 62%),
     linear-gradient(120deg, #2563eb, #7c3aed, #2563eb);
-  background-size: 100% 100%, 220% 220%;
+  background-size:
+    100% 100%,
+    220% 220%;
   color: white;
   animation: band-shift 14s ease-in-out infinite alternate;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22);
 }
 
 @keyframes band-shift {
-  from { background-position: 50% 50%, 0% 50%; }
-  to   { background-position: 50% 50%, 100% 50%; }
+  from {
+    background-position:
+      50% 50%,
+      0% 50%;
+  }
+  to {
+    background-position:
+      50% 50%,
+      100% 50%;
+  }
 }
 
 .landing-cta-band h2 {
@@ -2915,7 +2956,7 @@ body {
 .newsletter-form {
   display: flex;
   gap: 10px;
-  width: 100%;
+  width: 80%;
 }
 
 .newsletter-form input {
@@ -3018,7 +3059,10 @@ body {
   border-radius: 50%;
   color: var(--muted);
   text-decoration: none;
-  transition: color 0.2s, border-color 0.2s, transform 0.2s;
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    transform 0.2s;
 }
 
 .footer-social:hover {
@@ -3060,8 +3104,12 @@ body {
     padding-top: 48px;
   }
 
-  .carousel-arrow-prev { left: 6px; }
-  .carousel-arrow-next { right: 6px; }
+  .carousel-arrow-prev {
+    left: 6px;
+  }
+  .carousel-arrow-next {
+    right: 6px;
+  }
 
   .footer-cols {
     grid-template-columns: 1fr;
@@ -3089,7 +3137,9 @@ body {
   font-family: inherit;
   font-size: 0.9rem;
   font-weight: 600;
-  transition: background 0.2s, transform 0.1s;
+  transition:
+    background 0.2s,
+    transform 0.1s;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3164,8 +3214,12 @@ body {
 }
 
 @keyframes auth-bg-shift {
-  from { background-position: 0% 50%; }
-  to { background-position: 100% 50%; }
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 100% 50%;
+  }
 }
 
 .auth-shell {
@@ -3337,7 +3391,9 @@ body {
   background: none;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.2s, background 0.2s;
+  transition:
+    color 0.2s,
+    background 0.2s;
 }
 
 .password-toggle:hover {
@@ -3357,7 +3413,9 @@ body {
   height: 5px;
   border-radius: 3px;
   background: var(--line);
-  transition: background 0.2s, transform 0.2s;
+  transition:
+    background 0.2s,
+    transform 0.2s;
 }
 
 .strength-seg.lit {
@@ -3511,7 +3569,9 @@ body {
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
 }
 
 .social-btn:hover {
@@ -3626,7 +3686,9 @@ body {
     color-mix(in srgb, var(--blue) 14%, transparent),
     color-mix(in srgb, #7c3aed 14%, transparent)
   );
-  font: 800 1.35rem "DM Mono", monospace;
+  font:
+    800 1.35rem "DM Mono",
+    monospace;
   color: var(--ink);
   flex-shrink: 0;
 }
@@ -3682,7 +3744,9 @@ body {
 }
 
 .profile-stat-value {
-  font: 700 1.15rem "DM Mono", monospace;
+  font:
+    700 1.15rem "DM Mono",
+    monospace;
   color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3752,7 +3816,10 @@ body {
   gap: 11px;
   text-align: center;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    transform 0.2s;
 }
 
 .dropzone:hover,
@@ -3996,7 +4063,9 @@ body {
     color-mix(in srgb, var(--blue) 10%, transparent),
     color-mix(in srgb, #7c3aed 10%, transparent)
   );
-  font: 700 10px "DM Mono", monospace;
+  font:
+    700 10px "DM Mono",
+    monospace;
   letter-spacing: 0.04em;
   color: var(--ink);
   flex-shrink: 0;
@@ -4380,7 +4449,9 @@ body {
   margin: 0;
   padding: 20px;
   background: var(--surface);
-  font: 400 0.85rem/1.6 "DM Mono", monospace;
+  font:
+    400 0.85rem/1.6 "DM Mono",
+    monospace;
   color: var(--ink);
   white-space: pre-wrap;
   word-break: break-word;
@@ -4417,7 +4488,9 @@ body {
   border-radius: var(--radius-lg);
   color: var(--ink);
   text-decoration: none;
-  transition: transform 0.15s var(--ease-standard), border-color 0.15s var(--ease-standard);
+  transition:
+    transform 0.15s var(--ease-standard),
+    border-color 0.15s var(--ease-standard);
 }
 
 .quick-action:hover {
@@ -4752,7 +4825,9 @@ body {
   font-size: 1rem;
   background: var(--surface);
   color: var(--ink);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .search-input::placeholder {
@@ -4813,7 +4888,10 @@ body {
   font-family: inherit;
   font-size: 0.85rem;
   cursor: pointer;
-  transition: border-color 0.2s, color 0.2s, background 0.2s;
+  transition:
+    border-color 0.2s,
+    color 0.2s,
+    background 0.2s;
 }
 
 .suggestion-chip:hover:not(:disabled) {
@@ -4884,7 +4962,9 @@ body {
 
 .result-match-chip {
   flex-shrink: 0;
-  font: 500 11px "DM Mono", monospace;
+  font:
+    500 11px "DM Mono",
+    monospace;
   color: var(--green);
   padding: 3px 10px;
   background: color-mix(in srgb, var(--green) 10%, var(--surface));
@@ -4976,7 +5056,9 @@ body {
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--muted);
-  font: 500 10px "DM Mono", monospace;
+  font:
+    500 10px "DM Mono",
+    monospace;
 }
 
 /* Load-more pagination for search results. */
@@ -4989,7 +5071,9 @@ body {
 }
 
 .search-load-info {
-  font: 500 11px "DM Mono", monospace;
+  font:
+    500 11px "DM Mono",
+    monospace;
   color: var(--muted);
 }
 
@@ -5111,10 +5195,16 @@ body {
   border-radius: 6px;
   background: var(--surface);
   color: var(--muted);
-  font: 600 0.72rem "DM Sans", system-ui, sans-serif;
+  font:
+    600 0.72rem "DM Sans",
+    system-ui,
+    sans-serif;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.2s, color 0.2s, border-color 0.2s;
+  transition:
+    opacity 0.2s,
+    color 0.2s,
+    border-color 0.2s;
 }
 
 .chat-message.assistant:hover .copy-answer-btn,
@@ -5178,7 +5268,9 @@ body {
   color: var(--blue);
   border: 1px solid var(--line);
   border-radius: 999px;
-  font: 500 0.75rem "DM Mono", monospace;
+  font:
+    500 0.75rem "DM Mono",
+    monospace;
 }
 
 .source-item {
@@ -5193,7 +5285,9 @@ body {
   color: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .source-item:hover {
@@ -5445,7 +5539,9 @@ body {
   gap: 7px;
   padding: 3px 10px;
   border-radius: 999px;
-  font: 500 11px "DM Mono", monospace;
+  font:
+    500 11px "DM Mono",
+    monospace;
 }
 
 .user-status::before {
@@ -5480,7 +5576,9 @@ body {
   height: 28px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--blue) 14%, transparent);
-  font: 700 12px "DM Mono", monospace;
+  font:
+    700 12px "DM Mono",
+    monospace;
   color: var(--ink);
   flex-shrink: 0;
 }
@@ -5612,10 +5710,6 @@ body {
   margin: 14px 0;
 }
 
-
-
-
-
 /* Accessibility */
 :focus-visible {
   outline: 2px solid var(--blue);
@@ -5729,8 +5823,6 @@ body {
   gap: 10px;
   flex-wrap: wrap;
 }
-
-
 
 /* Toast notifications */
 .toast-container {
@@ -5873,7 +5965,9 @@ body {
   border: 1px solid var(--line);
   cursor: pointer;
   font-size: 0.92rem;
-  transition: border-color 0.2s, background 0.2s;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
 }
 
 .settings-model-option:last-child {
@@ -6373,7 +6467,9 @@ body {
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .nav-group-menu a:hover,
@@ -6498,8 +6594,16 @@ body {
   border: 1px solid var(--line);
   border-radius: 20px;
   background:
-    radial-gradient(90% 120% at 8% 0%, color-mix(in srgb, var(--blue) 12%, transparent) 0, transparent 58%),
-    radial-gradient(80% 110% at 96% 100%, color-mix(in srgb, #7c3aed 12%, transparent) 0, transparent 58%),
+    radial-gradient(
+      90% 120% at 8% 0%,
+      color-mix(in srgb, var(--blue) 12%, transparent) 0,
+      transparent 58%
+    ),
+    radial-gradient(
+      80% 110% at 96% 100%,
+      color-mix(in srgb, #7c3aed 12%, transparent) 0,
+      transparent 58%
+    ),
     var(--paper);
   text-align: center;
 }
