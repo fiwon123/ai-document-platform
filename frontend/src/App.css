@@ -2621,6 +2621,17 @@ body {
 }
 
 .landing-table-wrap {
+  /* The wrapper clips and scrolls the 442px table, yet the page still gained
+     39px of horizontal scroll range at 375px. The cause is the visually-hidden
+     `.sr-only` spans inside the table cells: they are `position: absolute`, and
+     a scroll container only clips an absolutely positioned descendant when it
+     is that descendant's containing block. Nothing here was positioned, so they
+     resolved their containing block further up, escaped the wrapper's overflow
+     and stretched the document. `position: relative` makes this wrapper the
+     containing block, so its `overflow-x: auto` clips them as intended.
+     `contain: paint` fixes it too but also creates a stacking context and
+     captures `position: fixed` descendants, which this wrapper does not need. */
+  position: relative;
   overflow-x: auto;
   max-width: 940px;
   margin: 0 auto;
@@ -3156,7 +3167,15 @@ body {
   }
 
   .footer-cols {
-    grid-template-columns: 1fr;
+    /* `minmax(0, 1fr)`, not a bare `1fr`: a grid track's automatic minimum is
+       its content's min-content size, and the brand column's is ~327px — the
+       newsletter input's intrinsic width plus the Subscribe button, which
+       cannot wrap. At 320px the column has only ~281px, so the track grew to
+       327px and pushed the whole page 26px wide. Pinning the minimum to 0 lets
+       the track take the space it has, and `.newsletter-form input` already
+       carries `min-width: 0`, so the input absorbs the squeeze instead of the
+       page. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 22px;
   }
 }
