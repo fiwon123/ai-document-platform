@@ -6414,12 +6414,17 @@ body {
    same gradients, same dark-mode override, same drift animation — so a visitor
    moving from the landing page to /pricing sees one site rather than two. */
 
+/* Centred by flex, matching `.landing-hero-inner` above. `text-align: center` on
+   `.page-hero` is not enough on its own: it only centres an element that fills
+   the measure, so the `h1` looked centred while the narrower subtitle (560px in
+   a 780px box, no auto side margins) rendered flush left. `align-items: center`
+   centres every child regardless of its width. */
 .page-hero-inner {
   position: relative;
   z-index: 1;
-}
-
-.page-hero-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   max-width: 780px;
   margin: 0 auto;
 }
