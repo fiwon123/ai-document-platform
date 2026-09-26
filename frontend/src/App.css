@@ -925,6 +925,9 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  /* 2.5.8 floor: the brand is a link whose text line box is only 23.2px tall, so
+     without this it is a 106x23 target — under the 24px AA minimum. */
+  min-height: 24px;
   font-size: 1.15rem;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -1108,14 +1111,19 @@ body {
   color: var(--ink);
 }
 
-/* Mobile navigation */
+/* Mobile navigation
+
+   44x44, not 40x40: the hamburger is the only way into the collapsed nav, so it
+   carries the mobile 2.5.5 target size rather than just clearing 2.5.8. It is
+   `display: none` above the 1280px collapse, so this only ever applies to the
+   mobile band and cannot widen the desktop row. */
 .navbar-toggle {
   display: none;
   flex-direction: column;
   justify-content: center;
   gap: 4px;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   padding: 8px;
   margin-left: auto;
   background: transparent;
@@ -1205,6 +1213,22 @@ body {
     padding: 12px 5vw;
   }
 
+  /* Above 1439px the back link shows its label; below that it is icon-only, and
+     the `padding: 6px` it collapses to measures 26x26. In the collapsed band it
+     is one of only two ways out of the app, so it takes the 44px mobile target.
+     18px wider than before, which the wrapped rows have room for. */
+  .navbar-back-link {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  /* Same rule as the marketing brand inside its own collapse band: 44px while
+     the navbar is collapsed into the mobile menu, the 24px floor above it. */
+  .navbar-brand a {
+    min-height: 44px;
+  }
+
   .navbar-toggle {
     display: flex;
   }
@@ -1261,6 +1285,10 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 9px;
+  /* 2.5.8 floor. The text line box is 23.2px, so this is what takes the brand
+     from a 111x23 target to 24. Height only — the row is 80-82px tall, so this
+     cannot change the desktop navbar's height. */
+  min-height: 24px;
   font-size: 1.2rem;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -1287,6 +1315,12 @@ body {
 
 .landing-nav-links a {
   color: var(--muted);
+  /* 2.5.8 floor. As flex items these are 23.2px tall, one under the minimum;
+     `inline-flex` + `min-height` grows the target without touching its width or
+     the row height, so the desktop navbar keeps its exact horizontal geometry. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   font-size: 0.92rem;
   font-weight: 600;
   text-decoration: none;
@@ -1395,6 +1429,35 @@ body {
     order: 3;
     width: 100%;
     gap: 20px;
+  }
+
+  /* Mobile 2.5.5 targets for the header controls — 44x44 rather than merely
+     clearing the 24x24 2.5.8 floor, because these are the only way to reach the
+     nav, the theme and sign-up from a phone.
+
+     The theme toggle is 34x34 and the disclosure trigger 31.2px, so both grow;
+     the primary CTA measures 43.2px and only needs 0.8px. Scoped to the mobile
+     band and to the header, so the 901px+ row keeps its exact geometry. */
+  .landing-nav-actions .theme-toggle {
+    width: 44px;
+    height: 44px;
+  }
+
+  .nav-group-trigger {
+    min-height: 44px;
+  }
+
+  .landing-nav-actions .btn {
+    min-height: 44px;
+  }
+
+  /* The nav links themselves get the full 44px in the mobile band, where this
+     row IS the primary navigation — at 24px they clear 2.5.8 but are cramped
+     for a thumb. Above 900px they stay at the 24px floor, which is what keeps
+     the desktop row's height at exactly 80/82px. */
+  .landing-nav-links a,
+  .landing-brand {
+    min-height: 44px;
   }
 }
 
@@ -3147,18 +3210,28 @@ body {
    content width while `height: 34px` survived — a 20x36px ellipse under
    `border-radius: 50%`.
 
-   `width: fit-content` is a no-op for the links it was written for: they are
-   non-replaced inline `<a>` elements, and `width` does not apply to those. So
-   narrowing the selector to `nav` changes no nav behaviour — it only stops the
-   leak. */
-.footer-col nav a {
+   `nav.footer-col a`, and not a descendant `.footer-col nav a`: the column IS
+   the `<nav>` (`<nav className="footer-col">`), so a descendant combinator
+   matches nothing at all. That silently disabled the whole rule — the 14 nav
+   links rendered as unstyled browser-default blue underlined anchors, and as
+   23.2px-tall targets. Qualifying the `nav` itself keeps the `.footer-social`
+   exclusion the comment above is about and makes the rule match again. */
+nav.footer-col a {
   color: var(--muted);
   text-decoration: none;
   width: fit-content;
+  /* 2.5.8 floor: covers both the column overview (`footer-col-hub`) and the
+     section links, 14 per page, all 23.2px tall. `inline-flex` + `min-height`
+     centres the text in a 24px box; `width: fit-content` (which only takes
+     effect now that the element is not a plain inline box) keeps the hit area
+     on the text. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   transition: color 0.2s;
 }
 
-.footer-col nav a:hover {
+nav.footer-col a:hover {
   color: var(--blue);
 }
 
@@ -3491,6 +3564,8 @@ body {
   align-items: center;
   align-self: flex-start;
   gap: 6px;
+  /* 2.5.8 floor — 112x23.2 otherwise. */
+  min-height: 24px;
   margin-bottom: 24px;
   color: var(--muted);
   font-size: 0.85rem;
@@ -3674,6 +3749,11 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  /* 2.5.8 floor, and here the label IS the target: the control it wraps is a
+     15x15 checkbox, so the wrapping label's 125x23.2 is the clickable region and
+     is 0.8px under the minimum. Growing the label is the fix; the 15x15 input
+     itself does not need to be 24x24. */
+  min-height: 24px;
   font-size: 0.88rem;
   color: var(--muted);
   cursor: pointer;
@@ -3693,6 +3773,10 @@ body {
   padding: 0;
   color: var(--blue);
   font-family: inherit;
+  /* 2.5.8 floor — 123x19 otherwise, the shortest target in the app. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
@@ -3724,6 +3808,24 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+/* Stack the two social buttons on the narrowest phones.
+
+   Two columns set a 204px min-content floor on the grid — "Google" 98px +
+   "GitHub" 96px + the 10px gap — and the auth card's content box is only 184px
+   at a 320px viewport (272px shell less 44px of padding a side). As a grid item
+   `.auth-card` has `min-width: auto`, so that floor grew the card to 292px and
+   `.auth-shell`'s `overflow: hidden` cut 20px off it — silently, which is why a
+   document-level overflow check never saw it.
+
+   360px, and not the ~339px where the overflow actually starts, because the
+   two-column layout has exactly 0px of headroom at 340px: one more character or
+   a slightly wider glyph in either label brings the clip back. */
+@media (max-width: 360px) {
+  .social-buttons {
+    grid-template-columns: 1fr;
+  }
 }
 
 .social-btn {
@@ -3899,9 +4001,20 @@ body {
 /* Account usage summary tiles */
 .profile-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* One column on phones and small tablets. Three columns need 579px of
+     container before the widest value ("September 2026" at 157px in DM Mono)
+     fits the 36-67px content box the 3-up grid leaves at 320-414px — below that
+     it was clipped to "September…". 720px, an existing breakpoint in this file,
+     is where the tiles get wide enough to be worth three across. */
+  grid-template-columns: 1fr;
   gap: 12px;
   margin-bottom: 20px;
+}
+
+@media (min-width: 721px) {
+  .profile-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .profile-stat {
@@ -3919,9 +4032,11 @@ body {
     700 1.15rem "DM Mono",
     monospace;
   color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Wrap rather than clip. `white-space: nowrap` + `text-overflow: ellipsis` +
+     `overflow: hidden` truncated "September 2026" to "September…" from 320px to
+     ~700px wide; the tiles are the one place a long value is expected, so the
+     value wraps and nothing is ever hidden. */
+  overflow-wrap: break-word;
 }
 
 .profile-stat-label {

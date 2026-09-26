@@ -188,13 +188,49 @@ describe("LandingFooter social button box", () => {
 
       for (const selector of (match[1] ?? "").split(",").map((s) => s.trim())) {
         const targetsColumnLink = /\.footer-col\b/.test(selector) && /(^|\s)a(\s|$|:|\[|\.)/.test(selector);
-        if (targetsColumnLink && !/(^|\s)nav(\s|$)/.test(selector)) {
+        // "Scoped to nav" covers both `nav` as its own compound and `nav` as the
+        // qualifier on the column's own class: `nav.footer-col a` is the stricter
+        // of the two, since the brand column is a `<div>`. Requiring a standalone
+        // `nav` token would have rejected it while letting the descendant form —
+        // which matches nothing at all — look safe.
+        const scopedToNav = /(^|[\s>+~])nav\b/.test(selector);
+        if (targetsColumnLink && !scopedToNav) {
           offenders.push(selector);
         }
       }
     }
     // `.footer-col a { width: fit-content }` reintroduced here fails this.
     expect(offenders).toEqual([]);
+  });
+
+  it("scopes the rule to a nav that is itself the column, not a nav inside one", () => {
+    // The mirror image of the bug above, and the one that bit #442. Narrowing the
+    // rule to `.footer-col nav a` looked like the fix for the social-button leak
+    // because it contains the word `nav` — but the column IS the `<nav>`, so that
+    // selector matches nothing at all. The 14 column links silently fell back to
+    // unstyled browser-default blue underlined anchors.
+    //
+    // So the escape has to be `nav.footer-col a`: a `nav` compound carrying the
+    // class, which cannot match the brand column because that one is a `<div>`.
+    // Both forms are safe, and either alone would pass the check above — assert
+    // the one that actually matches the markup.
+    expect(css).toMatch(/nav\.footer-col\s+a\s*\{/);
+    expect(css).not.toMatch(/\.footer-col\s+nav\s+a\s*\{/);
+  });
+
+  it("keeps the column links inside a real <nav> the rule can match", () => {
+    // `nav.footer-col a` depends on the markup as much as the stylesheet: change
+    // `<nav className="footer-col">` to a `<div>` and the rule stops matching,
+    // which is the same silent no-op as the selector above — the brand column
+    // really is a `<div>`, so nothing else would notice.
+    renderFooter();
+    const columns = document.querySelectorAll(".footer-cols > .footer-col");
+    expect(columns.length).toBeGreaterThan(1);
+    const navs = document.querySelectorAll(".footer-cols > nav.footer-col");
+    // Every column except the brand one is a <nav>; the brand column holds the
+    // social buttons and the newsletter form, and must stay out of the rule.
+    expect(navs.length).toBe(columns.length - 1);
+    expect(document.querySelector(".footer-brand")?.tagName).toBe("DIV");
   });
 
   it("keeps .footer-social self-sufficient about being a link", () => {
