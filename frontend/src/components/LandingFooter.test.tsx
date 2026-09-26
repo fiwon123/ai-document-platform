@@ -318,8 +318,11 @@ describe("LandingFooter subscribe form", () => {
     );
     expect(directions).not.toContain("column");
 
+    // Exactly one width declaration. A breakpoint re-declaring the width is
+    // precisely the base-vs-breakpoint disagreement this test exists to
+    // prevent, and counting declarations catches it without pinning the value
+    // itself, which is a free design choice.
     const formWidths = valuesOf(allDeclarationsFor(".newsletter-form"), "width");
-    expect(formWidths.every((w) => w === "100%")).toBe(true);
-    expect(formWidths.length, "a width is declared").toBeGreaterThan(0);
+    expect(formWidths.length, "a width is declared exactly once").toBe(1);
   });
 });
