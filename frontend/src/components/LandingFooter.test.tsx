@@ -90,18 +90,17 @@ describe("LandingFooter social icons", () => {
 });
 
 /**
- * The subscribe row's alignment, guarded at the stylesheet level.
+ * Two stylesheet-level guards follow, one per defect that a render assertion
+ * cannot see: the social button's box (#401) and the subscribe row's alignment
+ * (#402). jsdom does not cascade the real stylesheet, and both failure modes
+ * are structural — a rule outranking another, a flex alignment — so these read
+ * App.css from disk, the same approach themeTokens.test.ts uses (and the reason
+ * tsconfig.app.json includes the "node" types). The DOM assertions above pass
+ * happily against a broken stylesheet.
  *
- * The row used to be centred against a taller text block, so the input and the
- * Subscribe button floated *between* the two lines of copy and lined up with
- * neither. jsdom does not cascade the real stylesheet, and no amount of DOM
- * querying can see a flex alignment, so this reads App.css from disk — the same
- * approach themeTokens.test.ts uses, and the reason
- * tsconfig.app.json includes the "node" types. (Vite's `?raw` is no use here:
- * CSS imports are stubbed under this vitest config, so `?raw` is empty.)
+ * Read from disk rather than Vite's `?raw`: CSS imports are stubbed under this
+ * vitest config, so `?raw` resolves to an empty string.
  */
-
-// Read from disk rather than via a CSS import: see the note above.
 const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8").replace(
   /\/\*[\s\S]*?\*\//g,
   "",
@@ -143,10 +142,70 @@ function allDeclarationsFor(selector: string): string[] {
   return found;
 }
 
+/** All values declared for `prop` — a rule may set it more than once across
+ *  breakpoints, so this stays a list. */
 const valuesOf = (decls: string[], prop: string): string[] =>
   decls
     .filter((d) => d.startsWith(`${prop}:`))
     .map((d) => d.slice(prop.length + 1).trim());
+
+/** First value declared for `prop`, for properties that are not breakpoint-
+ *  dependent. */
+const valueOf = (decls: string[], prop: string): string | undefined =>
+  valuesOf(decls, prop)[0];
+
+describe("LandingFooter social button box", () => {
+  it("gives .footer-social an explicitly square box and a fully rounded border", () => {
+    const decls = declarationsFor(".footer-social");
+    const width = valueOf(decls, "width");
+    const height = valueOf(decls, "height");
+
+    // A circle needs a square box. These two are load-bearing, not incidental:
+    // if either goes missing the border-radius has nothing to stay circular
+    // inside. Equal-by-value, so the test fails on 34px vs 35px too.
+    expect(width, "width must be declared").toBeDefined();
+    expect(height, "height must be declared").toBeDefined();
+    expect(width, "width and height must match for a circle").toBe(height);
+    expect(valueOf(decls, "border-radius")).toBe("50%");
+  });
+
+  it("stops footer-column link rules from reaching the social buttons", () => {
+    // The regression, stated as an invariant rather than as a cascade
+    // simulation: any rule that sets `width` on a link inside a footer column
+    // must be scoped to `nav`, so it cannot leak into the brand column where
+    // the social buttons live.
+    //
+    // `.footer-col a` (0,1,1) matched the brand column's social links and
+    // declared `width: fit-content`, outranking `.footer-social` (0,1,0) and its
+    // `width: 34px`. `height: 34px` was uncontested, so the button resolved to
+    // 20x36px and `border-radius: 50%` drew an ellipse. Twitter and LinkedIn
+    // were immune only because they are `<span>` placeholders and the rule
+    // matches `a`.
+    const offenders: string[] = [];
+    for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const body = match[2] ?? "";
+      if (!/(^|;)\s*width\s*:/.test(body)) continue;
+
+      for (const selector of (match[1] ?? "").split(",").map((s) => s.trim())) {
+        const targetsColumnLink = /\.footer-col\b/.test(selector) && /(^|\s)a(\s|$|:|\[|\.)/.test(selector);
+        if (targetsColumnLink && !/(^|\s)nav(\s|$)/.test(selector)) {
+          offenders.push(selector);
+        }
+      }
+    }
+    // `.footer-col a { width: fit-content }` reintroduced here fails this.
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps .footer-social self-sufficient about being a link", () => {
+    // GitHub renders as a real <a href>; Twitter and LinkedIn are spans. If the
+    // underline suppression is left to a distant `.footer-col a` rule, the
+    // button depends on a selector that outranks it and only reaches it by
+    // accident — exactly the coupling that caused this bug.
+    const decls = declarationsFor(".footer-social");
+    expect(valueOf(decls, "text-decoration")).toBe("none");
+  });
+});
 
 describe("LandingFooter subscribe row", () => {
   it("top-aligns the form row with the heading rather than centring it", () => {
