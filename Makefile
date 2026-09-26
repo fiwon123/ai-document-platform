@@ -1,4 +1,4 @@
-.PHONY: help setup host-tools infra-up infra-down check-identity preflight dev-up dev-build dev-down dev-restart \
+.PHONY: help setup host-tools infra-up infra-down check-identity check-gh-token preflight dev-up dev-build dev-down dev-restart \
         dev-log dev-exec dev-agent opencode shell sandbox reset \
         test test-backend test-frontend lint lint-fix format typecheck build check
 
@@ -57,7 +57,37 @@ OPENCODE_BIN ?= $(HOME)/.opencode/bin/opencode
 #   make opencode OPENCODE_ARGS="run 'task' --auto"     # one-shot non-interactive
 OPENCODE_ARGS ?= --auto
 
-preflight: check-identity ## (internal) Require host opencode + pre-create mounted config paths
+# --- GitHub passthrough for the sandboxed agent --------------------------------
+# The `dev` service forwards the host's GitHub token (see the GH_TOKEN entry in
+# docker-compose.yaml) so the sandboxed agent can drive the issue → branch → PR
+# workflow. The read-only ~/.config/gh mount cannot do that on its own: the host
+# token normally lives in the OS keyring, so hosts.yml carries no
+# `oauth_token` and the container — which has no keyring socket — ends up
+# unauthenticated. The token therefore has to arrive as an env var, resolved from
+# the host here at up-time.
+#
+# No global `GH_TOKEN` assignment on purpose. `export` alone keeps whatever the
+# environment already provides (including the token this container was started
+# with, so `make check` inside the sandbox keeps working), and the target-specific
+# assignment below resolves a fresh credential for the targets that actually
+# start the sandbox. A global `?=` would lose to an ambient GH_TOKEN that make
+# imports as a variable — and a stale token in the shell silently shadows a
+# working keyring login, which is the exact failure check-gh-token exists to
+# catch. A command-line assignment still wins over both:
+# `make dev-up GH_TOKEN=<pat>`.
+export GH_TOKEN
+dev-up dev-restart dev-exec opencode: GH_TOKEN = $(shell scripts/resolve-gh-token.sh 2>/dev/null)
+
+# Refuse to start a sandbox whose gh is dead. A *rejected* token is fatal: it is
+# worse than no token at all, because inside the container gh looks
+# authenticated and then 401s on every call (and it breaks gh and git on the
+# host, since git delegates to `gh auth git-credential`). An *absent* token or an
+# unreachable GitHub is only a warning — the sandbox is still useful for local
+# work, and being offline must never block `make dev-up`. Never prints the token.
+check-gh-token:
+	@scripts/resolve-gh-token.sh --check
+
+preflight: check-identity check-gh-token ## (internal) Require host opencode + pre-create mounted config paths
 	@test -x "$(HOST_HOME)/.opencode/bin/opencode" || { echo "ERROR: opencode not found at $(HOST_HOME)/.opencode/bin/opencode" >&2; \
 	  echo "  Install: curl -fsSL https://opencode.ai/install | bash" >&2; exit 1; }
 	@mkdir -p "$(HOST_HOME)/.config/opencode" "$(HOST_HOME)/.config/gh" && touch "$(HOST_HOME)/.gitconfig"

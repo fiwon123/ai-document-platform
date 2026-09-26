@@ -72,6 +72,12 @@ services:
       # the `dev` service mounts gh config + the Docker socket and drives the
       # GitHub workflow, so it forwards the host token by name only. The
       # `worker` service deliberately does NOT get these (non-trusted).
+      #
+      # The ~/.config/gh mount below is NOT sufficient on its own: the host token
+      # normally lives in the OS keyring, so hosts.yml carries no `oauth_token`
+      # and this container has no keyring socket. The token is therefore resolved
+      # from the host's active gh credential by scripts/resolve-gh-token.sh and
+      # arrives via the environment (see the GH_TOKEN wiring in the Makefile).
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GH_TOKEN: ${GH_TOKEN:-}
     depends_on:

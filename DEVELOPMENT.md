@@ -121,9 +121,42 @@ scripts/open-in-sandbox.sh 'uv run pytest'
 ```
 
 Inside the sandbox the agent has node 22, uv (+ baked `/opt/backend-venv`), gh
-(host creds), your opencode config, git identity, `make`, and the Docker CLI
-(compose plugin included) — plus the running stack at `:8000` / `:5173`, so
-`make check` and end-to-end curls work without leaving the container.
+(working auth, see below), your opencode config, git identity, `make`, and the
+Docker CLI (compose plugin included) — plus the running stack at `:8000` / `:5173`,
+so `make check` and end-to-end curls work without leaving the container.
+
+#### GitHub auth inside the sandbox
+
+`gh` authenticates from a `GH_TOKEN` **environment variable**, not from the
+read-only `~/.config/gh` mount. That mount is not enough on its own: your host
+token usually lives in the OS **keyring**, so `hosts.yml` carries no
+`oauth_token` key, and the container has no keyring socket. Without the token
+variable the sandbox's `gh` is unauthenticated — silently, because the config
+mount still *looks* right.
+
+`make dev-up` (and `make dev-restart` / `dev-exec` / `opencode` / `shell`) resolve
+the credential from your host's *active* `gh` login via
+`scripts/resolve-gh-token.sh` and pass it into the `dev` service. Resolution
+order: `$GH_TOKEN` → `$GITHUB_TOKEN` → `gh auth token` (keyring / `hosts.yml`).
+
+A **rejected** token aborts the start with an actionable error. This matters
+because an expired `GH_TOKEN` in your shell takes precedence over your keyring
+login in `gh`, and therefore also breaks `gh` and `git` on the host (git delegates
+to `gh auth git-credential`):
+
+```bash
+gh auth status          # if this reports an invalid token, that is the cause
+unset GH_TOKEN GITHUB_TOKEN
+gh auth status          # now uses the keyring credential
+```
+
+An **absent** credential only warns — the sandbox still starts, `gh` just is not
+authenticated. An **unreachable** GitHub also only warns, so being offline never
+blocks `make dev-up`. To pin a specific token: `make dev-up GH_TOKEN=<pat>`.
+
+> One cosmetic artifact: `gh auth status` inside the container also lists the
+> mounted `hosts.yml` account as invalid, because that account has no token
+> attached. It is inactive — `GH_TOKEN` takes precedence and is the one that works.
 
 > Trusted-agent model: the dev container shares the workspace bind-mount, the
 > host Docker socket, gh auth, and opencode config with the host by design.
