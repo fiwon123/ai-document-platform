@@ -900,7 +900,7 @@ body {
 .navbar {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 20px;
   padding: 16px 6vw;
   background: var(--appbar-bg);
   color: var(--appbar-fg);
@@ -960,14 +960,14 @@ body {
 
 .navbar-links {
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 
 .navbar-links a {
   color: var(--appbar-fg);
   text-decoration: none;
   font-size: 0.9rem;
-  padding: 6px 12px;
+  padding: 6px 10px;
   border-radius: 999px;
   opacity: 0.8;
   transition:
@@ -1147,18 +1147,58 @@ body {
   transform: translateY(-6px) rotate(-45deg);
 }
 
-/* Brand row gets tight on small screens — drop the badge, keep icon + name. */
-@media (max-width: 768px) {
-  .navbar-workspace-badge {
-    display: none;
-  }
-}
-
 .navbar-user-mobile {
   display: none;
 }
 
-@media (max-width: 768px) {
+/* Narrow band between the two widths: the row is still one line above the collapse
+   width but there is not enough room for the Workspace pill and the back link's
+   label, so both are trimmed here. The back link keeps its arrow and its accessible
+   name — the label is hidden visually, not removed from the accessibility tree.
+
+   1439px is the last width that cannot hold the complete row: the trimmed row needs
+   1047px, the complete row 1241px (with a username at its 160px cap), and the
+   content box is 88% of the viewport, so 1241 / 0.88 = 1410px is the true
+   requirement. The full row therefore returns at 1440px, which leaves 26px of slack
+   in the worst case rather than spilling into the right gutter. */
+@media (max-width: 1439px) {
+  .navbar-workspace-badge {
+    display: none;
+  }
+
+  .navbar-back-link-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .navbar-back-link {
+    padding: 6px;
+  }
+
+  .navbar-back-link + .navbar-brand {
+    padding-left: 10px;
+  }
+}
+
+/* Workspace navbar collapse width.
+
+   The row is `back + brand + links + user` with a 20px gap between each part and
+   6vw side padding, so the content box is 88% of the viewport. Measured widths
+   (worst-case username, `max-width: 160px` on `.navbar-username`): the trimmed row
+   needs 1047px and the complete row 1241px, i.e. 1190px and 1410px of viewport.
+
+   1280px is therefore the last width at which the hamburger menu is needed — below it
+   the row cannot hold its parts even trimmed, so it collapses rather than
+   overflowing. The previous 768px collapse left every width from 769px to ~1279px
+   with a horizontal scrollbar up to 480px wide. */
+@media (max-width: 1280px) {
   .navbar {
     flex-wrap: wrap;
     gap: 12px;
@@ -1176,7 +1216,7 @@ body {
   .navbar-links {
     display: none;
     flex-direction: column;
-    gap: 4px;
+    gap: 10px;
     width: 100%;
     padding: 8px 0 4px;
     border-top: 1px solid var(--appbar-line);
@@ -1203,31 +1243,6 @@ body {
 
   .navbar-user-mobile a {
     opacity: 1;
-  }
-
-  /* The brand row is already tight with the back link + brand + Workspace
-     pill + hamburger, so the back link drops its label on the narrowest
-     screens and keeps only the arrow. It stays a real link with an
-     accessible name (aria-label) — the text is hidden visually, not removed
-     from the accessibility tree. */
-  .navbar-back-link-text {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  .navbar-back-link {
-    padding: 6px;
-  }
-
-  .navbar-back-link + .navbar-brand {
-    padding-left: 10px;
   }
 }
 
