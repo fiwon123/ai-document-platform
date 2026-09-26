@@ -3210,6 +3210,26 @@ body {
   }
 }
 
+/* Narrow viewports: the caption and the dot row cannot share the lower band.
+   The caption is left-anchored and the dot row is centred in the slide, and the
+   caption's width is set by its text (196.7px measured, right edge at x=210.7),
+   so the centred row runs into it as the slide narrows: 4 of 4 dots on the
+   caption at 320px, 3 at 375/414px, 2 at 480px, 1 at 520/560px. The row clears
+   the caption at 580px (543.2px slide, row left edge 211.6 vs caption right edge
+   210.7) — but that is a 0.9px margin, so the breakpoint sits at 600px, where
+   the row starts 10.3px clear and 640px+ is left exactly as it was.
+
+   Fixing it by stacking the band rather than by narrowing the caption or moving
+   the dots out of the centre: once the two occupy disjoint vertical bands no
+   caption text and no slide count can collide at any width, so the fix does not
+   depend on the current text length. Below 600px the caption's bottom is 6px
+   (the dot row's) + 24px (the dot target, #427) + 6px of breathing room. */
+@media (max-width: 600px) {
+  .carousel-caption {
+    bottom: 36px;
+  }
+}
+
 /* Reduced motion: pause decorative animations, show carousel slide 1. */
 @media (prefers-reduced-motion: reduce) {
   .hero-mesh,

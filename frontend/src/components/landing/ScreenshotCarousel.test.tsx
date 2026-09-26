@@ -164,4 +164,103 @@ describe("ScreenshotCarousel", () => {
     expect(px(body(".carousel-dot span"), "height", ".carousel-dot span")).toBe(8);
     expect(target).toMatch(/place-items\s*:\s*center/);
   });
+
+  it("stacks the caption above the dot row on narrow viewports", () => {
+    // The caption is left-anchored and the dot row is centred in the slide, and
+    // the caption's width comes from its text, so as the slide narrows the
+    // centred row runs into the caption: measured in Chromium, 4 of 4 dots sat
+    // on the caption at 320px, 3 at 375/414px, 2 at 480px, 1 at 520/560px. Both
+    // live in the same vertical band, so document order decided which won.
+    //
+    // The fix stacks the band rather than narrowing the caption, so the two
+    // occupy disjoint vertical ranges and no caption text can collide at any
+    // width. This guard pins that *relationship* (caption bottom >= the top of
+    // the dot row), not the literal 36px — a value pin would break on an
+    // intentional tweak, and the relationship is the actual defect.
+    //
+    // jsdom does not lay out, so this reads the stylesheet; the browser pass is
+    // the real evidence (0 of 4 overlapping at 320/375/414/480px).
+    const css = readFileSync(resolve(__dirname, "../../App.css"), "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    const body = (selector: string, scope = css): string => {
+      const rule = [...scope.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) =>
+        (m[1] ?? "").split(",").some((s) => s.trim() === selector),
+      );
+      if (!rule) throw new Error(`no ${selector} rule in App.css`);
+      return rule[2] ?? "";
+    };
+    const px = (declarations: string, property: string, selector: string): number => {
+      const m = declarations.match(new RegExp(`${property}\\s*:\\s*([^;]+)`));
+      const raw = m?.[1]?.trim();
+      if (!raw) throw new Error(`${selector} declares no ${property}`);
+      const n = raw.match(/^(\d+(?:\.\d+)?)px$/);
+      if (!n?.[1]) throw new Error(`${selector} ${property} is "${raw}", not a px length`);
+      return Number(n[1]);
+    };
+
+    // Geometry of the row the caption has to clear, read from the base rules so
+    // the guard follows #427 if the 24x24 target is ever resized.
+    const dotsBottom = px(body(".carousel-dots"), "bottom", ".carousel-dots");
+    const dotHeight = px(body(".carousel-dot"), "height", ".carousel-dot");
+    const dotRowTop = dotsBottom + dotHeight;
+
+    // Find the narrow-viewport block that repositions the caption. Each
+    // @media is scoped to its OWN body by brace matching: a fixed character
+    // window would let the preceding (wider) query swallow this one and report
+    // its threshold instead.
+    const mediaBlocks = (sheet: string): { query: string; width: number; body: string }[] => {
+      const found: { query: string; width: number; body: string }[] = [];
+      const re = /@media\s*\(max-width:\s*(\d+(?:\.\d+)?)px\)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(sheet))) {
+        const open = sheet.indexOf("{", m.index + m[0].length);
+        if (open === -1) continue;
+        let depth = 0;
+        let end = open;
+        for (let i = open; i < sheet.length; i++) {
+          if (sheet[i] === "{") depth++;
+          else if (sheet[i] === "}") {
+            depth--;
+            if (depth === 0) {
+              end = i;
+              break;
+            }
+          }
+        }
+        found.push({ query: m[0], width: Number(m[1]), body: sheet.slice(open + 1, end) });
+      }
+      return found;
+    };
+
+    const narrow = mediaBlocks(css).find(
+      (b) => /(\.carousel-caption\s*\{[^}]*\})/.test(b.body),
+    );
+    if (!narrow) {
+      throw new Error(
+        "no max-width block repositions .carousel-caption, so the centred dot row " +
+          "overlaps the caption below ~580px (4 of 4 dots at 320px)",
+      );
+    }
+    const threshold = narrow.width;
+    const captionBottom = px(body(".carousel-caption", narrow.body), "bottom", ".carousel-caption");
+
+    expect(
+      captionBottom,
+      `caption bottom (${captionBottom}px) must be at or above the top of the dot row ` +
+        `(${dotRowTop}px = ${dotsBottom}px bottom + ${dotHeight}px target)`,
+    ).toBeGreaterThanOrEqual(dotRowTop);
+
+    // The block has to cover the widths where they actually collide (the issue
+    // lists 480px as the widest) and stop before the desktop layout the criteria
+    // require to be unchanged. 580px is where the row first clears the caption —
+    // by 0.9px — so anything from 480 up to 640 exclusive is acceptable here.
+    expect(threshold, "must cover the colliding widths").toBeGreaterThanOrEqual(480);
+    expect(threshold, "must leave the 640px+ desktop layout alone").toBeLessThan(640);
+
+    // Desktop keeps its own position: the base rule still positions the caption
+    // itself, so nothing above lifted it out of the lower band by default.
+    expect(px(body(".carousel-caption"), "bottom", ".carousel-caption")).toBeGreaterThan(0);
+  });
 });
