@@ -198,6 +198,17 @@ export function LandingFooter() {
                 placeholder="you@company.com"
                 aria-label="Email address"
                 aria-invalid={status?.kind === "error"}
+                onChange={(event) => {
+                  // `aria-invalid` must not outlive its reason. Re-evaluating on
+                  // every keystroke is what the ARIA practices ask for: once the
+                  // address is valid the field is no longer invalid, and holding
+                  // the attribute until the next submit tells assistive tech the
+                  // opposite of the truth. The message goes with it — it is not
+                  // true any more either. `checkValidity()` stays the only rule.
+                  if (status?.kind === "error" && event.currentTarget.checkValidity()) {
+                    setStatus(null);
+                  }
+                }}
                 autoComplete="email"
               />
               <button type="submit" className="btn btn-primary">

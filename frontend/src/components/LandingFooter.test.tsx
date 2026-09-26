@@ -549,6 +549,46 @@ describe("LandingFooter newsletter submit", () => {
     ).toBe("8px");
   });
 
+  it("stops claiming the field is invalid once it is", () => {
+    // `aria-invalid` outliving its reason is a lie the DOM keeps telling: the
+    // address is valid but the attribute still says otherwise, and it did so
+    // until the next submit. The ARIA authoring practices ask for a re-evaluation
+    // on change, and the message has to go with the attribute — it is not true
+    // either. Guessing the moment of correction is impossible; a validity check
+    // per keystroke is the only honest way to know.
+    renderFooter();
+    const input = screen.getByLabelText(/email address/i) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "not-an-address" } });
+    fireEvent.submit(input.closest("form")!);
+    expect(input).toHaveAttribute("aria-invalid", "true");
+
+    // Adding a domain makes it a syntactically valid address, and it has to be
+    // a real `local@domain` to cross it: "not-an-address.com" still has no `@`
+    // and stays invalid.
+    //
+    // The values here were picked to be ones every environment classifies the
+    // same way, because this suite's whole safety argument is that the handler
+    // delegates to `checkValidity()` instead of reimplementing the email rules.
+    // I expected jsdom to be the looser of the two and had to check: probing 12
+    // values through `type="email"` in both jsdom and Chrome gives identical
+    // verdicts, down to the odd corners ("a@b" and "a@@b.com"). So the agreement
+    // comes from delegating -- a hand-rolled regex here would be free to drift
+    // from the browser's, and these tests could not catch it.
+    fireEvent.change(input, { target: { value: "not-an-address@example.com" } });
+    expect(input).toHaveAttribute("aria-invalid", "false");
+    expect(document.querySelector(".newsletter-status")).toHaveTextContent("");
+
+    // ...and a half-typed address is not, so the claim must survive.
+    fireEvent.change(input, { target: { value: "not-an" } });
+    fireEvent.submit(input.closest("form")!);
+    fireEvent.change(input, { target: { value: "not-an-" } });
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(document.querySelector(".newsletter-status")).toHaveTextContent(
+      "Enter a valid email address.",
+    );
+  });
+
   it("keeps the error branch reachable in a real browser", () => {
     // Found by measuring, not by a failing test. With `type="email"` and no
     // `noValidate`, the browser blocks the submit event on a malformed address,
