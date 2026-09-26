@@ -45,6 +45,21 @@ def _embedding_service_mock() -> MagicMock:
     return embedding
 
 
+def _search_service_returning(results):
+    """A search service stub whose response is a real SearchResponse.
+
+    `QAService.ask` reads both `.results` and `.mode` off it, so a bare
+    MagicMock answers `.mode` with another MagicMock and fails validation --
+    which turns an under-specified mock into a confusing error rather than an
+    obvious one.
+    """
+    stub = MagicMock()
+    stub.search.return_value = SearchResponse(
+        query="q", results=results, total_count=len(results), has_more=False
+    )
+    return stub
+
+
 def _make_result(content: str = "c") -> SearchResult:
     return SearchResult(
         chunk_id=uuid4(),
@@ -359,7 +374,11 @@ class TestQAServiceCaching:
         monkeypatch.setattr(qa_module, "_openai_client", fake_client)
 
         fake_search = MagicMock()
-        fake_search.search.return_value = MagicMock(
+        # A real SearchResponse, not a bare MagicMock: `ask()` reads .results
+        # AND .mode off it, and a mock answers .mode with another mock, which
+        # fails validation and hides what the service actually depends on.
+        fake_search.search.return_value = SearchResponse(
+            query="q",
             results=[
                 SearchResult(
                     chunk_id=uuid4(),
@@ -368,7 +387,9 @@ class TestQAServiceCaching:
                     content="context",
                     score=0.5,
                 )
-            ]
+            ],
+            total_count=1,
+            has_more=False,
         )
         return QAService(search_service=fake_search), fake_client, fake_search
 
@@ -421,7 +442,7 @@ class TestQAServiceCaching:
             lambda api_key=None, base_url=None: fake_client,
         )
 
-        service = QAService(search_service=MagicMock())
+        service = QAService(search_service=_search_service_returning([]))
         user_id = uuid4()
 
         service.ask(user_id=user_id, question="q", api_key="sk-user-secret")
@@ -437,7 +458,7 @@ class TestQAServiceCaching:
         failing_client.chat.completions.create.side_effect = RuntimeError("boom")
         monkeypatch.setattr(qa_module, "_openai_client", failing_client)
 
-        service = QAService(search_service=MagicMock())
+        service = QAService(search_service=_search_service_returning([]))
         user_id = uuid4()
 
         first = service.ask(user_id=user_id, question="q")

@@ -60,8 +60,30 @@ class SearchResult(BaseModel):
     metadata_: dict | None = None
 
 
+class SearchMode(StrEnum):
+    """How a set of results was found.
+
+    Reported rather than left implicit: without an embedding provider the
+    platform silently falls back to keyword matching, and a `READY` document
+    with no vectors looks exactly like a fully indexed one. A user seeing worse
+    results has no way to tell a bad query from a missing index, so the response
+    says which mode produced it.
+    """
+
+    semantic = "semantic"
+    keyword = "keyword"
+
+
 class SearchResponse(BaseModel):
     query: str
     results: list[SearchResult]
     total_count: int
     has_more: bool
+    mode: SearchMode = Field(
+        default=SearchMode.semantic,
+        description=(
+            "Search mode used for these results. `keyword` means no embedding "
+            "provider is configured, so matching is literal rather than "
+            "semantic and recall will be worse."
+        ),
+    )

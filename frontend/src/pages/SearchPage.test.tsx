@@ -495,3 +495,93 @@ describe("SearchPage", () => {
     expect(written.get("q")).toBe("q3 planning");
   });
 });
+describe("SearchPage keyword-only mode", () => {
+  beforeEach(() => {
+    urlParamsHolder.params = new URLSearchParams();
+    urlParamsHolder.setParams.mockClear();
+  });
+
+  it("says results are keyword-only when the backend reports that mode", async () => {
+    // Without this the platform still returns results, just much worse ones,
+    // and a user cannot tell "my query was bad" from "nothing is indexed".
+    mockedSearch.mockResolvedValue({
+      query: "q3",
+      results: [result],
+      total_count: 1,
+      has_more: false,
+      mode: "keyword",
+    });
+
+    await runSearch("q3");
+
+    // Match the <p> itself, not the <strong> inside it: the sentence is split
+    // across children, so a text matcher resolves to the innermost element and
+    // the role lives one level up.
+    const notice = document.querySelector(".search-mode-notice");
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent).toContain("Keyword-only search");
+    // The notice must be announced, not just painted.
+    expect(notice?.getAttribute("role")).toBe("status");
+    expect(notice?.textContent).toContain("OPENAI_API_KEY");
+  });
+
+  it("does not claim keyword-only when semantic search was used", async () => {
+    mockedSearch.mockResolvedValue({
+      query: "q3",
+      results: [result],
+      total_count: 1,
+      has_more: false,
+      mode: "semantic",
+    });
+
+    await runSearch("q3");
+
+    expect(screen.queryByText(/Keyword-only search/i)).toBeNull();
+  });
+
+  it("says nothing when an older backend omits the mode", async () => {
+    // `mode` is optional on the type, so a pre-change backend must not be
+    // reported as keyword-only -- that would be a false warning.
+    mockedSearch.mockResolvedValue({
+      query: "q3",
+      results: [result],
+      total_count: 1,
+      has_more: false,
+    });
+
+    await runSearch("q3");
+
+    expect(screen.queryByText(/Keyword-only search/i)).toBeNull();
+  });
+
+  it("explains the cause in the empty state too", async () => {
+    mockedSearch.mockResolvedValue({
+      query: "unrelated",
+      results: [],
+      total_count: 0,
+      has_more: false,
+      mode: "keyword",
+    });
+
+    await runSearch("unrelated");
+
+    // "Try different keywords" is actively misleading in keyword-only mode: it
+    // is the mode, not the wording, that is the problem.
+    expect(screen.queryByText(/Try different keywords/)).toBeNull();
+    expect(screen.getByText(/semantic search would find more/i)).toBeTruthy();
+  });
+
+  it("keeps the generic empty-state advice when semantic search was used", async () => {
+    mockedSearch.mockResolvedValue({
+      query: "unrelated",
+      results: [],
+      total_count: 0,
+      has_more: false,
+      mode: "semantic",
+    });
+
+    await runSearch("unrelated");
+
+    expect(screen.getByText(/Try different keywords/)).toBeTruthy();
+  });
+});

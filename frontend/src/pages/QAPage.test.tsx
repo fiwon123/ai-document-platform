@@ -32,12 +32,14 @@ function ask(
   answer: string,
   model: string | null,
   sources: QAResponse["sources"] = [],
+  mode: QAResponse["mode"] = "semantic",
 ) {
   mockedAsk.mockResolvedValue({
     question,
     answer,
     sources,
     model,
+    mode,
   });
 }
 
@@ -509,5 +511,45 @@ describe("QAPage", () => {
 
     expect(screen.getByText("No messages yet")).toBeTruthy();
     expect(screen.queryByText("Hello!")).not.toBeInTheDocument();
+  });
+});
+describe("QAPage keyword-only retrieval", () => {
+  beforeEach(() => {
+    mockedList.mockResolvedValue([]);
+    mockedGetModels.mockResolvedValue({ free: [], paid: [] });
+  });
+
+  it("warns that the answer was grounded in literal matches", async () => {
+    // An answer that quietly missed the relevant passage is indistinguishable
+    // from a model that was simply wrong, so the cause has to be on screen.
+    ask("q", "A", "llama3.2:1b", [], "keyword");
+
+    await askQuestion("q");
+
+    const notice = document.querySelector(".search-mode-notice");
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent).toContain("Keyword-only retrieval");
+    expect(notice?.getAttribute("role")).toBe("status");
+  });
+
+  it("says nothing when retrieval was semantic", async () => {
+    ask("q", "A", "gpt-4o-mini", [], "semantic");
+
+    await askQuestion("q");
+
+    expect(document.querySelector(".search-mode-notice")).toBeNull();
+  });
+
+  it("says nothing when an older backend omits the mode", async () => {
+    mockedAsk.mockResolvedValue({
+      question: "q",
+      answer: "A",
+      sources: [],
+      model: "gpt-4o-mini",
+    });
+
+    await askQuestion("q");
+
+    expect(document.querySelector(".search-mode-notice")).toBeNull();
   });
 });

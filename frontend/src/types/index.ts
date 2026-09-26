@@ -70,11 +70,19 @@ export interface SearchResult {
   metadata_: Record<string, unknown> | null;
 }
 
+export type SearchMode = "semantic" | "keyword";
+
 export interface SearchResponse {
   query: string;
   results: SearchResult[];
   total_count: number;
   has_more: boolean;
+  /**
+   * How these results were found. `keyword` means no embedding provider is
+   * configured, so matching is literal rather than semantic. Older backends
+   * omit it, hence the optional-with-default on the read side.
+   */
+  mode?: SearchMode;
 }
 
 export interface QAResponse {
@@ -82,6 +90,12 @@ export interface QAResponse {
   answer: string;
   sources: SearchResult[];
   model: string | null;
+  /**
+   * How the grounding passages were retrieved. `keyword` means no embedding
+   * provider is configured, so the model is reasoning over passages literal
+   * matching happened to find and the answer is degraded for that reason.
+   */
+  mode?: SearchMode;
 }
 
 export interface RecentDocument {

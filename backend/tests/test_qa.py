@@ -1,5 +1,6 @@
 """Tests for QA document filtering (document_ids)."""
 
+from contextlib import contextmanager
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -8,10 +9,17 @@ from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
 from app.repositories.search import SearchRepository
 from app.schemas.qa import QARequest, QAResponse
-from app.schemas.search import SearchResult
-from app.services.qa import QAService
+from app.schemas.search import SearchMode, SearchResponse, SearchResult
+from app.services.qa import LOCAL_LLM_MODEL, QAService
 
 DIM = 1536
+
+
+def qa_entry(model_id):
+    """The registry entry for a model id."""
+    from app.services import qa as qa_module
+
+    return qa_module._MODEL_BY_ID[model_id]
 
 
 def _make_vector(on_dim: int) -> list[float]:
@@ -61,8 +69,9 @@ def _seed_user_with_documents(db_session) -> tuple[UserDB, DocumentDB, DocumentD
 class TestQAServiceDocumentFilter:
     def test_ask_forwards_document_ids_to_search(self):
         search_service = MagicMock()
-        search_response = MagicMock()
-        search_response.results = []
+        search_response = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
         search_service.search.return_value = search_response
         service = QAService(search_service=search_service)
         user_id = uuid4()
@@ -79,8 +88,9 @@ class TestQAServiceDocumentFilter:
 
     def test_ask_without_document_ids_searches_all(self):
         search_service = MagicMock()
-        search_response = MagicMock()
-        search_response.results = []
+        search_response = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
         search_service.search.return_value = search_response
         service = QAService(search_service=search_service)
 
@@ -302,14 +312,26 @@ class TestQARoute:
 
         assert resp.status_code == 200
         data = resp.json()
-        # Free tier = GPT-4o mini + the free Groq Llama models.
+        # Free means usable without paying: the Groq models and the local one.
+        # gpt-4o-mini is deliberately NOT here -- it is cheap, but it bills an
+        # OpenAI account, and a "free" list containing it misleads.
         assert data["free"] == [
-            "gpt-4o-mini",
             "llama-3.3-70b-versatile",
             "llama-3.1-8b-instant",
+            LOCAL_LLM_MODEL,
         ]
-        assert "gpt-4o-mini" not in data["paid"]
+        assert "gpt-4o-mini" in data["paid"]
         assert sorted(data["free"] + data["paid"]) == sorted(AVAILABLE_MODELS)
+
+        # The tier split alone is not enough for a picker: every registered model
+        # exists whether or not it is configured.
+        by_id = {m["id"]: m for m in data["models"]}
+        assert set(by_id) == set(AVAILABLE_MODELS)
+        assert by_id["gpt-4"]["provider"] == "openai"
+        assert by_id["gpt-4"]["tier"] == "paid"
+        assert by_id["llama-3.3-70b-versatile"]["provider"] == "groq"
+        assert by_id[LOCAL_LLM_MODEL]["provider"] == "local"
+        assert "default" in data
 
     def test_ask_accepts_groq_model(self, client, auth_headers, monkeypatch):
         """Groq model ids pass route validation and reach the groq client."""
@@ -381,7 +403,9 @@ class TestQAServiceAnswerGeneration:
 
         monkeypatch.setattr(qa_module, "_openai_client", None)
         fake_search = MagicMock()
-        fake_search.search.return_value = MagicMock(results=[])
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
         service = QAService(search_service=fake_search)
 
         response = service.ask(user_id=uuid4(), question="q")
@@ -395,7 +419,9 @@ class TestQAServiceAnswerGeneration:
 
         monkeypatch.setattr(qa_module, "_groq_client", None)
         fake_search = MagicMock()
-        fake_search.search.return_value = MagicMock(results=[])
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
         service = QAService(search_service=fake_search)
 
         response = service.ask(
@@ -423,7 +449,9 @@ class TestQAServiceAnswerGeneration:
         monkeypatch.setattr(qa_module, "_openai_client", None)
 
         fake_search = MagicMock()
-        fake_search.search.return_value = MagicMock(results=[])
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
         service = QAService(search_service=fake_search)
 
         response = service.ask(
@@ -456,7 +484,9 @@ class TestQAServiceAnswerGeneration:
             content="context",
             score=0.5,
         )
-        fake_search.search.return_value = MagicMock(results=[result])
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[result], total_count=1, has_more=False
+        )
         service = QAService(search_service=fake_search)
         document_ids = [uuid4()]
 
@@ -487,7 +517,9 @@ class TestQAServiceAnswerGeneration:
         monkeypatch.setattr("app.services.qa._openai_client", fake_client)
 
         fake_search = MagicMock()
-        fake_search.search.return_value = MagicMock(results=[])
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
         service = QAService(search_service=fake_search)
 
         response = service.ask(user_id=uuid4(), question="q")
@@ -509,7 +541,9 @@ class TestQAServiceAnswerGeneration:
         monkeypatch.setattr("app.services.qa._openai_client", fake_client)
 
         fake_search = MagicMock()
-        fake_search.search.return_value = MagicMock(results=[])
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
         service = QAService(search_service=fake_search)
 
         response = service.ask(
@@ -547,7 +581,9 @@ class TestQAServiceAnswerGeneration:
         monkeypatch.setattr(qa_module, "_openai_client", None)
 
         fake_search = MagicMock()
-        fake_search.search.return_value = MagicMock(results=[])
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
         service = QAService(search_service=fake_search)
 
         response = service.ask(user_id=uuid4(), question="q", api_key="sk-user-secret")
@@ -578,7 +614,9 @@ class TestQAServiceAnswerGeneration:
         monkeypatch.setattr(qa_module, "_groq_client", None)
 
         fake_search = MagicMock()
-        fake_search.search.return_value = MagicMock(results=[])
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
         service = QAService(search_service=fake_search)
 
         response = service.ask(
@@ -592,24 +630,379 @@ class TestQAServiceAnswerGeneration:
         assert captured["base_url"] == qa_module.GROQ_BASE_URL
         assert response.answer == "Groq BYOK"
 
-    def test_ask_defaults_to_configured_model(self, monkeypatch):
+    def test_ask_defaults_to_a_free_model_not_the_paid_one(self, monkeypatch):
+        """The default must not be a paid model when a free one is configured.
+
+        This is the whole point of the change: the default used to be
+        OPENAI_MODEL, so a user who had configured only a free Groq key was
+        still routed to a paid OpenAI model on every request that did not
+        override it.
+        """
         from types import SimpleNamespace
 
-        from app.services.qa import OPENAI_MODEL
+        from app.services import qa as qa_module
 
         fake_client = MagicMock()
         fake_client.chat.completions.create.return_value = SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="Mocked answer"))]
         )
-        monkeypatch.setattr("app.services.qa._openai_client", fake_client)
+        monkeypatch.setattr(qa_module, "_openai_client", fake_client)
+        # A free model is configured, and the paid one is available too.
+        monkeypatch.setattr(qa_module, "_groq_client", fake_client)
+        monkeypatch.setattr(qa_module, "_local_client", None)
 
         fake_search = MagicMock()
-        fake_search.search.return_value = MagicMock(results=[])
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
         service = QAService(search_service=fake_search)
 
         response = service.ask(user_id=uuid4(), question="q")
 
-        assert fake_client.chat.completions.create.call_args.kwargs["model"] == (
-            OPENAI_MODEL
+        entry = qa_module._MODEL_BY_ID[response.model]
+        assert entry["tier"] == "free", (
+            f"defaulted to the paid model {response.model!r} while a free one "
+            "was configured"
         )
-        assert response.model == OPENAI_MODEL
+        assert response.model == "llama-3.3-70b-versatile"
+
+
+class TestDefaultModelResolution:
+    """Free-first resolution, and never a silently paid model.
+
+    Every case pins a *different* configuration, because the ordering is the
+    feature: a change that merely flipped a constant would pass a test that
+    only checked "the default is not gpt-4".
+    """
+
+    @staticmethod
+    def _configure(monkeypatch, *, openai=True, groq=False, local=False, qa_model=""):
+        from app.services import qa as qa_module
+
+        sentinel = MagicMock()
+        monkeypatch.setattr(qa_module, "_openai_client", sentinel if openai else None)
+        monkeypatch.setattr(qa_module, "_groq_client", sentinel if groq else None)
+        monkeypatch.setattr(qa_module, "_local_client", sentinel if local else None)
+        monkeypatch.setenv("QA_MODEL", qa_model)
+        return sentinel
+
+    def test_prefers_groq_over_local_when_both_are_free(self, monkeypatch):
+        from app.services.qa import resolve_default_model
+
+        self._configure(monkeypatch, groq=True, local=True)
+        # Groq is hosted and answers better; the local CPU model is the
+        # last free resort, not something to default everyone onto.
+        assert resolve_default_model() == "llama-3.3-70b-versatile"
+
+    def test_uses_local_when_it_is_the_only_free_provider(self, monkeypatch):
+        from app.services.qa import resolve_default_model
+
+        self._configure(monkeypatch, groq=False, local=True)
+        assert resolve_default_model() == LOCAL_LLM_MODEL
+
+    def test_falls_back_to_paid_only_when_nothing_free_is_configured(self, monkeypatch):
+        """No free provider configured means paying is unavoidable -- but the
+        cheapest paid model is a better default than the old `gpt-4`."""
+        from app.services.qa import resolve_default_model
+
+        self._configure(monkeypatch, openai=True, groq=False, local=False)
+        chosen = resolve_default_model()
+        assert qa_entry(chosen)["tier"] == "paid"
+        assert chosen == "gpt-4o-mini"
+
+    def test_explicit_openai_model_env_outranks_the_cheapest_paid(self, monkeypatch):
+        from app.services.qa import resolve_default_model
+
+        self._configure(monkeypatch, openai=True, groq=False, local=False)
+        monkeypatch.setenv("OPENAI_MODEL", "gpt-4-turbo")
+        assert resolve_default_model() == "gpt-4-turbo"
+
+    def test_never_claims_a_paid_default_when_nothing_is_configured(self, monkeypatch):
+        """With no provider at all the default is still named, not invented."""
+        from app.services.qa import OPENAI_MODEL, resolve_default_model
+
+        self._configure(monkeypatch, openai=False, groq=False, local=False)
+        assert resolve_default_model() == OPENAI_MODEL
+
+    def test_explicit_qa_model_env_is_honoured_even_when_paid(self, monkeypatch):
+        """Naming a model is an operator decision, so it outranks free-first."""
+        from app.services.qa import resolve_default_model
+
+        self._configure(monkeypatch, groq=True, local=True, qa_model="gpt-4o")
+        assert resolve_default_model() == "gpt-4o"
+
+    def test_unknown_qa_model_env_is_ignored(self, monkeypatch):
+        """A typo must not resolve to a model that does not exist."""
+        from app.services.qa import resolve_default_model
+
+        self._configure(monkeypatch, groq=True, qa_model="gpt-9-ultra")
+        assert resolve_default_model() == "llama-3.3-70b-versatile"
+
+
+class TestLocalProvider:
+    """The keyless local OpenAI-compatible provider."""
+
+    def test_local_client_uses_placeholder_key_and_base_url(self):
+        """The SDK refuses to build a client with an empty key.
+
+        That is the whole reason a placeholder exists: a local server ignores
+        the credential, but the SDK still insists on one, so without this the
+        keyless path could not be constructed at all.
+        """
+        from app.services import qa as qa_module
+
+        assert qa_module._LOCAL_PLACEHOLDER_KEY
+        client = qa_module.OpenAI(
+            api_key=qa_module._LOCAL_PLACEHOLDER_KEY,
+            base_url=qa_module.LOCAL_LLM_BASE_URL,
+        )
+        assert str(client.base_url).rstrip("/") == qa_module.LOCAL_LLM_BASE_URL
+
+    def test_local_base_url_and_client_are_resolved_for_the_local_provider(
+        self, monkeypatch
+    ):
+        from app.services import qa as qa_module
+
+        fake = MagicMock()
+        monkeypatch.setattr(qa_module, "_local_client", fake)
+
+        assert qa_module._provider_client("local") is fake
+        assert qa_module._provider_base_url("local") == qa_module.LOCAL_LLM_BASE_URL
+        assert qa_module._is_provider_available("local") is True
+
+    def test_local_is_not_available_until_explicitly_enabled(self, monkeypatch):
+        from app.services import qa as qa_module
+
+        monkeypatch.setattr(qa_module, "_local_client", None)
+        assert qa_module._is_provider_available("local") is False
+        assert qa_module.is_model_available(LOCAL_LLM_MODEL) is False
+
+    def test_availability_is_local_inspection_not_a_network_call(self, monkeypatch):
+        """Availability feeds a model list, so it must never call out."""
+        from app.services import qa as qa_module
+
+        def explode(*_args, **_kwargs):  # pragma: no cover - must never run
+            raise AssertionError("availability must not make a network call")
+
+        monkeypatch.setattr(qa_module, "OpenAI", explode)
+        monkeypatch.setattr(qa_module, "_openai_client", None)
+        monkeypatch.setattr(qa_module, "_groq_client", None)
+        monkeypatch.setattr(qa_module, "_local_client", None)
+        monkeypatch.setattr(qa_module, "_is_provider_available", qa_module._is_provider_available)
+
+        for model_id in qa_module.AVAILABLE_MODELS:
+            assert qa_module.is_model_available(model_id) is False
+
+    def test_ask_uses_the_local_client_for_a_local_model(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from app.services import qa as qa_module
+
+        fake_local = MagicMock()
+        fake_local.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Local answer"))]
+        )
+        monkeypatch.setattr(qa_module, "_local_client", fake_local)
+        monkeypatch.setattr(qa_module, "_groq_client", None)
+        monkeypatch.setattr(qa_module, "_openai_client", None)
+
+        fake_search = MagicMock()
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
+        service = QAService(search_service=fake_search)
+
+        response = service.ask(user_id=uuid4(), question="q")
+
+        assert response.answer == "Local answer"
+        assert response.model == LOCAL_LLM_MODEL
+        assert (
+            fake_local.chat.completions.create.call_args.kwargs["model"]
+            == LOCAL_LLM_MODEL
+        )
+
+    def test_explicitly_asking_for_a_local_model_explains_the_env_vars(
+        self, monkeypatch
+    ):
+        """Asking for a local model with none enabled must say what to set.
+
+        Reached by naming the model, not by the default: with nothing
+        configured the default resolves to a hosted entry, so the local hint
+        would otherwise be unreachable text.
+        """
+        from app.services import qa as qa_module
+
+        monkeypatch.setattr(qa_module, "_local_client", None)
+
+        fake_search = MagicMock()
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
+        response = QAService(search_service=fake_search).ask(
+            user_id=uuid4(), question="q", model=LOCAL_LLM_MODEL
+        )
+
+        assert response.answer.startswith("AI service is not configured.")
+        assert "LOCAL_LLM_ENABLED" in response.answer
+        assert "Ollama" in response.answer
+        # A not-configured answer must never be cached.
+        assert qa_module._is_uncacheable_answer(response.answer)
+
+
+class TestLocalProviderOverRealHttp:
+    """The local path against a real HTTP server, with no model weights.
+
+    Mocking the client would prove nothing about the part most likely to be
+    wrong: that an OpenAI-compatible server can actually be talked to without
+    a key. The SDK refuses to build a client with an empty key, so this is the
+    only way to show the placeholder gets a working request on the wire --
+    nothing is downloaded, and no model is run.
+    """
+
+    @staticmethod
+    @contextmanager
+    def _serve():
+        import json
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        captured: dict = {}
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802 - stdlib naming
+                length = int(self.headers.get("Content-Length", "0"))
+                body = json.loads(self.rfile.read(length) or b"{}")
+                captured["path"] = self.path
+                captured["auth"] = self.headers.get("Authorization")
+                captured["model"] = body.get("model")
+                captured["messages"] = body.get("messages")
+                payload = json.dumps(
+                    {
+                        "id": "chatcmpl-stub",
+                        "object": "chat.completion",
+                        "created": 0,
+                        "model": body.get("model"),
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": "Answer from the local server",
+                                },
+                                "finish_reason": "stop",
+                            }
+                        ],
+                    }
+                ).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, *_args):  # silence the stub's logging
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_port}/v1"
+        try:
+            yield base_url, captured
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_keyless_client_completes_a_real_request(self):
+        from app.services import qa as qa_module
+
+        with self._serve() as (base_url, captured):
+            client = qa_module.OpenAI(
+                api_key=qa_module._LOCAL_PLACEHOLDER_KEY, base_url=base_url
+            )
+            response = client.chat.completions.create(
+                model=LOCAL_LLM_MODEL,
+                messages=[{"role": "user", "content": "hello"}],
+            )
+
+            assert response.choices[0].message.content == "Answer from the local server"
+            # A real OpenAI-compatible request went out, addressed correctly and
+            # carrying the placeholder credential.
+            assert captured["path"] == "/v1/chat/completions"
+            assert captured["model"] == LOCAL_LLM_MODEL
+            assert captured["auth"] == f"Bearer {qa_module._LOCAL_PLACEHOLDER_KEY}"
+            assert captured["messages"] == [{"role": "user", "content": "hello"}]
+
+
+class TestQAResponseCarriesRetrievalMode:
+    """Answer quality is bounded by retrieval quality, so the mode travels."""
+
+    def _ask(self, mode, monkeypatch):
+        from types import SimpleNamespace
+
+        from app.services import qa as qa_module
+        from app.schemas.search import SearchResponse
+
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="A"))]
+        )
+        monkeypatch.setattr(qa_module, "_local_client", fake_client)
+        monkeypatch.setattr(qa_module, "_groq_client", None)
+        monkeypatch.setattr(qa_module, "_openai_client", None)
+
+        fake_search = MagicMock()
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False, mode=mode
+        )
+        return QAService(search_service=fake_search).ask(user_id=uuid4(), question="q")
+
+    def test_keyword_retrieval_is_reported_on_the_answer(self, monkeypatch):
+        from app.schemas.search import SearchMode
+
+        response = self._ask(SearchMode.keyword, monkeypatch)
+
+        assert response.mode is SearchMode.keyword
+
+    def test_semantic_retrieval_is_reported_on_the_answer(self, monkeypatch):
+        from app.schemas.search import SearchMode
+
+        response = self._ask(SearchMode.semantic, monkeypatch)
+
+        assert response.mode is SearchMode.semantic
+
+
+class TestLocalModelIdCollision:
+    """A local model id that duplicates a hosted one must not corrupt the lists."""
+
+    def test_colliding_local_id_is_dropped(self):
+        from app.services.qa import _dedupe_local_entries
+
+        registry = [
+            {"id": "llama-3.3-70b-versatile", "provider": "groq", "tier": "free"},
+            {"id": "llama-3.3-70b-versatile", "provider": "local", "tier": "free"},
+            {"id": "llama3.2:1b", "provider": "local", "tier": "free"},
+        ]
+
+        deduped = _dedupe_local_entries(registry)
+
+        # The hosted entry wins; a duplicate id would otherwise appear twice in
+        # /qa/models and make the id lookup resolve to whichever came last.
+        assert [e["provider"] for e in deduped] == ["groq", "local"]
+        assert [e["id"] for e in deduped] == ["llama-3.3-70b-versatile", "llama3.2:1b"]
+
+    def test_unique_local_id_is_kept(self):
+        from app.services.qa import _dedupe_local_entries
+
+        registry = [
+            {"id": "a", "provider": "local", "tier": "free"},
+            {"id": "b", "provider": "groq", "tier": "free"},
+        ]
+
+        assert _dedupe_local_entries(registry) == registry
+
+    def test_the_shipped_registry_has_no_duplicate_ids(self):
+        from app.services.qa import MODEL_REGISTRY
+
+        ids = [entry["id"] for entry in MODEL_REGISTRY]
+        assert len(ids) == len(set(ids))

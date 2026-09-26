@@ -5,7 +5,7 @@ from uuid import UUID
 from app.cache.redis import redis_client
 from app.models.search import SearchHistory
 from app.repositories.search import SearchRepository
-from app.schemas.search import SearchResponse
+from app.schemas.search import SearchMode, SearchResponse
 from app.services.embedding import EmbeddingService
 
 logger = logging.getLogger(__name__)
@@ -166,6 +166,14 @@ class SearchService:
             results=results,
             total_count=total_count,
             has_more=offset + len(results) < total_count,
+            # `query_embedding is None` is already the branch the repository
+            # took, so reporting it costs nothing and cannot disagree with what
+            # actually happened.
+            mode=(
+                SearchMode.semantic
+                if query_embedding is not None
+                else SearchMode.keyword
+            ),
         )
         _cache_search(user_id, query, top_k, offset, document_ids, response)
         return response
