@@ -228,6 +228,94 @@ describe("blog page", () => {
   });
 });
 
+describe("page hero layout", () => {
+  /* jsdom does not cascade the real stylesheet, and a flex alignment is exactly
+     the kind of property no render assertion can see — the DOM is identical
+     whether the subtitle is centred or not. So the alignment is pinned at the
+     stylesheet level, the same way LandingFooter.test.tsx does it, and the DOM
+     check only covers what the stylesheet cannot: that a subtitle exists and
+     that it is inside the container being centred. */
+  const css = readFileSync(resolve(__dirname, "../App.css"), "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    "",
+  );
+
+  /** Declarations of the first rule whose selector list contains `selector`. */
+  function declarationsFor(selector: string): string[] {
+    for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const selectors = (match[1] ?? "").split(",").map((s) => s.trim());
+      if (selectors.includes(selector)) {
+        return (match[2] ?? "")
+          .split(";")
+          .map((d) => d.trim())
+          .filter(Boolean);
+      }
+    }
+    throw new Error(`no rule found for selector "${selector}" in App.css`);
+  }
+
+  const valueOf = (decls: string[], prop: string): string | undefined =>
+    decls
+      .filter((d) => d.startsWith(`${prop}:`))
+      .map((d) => d.slice(prop.length + 1).trim())[0];
+
+  it("centres the hero children instead of relying on inherited text-align", () => {
+    // `text-align: center` on `.page-hero` only centres a child that fills the
+    // measure. The `h1` fills it and so looked centred, while the narrower
+    // subtitle (560px in a 780px box, no auto side margins) rendered flush left.
+    const decls = declarationsFor(".page-hero-inner");
+    expect(valueOf(decls, "display")).toBe("flex");
+    expect(valueOf(decls, "flex-direction")).toBe("column");
+    expect(valueOf(decls, "align-items")).toBe("center");
+  });
+
+  it("keeps the page hero in step with the landing hero", () => {
+    // PageLayout reuses the landing hero's classes verbatim so the two read as
+    // one site. Diverging here is what let the subtitle drift out of centre.
+    const landing = declarationsFor(".landing-hero-inner");
+    const page = declarationsFor(".page-hero-inner");
+    for (const prop of ["display", "flex-direction", "align-items"]) {
+      expect(valueOf(page, prop), prop).toBe(valueOf(landing, prop));
+    }
+  });
+
+  it("puts a subtitle inside the centred container on every page hero", async () => {
+    // Two routes are expected to have no document hero, and each for a stated
+    // reason: `/` carries the landing hero (`.landing-hero-inner`), which is the
+    // reference rather than the subject, and `/demo` composes the navbar and
+    // footer directly and opens with a `demo-banner` instead. Every other
+    // marketing route goes through PageLayout.
+    const withoutHero: string[] = [];
+
+    for (const route of MARKETING_ROUTES.filter((r) => r !== "/")) {
+      const view = await renderAt(route);
+      const inner = view.container.querySelector(".page-hero-inner");
+
+      if (!inner) {
+        withoutHero.push(route);
+        view.unmount();
+        continue;
+      }
+
+      const subtitle = inner.querySelector(".landing-sub");
+      // Every PageLayout page is expected to carry a subtitle; a page that
+      // dropped it would render centred-but-empty and look intentional.
+      expect(subtitle, `${route} hero subtitle`).not.toBeNull();
+      expect(
+        (subtitle?.textContent ?? "").trim().length,
+        `${route} subtitle is not empty`,
+      ).toBeGreaterThan(0);
+
+      view.unmount();
+    }
+
+    // Pinning the list keeps this honest in both directions: a new PageLayout
+    // page is covered automatically, and a new page that skips PageLayout has to
+    // be declared here rather than slipping past the check.
+    expect(withoutHero).toEqual(["/demo"]);
+  });
+});
+
 describe("navigation coverage", () => {
   it("offers a hub plus every child page for each section", async () => {
     await renderAt("/");
