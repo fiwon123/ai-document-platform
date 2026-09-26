@@ -34,6 +34,10 @@ services:
     group_add:
       - "${DOCKER_GID:-999}"
     command: ["/sandbox/ai-document-platform/dev-entrypoint.sh"]
+    # Docker's default /dev/shm is 64 MB, which makes Chromium crash on any
+    # non-trivial page. The baked headless Chromium (see Dockerfile) is what
+    # accessibility/E2E checks run against, so give it real shared memory.
+    shm_size: "2gb"
     ports:
       # Host ports avoid conflicts with other local projects' containers
       # binding 8000/5173. Internal container ports stay 8000/5173, so the

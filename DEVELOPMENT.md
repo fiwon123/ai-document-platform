@@ -189,6 +189,84 @@ make build        # frontend typecheck + production build
 - Existing root-owned files from pre-migration sandboxes are covered by the
   one-time repair above; new sandbox writes use the host developer's ownership.
 
+## Browser checks (headless Chromium is baked into the dev image)
+
+The dev sandbox ships Playwright's headless Chromium plus Lighthouse, so
+accessibility and E2E checks run against the live dev server instead of waiting
+on a human with a laptop. Rebuild once after pulling this change:
+
+```bash
+make dev-build      # bakes Chromium + its system libs + the two CLIs
+make dev-up
+```
+
+Screenshot a page from inside the sandbox (ports are internal 8000/5173 there):
+
+```bash
+docker compose exec dev playwright screenshot --full-page \
+  http://localhost:5173 /tmp/landing.png
+docker compose cp dev:/tmp/landing.png ./landing.png   # bring it out to view
+```
+
+Lighthouse against the same origin — from the `dev` container, or the host
+against the published port 5175. No browser flags needed; `CHROME_PATH` is
+already set in the image:
+
+```bash
+docker compose exec dev lighthouse http://localhost:5173 \
+  --only-categories=accessibility --output=json --output-path=/tmp/lh.json
+docker compose exec dev node -e \
+  'const r=require("/tmp/lh.json");console.log("accessibility:",r.categories.accessibility.score)'
+```
+
+Three things to know:
+
+- **Call `playwright`/`lighthouse` directly, not via `npx`.** Both are installed
+  globally in the image. `npx` would resolve them from the npx cache instead,
+  which is empty at runtime, so every invocation would quietly re-download from
+  npm (and then still fail, because `npx` does not inherit the image's
+  `PLAYWRIGHT_BROWSERS_PATH` the way the baked CLI does).
+- **Never launch the Chrome-for-Testing binary yourself; use `chrome`.** The
+  full browser in this image aborts at startup in its crashpad handler
+  (`chrome_crashpad_handler: --database is required` → SIGTRAP), with or
+  without `--no-sandbox`. Only the headless shell runs, so `chrome` is a
+  wrapper that execs it. Lighthouse reads `CHROME_PATH`, which points at that
+  wrapper, so it needs no flags — but if you launch Chrome by hand, use
+  `/usr/local/bin/chrome`, not the file under `/opt/ms-playwright`.
+- **The wrapper injects `--no-sandbox`, and that is deliberate.** It is *not*
+  because the container runs as root (it does not — the runtime user is
+  `appuser`); the host has unprivileged user namespaces disabled by AppArmor,
+  so Chrome's namespace sandbox is unavailable and it dies with
+  `No usable sandbox!`. Every CI runner makes this same trade: browser
+  isolation is given up for a working toolchain. If you ever see
+  `No usable sandbox!`, you bypassed the wrapper.
+
+`/dev/shm` is raised to 2 GB on the `dev` service (`shm_size` in
+`docker-compose.yaml`). Docker's 64 MB default makes Chromium crash on any
+non-trivial page, and the failure looks like a browser bug rather than a
+memory one.
+
+The browser lives in `/opt/ms-playwright` (`PLAYWRIGHT_BROWSERS_PATH`), not
+`~/.cache`, because the build layer runs as root while the runtime runs as
+`appuser` — the default path would bake into `/root` and be invisible at
+runtime. It is also read by the `worker` service, which builds from the same
+Dockerfile; that is image size only, as the worker never launches a browser.
+
+For ad-hoc DOM measurement, drive Playwright from Node. Global packages are not
+on `NODE_PATH`, so require it by absolute path:
+
+```bash
+docker compose exec dev node -e '
+  const { chromium } = require("/opt/mise/data/installs/node/22.23.3/lib/node_modules/playwright");
+  (async () => {
+    const b = await chromium.launch();
+    const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+    await p.goto("http://localhost:5173", { waitUntil: "networkidle" });
+    console.log(await p.title());
+    await b.close();
+  })();'
+```
+
 ## Tools
 
 ```bash

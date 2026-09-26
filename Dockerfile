@@ -64,7 +64,9 @@ COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise
 # workspace or the container's gh config.
 ENV MISE_DATA_DIR=/opt/mise/data \
     MISE_CONFIG_DIR=/opt/mise/config \
-    MISE_CACHE_DIR=/opt/mise/cache
+    MISE_CACHE_DIR=/opt/mise/cache \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright \
+    CHROME_PATH=/usr/local/bin/chrome
 
 # Install the dev toolchain and wire it onto PATH. mise keeps the extracted
 # tool dirs under $MISE_DATA_DIR/installs (<tool>/<version>/...): node has a
@@ -90,6 +92,74 @@ RUN mise install node@${NODE_VERSION} uv@${UV_VERSION} gh@${GH_VERSION} \
     && printf '#!/bin/sh\nexec "%s/bin/node" "%s/lib/node_modules/corepack/dist/corepack.js" "$@"\n' "$NODE_DIR" "$NODE_DIR" > /usr/local/bin/corepack \
     && chmod +x /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
     && node --version && npm --version && uv --version && gh --version
+
+# Headless Chromium for the dev sandbox, so accessibility and E2E checks can
+# run against the live dev server instead of being deferred to a human on the
+# host. Playwright's own build of Chrome for Testing is used, so none of the
+# distro Chromium's packaging is involved.
+#
+# The npm packages are installed globally, NOT via `npx --yes`, because npx
+# caches into $HOME/.npm: this layer runs as root, the runtime runs as
+# `appuser` with HOME=/home/appuser, so an npx-fetched tool is invisible at
+# runtime and every invocation silently re-downloads it. A global install
+# lands in the mise node prefix (under /opt/mise, chowned to the host user
+# below) and the bins are symlinked into /usr/local/bin, because the runtime
+# PATH does not include the node prefix's bin directory.
+#
+# Both packages are version-pinned so the CLI and the browser build it expects
+# stay matched: bumping one without the other makes `playwright install` fetch
+# a different browser revision than the CLI looks for. `playwright@1.63.0`
+# resolves to chromium-1243.
+#
+# `--with-deps` runs its own `apt-get update`, so it still works after the apt
+# lists purge earlier in this build, and pulls every shared library the browser
+# dlopens (libnss3, libasound2, libgbm, libatk, libcups, ...).
+#
+# The browser goes to PLAYWRIGHT_BROWSERS_PATH rather than the default
+# ~/.cache, for the same root-vs-appuser reason as the npm cache above. A
+# fixed, chowned path is also what the `worker` service can read if it ever
+# needs it.
+#
+# Two launcher quirks are handled below, both found by running the tools for
+# real rather than trusting the defaults:
+#
+#   1. Only the HEADLESS SHELL binary launches. The full Chrome for Testing
+#      build in this image dies at startup in its crashpad handler
+#      ("chrome_crashpad_handler: --database is required" -> SIGTRAP), with or
+#      without --no-sandbox. So `chrome` is a wrapper around
+#      chrome-headless-shell, and CHROME_PATH points at the wrapper.
+#   2. `--no-sandbox` IS required, and not because we run as root: the runtime
+#      user is non-root (`appuser`), but the host kernel has unprivileged user
+#      namespaces disabled (Ubuntu AppArmor userns restrictions), so Chrome's
+#      namespace sandbox is unavailable and it aborts with "No usable
+#      sandbox!". The wrapper injects the flag so `lighthouse URL` and anything
+#      else honouring CHROME_PATH just work with no extra flags. This trades
+#      browser isolation for a working dev toolchain — acceptable for a dev
+#      sandbox, and the same trade every CI runner makes.
+#
+# The wrapper is a script rather than a bare symlink so the browser revision
+# (chromium_headless_shell-<rev>) is resolved at build time: a PLAYWRIGHT_VERSION
+# bump then re-resolves automatically instead of leaving a dangling path.
+#
+# Baked rather than fetched at startup: the download is ~150 MB and takes
+# minutes, which would otherwise be paid on every cold `make dev-up`. The
+# `worker` service builds from this same Dockerfile and so also carries the
+# browser — it never launches it, so the cost is image size only. Splitting
+# dev/worker Dockerfiles is the real fix and is deliberately out of scope here.
+ARG PLAYWRIGHT_VERSION=1.63.0
+ARG LIGHTHOUSE_VERSION=13.5.0
+RUN npm install -g "playwright@${PLAYWRIGHT_VERSION}" "lighthouse@${LIGHTHOUSE_VERSION}" \
+    && NODE_DIR="$(dirname "$(dirname "$(find ${MISE_DATA_DIR}/installs/node -type f -name node | head -1)")")" \
+    && export PATH="$NODE_DIR/bin:$PATH" \
+    && playwright install --with-deps chromium \
+    && ln -sf "$NODE_DIR/bin/playwright" /usr/local/bin/playwright \
+    && ln -sf "$NODE_DIR/bin/lighthouse" /usr/local/bin/lighthouse \
+    && SHELL_BIN="$(find ${PLAYWRIGHT_BROWSERS_PATH} -type f -name chrome-headless-shell | head -1)" \
+    && test -n "$SHELL_BIN" \
+    && printf '#!/bin/sh\nexec "%s" --no-sandbox "$@"\n' "$SHELL_BIN" > /usr/local/bin/chrome \
+    && chmod +x /usr/local/bin/chrome \
+    && playwright --version && lighthouse --version \
+    && chrome --version
 
 # Wire the docker CLI + compose plugin onto the image (see docker-cli stage).
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
@@ -121,7 +191,7 @@ RUN test "${HOST_UID}" != "0" \
     && cp /root/.zshrc /home/appuser/.zshrc \
     && cp /root/.bashrc /home/appuser/.bashrc \
     && cp /root/.zprofile /home/appuser/.zprofile \
-    && chown -R "${HOST_UID}:${HOST_GID}" /home/appuser /opt/backend-venv /opt/mise \
+    && chown -R "${HOST_UID}:${HOST_GID}" /home/appuser /opt/backend-venv /opt/mise /opt/ms-playwright \
     && git config --system --add safe.directory /sandbox/ai-document-platform
 
 ENV HOME=/home/appuser
