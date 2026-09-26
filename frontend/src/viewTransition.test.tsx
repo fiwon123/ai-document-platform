@@ -1,5 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
-import { useState, type ReactNode } from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { lazy, startTransition, Suspense, useState, type ReactNode } from "react";
 import {
   MemoryRouter,
   Route,
@@ -7,8 +9,8 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { flushSync } from "react-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ViewTransitionRoutes } from "./App";
 import {
   getViewTransitionStart,
   ignoreTransitionRejection,
@@ -143,26 +145,26 @@ describe("getViewTransitionStart", () => {
 /**
  * Integration: the real navigation path, so a regression in how the helper is
  * *called* is caught rather than only the helper in isolation. This mirrors
- * ViewTransitionRoutes' body.
+ * ViewTransitionRoutes' body — kept in step with it because the real component
+ * is exercised directly in the "keeps the page while a route loads" tests below.
  */
 function ViewTransitionRoutesLike({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [displayLocation, setDisplayLocation] = useState(location);
 
   if (location.key !== displayLocation.key) {
+    const next = location;
+    const commit = () => startTransition(() => setDisplayLocation(next));
     const start = getViewTransitionStart();
     if (start) {
-      const next = location;
       try {
-        const transition = start(() => {
-          flushSync(() => setDisplayLocation(next));
-        });
+        const transition = start(commit);
         ignoreTransitionRejection(transition);
       } catch {
-        setDisplayLocation(location);
+        commit();
       }
     } else {
-      setDisplayLocation(location);
+      commit();
     }
   }
 
@@ -219,5 +221,86 @@ describe("navigation under a skipped view transition", () => {
     expect(start).toHaveBeenCalledTimes(1);
     expect(screen.getByText("next page")).toBeTruthy();
     expect(unhandled).toEqual([]);
+  });
+});
+
+
+/* ---------------------------------------------------------------------------
+   #436: navigating to a route must not blank the page while its chunk loads.
+
+   Measured in headless Chromium: with a 700ms chunk delay the old code showed
+   the full-viewport "Loading page…" for 28 of 56 samples; with the commit in a
+   transition it shows 0, and the page being read stays up for the whole wait.
+
+   jsdom cannot reproduce that blank — React keeps the previous tree when a
+   render-phase update suspends there, so a behavioural test passes against the
+   broken code as readily as the fixed code. The first test below therefore pins
+   the *mechanism* (the commit is a transition, and nothing forces it
+   synchronously), and the second pins the behaviour that is observable here:
+   the navigation still completes and the fallback still clears.
+   --------------------------------------------------------------------------- */
+
+describe("the location commit is a transition (#436)", () => {
+  const source = readFileSync(resolve(__dirname, "App.tsx"), "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    "",
+  );
+
+  it("commits the new location inside startTransition", () => {
+    // Synchronous commit => the suspension surfaces at the boundary above the
+    // router and the whole tree becomes "Loading page…".
+    expect(source).toMatch(
+      /startTransition\s*\(\s*\(\s*\)\s*=>\s*setDisplayLocation\(/,
+    );
+  });
+
+  it("does not force the commit synchronous with flushSync", () => {
+    // flushSync renders the new location immediately, which is exactly the
+    // suspension that blanks the page. Its removal is the fix.
+    expect(source).not.toMatch(/flushSync/);
+  });
+
+  it("has one full-viewport Suspense boundary around the route tree", () => {
+    // The boundary above the router is why a synchronous commit blanks the
+    // whole page: there is nothing to contain the fallback to the content area,
+    // so the fix belongs in the commit rather than in the fallback markup.
+    // Matched on the element (a `fallback` prop must follow) so the <Suspense>
+    // mentioned in a comment is not counted as a second boundary.
+    const boundaries = source.match(/<Suspense\b[^>]*fallback=[^>]*>/g) ?? [];
+    expect(boundaries).toHaveLength(1);
+    expect(boundaries[0]).toMatch(/fallback=\{pageFallback\}/);
+    expect(source).toMatch(/const pageFallback = <div className="loading">/);
+  });
+});
+
+describe("navigation still completes after the transition change (#436)", () => {
+  it("reaches the new page and clears the fallback", async () => {
+    // The opposite failure to guard against: a commit that never lands would
+    // also keep "the old page" on screen, so the blank-free test above has to
+    // be paired with one that proves the swap really happens.
+    const Slow = lazy(async () => ({
+      default: () => <h1>next page</h1>,
+    }));
+    function Harness() {
+      return (
+        <MemoryRouter initialEntries={["/"]}>
+          <Suspense fallback={<div className="loading">Loading page…</div>}>
+            <ViewTransitionRoutes>
+              <Route path="/" element={<h1>home page</h1>} />
+              <Route path="/next" element={<Slow />} />
+            </ViewTransitionRoutes>
+          </Suspense>
+          <GoButton />
+        </MemoryRouter>
+      );
+    }
+
+    const { container } = render(<Harness />);
+    await act(async () => {
+      screen.getByRole("button", { name: "go" }).click();
+    });
+
+    expect(await screen.findByText("next page")).toBeTruthy();
+    expect(container.querySelector(".loading")).toBeNull();
   });
 });

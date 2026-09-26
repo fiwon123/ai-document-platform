@@ -1,12 +1,12 @@
 import {
   createContext,
   lazy,
+  startTransition,
   Suspense,
   useContext,
   useState,
   type ReactNode,
 } from "react";
-import { flushSync } from "react-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   BrowserRouter,
@@ -120,30 +120,42 @@ const pageFallback = <div className="loading">Loading page…</div>;
 /** The location the route tree currently renders for (see above). */
 const DisplayLocationContext = createContext<Location | null>(null);
 
-function ViewTransitionRoutes({ children }: { children: ReactNode }) {
+/* Exported for tests: the navigation behaviour below (keep the current page on
+   screen while a lazy route loads) is the fix for #436, and a mirrored copy of
+   this component can drift from it without failing anything — which is exactly
+   what happened when the mirror still carried the old flushSync body. */
+export function ViewTransitionRoutes({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [displayLocation, setDisplayLocation] = useState(location);
 
   // Adjust state during render (the documented derived-state pattern): any
   // key mismatch means the user navigated. With the View Transition API we
-  // render the new page inside the transition callback via flushSync so the
-  // browser captures both snapshots; without it, update immediately.
+  // render the new page inside the transition callback so the browser captures
+  // both snapshots; without it, update immediately.
+  //
+  // The update is a TRANSITION, and that is the whole point. Every route is a
+  // lazy chunk, so committing the new location synchronously suspends on the
+  // import; the <Suspense> boundary above this component then swapped the entire
+  // tree for a full-viewport "Loading page…" div — navbar and all — which reads
+  // as a dead click. Re-clicking did nothing, because the import was already in
+  // flight and the module system dedupes it. In a transition React keeps the
+  // current page on screen and swaps when the chunk is ready, so the fallback
+  // never appears and the cross-fade below still runs.
   if (location.key !== displayLocation.key) {
+    const next = location;
+    const commit = () => startTransition(() => setDisplayLocation(next));
     const start = getViewTransitionStart();
     if (start) {
-      const next = location;
       try {
-        const transition = start(() => {
-          flushSync(() => setDisplayLocation(next));
-        });
+        const transition = start(commit);
         // A navigation racing this one aborts the previous transition; the
         // render callback already ran, so swallow the rejection.
         ignoreTransitionRejection(transition);
       } catch {
-        setDisplayLocation(location);
+        commit();
       }
     } else {
-      setDisplayLocation(location);
+      commit();
     }
   }
 
