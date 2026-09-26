@@ -207,45 +207,89 @@ describe("LandingFooter social button box", () => {
   });
 });
 
-describe("LandingFooter subscribe row", () => {
-  it("follows the brand and navigation columns instead of leading the footer", () => {
-    // The signup is a follow-up to having read the brand name and the footer
-    // links, and leading the footer with it framed an optional form as the
-    // footer's headline — louder than the actual navigation. Order is the whole
-    // point of the change, so it is pinned here: a render assertion cannot tell
-    // this apart from the old arrangement on its own.
+describe("LandingFooter subscribe form", () => {
+  it("sits inside the brand column instead of spanning the footer", () => {
+    // As a sibling of the columns the signup got a hairline and a full-width row
+    // to itself, which framed an optional form as the footer's headline. It now
+    // fills the empty space under the social icons in the widest column (2fr),
+    // which the nav columns next to it had left blank.
+    renderFooter();
+    const footer = document.querySelector(".landing-footer");
+    const newsletter = document.querySelector(".newsletter");
+
+    expect(newsletter, "newsletter form").not.toBeNull();
+    expect(newsletter?.parentElement, "newsletter's parent").toBe(
+      document.querySelector(".footer-brand"),
+    );
+    // Still genuinely a child of the footer, just one level deeper — catches a
+    // future edit that detaches it without moving it anywhere useful.
+    expect(footer?.contains(newsletter as Node)).toBe(true);
+  });
+
+  it("comes after the social icons, so the links read before the invitation", () => {
+    renderFooter();
+    const brand = document.querySelector(".footer-brand");
+    const socials = brand?.querySelector(".footer-socials");
+    const newsletter = brand?.querySelector(".newsletter");
+
+    expect(socials, "social icons").not.toBeNull();
+    expect(newsletter, "newsletter form").not.toBeNull();
+    // compareDocumentPosition rather than an index into children: it asserts
+    // document order without depending on which sibling tags sit between them.
+    // The `&&` chain narrows both to non-null, which the bitwise `&` requires.
+    const follows = Boolean(
+      socials &&
+        newsletter &&
+        (socials.compareDocumentPosition(newsletter) &
+          Node.DOCUMENT_POSITION_FOLLOWING),
+    );
+    expect(follows, "newsletter follows the social icons").toBe(true);
+  });
+
+  it("leaves only the columns and the copyright row as the footer's children", () => {
     renderFooter();
     const order = Array.from(
       document.querySelectorAll(".landing-footer > *"),
     ).map((el) => el.className);
 
-    expect(order).toEqual(["footer-cols", "newsletter", "footer-bottom"]);
+    // The form is no longer a top-level block, so it must not appear here. An
+    // extra sibling would be a new band across the footer — the thing this
+    // change removed.
+    expect(order).toEqual(["footer-cols", "footer-bottom"]);
   });
 
-  it("separates itself from the columns above, not from the copyright below", () => {
-    // The block moved down, so the hairline has to move with it: a
-    // `border-bottom` would now divide the signup from the copyright row and
-    // leave the columns and the signup undivided.
-    const decls = declarationsFor(".newsletter");
-    expect(valuesOf(decls, "border-top")).toEqual(["1px solid var(--line)"]);
-    expect(valuesOf(decls, "border-bottom")).toEqual([]);
-  });
-
-  it("top-aligns the form row with the heading rather than centring it", () => {
-    // The copy block is 49.24px (strong 24.36 + 4px gap + span 20.88) and the
-    // form row is 42.88px, so `center` left the row straddling the block's
-    // midpoint. `flex-start` puts it level with "Stay in the loop".
-    expect(valuesOf(declarationsFor(".newsletter"), "align-items")).toEqual([
-      "flex-start",
+  it("stacks heading, promise, and form down the column", () => {
+    // Each part is a step, so the column reads top to bottom rather than the
+    // form sitting beside the copy as a wide two-column band did.
+    expect(valuesOf(declarationsFor(".newsletter"), "flex-direction")).toEqual([
+      "column",
     ]);
   });
 
-  it("never re-centres the row at any breakpoint", () => {
-    const alignments = valuesOf(allDeclarationsFor(".newsletter"), "align-items");
-    // Guard against the declaration disappearing altogether as much as against
-    // it coming back: an absent `align-items` would fall through to `normal`.
-    expect(alignments.length).toBeGreaterThan(0);
-    expect(alignments).not.toContain("center");
+  it("stays stacked at every breakpoint", () => {
+    const directions = valuesOf(allDeclarationsFor(".newsletter"), "flex-direction");
+    // Length matters as much as content: an absent declaration would fall
+    // through to `row` and undo the layout at the default breakpoint.
+    expect(directions.length).toBeGreaterThan(0);
+    expect(directions.every((d) => d === "column")).toBe(true);
+  });
+
+  it("has no separator edge now that it is a block inside a column", () => {
+    // The hairline only made sense while the form was a band of its own. Left
+    // in place it would draw a rule across the middle of the brand column.
+    const decls = declarationsFor(".newsletter");
+    expect(valuesOf(decls, "border-top")).toEqual([]);
+    expect(valuesOf(decls, "border-bottom")).toEqual([]);
+  });
+
+  it("grows the email field into the column instead of a fixed width", () => {
+    // `min-width: 0` is the part that matters: a flex item's automatic minimum
+    // size is its content width, so an input without it refuses to shrink below
+    // the default `size` and can push the button past the column edge.
+    const decls = declarationsFor(".newsletter-form input");
+    expect(valueOf(decls, "flex")).toBe("1");
+    expect(valueOf(decls, "min-width")).toBe("0");
+    expect(valuesOf(decls, "width")).toEqual([]);
   });
 
   it("keeps the input and button in one flex row so their heights can match", () => {
@@ -254,10 +298,28 @@ describe("LandingFooter subscribe row", () => {
     // intrinsically 42.88px, and the button (40.88px, `border: none`) stretches
     // to match under `.newsletter-form`'s default `align-items: stretch`. That
     // is load-bearing, not incidental: pull the button out of the row and the
-    // two controls are 2px apart with nothing left to equalise them.
+    // two controls are 2px apart with nothing left to equalise them. It is the
+    // reason the form row survives a change that stacked everything else.
     const form = document.querySelector(".newsletter-form");
     expect(form, "newsletter form row").not.toBeNull();
     expect(form?.querySelector("input"), "input inside the row").not.toBeNull();
     expect(form?.querySelector("button"), "button inside the row").not.toBeNull();
+  });
+
+  it("keeps the form's own row, never a breakpoint override", () => {
+    // The <=820px block used to force `flex-direction: column` on `.newsletter`
+    // and re-declare the form's width and the input's. All three are now the
+    // default, so the overrides were removed; if any comes back it means the
+    // base rule and the breakpoint disagree about the same property, which is
+    // how the two controls lost their shared line in the first place.
+    const directions = valuesOf(
+      allDeclarationsFor(".newsletter-form"),
+      "flex-direction",
+    );
+    expect(directions).not.toContain("column");
+
+    const formWidths = valuesOf(allDeclarationsFor(".newsletter-form"), "width");
+    expect(formWidths.every((w) => w === "100%")).toBe(true);
+    expect(formWidths.length, "a width is declared").toBeGreaterThan(0);
   });
 });

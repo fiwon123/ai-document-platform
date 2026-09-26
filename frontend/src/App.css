@@ -2880,29 +2880,25 @@ body {
   );
 }
 
-/* Position: sits after `.footer-cols`, so it is separated from the columns above
-   by a top border rather than from the copyright row below. `.footer-cols` gives
-   up its own bottom margin so the gap between the two blocks is stated once. */
+/* Position: a block inside `.footer-brand`, below `.footer-socials`, so there is
+   no separator edge to declare — it inherits the column's own spacing.
 
-/* Alignment: top-aligned, not centred. The two children are different heights —
-   the copy block is 49.24px (strong 24.36 + 4px gap + span 20.88) and the
-   form row is 42.88px — so `center` left the form straddling the block's
-   midpoint, floating between the heading and the sub-line and aligning with
-   neither. `flex-start` puts the input and Subscribe level with "Stay in the
-   loop".
-
-   The input and the button are already the same height without help: the input
-   is intrinsically 42.88px, and the button (40.88px, `border: none`) stretches
-   to match under `.newsletter-form`'s default `align-items: stretch`. */
+   Alignment: the input and the Subscribe button are the same height without
+   help. The input is intrinsically 42.88px (20.88 line box + 20px padding + 2x1px
+   border) and the button is 40.88px (`border: none`), but they share a line in
+   `.newsletter-form`, whose default `align-items: stretch` grows the button to
+   match. That is why the form stays a single flex row: stacking the two would
+   hand the 2px difference back as a visible misalignment. */
 .newsletter {
+  /* A block inside the brand column, not a band across the footer: no separator
+     edge, and the width is the column's rather than the page's. Stacked because
+     each part is a step — heading, promise, then the form. */
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  margin-top: 40px;
-  padding-top: 32px;
-  border-top: 1px solid var(--line);
+  gap: 12px;
+  margin-top: 8px;
+  width: 100%;
 }
 
 .newsletter-copy {
@@ -2919,10 +2915,17 @@ body {
 .newsletter-form {
   display: flex;
   gap: 10px;
+  width: 100%;
 }
 
 .newsletter-form input {
-  width: 240px;
+  /* Grows into whatever the column gives it rather than a fixed 240px, which
+     was sized for a full-width row and left a gap in a 2fr column.
+     `min-width: 0` is load-bearing: a flex item's automatic minimum size is its
+     content width, so without it the input refuses to shrink below the default
+     `size` and can push the button past the column edge. */
+  flex: 1;
+  min-width: 0;
   padding: 10px 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -2941,8 +2944,8 @@ body {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr 1fr;
   gap: 28px;
-  /* No bottom margin: the subscribe row that follows owns the gap above it, so
-     the space between the two blocks is declared in one place. */
+  /* The brand column carries the subscribe form, so the columns are as tall as
+     their tallest member and nothing follows that needs a gap from them. */
   margin-bottom: 0;
 }
 
@@ -3059,19 +3062,6 @@ body {
 
   .carousel-arrow-prev { left: 6px; }
   .carousel-arrow-next { right: 6px; }
-
-  .newsletter {
-    flex-direction: column;
-  }
-
-  .newsletter-form {
-    width: 100%;
-  }
-
-  .newsletter-form input {
-    flex: 1;
-    width: auto;
-  }
 
   .footer-cols {
     grid-template-columns: 1fr;
