@@ -123,6 +123,40 @@ export function LandingFooter() {
               comingSoon
             />
           </div>
+
+          {/* The subscribe form lives in the brand column, under the social
+              icons, rather than in a full-width band of its own.
+
+              As a sibling of the columns it read as a footer headline: an
+              optional signup given a hairline and a row to itself, louder than
+              the navigation it outranked. The brand column is the widest (2fr)
+              and had empty space beneath the icons while the adjacent nav
+              columns ran taller, so the form fills that space instead of
+              claiming a new one.
+
+              Order inside the column is deliberate — who this is, where else to
+              go, then the optional follow-up — and each part is its own block,
+              so the invitation never competes with the links above it. The form
+              row stays a single flex row: the input and button must share a
+              line so their heights match (see the alignment fix in #402). */}
+          <form className="newsletter" onSubmit={handleNewsletter}>
+            <div className="newsletter-copy">
+              <strong>Stay in the loop</strong>
+              <span>Product updates, once a month. No spam.</span>
+            </div>
+            <div className="newsletter-form">
+              <input
+                type="email"
+                name="email"
+                required
+                placeholder="you@company.com"
+                aria-label="Email address"
+              />
+              <button type="submit" className="btn btn-primary">
+                Subscribe
+              </button>
+            </div>
+          </form>
         </div>
         {FOOTER_COLUMNS.map((col) => (
           <nav key={col.label} className="footer-col" aria-label={col.label}>
@@ -140,31 +174,6 @@ export function LandingFooter() {
           </nav>
         ))}
       </div>
-
-      {/* The subscribe row follows the brand and the navigation columns rather
-          than preceding them. It is a follow-up to having read who this is and
-          where to go next, and leading the footer with it framed an optional
-          signup as the footer's headline — louder than the actual navigation.
-          The separator therefore sits on this block's top edge, dividing the
-          columns above from the invitation below. */}
-      <form className="newsletter" onSubmit={handleNewsletter}>
-        <div className="newsletter-copy">
-          <strong>Stay in the loop</strong>
-          <span>Product updates, once a month. No spam.</span>
-        </div>
-        <div className="newsletter-form">
-          <input
-            type="email"
-            name="email"
-            required
-            placeholder="you@company.com"
-            aria-label="Email address"
-          />
-          <button type="submit" className="btn btn-primary">
-            Subscribe
-          </button>
-        </div>
-      </form>
 
       <div className="footer-bottom">
         <span>© {new Date().getFullYear()} {SITE.name}</span>
