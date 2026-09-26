@@ -169,12 +169,14 @@ function RegisterFields({
       <div className="terms-row">
         <label className="terms-label">
           <input
+            id="register-terms"
             type="checkbox"
             name="terms"
             value="yes"
             checked={termsAccepted}
             onChange={(e) => onTermsChange(e.target.checked)}
             disabled={pending}
+            autoComplete="off"
           />
           I agree to the Terms of Service and Privacy Policy.
         </label>

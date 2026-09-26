@@ -167,6 +167,8 @@ export function QAPage() {
         </label>
         <select
           id="qa-model"
+          name="qa-model"
+          autoComplete="off"
           className="qa-model-select"
           value={model}
           onChange={(e) => handleModelChange(e.target.value)}
@@ -337,11 +339,14 @@ export function QAPage() {
 
         <form onSubmit={handleSubmit} className="chat-input-form">
           <input
+            id="qa-question"
+            name="qa-question"
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question about your documents..."
             aria-label="Ask a question about your documents"
+            autoComplete="off"
             className="chat-input"
             disabled={isLoading}
           />

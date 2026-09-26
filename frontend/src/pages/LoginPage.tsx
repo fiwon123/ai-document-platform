@@ -63,11 +63,13 @@ function LoginFields({
       <div className="auth-row">
         <label className="remember-row">
           <input
+            id="login-remember"
             type="checkbox"
             name="remember"
             value="yes"
             checked={remember}
             onChange={(e) => onRememberChange(e.target.checked)}
+            autoComplete="off"
           />
           Remember me
         </label>

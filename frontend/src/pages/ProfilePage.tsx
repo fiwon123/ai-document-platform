@@ -57,6 +57,7 @@ function AccountFields({
           maxLength={20}
           pattern="^[a-zA-Z0-9_]+$"
           disabled={pending}
+          autoComplete="username"
         />
       </div>
 
@@ -95,6 +96,7 @@ function PasswordFields({
           minLength={8}
           placeholder="At least 8 characters"
           disabled={pending}
+          autoComplete="new-password"
         />
       </div>
 
@@ -109,6 +111,7 @@ function PasswordFields({
           minLength={8}
           placeholder="Re-enter the new password"
           disabled={pending}
+          autoComplete="new-password"
         />
       </div>
 

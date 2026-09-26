@@ -657,11 +657,14 @@ export function DocumentsPage() {
         >
 
           <input
+            id="document-upload"
+            name="document-upload"
             type="file"
             multiple
             ref={fileInputRef}
             onChange={handleFileChange}
             disabled={isUploading}
+            autoComplete="off"
           />
           <span className="upload-symbol" aria-hidden="true">
             <svg
@@ -694,11 +697,14 @@ export function DocumentsPage() {
           <div className="documents-search">
             <SearchIcon />
             <input
+              id="document-filename-filter"
+              name="document-filename-filter"
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by filename"
               aria-label="Search documents by filename"
+              autoComplete="off"
             />
             {searchQuery && (
               <button

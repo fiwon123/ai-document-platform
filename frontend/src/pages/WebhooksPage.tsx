@@ -288,10 +288,13 @@ export function WebhooksPage() {
           <label className="webhook-field">
             <span>Receiver URL</span>
             <input
+              id="webhook-url"
+              name="webhook-url"
               type="url"
               value={urlDraft}
               onChange={(e) => setUrlDraft(e.target.value)}
               placeholder="https://example.com/hook"
+              autoComplete="url"
             />
           </label>
 
@@ -301,9 +304,12 @@ export function WebhooksPage() {
               {EVENT_OPTIONS.map((option) => (
                 <label key={option.value} className="webhook-event-option">
                   <input
+                    id={`webhook-event-${option.value}`}
+                    name="webhook-events"
                     type="checkbox"
                     checked={selectedEvents.includes(option.value)}
                     onChange={() => toggleEvent(option.value)}
+                    autoComplete="off"
                   />
                   {option.label}
                 </label>

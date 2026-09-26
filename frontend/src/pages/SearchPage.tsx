@@ -274,11 +274,14 @@ export function SearchPage() {
       <form onSubmit={handleSearch} className="search-form">
         <div className="search-input-group">
           <input
+            id="search-query"
+            name="search-query"
             type="text"
             value={query}
             onChange={(e) => startTransition(() => setQuery(e.target.value))}
             placeholder="Search your documents..."
             aria-label="Search your documents"
+            autoComplete="off"
             className="search-input"
           />
           <button
