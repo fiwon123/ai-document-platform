@@ -93,25 +93,6 @@ export function LandingFooter() {
 
   return (
     <footer className="landing-footer">
-      <form className="newsletter" onSubmit={handleNewsletter}>
-        <div className="newsletter-copy">
-          <strong>Stay in the loop</strong>
-          <span>Product updates, once a month. No spam.</span>
-        </div>
-        <div className="newsletter-form">
-          <input
-            type="email"
-            name="email"
-            required
-            placeholder="you@company.com"
-            aria-label="Email address"
-          />
-          <button type="submit" className="btn btn-primary">
-            Subscribe
-          </button>
-        </div>
-      </form>
-
       <div className="footer-cols">
         <div className="footer-col footer-brand">
           <span className="footer-brand-name">{SITE.name}</span>
@@ -159,6 +140,31 @@ export function LandingFooter() {
           </nav>
         ))}
       </div>
+
+      {/* The subscribe row follows the brand and the navigation columns rather
+          than preceding them. It is a follow-up to having read who this is and
+          where to go next, and leading the footer with it framed an optional
+          signup as the footer's headline — louder than the actual navigation.
+          The separator therefore sits on this block's top edge, dividing the
+          columns above from the invitation below. */}
+      <form className="newsletter" onSubmit={handleNewsletter}>
+        <div className="newsletter-copy">
+          <strong>Stay in the loop</strong>
+          <span>Product updates, once a month. No spam.</span>
+        </div>
+        <div className="newsletter-form">
+          <input
+            type="email"
+            name="email"
+            required
+            placeholder="you@company.com"
+            aria-label="Email address"
+          />
+          <button type="submit" className="btn btn-primary">
+            Subscribe
+          </button>
+        </div>
+      </form>
 
       <div className="footer-bottom">
         <span>© {new Date().getFullYear()} {SITE.name}</span>

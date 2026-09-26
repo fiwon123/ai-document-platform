@@ -2838,11 +2838,16 @@ body {
   );
 }
 
-/* Top-aligned, not centred. The two children are different heights — the copy
-   block is 49.24px (strong 24.36 + 4px gap + span 20.88) and the form row is
-   42.88px — so `center` left the form straddling the block's midpoint, floating
-   between the heading and the sub-line and aligning with neither. `flex-start`
-   puts the input and Subscribe level with "Stay in the loop".
+/* Position: sits after `.footer-cols`, so it is separated from the columns above
+   by a top border rather than from the copyright row below. `.footer-cols` gives
+   up its own bottom margin so the gap between the two blocks is stated once. */
+
+/* Alignment: top-aligned, not centred. The two children are different heights —
+   the copy block is 49.24px (strong 24.36 + 4px gap + span 20.88) and the
+   form row is 42.88px — so `center` left the form straddling the block's
+   midpoint, floating between the heading and the sub-line and aligning with
+   neither. `flex-start` puts the input and Subscribe level with "Stay in the
+   loop".
 
    The input and the button are already the same height without help: the input
    is intrinsically 42.88px, and the button (40.88px, `border: none`) stretches
@@ -2853,9 +2858,9 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  margin-bottom: 44px;
-  padding-bottom: 32px;
-  border-bottom: 1px solid var(--line);
+  margin-top: 40px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
 }
 
 .newsletter-copy {
@@ -2894,7 +2899,9 @@ body {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr 1fr;
   gap: 28px;
-  margin-bottom: 36px;
+  /* No bottom margin: the subscribe row that follows owns the gap above it, so
+     the space between the two blocks is declared in one place. */
+  margin-bottom: 0;
 }
 
 .footer-col {
