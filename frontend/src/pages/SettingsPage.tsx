@@ -158,11 +158,13 @@ export function SettingsPage() {
                   {models.free.map((model) => (
                     <label key={model} className="settings-model-option">
                       <input
+                        id={`settings-model-free-${model}`}
                         type="radio"
                         name="qa-model"
                         value={model}
                         checked={selectedModel === model}
                         onChange={() => handleModelChange(model)}
+                        autoComplete="off"
                       />
                       <span>{model}</span>
                     </label>
@@ -173,11 +175,13 @@ export function SettingsPage() {
                   {models.paid.map((model) => (
                     <label key={model} className="settings-model-option">
                       <input
+                        id={`settings-model-paid-${model}`}
                         type="radio"
                         name="qa-model"
                         value={model}
                         checked={selectedModel === model}
                         onChange={() => handleModelChange(model)}
+                        autoComplete="off"
                       />
                       <span>{model}</span>
                     </label>
@@ -204,6 +208,7 @@ export function SettingsPage() {
             <label htmlFor="settings-api-key">Custom API key</label>
             <input
               id="settings-api-key"
+              name="settings-api-key"
               type="password"
               value={apiKeyDraft}
               onChange={(e) => setApiKeyDraft(e.target.value)}

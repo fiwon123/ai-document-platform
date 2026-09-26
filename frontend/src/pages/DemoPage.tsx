@@ -235,11 +235,14 @@ export function DemoPage() {
           <form onSubmit={handleSearch} className="search-form">
             <div className="search-input-group">
               <input
+                id="demo-search"
+                name="demo-search"
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search sample documents..."
                 aria-label="Search sample documents"
+                autoComplete="off"
                 className="search-input"
                 disabled={searchCapped}
               />
@@ -326,11 +329,14 @@ export function DemoPage() {
 
             <form onSubmit={handleAsk} className="chat-input-form">
               <input
+                id="demo-question"
+                name="demo-question"
                 type="text"
                 value={qaInput}
                 onChange={(e) => setQaInput(e.target.value)}
                 placeholder="Ask a question about the sample documents..."
                 aria-label="Ask a question about the sample documents"
+                autoComplete="off"
                 className="chat-input"
                 disabled={qaCapped}
               />

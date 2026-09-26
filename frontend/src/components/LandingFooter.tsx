@@ -146,11 +146,13 @@ export function LandingFooter() {
             </div>
             <div className="newsletter-form">
               <input
+                id="newsletter-email"
                 type="email"
                 name="email"
                 required
                 placeholder="you@company.com"
                 aria-label="Email address"
+                autoComplete="email"
               />
               <button type="submit" className="btn btn-primary">
                 Subscribe

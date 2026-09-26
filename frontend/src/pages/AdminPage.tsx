@@ -44,12 +44,15 @@ const AdminUserRow = memo(function AdminUserRow({
       </td>
       <td>
         <select
+          id={`admin-role-${user.id}`}
+          name={`admin-role-${user.id}`}
           value={user.role === "admin" ? "admin" : "customer"}
           onChange={(e) =>
             onRoleChange(user.id, e.target.value as Role)
           }
           disabled={isBusy || isCurrentUser}
           aria-label={`Role for ${user.username}`}
+          autoComplete="off"
         >
           <option value="customer">customer</option>
           <option value="admin">admin</option>
