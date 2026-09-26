@@ -208,6 +208,29 @@ describe("LandingFooter social button box", () => {
 });
 
 describe("LandingFooter subscribe row", () => {
+  it("follows the brand and navigation columns instead of leading the footer", () => {
+    // The signup is a follow-up to having read the brand name and the footer
+    // links, and leading the footer with it framed an optional form as the
+    // footer's headline — louder than the actual navigation. Order is the whole
+    // point of the change, so it is pinned here: a render assertion cannot tell
+    // this apart from the old arrangement on its own.
+    renderFooter();
+    const order = Array.from(
+      document.querySelectorAll(".landing-footer > *"),
+    ).map((el) => el.className);
+
+    expect(order).toEqual(["footer-cols", "newsletter", "footer-bottom"]);
+  });
+
+  it("separates itself from the columns above, not from the copyright below", () => {
+    // The block moved down, so the hairline has to move with it: a
+    // `border-bottom` would now divide the signup from the copyright row and
+    // leave the columns and the signup undivided.
+    const decls = declarationsFor(".newsletter");
+    expect(valuesOf(decls, "border-top")).toEqual(["1px solid var(--line)"]);
+    expect(valuesOf(decls, "border-bottom")).toEqual([]);
+  });
+
   it("top-aligns the form row with the heading rather than centring it", () => {
     // The copy block is 49.24px (strong 24.36 + 4px gap + span 20.88) and the
     // form row is 42.88px, so `center` left the row straddling the block's
