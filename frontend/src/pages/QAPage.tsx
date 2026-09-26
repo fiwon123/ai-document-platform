@@ -47,6 +47,10 @@ export function QAPage() {
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Answer quality is bounded by retrieval quality, so a keyword-only backend
+  // degrades this page too -- and an answer that quietly missed the relevant
+  // passage looks exactly like a model that was simply wrong.
+  const [isKeywordOnly, setIsKeywordOnly] = useState(false);
   const [model, setModel] = useState(
     () => localStorage.getItem(MODEL_KEY) ?? "",
   );
@@ -113,6 +117,7 @@ export function QAPage() {
 
     try {
       const response: QAResponse = await askMutation.mutateAsync(trimmed);
+      if (response.mode === "keyword") setIsKeywordOnly(true);
       const assistantMessage: Message = {
         id: allocateMessageId(),
         type: "assistant",
@@ -336,6 +341,15 @@ export function QAPage() {
         </div>
 
         {error && <p className="error-message" role="alert">{error}</p>}
+
+        {isKeywordOnly && (
+          <p className="search-mode-notice" role="status">
+            <strong>Keyword-only retrieval.</strong> No embedding provider is
+            configured, so the passages given to the model were found by literal
+            matching. Relevant context can be missing from the answer. Set{" "}
+            <code>OPENAI_API_KEY</code> to enable semantic search.
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="chat-input-form">
           <input

@@ -183,6 +183,11 @@ export function SearchPage() {
   const results = pages.flatMap((page) => page.results);
   const totalCount = pages[pages.length - 1]?.total_count ?? 0;
   const hasMore = pages[pages.length - 1]?.has_more ?? false;
+  // A keyword-only backend still returns results, just much worse ones. Saying
+  // so is the difference between "my query was bad" and "nothing is indexed",
+  // which a user cannot otherwise tell apart. Any page reporting keyword mode
+  // is enough -- it is a property of the deployment, not of the page.
+  const isKeywordOnly = pages.some((page) => page.mode === "keyword");
   const hasSearched = searchParams.q.trim().length > 0;
   const isLoading = searchQuery.isPending && hasSearched;
   const isLoadingMore = searchQuery.isFetchingNextPage;
@@ -324,10 +329,23 @@ export function SearchPage() {
 
       {isLoading && <SearchSkeletons />}
 
+      {isKeywordOnly && (
+        <p className="search-mode-notice" role="status">
+          <strong>Keyword-only search.</strong> No embedding provider is
+          configured, so matches are literal rather than semantic and relevant
+          passages can be missed. Set <code>OPENAI_API_KEY</code> to enable
+          semantic search.
+        </p>
+      )}
+
       {!isLoading && hasSearched && results.length === 0 && !errorMessage && (
         <EmptyState
           title="No results found"
-          description={`Nothing matched "${query}". Try different keywords.`}
+          description={
+            isKeywordOnly
+              ? `Nothing matched "${query}". This search is keyword-only, so wording that differs from the document text will not match — semantic search would find more.`
+              : `Nothing matched "${query}". Try different keywords.`
+          }
           action={{ label: "Clear search", onClick: () => setQuery("") }}
         />
       )}

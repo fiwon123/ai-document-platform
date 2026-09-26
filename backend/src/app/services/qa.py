@@ -2,6 +2,7 @@ import hashlib
 import logging
 import os
 import re
+from collections import Counter
 from uuid import UUID
 
 from openai import OpenAI
@@ -41,18 +42,40 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
 # GROQ_API_KEY from console.groq.com is needed, no OpenAI subscription.
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
+# A local, keyless provider for anyone running an OpenAI-compatible server
+# (Ollama is the common one). This is the only path that works with no API
+# key at all, so it is the fallback when nothing else is configured.
+#
+# Opt-in rather than probed: discovering it would mean a network call, and a
+# probe that fails (or that succeeds and is then cached stale) would either add
+# latency to every request or route answers to a dead endpoint. Requiring
+# LOCAL_LLM_ENABLED means "I am running a local model server" is something the
+# operator states, and the hint below says exactly what to set.
+LOCAL_LLM_BASE_URL = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434/v1")
+LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "llama3.2:1b")
+LOCAL_LLM_ENABLED = os.getenv("LOCAL_LLM_ENABLED", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+
+# The OpenAI SDK refuses to build a client without a key, even when the
+# endpoint ignores it. Local servers do, so a placeholder is passed through and
+# never leaves the machine.
+_LOCAL_PLACEHOLDER_KEY = "local-no-key"
+
 # Central registry of QA models. Each entry:
 #   id       — the model id sent to the provider API
 #   label    — human-friendly name (shown in the Settings picker)
-#   provider — "openai" | "groq", selects the API key + base_url
-#   tier     — "free" | "paid", drives the /qa/models grouping
+#   provider — "openai" | "groq" | "local", selects the key + base_url
+#   tier     — "free" | "paid": whether using it can cost the operator money
+#
+# "free" means *usable without paying*, not merely cheap. `gpt-4o-mini` used to
+# be filed as free because it is inexpensive, but it still bills an OpenAI
+# account per token, so a user reading a "free" group containing it would
+# reasonably expect a working free path and get a bill instead. It is paid.
 MODEL_REGISTRY: list[dict] = [
-    {
-        "id": "gpt-4o-mini",
-        "label": "GPT-4o mini (fast, cheap)",
-        "provider": "openai",
-        "tier": "free",
-    },
     {
         "id": "llama-3.3-70b-versatile",
         "label": "Llama 3.3 70B (Groq, free)",
@@ -64,6 +87,18 @@ MODEL_REGISTRY: list[dict] = [
         "label": "Llama 3.1 8B (Groq, free)",
         "provider": "groq",
         "tier": "free",
+    },
+    {
+        "id": LOCAL_LLM_MODEL,
+        "label": "Local model (no API key)",
+        "provider": "local",
+        "tier": "free",
+    },
+    {
+        "id": "gpt-4o-mini",
+        "label": "GPT-4o mini (cheapest paid option)",
+        "provider": "openai",
+        "tier": "paid",
     },
     {
         "id": "gpt-4o",
@@ -85,8 +120,30 @@ MODEL_REGISTRY: list[dict] = [
     },
 ]
 
+def _dedupe_local_entries(registry: list[dict]) -> list[dict]:
+    """Drop a local entry whose model id collides with a hosted one.
+
+    ``LOCAL_LLM_MODEL`` is operator-supplied, so it can be pointed at an id that
+    already exists. A duplicate would appear twice in every model list and make
+    the id lookup resolve to whichever entry happened to come last. The hosted
+    entry wins: that is the model the operator most likely meant.
+
+    A function rather than an inline comprehension so it can be tested directly
+    -- exercising it through a module reload would reset the module-level
+    clients that the rest of the suite monkeypatches.
+    """
+    counts = Counter(entry["id"] for entry in registry)
+    return [
+        entry
+        for entry in registry
+        if not (entry["provider"] == "local" and counts[entry["id"]] > 1)
+    ]
+
+
 # Snapshot views used by the routes and tests (kept as module constants so
 # existing imports keep working).
+MODEL_REGISTRY = _dedupe_local_entries(MODEL_REGISTRY)
+
 AVAILABLE_MODELS = [entry["id"] for entry in MODEL_REGISTRY]
 FREE_MODELS = [entry["id"] for entry in MODEL_REGISTRY if entry["tier"] == "free"]
 
@@ -96,6 +153,13 @@ _openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 _groq_client = (
     OpenAI(api_key=GROQ_API_KEY, base_url=GROQ_BASE_URL) if GROQ_API_KEY else None
 )
+# Built whenever the local provider is enabled, key or no key: the endpoint
+# ignores the placeholder, so requiring a key here would defeat the point.
+_local_client = (
+    OpenAI(api_key=_LOCAL_PLACEHOLDER_KEY, base_url=LOCAL_LLM_BASE_URL)
+    if LOCAL_LLM_ENABLED
+    else None
+)
 
 # Friendly hint when a provider's API key is missing.
 _PROVIDER_KEY_HINT = {
@@ -103,6 +167,10 @@ _PROVIDER_KEY_HINT = {
     "groq": (
         "Set the GROQ_API_KEY environment variable (free key from "
         "https://console.groq.com) to use free Groq models."
+    ),
+    "local": (
+        "Set LOCAL_LLM_ENABLED=true (and LOCAL_LLM_MODEL) to use a local "
+        "OpenAI-compatible model server such as Ollama, which needs no API key."
     ),
 }
 
@@ -115,6 +183,8 @@ def _provider_client(provider: str) -> OpenAI | None:
     """
     if provider == "groq":
         return _groq_client
+    if provider == "local":
+        return _local_client
     return _openai_client
 
 
@@ -122,8 +192,66 @@ def _provider_base_url(provider: str) -> str | None:
     """Base URL used for a provider's OpenAI-compatible API."""
     if provider == "groq":
         return GROQ_BASE_URL
+    if provider == "local":
+        return LOCAL_LLM_BASE_URL
     # OpenAI — use the SDK default endpoint.
     return None
+
+
+def _is_provider_available(provider: str) -> bool:
+    """Whether a provider is configured well enough to answer a question.
+
+    Purely local: it inspects configuration and never makes a network call, so
+    it is safe to call while building a model list for the UI.
+    """
+    if provider == "local":
+        return _local_client is not None
+    return _provider_client(provider) is not None
+
+
+def is_model_available(model_id: str) -> bool:
+    """Whether a specific model can be used right now."""
+    entry = _MODEL_BY_ID.get(model_id)
+    return bool(entry) and _is_provider_available(entry["provider"])
+
+
+def resolve_default_model() -> str:
+    """Pick the model to use when a request does not name one.
+
+    Free-first, and never silently paid. The order is deliberate:
+
+    1. ``QA_MODEL`` — the operator naming a model is an explicit choice and is
+       honoured even when it is a paid one.
+    2. A free model that is actually configured. Groq is preferred over the
+       local server because it is a hosted model that answers better; the local
+       one is a CPU-only last resort, not something to default every user onto.
+    3. ``OPENAI_MODEL`` — a paid model, reached only when nothing free exists.
+       This is the step that used to be the *default*, which meant a user who
+       had set a free Groq key was still routed to a paid model unless every
+       single request overrode it.
+    """
+    configured = os.getenv("QA_MODEL", "").strip()
+    if configured and configured in _MODEL_BY_ID:
+        return configured
+
+    for entry in MODEL_REGISTRY:
+        if entry["tier"] == "free" and _is_provider_available(entry["provider"]):
+            return entry["id"]
+
+    # Nothing free is configured, so a paid model is the only option left. The
+    # cheapest one is a better default than OPENAI_MODEL: the old default was
+    # `gpt-4`, which is several times the price of `gpt-4o-mini` for a default
+    # the user never chose. An explicitly configured OPENAI_MODEL still wins --
+    # read live from the environment rather than from the import-time constant,
+    # so the value that was checked is the value that is returned.
+    explicit_openai_model = os.getenv("OPENAI_MODEL", "").strip()
+    if explicit_openai_model:
+        return explicit_openai_model
+    for entry in MODEL_REGISTRY:
+        if entry["tier"] == "paid" and _is_provider_available(entry["provider"]):
+            return entry["id"]
+
+    return OPENAI_MODEL
 
 
 def _client_for_model(model_id: str) -> tuple[OpenAI | None, str]:
@@ -226,7 +354,7 @@ class QAService:
         model: str | None = None,
         api_key: str | None = None,
     ) -> QAResponse:
-        effective_model = model or OPENAI_MODEL
+        effective_model = model or resolve_default_model()
 
         # BYOK requests are never cached (key isolation + the answer may
         # differ from the server-keyed one); everything else can be served
@@ -269,6 +397,11 @@ class QAService:
             answer=answer,
             sources=search_response.results,
             model=effective_model,
+            # Retrieval quality bounds answer quality: in keyword-only mode the
+            # model is reasoning over passages literal matching happened to
+            # find, so the answer is degraded for the same reason the results
+            # are. Reported here rather than left for the user to infer.
+            mode=search_response.mode,
         )
 
         if cache_version is not None and not _is_uncacheable_answer(answer):
@@ -285,10 +418,28 @@ class QAService:
 
     @staticmethod
     def list_models() -> dict:
-        """Available QA models split into free and paid tiers."""
+        """Available QA models, split by tier and annotated with availability.
+
+        The split alone is not enough for a UI: every model in the registry
+        exists whether or not it is configured, so the picker would happily
+        offer a model that can only answer "AI service is not configured".
+        Each entry therefore carries whether it can be used right now, and
+        ``default`` is the model a request without one would actually use.
+        """
         return {
             "free": FREE_MODELS,
             "paid": [m for m in AVAILABLE_MODELS if m not in FREE_MODELS],
+            "default": resolve_default_model(),
+            "models": [
+                {
+                    "id": entry["id"],
+                    "label": entry["label"],
+                    "provider": entry["provider"],
+                    "tier": entry["tier"],
+                    "available": _is_provider_available(entry["provider"]),
+                }
+                for entry in MODEL_REGISTRY
+            ],
         }
 
     def _build_context(self, results: list[SearchResult]) -> str:
@@ -311,7 +462,7 @@ class QAService:
         model: str | None = None,
         api_key: str | None = None,
     ) -> str:
-        effective_model = model or OPENAI_MODEL
+        effective_model = model or resolve_default_model()
         _client, provider = _client_for_model(effective_model)
 
         # A user-supplied key wins over the server-configured key for this

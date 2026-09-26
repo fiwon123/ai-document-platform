@@ -31,7 +31,7 @@ const STACK = [
   { label: "Database", value: "PostgreSQL · pgvector" },
   { label: "Cache & queue", value: "Redis · arq workers" },
   { label: "Storage", value: "S3-compatible object storage" },
-  { label: "Models", value: "OpenAI or Groq · bring your own key" },
+  { label: "Models", value: "Groq, OpenAI, or a local server · bring your own key" },
 ];
 
 export function AboutPage() {

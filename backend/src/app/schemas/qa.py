@@ -2,7 +2,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.search import SearchResult
+from app.schemas.search import SearchMode, SearchResult
 
 
 class QARequest(BaseModel):
@@ -13,7 +13,11 @@ class QARequest(BaseModel):
     )
     model: str | None = Field(
         default=None,
-        description="Model override; defaults to OPENAI_MODEL",
+        description=(
+            "Model override. When omitted, a free configured model is "
+            "used (see /qa/models for what is available), and a paid "
+            "OpenAI model only if nothing free is configured."
+        ),
     )
     api_key: str | None = Field(
         default=None,
@@ -34,4 +38,13 @@ class QAResponse(BaseModel):
     model: str | None = Field(
         default=None,
         description="Model that produced the answer",
+    )
+    mode: SearchMode = Field(
+        default=SearchMode.semantic,
+        description=(
+            "Retrieval mode used to build the context. `keyword` means no "
+            "embedding provider is configured, so the passages handed to the "
+            "model were found by literal matching and relevant ones may be "
+            "missing from the answer."
+        ),
     )

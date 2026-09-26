@@ -174,6 +174,32 @@ describe("legal pages", () => {
     expect(screen.getAllByText(/AskDocs/).length).toBeGreaterThan(0);
   });
 
+  it("does not name Groq as an embedding processor", async () => {
+    // Groq has no embeddings API: `services/embedding.py` builds a single
+    // OpenAI client and raises without OPENAI_API_KEY. A sub-processor list is a
+    // disclosure of who receives personal data, so "OpenAI, Groq used for
+    // embeddings" was a false statement, not a simplification.
+    const view = await renderAt("/privacy");
+    const text = view.container.textContent ?? "";
+
+    const embeddingsSentence = text
+      .split(/[.!?]\s+/)
+      .find((sentence) => /embedding/i.test(sentence) && /openai|groq/i.test(sentence));
+    expect(embeddingsSentence).toBeDefined();
+    // The sentence that covers embeddings must attribute them to OpenAI alone.
+    expect(embeddingsSentence).toMatch(/embedding[^.]*openai only/i);
+    expect(embeddingsSentence).not.toMatch(/groq[^.]*embedding/i);
+  });
+
+  it("separates which provider does what instead of implying parity", async () => {
+    // OpenAI and Groq are interchangeable for question answering only. The About
+    // stack line listed them as one alternative, which reads as "either works
+    // for everything the product does".
+    const view = await renderAt("/about");
+    const text = view.container.textContent ?? "";
+    expect(text).toMatch(/Groq, OpenAI, or a local server/i);
+  });
+
   it("states the limits rather than overclaiming assurance", async () => {
     await renderAt("/security");
     // No SOC 2 report is held; the page has to say so instead of implying one.

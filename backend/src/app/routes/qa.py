@@ -31,10 +31,13 @@ def ask_question(
     """Ask a question about your documents and receive an LLM answer.
 
     Searches the user's document chunks for the most relevant context,
-    passes it to the selected provider (OpenAI or Groq — or a
-    bring-your-own ``api_key``) and returns the generated answer, including
-    the cached/stored response when one exists. Optionally restrict the
-    search to ``document_ids``.
+    passes it to the selected provider (OpenAI, Groq, or a local
+    OpenAI-compatible server — or a bring-your-own ``api_key``) and returns
+    the generated answer, including the cached/stored response when one
+    exists. Optionally restrict the search to ``document_ids``.
+
+    With no ``model``, resolution is free-first: a configured free model,
+    falling back to a paid one only when nothing free is available.
     """
     if request.model is not None and request.model not in AVAILABLE_MODELS:
         raise HTTPException(
@@ -52,5 +55,5 @@ def ask_question(
 
 @router.get("/models")
 def list_models() -> dict:
-    """List models available for question answering, split by tier."""
+    """List QA models by tier, with availability and the resolved default."""
     return QAService.list_models()

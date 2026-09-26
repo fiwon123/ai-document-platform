@@ -326,8 +326,41 @@ class TestSearchRoute:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body == {"query": "q", "results": [], "total_count": 0, "has_more": False}
+        # `mode` is reported so a keyword-only deployment is visible rather
+        # than indistinguishable from a fully indexed one.
+        assert body == {
+            "query": "q",
+            "results": [],
+            "total_count": 0,
+            "has_more": False,
+            "mode": "semantic",
+        }
         fake_service.search.assert_called_once()
+
+    def test_search_endpoint_reports_keyword_mode(self, client, auth_headers):
+        """A response produced by the keyword fallback must say so."""
+        from app.main import app
+        from app.routes.search import get_search_service
+        from app.schemas.search import SearchMode
+
+        fake_service = MagicMock()
+        fake_service.search.return_value = SearchResponse(
+            query="q",
+            results=[],
+            total_count=0,
+            has_more=False,
+            mode=SearchMode.keyword,
+        )
+        app.dependency_overrides[get_search_service] = lambda: fake_service
+        try:
+            resp = client.post(
+                "/v1/search/", json={"query": "hello"}, headers=auth_headers
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        assert resp.json()["mode"] == "keyword"
 
 
 class TestSearchExport:
@@ -494,3 +527,38 @@ class TestSearchExport:
             headers=auth_headers,
         )
         assert resp.status_code == 422
+
+class TestSearchModeReporting:
+    """The mode must describe what actually happened, not what was hoped for."""
+
+    def test_semantic_when_the_query_was_embedded(self):
+        from app.schemas.search import SearchMode
+        from app.services.search import SearchService
+
+        service = SearchService(repository=MagicMock())
+        service.embedding_service = MagicMock()
+        service.embedding_service.generate_embedding.return_value = [0.1] * 1536
+        service.repository.search.return_value = ([], 0)
+
+        response = service.search(user_id=uuid4(), query="q")
+
+        assert response.mode is SearchMode.semantic
+
+    def test_keyword_when_embedding_generation_fails(self):
+        """The whole point: a failed embedding must not be reported as semantic."""
+        from app.schemas.search import SearchMode
+        from app.services.search import SearchService
+
+        service = SearchService(repository=MagicMock())
+        service.embedding_service = MagicMock()
+        service.embedding_service.generate_embedding.side_effect = RuntimeError(
+            "OpenAI client not configured. Set OPENAI_API_KEY."
+        )
+        service.repository.search.return_value = ([], 0)
+
+        response = service.search(user_id=uuid4(), query="q")
+
+        assert response.mode is SearchMode.keyword
+        # And the repository really was asked for a text search, not a vector
+        # one -- the reported mode and the executed query cannot disagree.
+        assert service.repository.search.call_args.kwargs["query_embedding"] is None
