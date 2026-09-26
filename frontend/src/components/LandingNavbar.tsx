@@ -187,7 +187,8 @@ function NavGroupMenu({
   );
 }
 
-/** Section hubs — also the first item inside each menu. */
+/** Section hubs. The Product hub is a flat header link; the Company hub is also
+ *  the first item inside its menu. */
 const PRODUCT_HUB = "/product";
 const COMPANY_HUB = "/company";
 
@@ -196,12 +197,20 @@ const COMPANY_HUB = "/company";
  * signed in the auth button becomes a shortcut back to the app instead of a
  * sign-up prompt.
  *
+ * Product is a flat list rather than a second menu. Its five destinations are
+ * the header's primary content, and hiding them behind a disclosure meant the
+ * one section a visitor is most likely to want cost a hover, a click, and two
+ * tab stops to reach. Company stays a menu: it is a section rather than a set
+ * of pages someone arrives on directly, and leaving it alone keeps the header
+ * from flattening into a wall of links.
+ *
  * Legal pages are deliberately absent: they live in the footer only. Putting
  * eight destinations in the header turns navigation into a wall of links, and
  * nobody reaches a GDPR page from a primary nav.
  */
 export function LandingNavbar() {
   const { user } = useAuth();
+  const { pathname } = useLocation();
 
   return (
     <nav className="landing-navbar">
@@ -211,7 +220,29 @@ export function LandingNavbar() {
       </Link>
 
       <div className="landing-nav-links">
-        <NavGroupMenu label="Product" hub={PRODUCT_HUB} items={NAV_PRODUCT} />
+        {/* The hub is composed here rather than added to NAV_PRODUCT: the footer
+            derives its own Overview link from the column's `hub` field, so
+            putting it in the shared array would render it twice down there. */}
+        <div className="nav-flat">
+          <Link
+            to={PRODUCT_HUB}
+            className={pathname === PRODUCT_HUB ? "active" : undefined}
+            aria-current={pathname === PRODUCT_HUB ? "page" : undefined}
+          >
+            Overview
+          </Link>
+          {NAV_PRODUCT.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              className={pathname === item.to ? "active" : undefined}
+              aria-current={pathname === item.to ? "page" : undefined}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+
         <NavGroupMenu label="Company" hub={COMPANY_HUB} items={NAV_COMPANY} />
       </div>
 
