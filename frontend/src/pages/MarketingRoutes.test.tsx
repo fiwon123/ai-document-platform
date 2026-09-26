@@ -108,6 +108,36 @@ describe("marketing routes", () => {
     }
   });
 
+  it("gives every public page exactly one main landmark", async () => {
+    // Lighthouse's landmark-one-main audit fails on a page with no <main>, and
+    // a screen-reader user has no jump target without one. /, /login and
+    // /register had none; the marketing routes already render one via
+    // PageLayout, and /demo via DemoPage.
+    //
+    // "Exactly one" is deliberate: a nested second <main> is a different
+    // failure (landmark-unique), and this assertion catches it too rather than
+    // letting a fix for the missing case introduce a duplicate.
+    for (const route of [...MARKETING_ROUTES, "/login", "/register"]) {
+      const view = await renderAt(route);
+      expect(
+        view.container.querySelectorAll("main, [role='main']").length,
+        `route ${route} should expose exactly one main landmark`,
+      ).toBe(1);
+      view.unmount();
+    }
+  });
+
+  it("keeps the navbar and footer outside the main landmark", async () => {
+    // <main> must not wrap the banner or contentinfo landmarks: they are page
+    // furniture, and burying them inside main is what makes a landmark list
+    // unreadable. Asserted on the landing page, which has both.
+    const view = await renderAt("/");
+    const main = view.container.querySelector("main");
+    expect(main).toBeTruthy();
+    expect(main?.querySelector("header.landing-navbar")).toBeNull();
+    expect(main?.querySelector("footer")).toBeNull();
+  });
+
   it("does not 404 any advertised navigation destination", async () => {
     const paths = [
       ...NAV_PRODUCT.map((item) => item.to),

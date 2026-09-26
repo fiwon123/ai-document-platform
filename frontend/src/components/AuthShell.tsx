@@ -28,7 +28,10 @@ export function AuthShell({
         <ThemeToggle />
       </div>
 
-      <div className="auth-shell">
+      {/* The shell is the page's primary content (brand panel + form card), so it
+          is the main landmark. The theme toggle and the back link above/inside it
+          are controls and navigation, which must stay outside <main>. */}
+      <main className="auth-shell">
         <aside className="auth-panel" aria-label="About AskDocs">
           <div className="auth-panel-brand">
             <svg
@@ -118,7 +121,7 @@ export function AuthShell({
 
           {children}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
