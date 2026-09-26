@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { LandingFooter } from "./LandingFooter";
@@ -360,5 +360,228 @@ describe("LandingFooter subscribe form", () => {
     // itself, which is a free design choice.
     const formWidths = valuesOf(allDeclarationsFor(".newsletter-form"), "width");
     expect(formWidths.length, "a width is declared exactly once").toBe(1);
+  });
+});
+
+/**
+ * The submit path.
+ *
+ * This is the only thing in the footer a visitor can actually do, and it used to
+ * have no test at all: the handler cleared the field and said nothing, so a
+ * subscription looked identical to a form that was broken. The handler now
+ * reports what happened through a live region, and — because no mailing list is
+ * connected — it refuses to claim the address was stored.
+ */
+describe("LandingFooter newsletter submit", () => {
+  const status = () => document.querySelector(".newsletter-status");
+  const emailInput = () =>
+    document.querySelector<HTMLInputElement>('input[name="email"]');
+
+  /** Submit the form the way a click does, through RTL so React's own handler
+   *  runs. jsdom does not apply interactive validation to a dispatched submit,
+   *  so the branch is decided by the handler's `checkValidity()` — which is the
+   *  behaviour under test anyway. */
+  function submit(address: string) {
+    const input = emailInput();
+    if (!input) throw new Error("no newsletter email input");
+    const form = document.querySelector(".newsletter");
+    if (!form) throw new Error("no newsletter form");
+    input.value = address;
+    fireEvent.submit(form);
+  }
+
+  it("has the live region in the DOM before anything is submitted", () => {
+    // The ordering is the whole point: a region inserted at the same moment as
+    // its text can go unannounced, so it must already be sitting there, empty.
+    renderFooter();
+    expect(status(), "status region").not.toBeNull();
+    expect(status()?.getAttribute("role")).toBe("status");
+    expect(status()?.getAttribute("aria-live")).toBe("polite");
+    expect(status()?.textContent, "empty at rest").toBe("");
+  });
+
+  it("reports the outcome and clears the field when the address looks valid", () => {
+    renderFooter();
+    submit("reader@example.com");
+
+    expect(status()?.textContent).toBe(
+      "Thanks for trying — no mailing list is connected yet, so this didn't sign you up.",
+    );
+    expect(status()?.getAttribute("data-kind")).toBe("ok");
+    expect(emailInput()?.value, "field cleared").toBe("");
+  });
+
+  it("never claims the address was stored, in the copy or the confirmation", () => {
+    // A stub form that says "you're subscribed!" is the defect being fixed, so
+    // the two strings most able to over-promise are pinned exactly: rewording
+    // either one is a deliberate edit, not an accident.
+    renderFooter();
+    const copy = document.querySelector(".newsletter-copy")?.textContent ?? "";
+
+    expect(copy, "no promise of a monthly email").not.toMatch(/once a month/i);
+    expect(copy, "and it admits the list is not connected").toMatch(
+      /no mailing list is connected/i,
+    );
+
+    submit("reader@example.com");
+    const said = status()?.textContent ?? "";
+    expect(said, "no claim of a subscription").not.toMatch(
+      /subscrib(ed|ing)|you're in|thank you for subscribing/i,
+    );
+    // "Thanks" is fine — the sentence that follows is what makes it honest.
+    expect(said).toMatch(/no mailing list is connected yet/i);
+  });
+
+  it("keeps the typed address and explains the problem when it is not valid", () => {
+    renderFooter();
+    submit("not-an-address");
+
+    expect(status()?.textContent).toBe("Enter a valid email address.");
+    expect(status()?.getAttribute("data-kind")).toBe("error");
+    // Destroying the address on a failed submit is the same data loss as the
+    // silent clear, just with a worse excuse.
+    expect(emailInput()?.value, "address preserved").toBe("not-an-address");
+  });
+
+  it("marks the field invalid for assistive technology on a failed submit", () => {
+    renderFooter();
+    expect(emailInput()?.getAttribute("aria-invalid"), "at rest").toBe("false");
+
+    submit("not-an-address");
+    expect(emailInput()?.getAttribute("aria-invalid")).toBe("true");
+
+    // And it clears again on a good one, so a stale "invalid" cannot outlive
+    // the error that set it.
+    submit("reader@example.com");
+    expect(emailInput()?.getAttribute("aria-invalid")).toBe("false");
+  });
+
+  it("returns focus to the field when the submit was rejected", () => {
+    renderFooter();
+    submit("not-an-address");
+    // The message is announced, but a mouse user has no other route back to the
+    // field they have to correct.
+    expect(document.activeElement).toBe(emailInput());
+  });
+
+  it("replaces the message on a second submit instead of stacking them", () => {
+    renderFooter();
+    submit("not-an-address");
+    submit("reader@example.com");
+
+    const regions = document.querySelectorAll(".newsletter-status");
+    expect(regions.length, "one region, not a log").toBe(1);
+    expect(status()?.textContent).not.toMatch(/Enter a valid email address/);
+  });
+
+  it("gives the status line an error colour that clears AA on the footer", () => {
+    // --danger is a border/fill token and measured 4.41:1 (light) and 3.14:1
+    // (dark) as small text on the footer's --surface, so the status text uses a
+    // dedicated --danger-text instead, the same way --green-text exists for
+    // --green. The ratios are recomputed here so a later theme change cannot
+    // quietly drop the text below the 4.5:1 it is pinned at.
+    const tokens = (theme: "light" | "dark") => {
+      const block =
+        theme === "dark"
+          ? css.match(/:root\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/)?.[1] ?? ""
+          : (css.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1] ?? "");
+      const read = (name: string) =>
+        block.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{3,8})`))?.[1] ?? "";
+      return { dangerText: read("--danger-text"), surface: read("--surface") };
+    };
+
+    const luminance = (hex: string) => {
+      const h = hex.replace("#", "");
+      // Indexed access, not destructuring: `noUncheckedIndexedAccess` makes every
+      // element of `[0, 2, 4].map(...)` a `number | undefined`, which fails
+      // `tsc -b` while vitest happily runs it.
+      const at = (i: number) => parseInt(h.slice(i, i + 2), 16) / 255;
+      const channel = (c: number) =>
+        c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      return (
+        0.2126 * channel(at(0)) + 0.7152 * channel(at(2)) + 0.0722 * channel(at(4))
+      );
+    };
+    const ratio = (a: string, b: string) => {
+      const hi = Math.max(luminance(a), luminance(b));
+      const lo = Math.min(luminance(a), luminance(b));
+      return (hi + 0.05) / (lo + 0.05);
+    };
+
+    for (const theme of ["light", "dark"] as const) {
+      const { dangerText, surface } = tokens(theme);
+      expect(dangerText, `${theme} --danger-text`).not.toBe("");
+      expect(ratio(dangerText, surface), `${theme} error text`).toBeGreaterThanOrEqual(
+        4.5,
+      );
+    }
+
+    // And the rule actually reaches for the text token, not the fill one.
+    expect(valueOf(declarationsFor('.newsletter-status[data-kind="error"]'), "color")).toBe(
+      "var(--danger-text)",
+    );
+  });
+
+  it("keeps the status line from re-creating the 320px min-content overflow", () => {
+    // The column is `align-items: flex-start`, so a flex item's min-content
+    // floor applies to this <p> exactly as it did to the form row that used to
+    // push the page 26px wide at 320-414px. `overflow-wrap: break-word` is what
+    // stops a long unbroken message from setting that floor — assert the value,
+    // not the property's presence, because `normal` also declares it and wraps
+    // nothing.
+    expect(
+      valueOf(declarationsFor(".newsletter-status"), "overflow-wrap"),
+    ).toBe("break-word");
+  });
+
+  it("reserves no space for the status line while there is nothing to say", () => {
+    // The region must stay rendered (that is what makes it announceable), so
+    // the resting gap has to come from the margin instead. `margin-top: 8px` on
+    // the base rule would leave a permanent 8px hole under every footer on the
+    // site; the `:not(:empty)` rule is what makes the margin conditional.
+    expect(
+      valueOf(declarationsFor(".newsletter-status"), "margin"),
+      "base margin is zeroed",
+    ).toBe("0");
+    expect(
+      valueOf(declarationsFor(".newsletter-status:not(:empty)"), "margin-top"),
+      "gap appears only when there is a message",
+    ).toBe("8px");
+  });
+
+  it("keeps the error branch reachable in a real browser", () => {
+    // Found by measuring, not by a failing test. With `type="email"` and no
+    // `noValidate`, the browser blocks the submit event on a malformed address,
+    // so the handler never runs: the field keeps its value, the status keeps
+    // saying whatever it last said, and no message is ever shown. Every test
+    // above still passes under that mutation, because jsdom fires `submit`
+    // directly and skips interactive validation — so this is the only place the
+    // reachability is pinned. The consequence of removing it is a dead message
+    // and a permanently-false `aria-invalid`, not a visible test failure.
+    renderFooter();
+    expect(
+      document.querySelector(".newsletter")?.hasAttribute("novalidate"),
+      "the form must own its validation",
+    ).toBe(true);
+  });
+
+  it("never takes the live region out of the render tree", () => {
+    // `display: none` while empty is the tempting way to reclaim the 8px, and it
+    // is the one version that can leave the confirmation unannounced: a region
+    // that is hidden and revealed in the same tick as its text is the classic
+    // silent-live-region bug, and jsdom cannot catch it because it resolves no
+    // display from CSS. The margin is the safe way to reclaim the space, so no
+    // rule may hide the element.
+    const hiding = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter((m) =>
+        (m[1] ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .some((s) => s.startsWith(".newsletter-status")),
+      )
+      .filter((m) => /display\s*:\s*none/.test(m[2] ?? ""))
+      .map((m) => (m[1] ?? "").trim());
+
+    expect(hiding, "rules hiding the status region").toEqual([]);
   });
 });

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { NAV_COMPANY, NAV_LEGAL, NAV_PRODUCT, SITE, SOCIAL_PATHS } from "../content/marketing";
 
@@ -81,12 +82,43 @@ const FOOTER_COLUMNS = [
   { label: "Legal", hub: null, items: NAV_LEGAL },
 ] as const;
 
+/** What the form reports back to the visitor. One region, one message at a time:
+ *  a second submit replaces the text rather than appending, so the element stays
+ *  a single live region instead of a growing log. */
+type NewsletterStatus = { kind: "ok" | "error"; message: string } | null;
+
+/** No mailing list is connected to this form yet, so it must not say one is.
+ *  Both of these are asserted by the tests: the promise and the confirmation are
+ *  the two places a stub form could quietly lie to a visitor, and a test that
+ *  pins the exact string makes rewording either of them a deliberate edit. */
+const SUBSCRIBED_NOTE =
+  "Thanks for trying — no mailing list is connected yet, so this didn't sign you up.";
+const NOT_A_VALID_ADDRESS = "Enter a valid email address.";
+
 export function LandingFooter() {
+  const [status, setStatus] = useState<NewsletterStatus>(null);
+
   const handleNewsletter = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
-    const input = form.elements.namedItem("email") as HTMLInputElement;
-    if (input?.value) {
+    const input = form.elements.namedItem("email") as HTMLInputElement | null;
+
+    // The browser's own constraints are the only validation there is. A second
+    // rule of my own would be weaker than `type="email"` and would disagree with
+    // the bubble the visitor has just dismissed.
+    if (!input?.checkValidity()) {
+      setStatus({ kind: "error", message: NOT_A_VALID_ADDRESS });
+      // Focus follows the error: the message is announced, but a keyboard user
+      // who submitted with the mouse has no other way back to the field.
+      input?.focus();
+      return;
+    }
+
+    // The field is cleared because the address *looked* right, not because
+    // anything was stored — so the message has to say so, or clearing the field
+    // reads as a subscription that happened.
+    setStatus({ kind: "ok", message: SUBSCRIBED_NOTE });
+    if (input) {
       input.value = "";
     }
   };
@@ -139,10 +171,23 @@ export function LandingFooter() {
               so the invitation never competes with the links above it. The form
               row stays a single flex row: the input and button must share a
               line so their heights match (see the alignment fix in #402). */}
-          <form className="newsletter" onSubmit={handleNewsletter}>
+          {/* `noValidate` is load-bearing, and the unit tests cannot catch its
+              absence: `type="email"` makes the browser block the submit event
+              itself when the address is malformed, so the handler below never
+              runs and the error message never appears in a real browser — the
+              tests still pass, because jsdom dispatches `submit` directly and
+              skips interactive validation. Owning the check here means
+              `checkValidity()` stays the single source of truth (the browser's
+              own rules, not a second weaker set) while the message, the
+              `aria-invalid` flip, and the focus move actually reach the user. */}
+          <form className="newsletter" onSubmit={handleNewsletter} noValidate>
             <div className="newsletter-copy">
               <strong>Stay in the loop</strong>
-              <span>Product updates, once a month. No spam.</span>
+              {/* No promise of a monthly email, because there is no list to send
+                  one from. The previous copy ("Product updates, once a month. No
+                  spam.") described a mailing list that does not exist, and the
+                  form underneath it silently cleared whatever was typed. */}
+              <span>A preview of the signup — no mailing list is connected yet.</span>
             </div>
             <div className="newsletter-form">
               <input
@@ -152,12 +197,23 @@ export function LandingFooter() {
                 required
                 placeholder="you@company.com"
                 aria-label="Email address"
+                aria-invalid={status?.kind === "error"}
                 autoComplete="email"
               />
               <button type="submit" className="btn btn-primary">
                 Subscribe
               </button>
             </div>
+            {/* Rendered unconditionally, filled in on submit. A region that
+                arrives with its own text is the classic silent live region. */}
+            <p
+              className="newsletter-status"
+              role="status"
+              aria-live="polite"
+              data-kind={status?.kind ?? "none"}
+            >
+              {status?.message ?? ""}
+            </p>
           </form>
         </div>
         {FOOTER_COLUMNS.map((col) => (

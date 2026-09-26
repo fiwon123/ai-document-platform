@@ -58,6 +58,12 @@
      to qualify for 3:1, so 4.5:1 is the bar that applies. green-700 -> 4.79:1,
      the smallest step that clears it. */
   --green-text: #15803d; /* green-700 */
+  /* Error text, the text counterpart to --green-text, for the same reason:
+     --danger is a *border/fill* token (red-600) and as small text on the
+     footer's --surface it measured 4.41:1, under AA's 4.5:1. red-700 clears it
+     at 5.91:1. The dark theme needs the mirror image of --green-text's step
+     (darker here, lighter there) — see the dark block. */
+  --danger-text: #b91c1c; /* red-700 */
   /* Hairline: table row rules, input edges, dividers between stacked items. */
   --line: #cbd5e1; /* slate-300 */
   /* Card and container boundary. This was slate-300 (1.48:1 on white) with a
@@ -131,6 +137,11 @@
   /* green-500 already clears 6.31:1 on the dark green chip, so the text token
      matches --green here; only the light theme needed darkening. */
   --green-text: #22c55e; /* green-500 */
+  /* red-400, mirroring --green-text's direction: the *lighter* red in the dark
+     theme because the footer surface here is #1b2639, not #121927. red-600
+     measures 3.14:1 on that surface — well under AA — while red-400 clears it
+     at 5.49:1. */
+  --danger-text: #f87171; /* red-400 */
   --line: #2c3a52; /* visible border on the softened backgrounds */
   /* Brighter than --line. On #121927 the default hairline measures 1.54:1
      against the page, so every card painted var(--paper) floated on nothing
@@ -3178,6 +3189,34 @@ body {
 .newsletter-form input:focus {
   outline: none;
   border-color: var(--blue);
+}
+
+/* The form's report-back line.
+   The element is always in the DOM and only its *text* changes, because a live
+   region that is inserted at the same moment as its message can go unannounced.
+   `:not(:empty)` moves the margin in rather than reserving it, so the resting
+   form keeps no dead space — an empty <p> still collapses, and the margin is
+   what would have survived. */
+.newsletter-status {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  /* The longest word sets this element's min-content floor, and the column is
+     `align-items: flex-start`, so an unbroken string here would be the 327px
+     problem all over again (see reflow.test.ts). */
+  overflow-wrap: break-word;
+}
+
+.newsletter-status:not(:empty) {
+  margin-top: 8px;
+}
+
+.newsletter-status[data-kind="ok"] {
+  color: var(--green-text);
+}
+
+.newsletter-status[data-kind="error"] {
+  color: var(--danger-text);
 }
 
 .footer-cols {

@@ -88,7 +88,10 @@ describe("DemoPage", () => {
     window.sessionStorage.setItem(KEY_SEARCH, "10");
     renderDemo();
 
-    const status = screen.getByRole("status");
+    // Scoped to the page: the shared footer also carries a `role="status"`
+    // live region, so an unscoped query matches the demo banner and the
+    // newsletter's report-back line at once.
+    const status = within(screen.getByRole("main")).getByRole("status");
     expect(within(status).getByText("You have reached the demo search limit.")).toBeTruthy();
     expect(
       within(status).getByRole("link", { name: "Sign up" }).getAttribute("href"),
@@ -117,7 +120,10 @@ describe("DemoPage", () => {
     window.sessionStorage.setItem(KEY_QA, "5");
     renderDemo();
 
-    const status = screen.getByRole("status");
+    // Scoped to the page: the shared footer also carries a `role="status"`
+    // live region, so an unscoped query matches the demo banner and the
+    // newsletter's report-back line at once.
+    const status = within(screen.getByRole("main")).getByRole("status");
     expect(within(status).getByText("You have reached the demo Q&A limit.")).toBeTruthy();
     expect(
       within(status).getByRole("link", { name: "Sign up" }).getAttribute("href"),
