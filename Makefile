@@ -135,8 +135,18 @@ test: test-backend test-frontend ## Run all tests
 test-backend: ## Run backend tests (pytest)
 	cd $(BACKEND_DIR) && uv run pytest
 
-test-frontend: ## Run frontend tests (vitest)
+test-frontend: ## Run frontend tests (vitest + audit baseline tests)
 	cd $(FRONTEND_DIR) && npm test
+
+# --- Visual audit -----------------------------------------------------------------
+# A full gated pass takes ~11 minutes: it walks every route group x viewport x
+# theme and paces itself off the app's rate limiter. It is deliberately not part
+# of `make check` — that gate has to stay fast enough to run on every save.
+gate-ui: ## Full visual audit, failing on any regression vs scripts/audit-baseline.json
+	$(COMPOSE) exec dev node scripts/audit.mjs --gate
+
+audit-baseline: ## Accept the last visual audit run as the new baseline
+	$(COMPOSE) exec dev node scripts/audit.mjs --update-baseline
 
 # --- Lint / format ------------------------------------------------------------
 lint: ## Lint backend (ruff) + frontend (oxlint)

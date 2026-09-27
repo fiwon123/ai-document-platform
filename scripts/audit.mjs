@@ -41,9 +41,12 @@
  *    misreading the results.
  *
  * 3. A CAPTURE THAT CANNOT FAIL IS WORSE THAN NONE. The counters in `PROBE` are
- *    deliberately labelled: `smallTargetsRaw` does not apply WCAG 2.5.8's inline
- *    exception, and `contrastFailures` only covers solid backgrounds (see below).
- *    They are lead-lists for a human, not verdicts.
+ *    deliberately labelled: `smallTargetsRaw` is the *unfiltered* total — the
+ *    inline-text and form-control excuses are applied as an `excused` label per
+ *    item and split out in the summary, but both are heuristics that can
+ *    disagree with a human audit — and `contrastFailures` only covers solid
+ *    backgrounds (see below). They are lead-lists for a human, not verdicts.
+ *    The gate below is different: it fails on signals that are not heuristics.
  */
 
 import { execFileSync } from "node:child_process";
@@ -51,6 +54,16 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
+import {
+  DEFAULT_GATE_SIGNALS,
+  collectFindings,
+  compareFindings,
+  formatComparison,
+  parseBaseline,
+  parseGateSignals,
+  serializeBaseline,
+} from "./audit-baseline.mjs";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Playwright resolution
@@ -105,6 +118,13 @@ const DEFAULT_OUT_ROOT = "/tmp/opencode/visual-audit";
 const FFMPEG = "/opt/ms-playwright/ffmpeg-1011/ffmpeg-linux";
 
 /**
+ * The gate's baseline, resolved relative to this file so that `--gate` behaves
+ * the same whether it is invoked from the repo root or from scripts/.
+ */
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_BASELINE_FILE = path.join(SCRIPT_DIR, "audit-baseline.json");
+
+/**
  * Does the container's ffmpeg have a GIF muxer?
  *
  * Playwright's bundled ffmpeg is a minimal screencast build: it muxes
@@ -151,6 +171,9 @@ function parseArgs(argv) {
     only: null,
     videoThemes: null,
     headed: false,
+    gate: false,
+    updateBaseline: false,
+    baselineFile: DEFAULT_BASELINE_FILE,
     help: false,
   };
   for (const arg of argv) {
@@ -180,6 +203,18 @@ function parseArgs(argv) {
       case "--only":
         opts.only = value.split(",").map((s) => s.trim()).filter(Boolean);
         break;
+      case "--gate":
+        // Bare `--gate` means the default signal list; `--gate=a,b` narrows it.
+        // Parsed eagerly so an unknown signal fails before an 11-minute run.
+        opts.gate = parseGateSignals(value === "" ? undefined : value);
+        break;
+      case "--update-baseline":
+        opts.updateBaseline = true;
+        break;
+      case "--baseline":
+        if (!value) throw new Error("--baseline needs a path");
+        opts.baselineFile = value;
+        break;
       case "--headed":
         opts.headed = true;
         break;
@@ -205,6 +240,10 @@ Interactive visual audit (see scripts/audit.mjs for the full rationale).
   --keep-runs=N      Run directories to keep (default 2)
   --budget-mb=N      Stop capturing past this many MB (default 500)
   --video-themes=L,D Themes to record animations in (default light)
+  --gate[=a,b,c]  Fail (exit 1) on findings not in the baseline.
+                  Signals: ${DEFAULT_GATE_SIGNALS.join(", ")}, landmarks.
+  --baseline=PATH  Baseline file (default scripts/audit-baseline.json)
+  --update-baseline  Accept this run as the baseline and exit 0
   --headed           Run with a visible browser (debugging only)
   -h, --help         This message
 
@@ -221,6 +260,15 @@ KNOWN LIMITATIONS
     these captures; every other image and style does.
   * The /app/admin capture is the access-denied branch: the fixture user is a
     customer and nothing in the public API can promote it to admin.
+  * --gate cannot be combined with --only. The baseline describes a full pass,
+    so a partial run would report every group it skipped as "resolved" and a
+    reviewer could accept the truncated list by accident.
+  * Console and network errors are report-only and never gate. MinIO's
+    presigned URLs (above) make them permanently noisy from inside the
+    container; they describe the environment, not the UI.
+  * The gate compares *signals*, not pixels. Pixels are only comparable against
+    the machine that produced them, so a CI-runner diff would be antialiasing
+    noise. See issue #470 for the local pixel-diff tool.
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -279,9 +327,11 @@ function timestampSlug(date = new Date()) {
 //   gradient-backed (the landing hero is a gradient), and reporting those
 //   numbers as defects is worse than not reporting them. Text clipped by
 //   `background-clip: text` is not measurable this way at all.
-// - Small targets are a RAW count. WCAG 2.5.8 exempts targets inline in a
-//   sentence, and applying that heuristic here would produce a list that
-//   disagrees with the audited one. Named accordingly.
+// - Small targets are a RAW count, with WCAG 2.5.8's excuses applied as a
+//   per-item label rather than used to drop items. Inline-text and form-control
+//   are both heuristics — an anchor inside a <p> that is a whole button, or a
+//   checkbox whose <label> is itself a 16px target, will be excused when a human
+//   auditor would not. So the count stays visible and the excuse travels with it.
 // ─────────────────────────────────────────────────────────────────────────────
 const PROBE = () => {
   const visible = (el) => {
@@ -1749,7 +1799,10 @@ function printSummary(summary) {
     );
   }
   if (summary.smallTargetsTop.length) {
-    log("small targets    (raw; WCAG 2.5.8's inline exception is NOT applied — lead-list, not a verdict)");
+    log(
+      "small targets    (lead-list, not a verdict: the inline-text and form-control " +
+        "excuses are heuristic, so this can disagree with a human audit)",
+    );
     for (const item of summary.smallTargetsTop) log(`                 ${item.count}× ${item.selector}`);
   }
   for (const item of summary.horizontalOverflow) log(`OVERFLOW         ${item.px}px — ${item.where}`);
@@ -1785,6 +1838,9 @@ async function main() {
 
   if (!Number.isFinite(opts.budgetMb) || opts.budgetMb <= 0) throw new Error("--budget-mb must be > 0");
   if (!Number.isInteger(opts.keepRuns) || opts.keepRuns < 1) throw new Error("--keep-runs must be >= 1");
+  if (opts.gate && opts.only) {
+    throw new Error("--gate cannot be combined with --only: the baseline describes a full pass (see --help)");
+  }
 
   const { chromium } = await loadPlaywright();
 
@@ -1862,26 +1918,123 @@ async function main() {
   }
 
   const summary = await summarise(audit, { pruned, runDir, opts, elapsedMs: Date.now() - started });
+  // `summarise` returns the summary *without* the per-capture entries; they are
+  // only attached here, for the manifest file. The gate needs them (contrast
+  // failures are per-capture), so it gets the same document the file gets.
+  const manifestDoc = { ...summary, entries: audit.manifest };
   const manifestPath = path.join(runDir, "audit-manifest.json");
   const summaryPath = path.join(runDir, "summary.json");
-  await fsp.writeFile(manifestPath, JSON.stringify({ ...summary, entries: audit.manifest }, null, 2));
+  await fsp.writeFile(manifestPath, JSON.stringify(manifestDoc, null, 2));
   await fsp.writeFile(summaryPath, JSON.stringify(summary, null, 2));
 
   // The reports are part of what a run puts on disk, so they count against the
   // budget like captures do — otherwise "500 MB" quietly excludes the files a
-  // reviewer actually opens first. Measured after writing, and reported as the
-  // authoritative on-disk figure alongside the capture-only total.
+  // reviewer actually opens first.
+  //
+  // Charging them is not enough on its own: the summary already written carries
+  // a captures-only figure, so the number in the file would disagree with the
+  // one the console prints. Rewrite it to include the reports. That rewrite
+  // changes the file again, so the size is settled over two passes and the
+  // residual few bytes are not chased further — chasing them exactly would mean
+  // solving for a fixed point of a file that contains its own byte count.
   const manifestBytes = (await fsp.stat(manifestPath)).size;
-  const summaryBytes = (await fsp.stat(summaryPath)).size;
-  audit.budget.charge(manifestBytes + summaryBytes);
-  log(`reports          ${(manifestBytes / 1e3).toFixed(0)} KB manifest + ${(summaryBytes / 1e3).toFixed(0)} KB summary`);
+  const firstSummaryBytes = (await fsp.stat(summaryPath)).size;
+  const baseBytes = audit.budget.written - firstSummaryBytes;
+  const budgetFor = (reportBytes) => ({
+    ...summary.budget,
+    captureMb: Number((baseBytes / 1e6).toFixed(1)),
+    reportsBytes: manifestBytes + reportBytes,
+    writtenMb: Number(((baseBytes + manifestBytes + reportBytes) / 1e6).toFixed(1)),
+  });
+  await fsp.writeFile(summaryPath, JSON.stringify({ ...summary, budget: budgetFor(firstSummaryBytes) }, null, 2));
+  const settledBytes = (await fsp.stat(summaryPath)).size;
+  await fsp.writeFile(summaryPath, JSON.stringify({ ...summary, budget: budgetFor(settledBytes) }, null, 2));
+  const finalSummaryBytes = (await fsp.stat(summaryPath)).size;
+  audit.budget.charge(finalSummaryBytes - firstSummaryBytes);
+  log(`reports          ${(manifestBytes / 1e3).toFixed(0)} KB manifest + ${(finalSummaryBytes / 1e3).toFixed(0)} KB summary`);
   const finalPrune = await pruneOldRuns(opts.outRoot, opts.keepRuns);
   if (finalPrune.removed.length) {
     log(`retention        trimmed ${finalPrune.removed.length} more, keeping ${opts.keepRuns}`);
   }
-  printSummary({ ...summary, budget: { ...summary.budget, writtenMb: Number((audit.budget.written / 1e6).toFixed(1)) } });
+  printSummary({ ...summary, budget: budgetFor(finalSummaryBytes) });
   log(`manifest         ${path.join(runDir, "audit-manifest.json")}`);
 
+  if (!opts.gate && !opts.updateBaseline) return 0;
+  return await runGate(manifestDoc, opts, runDir);
+}
+
+/**
+ * The gate: compare this run's signals against the committed baseline and fail
+ * on anything new.
+ *
+ * `--update-baseline` is the deliberate escape hatch — it accepts whatever this
+ * run found and exits 0, which is why it never fails: reviewing the baseline
+ * diff in the PR is what makes that safe, not the command itself.
+ */
+async function runGate(summary, opts, runDir) {
+  // `opts.gate` is `false` when only --update-baseline was passed and an array
+  // when --gate was, so this must be an Array.isArray check and not `??`:
+  // `false ?? DEFAULT` yields `false`, and `new Set(false)` throws.
+  const signals = Array.isArray(opts.gate) ? opts.gate : DEFAULT_GATE_SIGNALS;
+  const findings = collectFindings(summary, signals);
+  log(`gating           ${signals.join(", ")}`);
+
+  // A missing baseline is read as an error, never as an empty baseline: a gate
+  // that silently passes because its config is absent is the bug #469 fixes.
+  let baselineDoc = null;
+  if (fs.existsSync(opts.baselineFile)) {
+    baselineDoc = parseBaseline(await fsp.readFile(opts.baselineFile, "utf8"));
+  } else if (!opts.updateBaseline) {
+    log(`baseline         MISSING ${opts.baselineFile}`);
+  }
+  const baselineFindings = baselineDoc ? baselineDoc.findings : null;
+
+  const result = compareFindings(findings, baselineFindings);
+  for (const line of formatComparison(result)) log(line);
+
+  if (opts.updateBaseline) {
+    const previous = new Set((baselineFindings ?? []).map((f) => f.key));
+    const next = new Set(findings.map((f) => f.key));
+    log(`baseline         +${[...next].filter((k) => !previous.has(k)).length} new, -${[...previous].filter((k) => !next.has(k)).length} resolved`);
+    // Carry the file's own explanatory fields forward, so the note explaining
+    // what this file is does not get deleted by the first --update-baseline.
+    const { findings: _dropped, ...meta } = baselineDoc ?? {};
+    await fsp.writeFile(opts.baselineFile, serializeBaseline(findings, { ...meta, updatedAt: new Date().toISOString() }));
+    log(`baseline         written ${opts.baselineFile} — review this diff in the PR`);
+    return 0;
+  }
+
+  for (const f of result.isNew) warn(`NEW ${f.signal}  ${f.where}${f.detail?.sample ? ` — "${f.detail.sample}"` : ""}`);
+
+  const reportPath = path.join(runDir, "gate-report.json");
+  await fsp.writeFile(
+    reportPath,
+    JSON.stringify(
+      {
+        signals,
+        baseline: path.relative(process.cwd(), opts.baselineFile) || opts.baselineFile,
+        status: result.status,
+        counts: { isNew: result.isNew.length, known: result.known.length, changed: result.changed.length, resolved: result.resolved.length },
+        isNew: result.isNew,
+        changed: result.changed.map((f) => ({ ...f, previousFingerprint: (baselineFindings ?? []).find((b) => b.key === f.key)?.fingerprint })),
+        resolved: result.resolved,
+      },
+      null,
+      2,
+    ),
+  );
+  log(`gate report      ${reportPath}`);
+
+  // A missing baseline fails even when this run was clean: an unconfigured gate
+  // is not a passing gate.
+  if (result.status === "missing-baseline") {
+    warn("cannot gate without a baseline. Create one with --update-baseline and commit scripts/audit-baseline.json");
+    return 1;
+  }
+  if (result.isNew.length) {
+    warn(`${result.isNew.length} new finding(s) — see above, or accept with --update-baseline`);
+    return 1;
+  }
   return 0;
 }
 

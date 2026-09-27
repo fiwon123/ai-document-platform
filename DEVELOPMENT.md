@@ -335,10 +335,54 @@ docker compose cp dev:/tmp/opencode/visual-audit/<timestamp> ./audit-run
 Budget and retention: 500 MB per run (a hard stop, with GIF conversion checked
 before it can overshoot), the newest 2 runs kept, and Playwright's raw
 `.video-tmp` scratch directory removed at the end. Manifest and summary bytes
-count against the budget too, since they are what a reviewer opens first.
+count against the budget too, since they are what a reviewer opens first — and
+the figure inside `summary.json` is rewritten to include them, so the number in
+the file matches the number in the console.
 
 Flags: `--base=`, `--out=`, `--only=`, `--keep-runs=`, `--budget-mb=`,
-`--video-themes=light,dark`, `--headed`.
+`--video-themes=light,dark`, `--gate[=signals]`, `--baseline=`,
+`--update-baseline`, `--headed`.
+
+### Gating on regressions (`--gate`)
+
+A plain run **always exits 0** — it reports, it does not judge. `--gate` is the
+judging mode: it compares this run's signals against the committed
+`scripts/audit-baseline.json` and exits 1 if it finds anything new.
+
+```bash
+docker compose exec dev node scripts/audit.mjs --gate                    # fail on a new regression
+docker compose exec dev node scripts/audit.mjs --gate=contrast,overflow  # narrow the signals
+docker compose exec dev node scripts/audit.mjs --update-baseline         # accept this run
+```
+
+```bash
+make gate-ui   # a full gated pass — use this before pushing UI changes
+```
+
+How to read it:
+
+- **Known findings pass.** A problem that is already in the baseline does not
+  fail the run; that is what the baseline is for. `resolved` findings are
+  reported too, so the file does not accumulate dead entries forever.
+- **A missing baseline fails.** An unconfigured gate is not a passing gate, so
+  a deleted or uncommitted baseline is an error with instructions, not a green
+  run.
+- **`--update-baseline` never fails.** It accepts whatever the run found and
+  exits 0, which is why the baseline diff belongs in the PR: that review, not the
+  command, is what makes accepting a finding safe.
+- **It gates on signals, not pixels.** `contrast`, `page-errors`, `skips`,
+  `overflow`, `unlabelled` (plus opt-in `landmarks`) are text and compare
+  reliably anywhere. Console and network errors are report-only, because
+  MinIO's presigned URLs make them permanently noisy from inside the container.
+- **It cannot be combined with `--only`.** The baseline describes a full pass; a
+  partial run would report every group it skipped as "resolved" and a reviewer
+  could accept the truncated list by accident.
+- **Keys identify the element, not the measurement.** Retuning a colour that is
+  already failing does not read as a new regression — the same finding gets
+  reported as "known but changed" instead, which is the signal that it got worse.
+
+`gate-report.json` lands in the run directory with the new / known / changed /
+resolved sets, so a CI job can annotate from JSON rather than scraping stdout.
 
 Four behaviours worth knowing before you trust a run:
 
@@ -355,7 +399,10 @@ Four behaviours worth knowing before you trust a run:
 - **Small-target counts are split by WCAG 2.5.8's own excuses.** Inline prose
   links, checkboxes (the `<label>` is the target) and off-screen elements are
   counted separately, so the headline list is real leads rather than 200 links
-  in a paragraph.
+  in a paragraph. Those two excuses are *heuristics*, though — an anchor inside
+  a `<p>` that is really a button gets excused — so the raw count stays visible
+  and the excuse travels with each item. It is a lead-list, not a verdict, and
+  the gate does not act on it.
 
 Known limitations are listed by `--help`: thumbnails and download links do not
 load in these captures (presigned URLs are signed for `localhost:9000`, which
