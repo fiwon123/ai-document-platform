@@ -24,6 +24,25 @@ def qa_entry(model_id):
     return qa_module._MODEL_BY_ID[model_id]
 
 
+def _patch_llm_client(monkeypatch, client):
+    """Point every provider's client at the same mock.
+
+    ``QAService.ask`` resolves a model to a *provider* and then reads that
+    provider's client off the module at call time, so patching only
+    ``_openai_client`` works only on a machine where nothing else is
+    configured. On a developer machine with a real ``GROQ_API_KEY`` the
+    free-first resolver picks Groq, the real Groq client is used *instead of*
+    the mock, and the test silently makes a live network call — sending the
+    test question to a third-party API and failing on whatever that API
+    answers. Patching all three providers makes the test independent of which
+    credentials happen to exist, in any environment.
+    """
+    from app.services import qa as qa_module
+
+    for attr in ("_openai_client", "_groq_client", "_local_client"):
+        monkeypatch.setattr(qa_module, attr, client)
+
+
 def _make_vector(on_dim: int) -> list[float]:
     return [1.0 if i == on_dim else 0.0 for i in range(DIM)]
 
@@ -486,7 +505,7 @@ class TestQAServiceAnswerGeneration:
         fake_client.chat.completions.create.return_value = SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="Mocked answer"))]
         )
-        monkeypatch.setattr("app.services.qa._openai_client", fake_client)
+        _patch_llm_client(monkeypatch, fake_client)
 
         fake_search = MagicMock()
         result = SearchResult(
@@ -526,7 +545,7 @@ class TestQAServiceAnswerGeneration:
 
         fake_client = MagicMock()
         fake_client.chat.completions.create.side_effect = RuntimeError("boom")
-        monkeypatch.setattr("app.services.qa._openai_client", fake_client)
+        _patch_llm_client(monkeypatch, fake_client)
 
         fake_search = MagicMock()
         fake_search.search.return_value = SearchResponse(
@@ -589,8 +608,13 @@ class TestQAServiceAnswerGeneration:
             return fake_client
 
         monkeypatch.setattr(qa_module, "OpenAI", fake_openai_factory)
-        # No server key configured — BYOK must still work.
-        monkeypatch.setattr(qa_module, "_openai_client", None)
+        # No server key configured — BYOK must still work. Every provider has
+        # to be cleared, not just OpenAI: this test is about the *absence* of
+        # server-side configuration, and leaving another provider configured
+        # would let the resolver pick it and answer from a real client instead
+        # of taking the BYOK path at all.
+        for attr in ("_openai_client", "_groq_client", "_local_client"):
+            monkeypatch.setattr(qa_module, attr, None)
 
         fake_search = MagicMock()
         fake_search.search.return_value = SearchResponse(
@@ -696,6 +720,12 @@ class TestDefaultModelResolution:
         monkeypatch.setattr(qa_module, "_groq_client", sentinel if groq else None)
         monkeypatch.setattr(qa_module, "_local_client", sentinel if local else None)
         monkeypatch.setenv("QA_MODEL", qa_model)
+        # OPENAI_MODEL must be absent, not merely unset-by-default: an operator
+        # (or a developer's .env) may have one, and `resolve_default_model`
+        # deliberately lets an explicit OPENAI_MODEL outrank the cheapest paid
+        # model. Inheriting it would decide this test's answer from the ambient
+        # environment instead of from the configuration under test.
+        monkeypatch.delenv("OPENAI_MODEL", raising=False)
         return sentinel
 
     def test_prefers_groq_over_local_when_both_are_free(self, monkeypatch):
@@ -952,8 +982,8 @@ class TestQAResponseCarriesRetrievalMode:
     def _ask(self, mode, monkeypatch):
         from types import SimpleNamespace
 
-        from app.services import qa as qa_module
         from app.schemas.search import SearchResponse
+        from app.services import qa as qa_module
 
         fake_client = MagicMock()
         fake_client.chat.completions.create.return_value = SimpleNamespace(
@@ -970,14 +1000,12 @@ class TestQAResponseCarriesRetrievalMode:
         return QAService(search_service=fake_search).ask(user_id=uuid4(), question="q")
 
     def test_keyword_retrieval_is_reported_on_the_answer(self, monkeypatch):
-        from app.schemas.search import SearchMode
 
         response = self._ask(SearchMode.keyword, monkeypatch)
 
         assert response.mode is SearchMode.keyword
 
     def test_semantic_retrieval_is_reported_on_the_answer(self, monkeypatch):
-        from app.schemas.search import SearchMode
 
         response = self._ask(SearchMode.semantic, monkeypatch)
 
