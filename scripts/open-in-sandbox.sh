@@ -71,10 +71,14 @@ fi
 mkdir -p "${HOST_HOME}/.config/opencode" "${HOST_HOME}/.config/gh"
 touch "${HOST_HOME}/.gitconfig"
 
-# Ensure the stack is running and the image matches this host identity.
-# Compose's build cache keeps this inexpensive after the first run.
-echo "[sandbox] Ensuring dev stack is built and running..."
-docker compose up -d --build dev worker
+# Ensure the stack is running, WITHOUT rebuilding images that already exist.
+# This helper only builds when the sandbox was never initialized, and otherwise
+# waits for the running stack to be ready — so calling this right after
+# `make dev-up` / `make dev-restart` no longer starts a second, racing build.
+# (It used to run `docker compose up -d --build` unconditionally, which rebuilt
+# the images every time and could clobber a live `make opencode` session.)
+echo "[sandbox] Ensuring dev stack is running..."
+"$SCRIPT_DIR/ensure-sandbox-running.sh"
 
 # One-shot command mode: use a TTY when we are interactive so tools like
 # pytest --pdb keep working, and -T when stdin is piped.
