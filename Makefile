@@ -21,6 +21,15 @@ check-identity:
 BACKEND_DIR := backend
 FRONTEND_DIR := frontend
 
+# Bring the dev sandbox up for the exec-style targets (dev-exec, opencode,
+# shell). Deliberately NOT `$(COMPOSE) up -d --build`: the helper only builds
+# when the stack was never initialized, and otherwise just reconciles containers
+# and waits for readiness. That keeps `make shell` / `make opencode` from
+# kicking off a redundant image build — and racing the running stack — when
+# called right after `make dev-up` / `make dev-restart`.
+# Pass COMPOSE= to the helper so it uses the same command as the Makefile.
+SANDBOX_UP := COMPOSE="$(COMPOSE)" scripts/ensure-sandbox-running.sh
+
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
@@ -109,12 +118,11 @@ dev-log: ## Tail dev sandbox logs
 	$(COMPOSE) logs -f dev
 
 dev-exec: preflight ## Open a shell inside the dev sandbox
-	$(COMPOSE) up -d --build dev worker
+	$(SANDBOX_UP)
 	$(COMPOSE) exec dev zsh
 
 opencode: preflight ## Run the AI coding agent (opencode) inside the dev sandbox
-	@echo "[opencode] ensuring dev stack is built and running..."
-	$(COMPOSE) up -d --build dev worker
+	$(SANDBOX_UP)
 	@if [ -t 0 ]; then $(COMPOSE) exec -it dev zsh -lc "cd /sandbox/ai-document-platform && opencode $(OPENCODE_ARGS)"; else $(COMPOSE) exec -T dev zsh -lc "cd /sandbox/ai-document-platform && opencode $(OPENCODE_ARGS)"; fi
 
 # Alias kept for compatibility with earlier dev-sandbox docs.

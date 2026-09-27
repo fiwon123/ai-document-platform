@@ -113,6 +113,15 @@ make sandbox          # interactive bash inside the dev container
 cd /sandbox/ai-document-platform && opencode
 ```
 
+`make opencode`, `make sandbox`/`make shell`, and `make dev-exec` bring the stack
+up only if it is not already running — they **do not rebuild** a sandbox that is
+already up, so you can call them right after `make dev-up` / `make dev-restart`
+without kicking off a second build that races the live one. The build happens
+only when the sandbox was never initialized, or when you ask for it explicitly
+with `make dev-build` (needed after changing `Dockerfile`, `pyproject.toml`, or
+`uv.lock`). If the stack is still starting, they wait for it to become healthy
+instead of starting a competing one.
+
 One-shot mode without a shell (TTY-aware — interactive commands keep a TTY,
 piped stdin uses `-T`):
 
