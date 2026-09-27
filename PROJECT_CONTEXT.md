@@ -129,7 +129,11 @@ LLM and Embedding APIs
 │   │   └── versions/          # Migration versions
 │   │       ├── 001_initial_migration.py
 │   │       ├── 002_add_chunks_search_pgvector.py
-│   │       └── 003_add_document_thumbnail.py
+│   │       ├── 003_add_document_thumbnail.py
+│   │       ├── 004_add_documents_composite_index.py
+│   │       ├── 005_align_models_with_schema.py
+│   │       ├── 006_webhook_subscriptions.py
+│   │       └── 007_keyword_search_index.py  # GIN index for keyword search
 │   ├── tests/                 # pytest suite (conftest fixtures; document, search, qa,
 │   │                          # user, worker, status, cache, webhook, thumbnail,
 │   │                          # statistics tests)
@@ -273,6 +277,20 @@ LLM and Embedding APIs
   `has_more`)
 - `POST /v1/search/export` - Export search results as CSV or JSON
   (formula-injection safe; skips search-history recording)
+
+**The `score` field is a distance, not a similarity.** Results are ordered by
+it ascending, so **smaller is the better match** and 1.0 is the furthest
+possible match. Convert it to a match percentage with `(1 - score) * 100`,
+which is what the UI shows. The field has always been called `score`, which is
+what makes it easy to read backwards — it is documented in the schema, so the
+OpenAPI document and `/docs` carry the same warning. The metric behind it
+depends on the response's `mode`: `semantic` reports a cosine distance between
+embeddings, `keyword` reports a full-text rank distance, so only the ordering
+*within one result set* is meaningful.
+
+The CSV export heads that column `distance` and adds `match_percent` (the UI's
+value), so a spreadsheet sorts high-to-low on the column that means "better"
+without anyone having to know the direction of the underlying number.
 
 ### Webhooks
 - `GET /v1/webhooks/` - List the current user's webhook subscriptions
@@ -442,6 +460,9 @@ when done; `make check` before every push; only `dev-up` requires opencode
 - [x] Document chunking service
 - [x] Embedding generation service (OpenAI)
 - [x] Semantic search with pgvector (top_k, offset pagination, document_ids filter)
+- [x] Keyword search fallback with PostgreSQL full-text ranking when no embedding
+      provider is configured (reports `mode: keyword`; stemmed matching, a
+      substring pass for tokens the text search drops, and a GIN index)
 - [x] Search result export (CSV, formula-injection safe; JSON)
 - [x] Question answering with LLM (OpenAI or Groq, optional bring-your-own-key
   via per-request `api_key`; per-user answer caching)

@@ -56,7 +56,21 @@ class SearchResult(BaseModel):
     document_id: UUID
     document_filename: str
     content: str
-    score: float
+    score: float = Field(
+        description=(
+            "Relevance **distance** in the range 0 to 1, where **smaller is a "
+            "better match** and 1.0 is the furthest possible match. This is the "
+            "name the field has always had, but it is a distance, not a "
+            "similarity: results are ordered by it ascending, and a high value "
+            "means a poor match rather than a good one. Convert it to a "
+            "similarity percentage with `(1 - score) * 100`, which is what the "
+            "web UI displays. The exact metric depends on the search `mode`: "
+            "`semantic` reports a cosine distance between embeddings, while "
+            "`keyword` reports a full-text rank distance. Only the ordering "
+            "within one result set is meaningful; distances from two different "
+            "searches are not comparable."
+        )
+    )
     metadata_: dict | None = None
 
 
@@ -77,8 +91,20 @@ class SearchMode(StrEnum):
 class SearchResponse(BaseModel):
     query: str
     results: list[SearchResult]
-    total_count: int
-    has_more: bool
+    total_count: int = Field(
+        description=(
+            "Total number of results matching the query for this user, ignoring "
+            "pagination. In `keyword` mode this counts only chunks whose text "
+            "actually matches, so a query that matches nothing reports 0 rather "
+            "than the size of the corpus."
+        )
+    )
+    has_more: bool = Field(
+        description=(
+            "True when more matching results exist beyond this page. Fetch the "
+            "next page with `offset = offset + len(results)`."
+        )
+    )
     mode: SearchMode = Field(
         default=SearchMode.semantic,
         description=(
