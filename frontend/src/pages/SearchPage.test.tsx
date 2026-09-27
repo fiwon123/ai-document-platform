@@ -525,6 +525,28 @@ describe("SearchPage keyword-only mode", () => {
     expect(notice?.textContent).toContain("OPENAI_API_KEY");
   });
 
+  it("says which key costs money and names the free ones", async () => {
+    // The notice used to name only OPENAI_API_KEY -- the paid provider -- and
+    // left the reader assuming it was the free option to take.
+    mockedSearch.mockResolvedValue({
+      query: "q3",
+      results: [result],
+      total_count: 1,
+      has_more: false,
+      mode: "keyword",
+    });
+
+    await runSearch("q3");
+
+    const text = document.querySelector(".search-mode-notice")?.textContent ?? "";
+    expect(text).toContain("bills your OpenAI account");
+    expect(text).toContain("GROQ_API_KEY");
+    expect(text).toContain("LOCAL_LLM_ENABLED=true");
+    // Honest about what the free paths cannot do: they serve chat models, not
+    // the embeddings this notice is about.
+    expect(text).toContain("cannot supply embeddings");
+  });
+
   it("does not claim keyword-only when semantic search was used", async () => {
     mockedSearch.mockResolvedValue({
       query: "q3",

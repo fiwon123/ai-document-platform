@@ -532,6 +532,23 @@ describe("QAPage keyword-only retrieval", () => {
     expect(notice?.getAttribute("role")).toBe("status");
   });
 
+  it("says which key costs money and which do not", async () => {
+    // The notice used to name only OPENAI_API_KEY, which is the paid one, and
+    // said nothing about the two free paths — so a reader could reasonably
+    // assume the key it named was the free option.
+    ask("q", "A", "llama3.2:1b", [], "keyword");
+
+    await askQuestion("q");
+
+    const text = document.querySelector(".search-mode-notice")?.textContent ?? "";
+    expect(text).toContain("bills your OpenAI account");
+    expect(text).toContain("GROQ_API_KEY");
+    expect(text).toContain("LOCAL_LLM_ENABLED=true");
+    // Groq and a local server serve chat models, not embeddings. Promising
+    // otherwise would send the reader to set a key that cannot fix the notice.
+    expect(text).toContain("cannot supply embeddings");
+  });
+
   it("says nothing when retrieval was semantic", async () => {
     ask("q", "A", "gpt-4o-mini", [], "semantic");
 

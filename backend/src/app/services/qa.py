@@ -24,11 +24,16 @@ _KEY_PATTERN = re.compile(r"sk-[A-Za-z0-9_-]+")
 QA_CACHE_TTL_SECONDS = 900  # 15 minutes
 _QA_CACHE_KEY = "qa:{user_id}:{version}:{cache_id}"
 
+# Opening of the "no provider configured" answer. Shared by the message builder
+# and the uncacheable-answer check, so rewording the message cannot quietly start
+# caching the fact that a key is missing for the whole TTL.
+UNCONFIGURED_PREFIX = "AI service is not configured."
+
 # Fallback strings that must never be cached: they indicate a transient
 # provider problem, missing configuration, or an empty model answer, and
 # caching them would hide the recovery for the whole TTL.
 _UNCACHEABLE_ANSWER_PREFIXES = (
-    "AI service is not configured.",
+    UNCONFIGURED_PREFIX,
     "Could not generate an answer with the AI provider.",
     "No answer generated.",
 )
@@ -161,17 +166,40 @@ _local_client = (
     else None
 )
 
-# Friendly hint when a provider's API key is missing.
-_PROVIDER_KEY_HINT = {
-    "openai": "Set the OPENAI_API_KEY environment variable to use OpenAI models.",
-    "groq": (
-        "Set the GROQ_API_KEY environment variable (free key from "
-        "https://console.groq.com) to use free Groq models."
-    ),
-    "local": (
-        "Set LOCAL_LLM_ENABLED=true (and LOCAL_LLM_MODEL) to use a local "
-        "OpenAI-compatible model server such as Ollama, which needs no API key."
-    ),
+# How to turn each provider on, and what it costs.
+#
+# Kept apart from MODEL_REGISTRY on purpose: the registry says which models exist
+# and which tier they are, this says what the operator has to set and in what
+# order the options should be offered. The order is *derived* from the registry
+# rather than written out again here, and a test asserts every registry provider
+# has a row here, so a provider cannot be added to one and forgotten in the
+# other.
+#
+# The hint used to be keyed by the resolved provider only, which is why a server
+# with nothing configured pointed the reader at `OPENAI_API_KEY` — the one
+# option that costs money — and said nothing about the two that do not.
+_PROVIDER_SETUP: dict[str, dict[str, str]] = {
+    "groq": {
+        "name": "Groq",
+        "cost": "free",
+        "how": (
+            "set GROQ_API_KEY to a free key from https://console.groq.com — "
+            "no OpenAI subscription needed"
+        ),
+    },
+    "local": {
+        "name": "Local model",
+        "cost": "free, no API key",
+        "how": (
+            "set LOCAL_LLM_ENABLED=true and LOCAL_LLM_MODEL to any "
+            "OpenAI-compatible local server, such as Ollama"
+        ),
+    },
+    "openai": {
+        "name": "OpenAI",
+        "cost": "paid — bills your OpenAI account per token",
+        "how": "set OPENAI_API_KEY",
+    },
 }
 
 
@@ -213,6 +241,60 @@ def is_model_available(model_id: str) -> bool:
     """Whether a specific model can be used right now."""
     entry = _MODEL_BY_ID.get(model_id)
     return bool(entry) and _is_provider_available(entry["provider"])
+
+
+def _providers_free_first() -> list[str]:
+    """Provider names, cheapest first, registry order within a tier.
+
+    Derived from the registry so the message cannot disagree with the tiers the
+    Settings picker shows: a provider labelled free there is offered first here.
+    Sorting is stable, so registry order survives inside each group.
+    """
+    may_bill: dict[str, bool] = {}
+    for entry in MODEL_REGISTRY:
+        provider = entry["provider"]
+        # A provider is free only while *every* model it offers is free; one
+        # paid model makes it something that can cost money.
+        may_bill[provider] = may_bill.get(provider, True) and entry["tier"] != "free"
+    return sorted(
+        (provider for provider in may_bill if provider in _PROVIDER_SETUP),
+        key=may_bill.get,
+    )
+
+
+def unconfigured_provider_hint(provider: str) -> str:
+    """The hint shown when a question cannot be answered for lack of a provider.
+
+    Two different situations share one code path, and conflating them is what
+    made the old message unhelpful:
+
+    - **Nothing is configured at all.** The reader cannot answer anything, so
+      every option is listed, cheapest first, each labelled with its cost. The
+      paid one is named too, but last and marked as paid.
+    - **Some other provider is configured**, just not the one this model needs.
+      Then only that provider's variable is named — listing the rest would
+      wrongly suggest they are all unavailable — plus a pointer to the models
+      that do work right now.
+
+    Availability is a local inspection of configuration (see
+    ``_is_provider_available``); nothing here probes a provider over the
+    network, so this stays safe to render.
+    """
+    setup = _PROVIDER_SETUP.get(provider) or _PROVIDER_SETUP["openai"]
+
+    if any(_is_provider_available(name) for name in _PROVIDER_SETUP):
+        return (
+            f"{UNCONFIGURED_PREFIX} To use {setup['name']} models "
+            f"({setup['cost']}), {setup['how']}. Or pick one of the models "
+            "that are already available in Settings."
+        )
+
+    options = "\n".join(
+        f"- {_PROVIDER_SETUP[name]['name']} ({_PROVIDER_SETUP[name]['cost']}): "
+        f"{_PROVIDER_SETUP[name]['how']}"
+        for name in _providers_free_first()
+    )
+    return f"{UNCONFIGURED_PREFIX} No provider is set up yet. Enable any one:\n{options}"
 
 
 def resolve_default_model() -> str:
@@ -475,10 +557,7 @@ class QAService:
         )
 
         if client is None:
-            return (
-                "AI service is not configured. "
-                + _PROVIDER_KEY_HINT[provider]
-            )
+            return unconfigured_provider_hint(provider)
 
         system_prompt = (
             "You are a helpful assistant that answers questions based on "

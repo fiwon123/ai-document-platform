@@ -4,6 +4,8 @@ from contextlib import contextmanager
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+import httpx
+
 from app.models.chunk import DocumentChunk
 from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
@@ -405,7 +407,12 @@ class TestQAServiceAnswerGeneration:
     def test_ask_falls_back_when_llm_not_configured(self, monkeypatch):
         from app.services import qa as qa_module
 
-        monkeypatch.setattr(qa_module, "_openai_client", None)
+        # Every provider, not just OpenAI: the hint now distinguishes "nothing
+        # is configured" from "this model needs a provider you have not set up",
+        # so the test has to say which of the two it is exercising rather than
+        # inherit it from whatever keys happen to exist in the environment.
+        for attr in ("_openai_client", "_groq_client", "_local_client"):
+            monkeypatch.setattr(qa_module, attr, None)
         fake_search = MagicMock()
         fake_search.search.return_value = SearchResponse(
             query="q", results=[], total_count=0, has_more=False
@@ -421,7 +428,8 @@ class TestQAServiceAnswerGeneration:
         """A free Groq model without GROQ_API_KEY gives a helpful hint."""
         from app.services import qa as qa_module
 
-        monkeypatch.setattr(qa_module, "_groq_client", None)
+        for attr in ("_openai_client", "_groq_client", "_local_client"):
+            monkeypatch.setattr(qa_module, attr, None)
         fake_search = MagicMock()
         fake_search.search.return_value = SearchResponse(
             query="q", results=[], total_count=0, has_more=False
@@ -1010,3 +1018,154 @@ class TestLocalModelIdCollision:
 
         ids = [entry["id"] for entry in MODEL_REGISTRY]
         assert len(ids) == len(set(ids))
+
+
+class TestUnconfiguredProviderHint:
+    """The first thing a user with no keys at all sees.
+
+    Regression tests for #452. The hint used to be keyed by the *resolved*
+    provider, and with nothing configured the resolver falls through to a paid
+    OpenAI model -- so the message pointed the reader at `OPENAI_API_KEY`, the
+    one option that costs money, and said nothing about the two free paths #448
+    added. A regression test pins the content, so a later provider cannot
+    quietly narrow the message again.
+    """
+
+    @staticmethod
+    def _configured(monkeypatch, *providers: str):
+        """Pin exactly which providers exist for this test.
+
+        Every provider not named is made unavailable, so the result never
+        depends on which keys happen to be set in the environment.
+        """
+        from app.services import qa as qa_module
+
+        clients = {
+            "openai": "_openai_client",
+            "groq": "_groq_client",
+            "local": "_local_client",
+        }
+        for name, attr in clients.items():
+            monkeypatch.setattr(
+                qa_module, attr, object() if name in providers else None
+            )
+        return qa_module
+
+    def test_names_every_provider_when_nothing_is_configured(self, monkeypatch):
+        qa_module = self._configured(monkeypatch)
+        hint = qa_module.unconfigured_provider_hint("openai")
+
+        assert "GROQ_API_KEY" in hint
+        assert "LOCAL_LLM_ENABLED" in hint
+        assert "OPENAI_API_KEY" in hint
+
+    def test_says_which_options_are_free_and_which_are_paid(self, monkeypatch):
+        """The whole point: a reader must not assume the first name is free."""
+        qa_module = self._configured(monkeypatch)
+        hint = qa_module.unconfigured_provider_hint("openai")
+        lines = {
+            line[2:].split(" (")[0]: line
+            for line in hint.splitlines()
+            if line.startswith("- ")
+        }
+
+
+        assert "free" in lines["Groq"]
+        assert "free" in lines["Local model"]
+        assert "paid" in lines["OpenAI"]
+
+    def test_free_options_are_offered_before_the_paid_one(self, monkeypatch):
+        """Derived from the registry's tiers, cheapest first."""
+        qa_module = self._configured(monkeypatch)
+        hint = qa_module.unconfigured_provider_hint("openai")
+        order = [line for line in hint.splitlines() if line.startswith("- ")]
+
+        assert order[0].startswith("- Groq")
+        assert order[1].startswith("- Local model")
+        assert order[-1].startswith("- OpenAI")
+
+    def test_named_provider_cost_matches_the_registry_tier(self, monkeypatch):
+        """A provider cannot be advertised as free while it bills."""
+        qa_module = self._configured(monkeypatch)
+        paid = {
+            entry["provider"]
+            for entry in qa_module.MODEL_REGISTRY
+            if entry["tier"] == "paid"
+        }
+
+        for provider, setup in qa_module._PROVIDER_SETUP.items():
+            if provider in paid:
+                assert "paid" in setup["cost"], provider
+            else:
+                assert "free" in setup["cost"], provider
+
+    def test_every_registry_provider_has_a_setup_row(self, monkeypatch):
+        """A provider in the registry with no row here would be missing from
+        the message -- the drift that caused #452."""
+        qa_module = self._configured(monkeypatch)
+        registry_providers = {entry["provider"] for entry in qa_module.MODEL_REGISTRY}
+
+        assert registry_providers <= set(qa_module._PROVIDER_SETUP)
+
+    def test_one_configured_provider_names_only_its_own_variable(
+        self, monkeypatch
+    ):
+        """One provider set up, a different model asked for.
+
+        Listing the other options here would wrongly suggest they are all
+        unavailable, so only the requested provider is named -- plus a pointer to
+        what already works.
+        """
+        qa_module = self._configured(monkeypatch, "groq")
+        hint = qa_module.unconfigured_provider_hint("openai")
+
+        assert "OPENAI_API_KEY" in hint
+        assert "LOCAL_LLM_ENABLED" not in hint
+        assert "Settings" in hint
+
+    def test_the_answer_path_uses_the_same_wording(self, monkeypatch):
+        """The API answer, not just the helper it delegates to."""
+        qa_module = self._configured(monkeypatch)
+        fake_search = MagicMock()
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
+
+        response = qa_module.QAService(search_service=fake_search).ask(
+            user_id=uuid4(), question="q"
+        )
+
+        assert response.answer.startswith(qa_module.UNCONFIGURED_PREFIX)
+        for variable in ("GROQ_API_KEY", "LOCAL_LLM_ENABLED", "OPENAI_API_KEY"):
+            assert variable in response.answer
+        # A not-configured answer must never be cached, or the missing key
+        # would still be reported after one was added.
+        assert qa_module._is_uncacheable_answer(response.answer)
+
+    def test_unknown_provider_does_not_raise(self, monkeypatch):
+        """A model id from a provider this build has never heard of must not
+        turn into a KeyError and a 500."""
+        qa_module = self._configured(monkeypatch)
+
+        assert qa_module.unconfigured_provider_hint("some-future-provider")
+
+    def test_building_the_hint_makes_no_network_call(self, monkeypatch):
+        """Availability stays a local inspection.
+
+        #448 established that the model list must never probe a provider, and
+        this message is rendered in the same UI. If it tried to check that
+        Groq is really reachable, a server with no outbound network would hang
+        or fail while trying to explain that it has no key.
+        """
+        import urllib.request
+
+        qa_module = self._configured(monkeypatch)
+
+        def explode(*args, **kwargs):
+            raise AssertionError("building the hint must not touch the network")
+
+        monkeypatch.setattr(urllib.request, "urlopen", explode)
+        monkeypatch.setattr(httpx, "post", explode)
+        monkeypatch.setattr(httpx, "get", explode)
+
+        assert qa_module.unconfigured_provider_hint("openai")
