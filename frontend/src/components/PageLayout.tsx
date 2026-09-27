@@ -5,6 +5,41 @@ import { LandingFooter } from "./LandingFooter";
 import { Reveal } from "./Reveal";
 
 /**
+ * The site chrome every public page renders inside: navbar, one `<main>` for
+ * the page's own content, footer.
+ *
+ * Extracted from PageLayout so a page that does not want the hero treatment can
+ * still get the same chrome by construction. That is what the public 404 does
+ * (#461): it has its own layout, but it is still a public page, and when it
+ * rendered bare — no navbar, no footer — a mistyped or stale URL was a dead end
+ * with no route back to the marketing pages. Nothing here is optional per page,
+ * so nothing here is a prop.
+ *
+ * The navbar and footer sit *outside* `<main>` on purpose: they are the banner
+ * and contentinfo landmarks, page furniture rather than page content, and
+ * burying them inside main is what makes a screen reader's landmark list
+ * unreadable.
+ */
+export function MarketingShell({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  /** Extra class on the wrapper, e.g. PageLayout's "marketing-page". */
+  className?: string;
+}) {
+  return (
+    <div className={className ? `landing-page ${className}` : "landing-page"}>
+      <LandingNavbar />
+
+      <main className="page-main">{children}</main>
+
+      <LandingFooter />
+    </div>
+  );
+}
+
+/**
  * Shared shell for every marketing page.
  *
  * The point is that a new page cannot forget the navbar, the footer, the hero
@@ -26,35 +61,29 @@ export function PageLayout({
   children: ReactNode;
 }) {
   return (
-    <div className="landing-page marketing-page">
-      <LandingNavbar />
-
-      <main className="page-main">
-        <header className="page-hero">
-          {/* Reused verbatim from the landing hero so the two read as one site. */}
-          <div className="hero-mesh" aria-hidden="true" />
-          <div className="page-hero-inner">
-            {eyebrow && (
-              <Reveal variant="up">
-                <p className="landing-eyebrow">{eyebrow}</p>
-              </Reveal>
-            )}
-            <Reveal variant="up" delay={eyebrow ? 80 : 0}>
-              <h1>{title}</h1>
+    <MarketingShell className="marketing-page">
+      <header className="page-hero">
+        {/* Reused verbatim from the landing hero so the two read as one site. */}
+        <div className="hero-mesh" aria-hidden="true" />
+        <div className="page-hero-inner">
+          {eyebrow && (
+            <Reveal variant="up">
+              <p className="landing-eyebrow">{eyebrow}</p>
             </Reveal>
-            {subtitle && (
-              <Reveal variant="up" delay={eyebrow ? 160 : 80}>
-                <p className="landing-sub">{subtitle}</p>
-              </Reveal>
-            )}
-          </div>
-        </header>
+          )}
+          <Reveal variant="up" delay={eyebrow ? 80 : 0}>
+            <h1>{title}</h1>
+          </Reveal>
+          {subtitle && (
+            <Reveal variant="up" delay={eyebrow ? 160 : 80}>
+              <p className="landing-sub">{subtitle}</p>
+            </Reveal>
+          )}
+        </div>
+      </header>
 
-        <div className="page-body">{children}</div>
-      </main>
-
-      <LandingFooter />
-    </div>
+      <div className="page-body">{children}</div>
+    </MarketingShell>
   );
 }
 

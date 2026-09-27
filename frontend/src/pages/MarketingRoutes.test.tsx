@@ -108,6 +108,37 @@ describe("marketing routes", () => {
     }
   });
 
+  // #461: the public catch-all rendered the 404 bare — nav=0, footer=0 — so it
+  // was the one public route with no way back into the site. Checked against the
+  // real App (not the mirrored tree in AppRoutes.test.tsx) because the bare
+  // wrapper is exactly the kind of thing a mirror can quietly stop resembling.
+  it("frames the public 404 like every other public page", async () => {
+    const view = await renderAt("/this-route-does-not-exist");
+    expect(view.container.textContent).toContain("This page could not be found.");
+    expect(within(view.container).getByLabelText("AskDocs home")).toBeTruthy();
+    expect(
+      within(view.container).getByRole("navigation", { name: "Legal" }),
+    ).toBeTruthy();
+    // Still exactly one main: the shell supplies it, and a nested second one
+    // would be the overcorrection (#460).
+    expect(view.container.querySelectorAll("main, [role='main']")).toHaveLength(1);
+    view.unmount();
+  });
+
+  // The reason the chrome matters: from the 404 the marketing pages have to be
+  // one click away, not just present on the page.
+  it("links the public 404 to every page the navigation advertises", async () => {
+    const view = await renderAt("/this-route-does-not-exist");
+    const hrefs = [...view.container.querySelectorAll("a")].map((a) =>
+      a.getAttribute("href"),
+    );
+    for (const section of [NAV_PRODUCT, NAV_COMPANY, NAV_LEGAL]) {
+      for (const { label, to } of section) {
+        expect(hrefs, `the 404 should link to ${to} (${label})`).toContain(to);
+      }
+    }
+  });
+
   it("gives every public page exactly one main landmark", async () => {
     // Lighthouse's landmark-one-main audit fails on a page with no <main>, and
     // a screen-reader user has no jump target without one. /, /login and
