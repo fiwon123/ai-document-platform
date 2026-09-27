@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "note": "Accepted findings for the visual audit's --gate. Every entry here is a problem someone has looked at and decided to live with for now, so a run that finds nothing new passes. Empty means the audit is clean: contrast failures, page errors, skipped captures, horizontal overflow and unlabelled controls are all at zero. Add an entry only with --update-baseline, and review the resulting diff in the PR. Keys identify the element (route, viewport, theme, state, tag, class, required level) and deliberately exclude measured values, so retuning a colour does not read as a new regression; `fingerprint` records the severity that was accepted.",
+  "updatedAt": "2026-09-27T19:12:47.233Z",
+  "findings": [
+    {
+      "key": "contrast|/app/admin [desktop/dark] access-denied|p|error-message|4.5",
+      "signal": "contrast",
+      "where": "/app/admin [desktop/dark] access-denied",
+      "fingerprint": "3.35"
+    },
+    {
+      "key": "contrast|/app/admin [desktop/light] access-denied|p|error-message|4.5",
+      "signal": "contrast",
+      "where": "/app/admin [desktop/light] access-denied",
+      "fingerprint": "4.41"
+    },
+    {
+      "key": "contrast|/app/documents [desktop/light] dropzone|p|error-message|4.5",
+      "signal": "contrast",
+      "where": "/app/documents [desktop/light] dropzone",
+      "fingerprint": "4.41"
+    },
+    {
+      "key": "contrast|/register [desktop/light] filled|p|match-indicator match-ok|4.5",
+      "signal": "contrast",
+      "where": "/register [desktop/light] filled",
+      "fingerprint": "3.3"
+    },
+    {
+      "key": "contrast|/register [mobile/light] filled|p|match-indicator match-ok|4.5",
+      "signal": "contrast",
+      "where": "/register [mobile/light] filled",
+      "fingerprint": "3.3"
+    }
+  ]
+}
