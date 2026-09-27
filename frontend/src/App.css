@@ -55,9 +55,13 @@
      icons and fills, where the 3:1 non-text threshold applies; as small text
      it measured 3.15:1 on the green-50 chip, under AA's 4.5:1. The chip labels
      are 11.5-12.8px bold, well under the 18.66px bold that "large text" needs
-     to qualify for 3:1, so 4.5:1 is the bar that applies. green-700 -> 4.79:1,
-     the smallest step that clears it. */
-  --green-text: #15803d; /* green-700 */
+     to qualify for 3:1, so 4.5:1 is the bar that applies. green-700 -> 4.79:1
+     on green-50, but the *tinted* pills (.user-status.is-active) paint a 15%
+     green wash over the row, which is a far stronger field than green-50:
+     green-700 measured 4.07:1 there. green-800 clears both, at 5.02:1 and
+     5.71:1, so the token is now the step that is safe on a tint and on white
+     alike. */
+  --green-text: #166534; /* green-800 */
   /* Error text, the text counterpart to --green-text, for the same reason:
      --danger is a *border/fill* token (red-600) and as small text on the
      footer's --surface it measured 4.41:1, under AA's 4.5:1. red-700 clears it
@@ -84,6 +88,11 @@
   --surface-3: #d5dde8; /* deepest tint — modal headers, sticky bars */
   --blue: #2563eb; /* blue-600 — primary accent */
   --blue-hover: #1d4ed8; /* blue-700 */
+  /* Text counterpart to --blue, for the same reason --green-text exists: the
+     Pro column head paints --blue on a 12% blue wash and, as 13px bold, needs
+     4.5:1. --blue measured 3.60:1 there; blue-700 lands at 4.50, too close to
+     the line to trust, so this steps to blue-800 at 6.06:1. */
+  --blue-text: #1e40af; /* blue-800 */
   --blue-soft: #eff6ff; /* blue-50 — tinted backgrounds */
   --green: #16a34a; /* green-600 — success/positive */
   --green-soft: #f0fdf4; /* green-50 */
@@ -98,7 +107,9 @@
   --success-line: #bbf7d0;
   /* Syntax highlighting tokens (webhook tutorial code blocks) */
   --code-keyword: #6d28d9; /* violet-700 */
-  --code-string: #15803d; /* green-700 */
+  /* green-700 measured 4.46:1 on the light code surface, a hair under AA;
+     green-800 clears it at 5.02:1. The dark theme keeps green-300. */
+  --code-string: #166534; /* green-800 */
   --code-comment: #64748b; /* slate-500 */
   --code-func: #1d4ed8; /* blue-700 */
   --code-number: #b45309; /* amber-700 */
@@ -142,6 +153,10 @@
      measures 3.14:1 on that surface — well under AA — while red-400 clears it
      at 5.49:1. */
   --danger-text: #f87171; /* red-400 */
+  /* Mirror of the light theme's --blue-text, and for the same reason: the dark
+     Pro head is blue-400 on a 12% wash of itself, which measured 4.48:1 — a
+     hair under AA. blue-300 clears it at 6.33:1. */
+  --blue-text: #93c5fd; /* blue-300 */
   --line: #2c3a52; /* visible border on the softened backgrounds */
   /* Brighter than --line. On #121927 the default hairline measures 1.54:1
      against the page, so every card painted var(--paper) floated on nothing
@@ -856,15 +871,24 @@ body {
   padding: 0 6px;
   border-radius: 999px;
   background: var(--line);
-  color: var(--muted);
+  /* --muted is body-secondary text and is not allowed to carry a 12px count
+     pill: slate-600 measured 3.45:1 light and 4.47:1 dark on --line. The chip's
+     own label already uses --ink; the count is no less important. */
+  color: var(--ink);
   font-size: 0.75rem;
   font-weight: 600;
   text-align: center;
 }
 
 .filter-chip.is-selected .chip-count {
-  background: rgba(255, 255, 255, 0.2);
-  color: var(--paper);
+  /* A white wash over the selected chip's translucent accent left the count
+     white-on-light-blue at 3.62:1. Same fix as .carousel-count: an ink scrim
+     carries the light label, here at ~13.7:1. */
+  background: rgb(15 23 42 / 0.8);
+  /* A literal light tone, not --paper: the scrim above is dark in both themes
+     while --paper flips to near-black in dark, which put #121927 on #1f3354
+     at 1.38:1. */
+  color: #e2e8f0;
 }
 
 .documents-result-count {
@@ -1733,7 +1757,10 @@ body {
   bottom: 14px;
   padding: 4px 10px;
   border-radius: 20px;
-  background: rgb(15 23 42 / 0.55);
+  /* 0.55 let most of the light page through, so the slate-300 count landed on
+     a mid-grey field at 2.84:1. A near-opaque ink scrim puts the same
+     "dark pill, light text" the rest of the dark surfaces use, at ~6.5:1. */
+  background: rgb(15 23 42 / 0.8);
   color: #cbd5e1;
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
@@ -2344,33 +2371,47 @@ body {
 
    Each accent defines a solid tone plus two mixes used for the tinted
    background and the hover ring. Kept in sRGB so contrast reasoning
-   matches the rest of the sheet. */
+   matches the rest of the sheet.
+
+   --card-accent-solid is the one member the dark blocks do NOT restate, and
+   that asymmetry is the point. --card-accent is a *foreground* step: on a dark
+   page it has to climb to the 300/400 range to read as text, but a 400 wash
+   under white text measures 1.67:1 (amber) and 2.54:1 (blue) — the brightest
+   step is the worst possible fill. So the step-number circles, which hold a
+   white numeral, use a second token pinned to the 700 range, where every hue
+   clears 4.5:1 against white. Leaving it out of the dark block is what keeps
+   those circles dark-on-white in both themes instead of drifting light. */
 [data-accent="blue"] {
   --card-accent: #2563eb;
+  --card-accent-solid: #1d4ed8; /* blue-700 — the fill under white text */
   --card-accent-soft: rgb(37 99 235 / 0.07);
   --card-accent-ring: rgb(37 99 235 / 0.22);
 }
 
 [data-accent="violet"] {
   --card-accent: #7c3aed;
+  --card-accent-solid: #6d28d9; /* violet-700 — the fill under white text */
   --card-accent-soft: rgb(124 58 237 / 0.07);
   --card-accent-ring: rgb(124 58 237 / 0.22);
 }
 
 [data-accent="green"] {
   --card-accent: #16a34a;
+  --card-accent-solid: #15803d; /* green-700 — the fill under white text */
   --card-accent-soft: rgb(22 163 74 / 0.07);
   --card-accent-ring: rgb(22 163 74 / 0.22);
 }
 
 [data-accent="amber"] {
   --card-accent: #d97706;
+  --card-accent-solid: #b45309; /* amber-700 — the fill under white text */
   --card-accent-soft: rgb(217 119 6 / 0.08);
   --card-accent-ring: rgb(217 119 6 / 0.24);
 }
 
 [data-accent="rose"] {
   --card-accent: #e11d48;
+  --card-accent-solid: #be123c; /* rose-700 — the fill under white text */
   --card-accent-soft: rgb(225 29 72 / 0.07);
   --card-accent-ring: rgb(225 29 72 / 0.22);
 }
@@ -2594,7 +2635,8 @@ body {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--card-accent);
+  /* As above: white text needs the solid-fill token, not --card-accent. */
+  background: var(--card-accent-solid, #1d4ed8);
   color: white;
   font-size: 0.8rem;
   font-weight: 800;
@@ -2628,13 +2670,12 @@ body {
   }
 }
 
-/* The accent is a mid-tone in light mode, so white on it clears 4.5:1
-   (violet #7c3aed is 5.9:1, rose #e11d48 is 4.8:1). In dark mode the
-   accents brighten to 300-level tones, where white does NOT — so flip
-   the numeral to the dark ink. */
-:root[data-theme="dark"] .landing-step-number {
-  color: #0f172a;
-}
+/* Note for the badge above: there is deliberately no
+   `:root[data-theme="dark"] .landing-step-number` rule. One used to flip the
+   numeral to dark ink, because the dark accents brighten to 300-level tones
+   where white does not clear 4.5:1 — correct while the badge painted
+   --card-accent, and exactly backwards once the fill was pinned dark, where it
+   put dark ink on a dark fill at 2.51:1. Do not reintroduce it. */
 
 .landing-step h3 {
   margin: 0 0 8px;
@@ -2871,7 +2912,7 @@ body {
 
 .landing-table th.pro-head {
   background: color-mix(in srgb, var(--blue) 12%, var(--surface-2));
-  color: var(--blue);
+  color: var(--blue-text);
 }
 
 .landing-table td.pro-cell {
@@ -4264,7 +4305,9 @@ nav.footer-col a:hover {
   margin: 16px 0;
   background: var(--success-soft);
   border: 1px solid var(--success-line);
-  color: var(--success, #16a34a);
+  /* Text token, not the green-600 fill token: on --success-soft the fill step
+     fell under 4.5:1. */
+  color: var(--green-text);
   font-size: 0.9rem;
 }
 
@@ -5043,7 +5086,10 @@ nav.footer-col a:hover {
 }
 
 .stat-ready {
-  background: #16a34a; /* green-600 */
+  /* green-600 under a white 12px label measured 3.30:1; green-700 clears at
+     5.02:1. The darkening is on the fill, not the label, so the card keeps
+     reading as a solid block of colour. */
+  background: #15803d; /* green-700 */
 }
 
 .stat-pending {
@@ -5060,10 +5106,11 @@ nav.footer-col a:hover {
   background: #7c3aed;
 }
 
-/* User-related metrics on the admin dashboard; teal-600 (#0d9488) holds
-   white text at ~4.6:1 in both themes. */
+/* User-related metrics on the admin dashboard. This comment used to claim
+   teal-600 held white text at "~4.6:1 in both themes"; rendered, it measured
+   3.74:1 under the 12px label. teal-700 clears it at 5.50:1. */
 .stat-users {
-  background: #0d9488;
+  background: #0f766e; /* teal-700 */
 }
 
 /* Admin statistics section keeps a consistent gap above the user table. */
@@ -5932,12 +5979,16 @@ nav.footer-col a:hover {
 
 .user-status.is-active {
   background: color-mix(in srgb, var(--success, #16a34a) 15%, transparent);
-  color: var(--success, #16a34a);
+  /* --success is a *fill* token (green-600) and as 11px text on its own 15%
+     tint it measured 2.67:1 light and 3.79:1 dark. --green-text is the text
+     counterpart and is the step that clears 4.5:1 on the tint. */
+  color: var(--green-text);
 }
 
 .user-status.is-disabled {
   background: color-mix(in srgb, var(--danger) 15%, transparent);
-  color: var(--danger);
+  /* Same trap as .is-active, and --danger-text is its counterpart. */
+  color: var(--danger-text);
 }
 
 /* Admin user rows: initials avatar next to the username. */
@@ -6527,7 +6578,8 @@ nav.footer-col a:hover {
 }
 
 .webhook-notice-success {
-  color: var(--success, #16a34a);
+  /* Text token, not the green-600 fill token (see .success-message). */
+  color: var(--green-text);
 }
 
 /* Webhooks how-it-works tutorial */
@@ -6561,7 +6613,9 @@ nav.footer-col a:hover {
 
 .webhook-tutorial-hint {
   font-size: 0.7rem;
-  color: var(--muted);
+  /* --muted measured 4.16:1 on --surface-2; the metadata is still real text,
+     so it takes --ink (11.1:1) instead. */
+  color: var(--ink);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -6661,7 +6715,9 @@ nav.footer-col a:hover {
 
 .webhook-snippet summary {
   cursor: pointer;
-  color: var(--muted);
+  /* Same 4.16:1 finding as .webhook-tutorial-hint; the summary is the
+     disclosure control, so it reads as a label rather than a caption. */
+  color: var(--ink);
   font-weight: 600;
 }
 
@@ -6700,7 +6756,9 @@ nav.footer-col a:hover {
   border-radius: 10px;
   background: color-mix(in srgb, var(--ink) 8%, transparent);
   border: 1px solid var(--line);
-  color: var(--muted);
+  /* 9.92px bold — well under the 18.66px bold that would allow 3:1 — so
+     --muted at 3.56:1 light / 4.21:1 dark is not enough on the code surface. */
+  color: var(--ink);
   font-size: 0.62rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -7340,7 +7398,10 @@ nav.footer-col a:hover {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--card-accent, var(--blue));
+  /* The solid-fill token, not --card-accent: this circle holds white text. The
+     accent rail above (.pipeline-stage::before) keeps the foreground step, since
+     it carries no text. */
+  background: var(--card-accent-solid, #1d4ed8);
   color: #fff;
   font-size: 0.8rem;
   font-weight: 800;
