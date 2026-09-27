@@ -1080,6 +1080,14 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* WCAG 2.5.8 Target Size (Minimum): the line box is 23.2px, so the link is
+     0.8px under the 24px floor. min-height on the element itself keeps the
+     navbar's rhythm (an ::after would grow the hit area without changing the
+     bounding box, which is what the audit measures) and the 0.8px is not
+     visible next to a 64px-tall bar. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
 }
 
 .navbar-username:hover {
@@ -3637,6 +3645,10 @@ nav.footer-col a:hover {
   margin-bottom: 8px;
   font-size: 0.85rem;
   font-weight: 600;
+  /* WCAG 2.5.8: a <label for> is a target (clicking it focuses the input),
+     and the 0.85rem line box is 23.2px. display stays block so the label keeps
+     its full-width click area. */
+  min-height: 24px;
 }
 
 .form-group input {
@@ -3904,6 +3916,10 @@ nav.footer-col a:hover {
   line-height: 1.4;
   color: var(--muted);
   cursor: pointer;
+  /* WCAG 2.5.8: line-height 1.4 on 0.88rem gives a 19.7px row, the largest
+     miss in the set. align-items stays flex-start so the box grows downward
+     without re-aligning the checkbox or the two lines of text. */
+  min-height: 24px;
 }
 
 .terms-label input {
@@ -3922,6 +3938,10 @@ nav.footer-col a:hover {
   font-size: 0.9rem;
 }
 
+/* "Don't have an account? Register" — 19px tall, and left that way on purpose:
+   the link sits in the middle of a sentence, so WCAG 2.5.8's inline exception
+   applies. A min-height here would add 5px to a line of text and visibly break
+   its baseline. */
 .auth-footer a {
   color: var(--blue);
   font-weight: 600;
@@ -5444,6 +5464,11 @@ nav.footer-col a:hover {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--muted);
+  /* WCAG 2.5.8: this label sits beside the <select> in a centred flex row and
+     was 23.2px tall, so it did not line up with the control it names. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
 }
 
 .qa-model-select {
@@ -5707,6 +5732,10 @@ nav.footer-col a:hover {
   text-decoration: none;
   opacity: 0.85;
   transition: opacity 0.2s;
+  /* WCAG 2.5.8: 23.2px tall, same 0.8px shortfall as .navbar-username. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
 }
 
 .demo-back-home:hover {
@@ -6391,6 +6420,10 @@ nav.footer-col a:hover {
   align-items: center;
   gap: 6px;
   font-size: 0.88rem;
+  /* WCAG 2.5.8: the label is the real target (the <input> inside it is 13x13),
+     and it was 23.2px tall. 24px here, so the whole row is comfortably
+     clickable without changing the checkbox or the type size. */
+  min-height: 24px;
 }
 
 .webhook-event-option input {
@@ -7058,6 +7091,14 @@ nav.footer-col a:hover {
   margin-bottom: 8px;
 }
 
+/* Links in marketing and legal prose. These measure 22px tall, under the
+   WCAG 2.5.8 24px floor, and that is deliberate: they are inline targets in a
+   sentence, which is the spec's own inline exception ("the target is in a
+   sentence or its size is otherwise constrained by the line-height of
+   non-target text"). Padding them to 24px would mean padding a run of text
+   and breaking the line's baseline, to fix what the spec excuses. Standalone
+   controls (navbar username, demo back-link, form labels, checkbox rows,
+   terms label, model label) each carry the 24px floor instead. */
 .page-body a:not(.btn) {
   color: var(--blue);
   font-weight: 600;
