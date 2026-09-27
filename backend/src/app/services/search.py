@@ -148,6 +148,11 @@ class SearchService:
         results, total_count = self.repository.search(
             user_id=user_id,
             query_embedding=query_embedding,
+            # The keyword fallback has no embedding to work from, so the query
+            # text itself is the only thing it can match against. It used to be
+            # dropped here, which is how the fallback ended up returning the
+            # user's first chunks regardless of the question (#451).
+            query_text=query,
             top_k=top_k,
             offset=offset,
             document_ids=document_ids,

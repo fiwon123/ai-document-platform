@@ -128,6 +128,7 @@ class TestSearchRepositoryDocumentFilter:
         results, _ = repo.search(
             user_id=user.id,
             query_embedding=None,
+            query_text="strategy",
             top_k=10,
             document_ids=[doc2.id],
         )
@@ -142,6 +143,9 @@ class TestSearchRepositoryDocumentFilter:
         results, total_count = repo.search(
             user_id=user.id,
             query_embedding=None,
+            # Matches one term in each document, so the unfiltered case can
+            # still be observed now that keyword search filters at all.
+            query_text="quarterly strategy",
             top_k=10,
         )
 

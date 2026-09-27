@@ -3,6 +3,8 @@
 from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
+import pytest
+
 from app.models.chunk import DocumentChunk
 from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
@@ -33,6 +35,7 @@ class TestSearchServiceUnit:
         repo.search.assert_called_once_with(
             user_id=user_id,
             query_embedding=_make_vector(0),
+            query_text="hello world",
             top_k=5,
             offset=0,
             document_ids=None,
@@ -54,6 +57,7 @@ class TestSearchServiceUnit:
         repo.search.assert_called_once_with(
             user_id=user_id,
             query_embedding=None,
+            query_text="hello world",
             top_k=5,
             offset=0,
             document_ids=None,
@@ -72,6 +76,7 @@ class TestSearchServiceUnit:
         repo.search.assert_called_once_with(
             user_id=repo.search.call_args.kwargs["user_id"],
             query_embedding=_make_vector(0),
+            query_text="q",
             top_k=3,
             offset=0,
             document_ids=None,
@@ -91,6 +96,7 @@ class TestSearchServiceUnit:
         repo.search.assert_called_once_with(
             user_id=user_id,
             query_embedding=_make_vector(0),
+            query_text="q",
             top_k=5,
             offset=0,
             document_ids=document_ids,
@@ -227,14 +233,37 @@ class TestSearchPagination:
             embedding_service=embedding,
         )
 
-        page = service.search(user_id=user.id, query="q", top_k=2, offset=1)
+        # Every seeded chunk contains "content", so this query matches all three
+        # and the page boundaries are the thing under test.
+        page = service.search(user_id=user.id, query="content", top_k=2, offset=1)
 
         assert len(page.results) == 2
         assert page.total_count == 3
         assert page.has_more is False
-        # Deterministic ordering: chunk_index 1 first, then 2.
-        assert [r.metadata_ for r in page.results] == [None, None]
+        # Deterministic ordering: equally-ranked chunks fall back to document
+        # order, so chunk_index 1 comes first, then 2.
         assert [r.content for r in page.results] == ["section 1 content", "section 2 content"]
+
+    def test_text_fallback_past_the_end_returns_nothing(self, db_session):
+        """A page beyond the last match is empty, not a repeated first page.
+
+        The keyword path tries a substring fallback when full-text finds
+        nothing, so without this guard a caller paging past the end would get a
+        first page of fallback matches instead of an empty page.
+        """
+        user, _ = self._seed_chunks(db_session, count=3)
+        repo = SearchRepository(db_session)
+
+        results, total_count = repo.search(
+            user_id=user.id,
+            query_embedding=None,
+            query_text="content",
+            top_k=2,
+            offset=10,
+        )
+
+        assert results == []
+        assert total_count == 0
 
     def test_search_route_forwards_offset(self, client, auth_headers):
         from app.main import app
@@ -562,3 +591,235 @@ class TestSearchModeReporting:
         # And the repository really was asked for a text search, not a vector
         # one -- the reported mode and the executed query cannot disagree.
         assert service.repository.search.call_args.kwargs["query_embedding"] is None
+
+
+class TestKeywordSearch:
+    """Keyword search is the path a fresh checkout actually runs.
+
+    Without an embedding provider the platform still answers searches, so this
+    path has to *search*: match the query, rank by relevance, and report a score
+    the UI can turn into a match percentage. Before #451 it applied no filter at
+    all and returned the user's first N chunks in document order, so it answered
+    every question with the beginning of the corpus.
+    """
+
+    @staticmethod
+    def _seed(db_session, contents: list[str], marker: str = "kw"):
+        user = UserDB(username=f"kw_{marker}", hashed_password="x")  # noqa: S106
+        db_session.add(user)
+        db_session.flush()
+
+        doc = DocumentDB(
+            owner_id=user.id,
+            filename=f"{marker}.txt",
+            object_key=f"k/{marker}.txt",
+            mime_type="text/plain",
+            status=DocumentStatus.READY,
+        )
+        db_session.add(doc)
+        db_session.flush()
+
+        db_session.add_all(
+            [
+                DocumentChunk(
+                    document_id=doc.id, content=content, chunk_index=i,
+                    embedding=_make_vector(i),
+                )
+                for i, content in enumerate(contents)
+            ]
+        )
+        db_session.commit()
+        return user, doc
+
+    def _search(self, db_session, user, query, **kwargs):
+        return SearchRepository(db_session).search(
+            user_id=user.id, query_embedding=None, query_text=query, **kwargs
+        )
+
+    def test_finds_a_match_in_a_late_chunk(self, db_session):
+        """The bug: a match beyond the first `top_k` chunks was unreachable."""
+        user, _ = self._seed(
+            db_session,
+            [
+                "office plants are watered on fridays",
+                "nightly jobs reconcile invoices",
+                "backups are verified monthly",
+                "the pelican deployment window is thursday",
+            ],
+        )
+
+        results, total_count = self._search(
+            db_session, user, "when is the pelican deployment window", top_k=2
+        )
+
+        assert total_count == 1
+        assert len(results) == 1
+        assert "pelican" in results[0].content
+
+    def test_query_matching_nothing_returns_no_results(self, db_session):
+        user, _ = self._seed(db_session, ["quarterly revenue increased", "office plants watered"])
+
+        results, total_count = self._search(
+            db_session, user, "sourdough bread baking schedule", top_k=5
+        )
+
+        assert results == []
+        assert total_count == 0
+
+    def test_stemming_finds_an_inflected_form(self, db_session):
+        """Stemming is the reason to prefer full text over substring matching."""
+        user, _ = self._seed(db_session, ["the pelican deployment window is thursday"])
+
+        results, _ = self._search(db_session, user, "deploying pelicans", top_k=5)
+
+        assert len(results) == 1
+        assert "pelican deployment" in results[0].content
+
+    def test_scores_are_real_and_ordered_by_relevance(self, db_session):
+        """Score stays a distance, so a better match is a *smaller* number.
+
+        The UI renders `1 - score` as a match percentage; if keyword results
+        reported something outside [0, 1] the match chips would show nonsense.
+        Both chunks here satisfy the query — a space-separated `websearch_to_tsquery`
+        ANDs its terms — so what separates them is term density, which is what
+        `ts_rank` is for.
+        """
+        user, _ = self._seed(
+            db_session,
+            [
+                "pelican deployment window thursday confirmed by ops",
+                "pelican is a bird that ops watch from the window on thursday "
+                "and deployment follows",
+            ],
+        )
+
+        results, total_count = self._search(
+            db_session, user, "pelican deployment window thursday", top_k=5
+        )
+
+        assert total_count == 2
+        scores = [r.score for r in results]
+        assert all(0.0 <= s <= 1.0 for s in scores), scores
+        assert all(s > 0.0 for s in scores), "scores must not be the old hardcoded 0.0"
+        # Non-increasing.
+        assert scores == sorted(scores)
+        # The chunk with the terms adjacent is the closer match.
+        assert results[0].content.startswith("pelican deployment window")
+        assert scores[0] < scores[1]
+
+    def test_match_percentage_derived_from_score_is_sane(self, db_session):
+        """Pin the contract the frontend depends on: 1 - score is a percentage."""
+        user, _ = self._seed(db_session, ["the pelican deployment window is thursday"])
+
+        results, _ = self._search(db_session, user, "pelican deployment window", top_k=5)
+
+        percent = (1 - results[0].score) * 100
+        assert 0 <= percent <= 100
+
+    def test_equal_scores_have_a_stable_order_across_calls(self, db_session):
+        user, _ = self._seed(db_session, ["pelican alpha", "pelican beta", "pelican gamma"])
+
+        orders = {
+            tuple(r.chunk_id for r in self._search(db_session, user, "pelican", top_k=3)[0])
+            for _ in range(4)
+        }
+
+        assert len(orders) == 1
+
+    def test_results_are_restricted_to_the_owning_user(self, db_session):
+        user_a, _ = self._seed(db_session, ["pelican shared word"], marker="a")
+        self._seed(db_session, ["pelican shared word"], marker="b")
+
+        results, total_count = self._search(db_session, user_a, "pelican", top_k=10)
+
+        assert total_count == 1
+        assert len(results) == 1
+
+    def test_document_filter_applies_to_keyword_results(self, db_session):
+        user, doc = self._seed(db_session, ["pelican one", "pelican two"])
+        other = DocumentDB(
+            owner_id=user.id, filename="other.txt", object_key="k/other.txt",
+            mime_type="text/plain", status=DocumentStatus.READY,
+        )
+        db_session.add(other)
+        db_session.flush()
+        db_session.add(DocumentChunk(document_id=other.id, content="pelican three", chunk_index=0))
+        db_session.commit()
+
+        results, _ = self._search(db_session, user, "pelican", top_k=10, document_ids=[doc.id])
+
+        assert {r.document_id for r in results} == {doc.id}
+
+    def test_symbol_token_is_found_by_the_substring_fallback(self, db_session):
+        """Full text tokenises away symbols; the fallback catches what it drops."""
+        user, _ = self._seed(db_session, ["the service needs a c++ toolchain to build"])
+
+        results, total_count = self._search(db_session, user, "c++", top_k=5)
+
+        assert total_count == 1
+        assert "c++" in results[0].content
+        assert 0.0 <= results[0].score <= 1.0
+
+    def test_like_wildcards_in_a_query_are_matched_literally(self, db_session):
+        """A `%` or `_` from the user must not act as a SQL wildcard."""
+        user, _ = self._seed(
+            db_session, ["the coupon code is 50%_off for annual plans", "unrelated text"]
+        )
+
+        results, _ = self._search(db_session, user, "50%_off", top_k=5)
+
+        assert len(results) == 1
+        assert "50%_off" in results[0].content
+
+    def test_substring_fallback_ranks_by_term_coverage(self, db_session):
+        """Coverage ordering, for a query full text cannot match at all.
+
+        "c++" is dropped by the text search configuration, so the AND of the
+        three terms matches nothing and the query is answered by the substring
+        pass — which has no rank to work with, and falls back to counting how
+        many query terms a chunk contains.
+        """
+        user, _ = self._seed(
+            db_session,
+            [
+                "the service needs a c++ toolchain and pelican notes",
+                "perl scripts only",
+            ],
+        )
+
+        results, _ = self._search(db_session, user, "c++ pelican perl", top_k=5)
+
+        assert results[0].content.startswith("the service needs a c++")
+        assert results[1].content == "perl scripts only"
+        # Coverage 2/3 is a closer match than coverage 1/3.
+        assert results[0].score < results[1].score
+        assert results[0].score == pytest.approx(1 - 2 / 3)
+        assert results[1].score == pytest.approx(1 - 1 / 3)
+
+    def test_odd_input_does_not_raise(self, db_session):
+        """A pasted sentence or stray quote must not turn into a 500."""
+        user, _ = self._seed(db_session, ["office plants are watered on fridays"])
+
+        for query in ['"', "a AND OR NOT", "((((", "%%%", "   ", "x" * 300, "pelican OR ("]:
+            results, total_count = self._search(db_session, user, query, top_k=5)
+            assert isinstance(results, list)
+            assert isinstance(total_count, int)
+
+    def test_empty_query_returns_nothing(self, db_session):
+        """No query text means no match, not the whole corpus."""
+        user, _ = self._seed(db_session, ["office plants are watered on fridays"])
+
+        results, total_count = self._search(db_session, user, "", top_k=10)
+
+        assert results == []
+        assert total_count == 0
+
+    def test_stopword_only_query_does_not_match_everything(self, db_session):
+        """Short function words carry no signal and must not be substring-matched."""
+        user, _ = self._seed(
+            db_session, ["the quick brown fox", "another line of prose entirely"]
+        )
+
+        results, _ = self._search(db_session, user, "a of the", top_k=10)
+
+        assert results == []

@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 
@@ -13,7 +13,13 @@ class DocumentChunk(Base):
     __tablename__ = "document_chunks"
 
     # Mirrors the ivfflat index created via raw SQL in migration 002, so
-    # autogenerate and create_all stay in sync with the database.
+    # autogenerate and create_all stay in sync with the database. The GIN entry
+    # does the same for the keyword-search index from migration 007: without it
+    # in the model, the next `alembic revision --autogenerate` would read the
+    # undeclared index as drift and try to drop the index that keyword search
+    # depends on. Postgres only uses an expression index when the query repeats
+    # the expression exactly, so this string must stay identical to the one in
+    # the migration and to `app.repositories.search.full_text_vector`.
     __table_args__ = (
         Index(
             "idx_document_chunks_embedding",
@@ -21,6 +27,11 @@ class DocumentChunk(Base):
             postgresql_using="ivfflat",
             postgresql_ops={"embedding": "vector_cosine_ops"},
             postgresql_with={"lists": 100},
+        ),
+        Index(
+            "idx_document_chunks_content_fts",
+            text("to_tsvector('english', content)"),
+            postgresql_using="gin",
         ),
     )
 
