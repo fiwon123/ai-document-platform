@@ -24,10 +24,10 @@
  *
  * Output lands in `/tmp/opencode/visual-audit/<YYYYMMDD-HHMMSS>/` (override with
  * --out=). Runs are timestamped and pruned to the newest --keep-runs (default 2),
- * because a single pass is ~190 MB and an unpruned output directory is how a
- * visual audit quietly eats a disk. Note /tmp is not a mounted volume: a
- * container restart wipes the output, which is another reason to keep only a
- * shortlist.
+ * because a single pass measured 37 MB (170 PNGs, 25.9 MB of them, the rest WebM
+ * screencasts) and an unpruned output directory is how a visual audit quietly
+ * eats a disk. Note /tmp is not a mounted volume: a container restart wipes the
+ * output, which is another reason to keep only a shortlist.
  *
  * ── Three rules this file follows, each learned the hard way ───────────────
  *
@@ -64,6 +64,15 @@ import {
   parseGateSignals,
   serializeBaseline,
 } from "./audit-baseline.mjs";
+import {
+  buildReport,
+  classifyCapture,
+  formatReport,
+  keyFor,
+  listCaptures,
+  parseThresholds,
+  planComparison,
+} from "./audit-pixels.mjs";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Playwright resolution
@@ -174,6 +183,10 @@ function parseArgs(argv) {
     gate: false,
     updateBaseline: false,
     baselineFile: DEFAULT_BASELINE_FILE,
+    pixelBaseline: null,
+    updatePixelBaseline: false,
+    pixelTolerance: undefined,
+    changedRatio: undefined,
     help: false,
   };
   for (const arg of argv) {
@@ -215,6 +228,30 @@ function parseArgs(argv) {
         if (!value) throw new Error("--baseline needs a path");
         opts.baselineFile = value;
         break;
+      // ── Pixel diffing (#470) ────────────────────────────────────────────────
+      // Named `--pixel-*` rather than reusing `--baseline`/`--update-baseline`
+      // because #469 already gave those names to the *signal* baseline, and one
+      // tool meaning "baseline" for a JSON file here and a directory of PNGs
+      // there is a trap.
+      case "--pixel-baseline":
+        if (!value) throw new Error("--pixel-baseline needs a directory");
+        opts.pixelBaseline = value;
+        break;
+      case "--update-pixel-baseline":
+        // Accepts the path directly (`--update-pixel-baseline=DIR`) as well as
+        // the bare flag plus `--pixel-baseline=DIR`. Two spellings of the same
+        // thing is normally a smell, but here the bare form reads as a boolean
+        // switch and the `=DIR` form reads as a path, and a user will reach for
+        // either. Rejecting one of them would just be a trap.
+        opts.updatePixelBaseline = true;
+        if (value) opts.pixelBaseline = value;
+        break;
+      case "--pixel-tolerance":
+        opts.pixelTolerance = Number(value);
+        break;
+      case "--changed-ratio":
+        opts.changedRatio = Number(value);
+        break;
       case "--headed":
         opts.headed = true;
         break;
@@ -244,11 +281,32 @@ Interactive visual audit (see scripts/audit.mjs for the full rationale).
                   Signals: ${DEFAULT_GATE_SIGNALS.join(", ")}, landmarks.
   --baseline=PATH  Baseline file (default scripts/audit-baseline.json)
   --update-baseline  Accept this run as the baseline and exit 0
+  --pixel-baseline=DIR  Compare this run's captures against DIR (see below)
+  --update-pixel-baseline[=DIR]  Make this run the pixel baseline (PNGs only).
+                   Takes the path itself, or use it with --pixel-baseline=DIR.
+  --pixel-tolerance=N  Per-pixel delta to ignore, 0..1 (default 0.1)
+  --changed-ratio=N  Per-capture share that counts as changed, 0..1 (default 0.001)
   --headed           Run with a visible browser (debugging only)
   -h, --help         This message
 
 GROUPS: public, landing, legal, auth, app, documents, search, qa, settings,
         webhooks, profile, admin, videos
+
+PIXEL DIFFING (--pixel-baseline, --update-pixel-baseline)
+
+  Compares captures by their run-relative path
+  (<route>/<viewport>-<theme>-<state>.png), so a run directory is itself a valid
+  baseline. Two thresholds: a per-pixel tolerance that ignores antialiasing, and
+  a per-capture share of changed pixels above which a capture counts as changed.
+  Captures present on only one side are reported as added/removed rather than
+  skipped. Changed captures over the threshold get a diff PNG in the run's diff/
+  directory and an entry in pixel-diff.json.
+
+  This is deliberately NOT a CI gate. A pixel baseline is only comparable
+  against the machine that produced it — a different CPU, Chromium build or font
+  rasterisation turns every edge into a difference — so it runs in this container
+  only, and a mismatch is a reason to look, not a red X. CI gates on the signal
+  baseline above, which is the environment-independent half. See issue #470.
 
 KNOWN LIMITATIONS
   * GIF output needs an ffmpeg with a GIF muxer. The container ships
@@ -897,9 +955,19 @@ class Audit {
       }
     }
 
+    // `animations: "disabled"` is required for pixel diffing, not a nicety.
+    // The pages carry at least nine infinite CSS animations (`logo-scroll` 42s,
+    // `mesh-drift` 16s, `auth-bg-shift` 18s, `preview-float` 9s, …), and none of
+    // them respect prefers-reduced-motion, so without this the position of the
+    // logo marquee at capture time is arbitrary. Measured on the landing group:
+    // two runs of identical code differed in 8 of 28 captures, up to 17.8% of
+    // the hero's pixels — which would drown every real regression in noise.
+    // Playwright fast-forwards the animations to their end state, so the
+    // capture is both stable and complete. App behaviour is untouched.
+    const anim = { animations: "disabled" };
     const buffer = clipSelector
-      ? await page.locator(clipSelector).first().screenshot()
-      : await page.screenshot({ fullPage });
+      ? await page.locator(clipSelector).first().screenshot(anim)
+      : await page.screenshot({ fullPage, ...anim });
 
     if (this.budget.wouldExceed(buffer.length)) {
       this.budget.exhaust();
@@ -1149,6 +1217,42 @@ async function settleVisuals(page, cap = 3000) {
   await page
     .waitForFunction(() => [...document.images].every((img) => img.complete), null, { timeout: cap })
     .catch(() => {});
+  // Repeated reveals can be mid-transition, or not yet triggered at all, after a
+  // scroll. Both are non-deterministic and both wreck a pixel comparison: the
+  // measured effect on the landing group was 39% of a capture's pixels flipping
+  // between runs because one block's text was present in one run and still at
+  // opacity 0 in the other.
+  //
+  // This mirrors the app's own observer (useScrollReveal: threshold 0.15,
+  // rootMargin "0px 0px -10% 0px") rather than guessing at "is it on screen".
+  // Guessing strictly is worse than useless: the pricing table is 837px tall, so
+  // "any part in the viewport" is true when 150px of it peeks in at the bottom
+  // edge, the wait then demands a reveal that will never come, and every
+  // scrolled capture times out. The band between 0.10 and 0.20 is deliberately
+  // not required either way — that is where the observer's own decision is
+  // legitimately marginal.
+  const revealsSettled = () => {
+    const rootBottom = window.innerHeight * 0.9;
+    for (const el of document.querySelectorAll(".reveal")) {
+      const rect = el.getBoundingClientRect();
+      if (!rect.height) continue;
+      const visible = Math.min(rect.bottom, rootBottom) - Math.max(rect.top, 0);
+      if (visible / rect.height < 0.2) continue;
+      if (!el.classList.contains("is-revealed")) return false;
+      const style = getComputedStyle(el);
+      if (style.opacity !== "1" || style.transform !== "none") return false;
+    }
+    return true;
+  };
+  try {
+    await page.waitForFunction(revealsSettled, null, { timeout: 2000 });
+  } catch {
+    // Timed out. That is either a genuinely slow reveal or content that never
+    // reveals at all — both worth photographing, so capture as-is. A pixel diff
+    // against a stable baseline will then flag it, which is the right outcome
+    // for a real defect.
+    warn("reveal did not settle within 2s — capturing as-is");
+  }
   // One frame for the compositor to flush the decoded assets.
   await page.waitForTimeout(120);
 }
@@ -1959,8 +2063,141 @@ async function main() {
   printSummary({ ...summary, budget: budgetFor(finalSummaryBytes) });
   log(`manifest         ${path.join(runDir, "audit-manifest.json")}`);
 
-  if (!opts.gate && !opts.updateBaseline) return 0;
-  return await runGate(manifestDoc, opts, runDir);
+  if (!opts.gate && !opts.updateBaseline && !opts.pixelBaseline && !opts.updatePixelBaseline) {
+    return 0;
+  }
+  if (opts.gate || opts.updateBaseline) {
+    const code = await runGate(manifestDoc, opts, runDir);
+    if (code !== 0) return code;
+  }
+  if (opts.pixelBaseline || opts.updatePixelBaseline) {
+    await runPixelDiff(opts, runDir);
+  }
+  return 0;
+}
+
+/**
+ * Pixel diff: compare this run's captures against a baseline directory (#470).
+ *
+ * The comparator is built here rather than imported by `audit-pixels.mjs` so the
+ * decision logic in that module stays pure and unit-testable without an image
+ * decoder — this is the only part that needs `pngjs`/`pixelmatch`, and it is
+ * verified by a live run rather than by the unit tests.
+ *
+ * Never fails the run. A pixel difference is machine-specific by construction, so
+ * the exit code is not a useful signal here; the report is the output.
+ */
+async function runPixelDiff(opts, runDir) {
+  const thresholds = parseThresholds({
+    pixelTolerance: opts.pixelTolerance,
+    changedRatio: opts.changedRatio,
+  });
+  const runFiles = await listCaptures(runDir);
+  const runKeys = runFiles.map((abs) => keyFor(runDir, abs));
+
+  // ── Promote this run to be the baseline ────────────────────────────────────
+  if (opts.updatePixelBaseline) {
+    // No default path on purpose. A pixel baseline is ~26 MB of
+    // machine-specific binaries that must not be committed, so there is no
+    // sensible in-repo default to fall back to — the caller has to say where it
+    // goes. Defaulting to a path inside the repo would put 26 MB in a diff.
+    if (!opts.pixelBaseline) {
+      throw new Error(
+        "--update-pixel-baseline needs --pixel-baseline=DIR to say where the baseline goes. " +
+          "It is a local directory by design and is never committed — see issue #470.",
+      );
+    }
+    const target = opts.pixelBaseline;
+    if (fs.existsSync(target) && !fs.readdirSync(target).length) {
+      log(`pixels           baseline ${target} exists but is empty — using it`);
+    } else if (fs.existsSync(target)) {
+      throw new Error(
+        `--update-pixel-baseline would overwrite the existing baseline at ${target}. ` +
+          "Delete it first if that is what you mean, or pass --pixel-baseline=DIR to pick another path.",
+      );
+    }
+    await fsp.mkdir(target, { recursive: true });
+    for (const abs of runFiles) {
+      // Only the PNGs: the run directory also holds JSON reports and WebM
+      // screencasts, and a baseline of videos would be gigabytes of scratch.
+      const dest = path.join(target, keyFor(runDir, abs));
+      await fsp.mkdir(path.dirname(dest), { recursive: true });
+      await fsp.copyFile(abs, dest);
+    }
+    log(`pixels           baseline written ${target} (${runFiles.length} PNGs)`);
+    log("pixels           not committed by design — see issue #470 for why");
+    return;
+  }
+
+  const baselineDir = opts.pixelBaseline;
+  if (!baselineDir) return;
+  if (!fs.existsSync(baselineDir)) {
+    throw new Error(
+      `--pixel-baseline directory not found: ${baselineDir}. ` +
+        "Create one with --update-pixel-baseline.",
+    );
+  }
+
+  const baselineFiles = await listCaptures(baselineDir);
+  const plan = planComparison(baselineFiles.map((abs) => keyFor(baselineDir, abs)), runKeys);
+  log(`pixels           ${plan.pairs.length} capture(s) in both, ${plan.added.length} added, ${plan.removed.length} removed`);
+
+  const { PNG } = await import("pngjs");
+  const pixelmatch = (await import("pixelmatch")).default;
+  const fspLocal = fsp;
+  const diffDir = path.join(runDir, "diff");
+  const results = {};
+
+  for (const key of plan.pairs) {
+    const load = async (root) => PNG.sync.read(await fspLocal.readFile(path.join(root, key)));
+    const a = await load(baselineDir);
+    const b = await load(runDir);
+    if (a.width !== b.width || a.height !== b.height) {
+      results[key] = classifyCapture(
+        { widthA: a.width, heightA: a.height, widthB: b.width, heightB: b.height, changedPixels: 0, totalPixels: 0 },
+        thresholds,
+      );
+      continue;
+    }
+    const diff = new PNG({ width: a.width, height: a.height });
+    const changedPixels = pixelmatch(a.data, b.data, diff.data, a.width, a.height, {
+      threshold: thresholds.pixelTolerance,
+    });
+    const scored = classifyCapture(
+      { widthA: a.width, heightA: a.height, widthB: b.width, heightB: b.height, changedPixels, totalPixels: a.width * a.height },
+      thresholds,
+    );
+    if (scored.verdict === "changed") {
+      // Write a reviewable image: changed pixels at full strength over a
+      // desaturated, dimmed original. A raw diff mask is technically the diff
+      // and practically unreadable — you cannot tell *what* moved without the
+      // original underneath it.
+      const overlay = new PNG({ width: a.width, height: a.height });
+      for (let i = 0; i < a.data.length; i += 4) {
+        const j = i / 4;
+        const isChanged = diff.data[j] === 255 && diff.data[j + 1] === 0;
+        const grey = Math.round((b.data[i] * 0.299 + b.data[i + 1] * 0.587 + b.data[i + 2] * 0.114) * 0.35 + 191);
+        overlay.data[i] = isChanged ? 255 : grey;
+        overlay.data[i + 1] = isChanged ? 0 : grey;
+        overlay.data[i + 2] = isChanged ? 60 : grey;
+        overlay.data[i + 3] = 255;
+      }
+      const dest = path.join(diffDir, key);
+      await fsp.mkdir(path.dirname(dest), { recursive: true });
+      await fsp.writeFile(dest, PNG.sync.write(overlay));
+      scored.diff = path.relative(runDir, dest);
+    }
+    results[key] = scored;
+  }
+
+  const report = buildReport({ plan, results, thresholds, baselineDir, runDir });
+  const reportPath = path.join(runDir, "pixel-diff.json");
+  await fsp.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  for (const line of formatReport(report)) log(line);
+  log(`pixels           report ${reportPath}`);
+  if (report.changed.length) {
+    log("pixels           this is NOT a gate — a pixel difference here is machine-specific. Look at the diff/ images before believing one.");
+  }
 }
 
 /**
