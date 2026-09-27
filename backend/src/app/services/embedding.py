@@ -8,6 +8,14 @@ from openai import (
     RateLimitError,
 )
 
+from app.env import drop_blank_provider_vars
+
+# Before anything below reads the environment or builds a client: the sandbox
+# passes OPENAI_BASE_URL through Compose as "" when unset, and the SDK would
+# take that as a real base URL. Idempotent, so the qa service's own call is
+# harmless.
+drop_blank_provider_vars()
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
 

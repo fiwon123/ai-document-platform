@@ -267,6 +267,47 @@ docker compose exec dev node -e '
   })();'
 ```
 
+## LLM provider config in the sandbox
+
+The host-native loop reads `backend/src/app/.env`. The sandbox does **not** — it
+gets its environment from `docker-compose.yaml`, which passes the provider
+variables through. Put them in a **gitignored root `.env`** (Compose reads the
+project `.env` for `${...}` substitution), or export them in your shell before
+`make dev-up`. Either way `docker-compose.yaml` needs no edit:
+
+```bash
+# ./.env  (gitignored — never commit keys)
+GROQ_API_KEY=gsk_...                     # free tier, console.groq.com
+QA_MODEL=llama-3.3-70b-versatile         # optional: pin the default model
+```
+
+Then `make dev-restart` (variables are read at process start, so a running
+container keeps the old environment). Confirm with `GET /v1/qa/models`, where
+each model reports `available`.
+
+Three things worth knowing:
+
+- **A local model server needs an opt-in *and* a reachable host.** Ollama on the
+  host is not at `localhost` from inside the container:
+
+  ```bash
+  LOCAL_LLM_ENABLED=true
+  LOCAL_LLM_BASE_URL=http://host.docker.internal:11434/v1
+  LOCAL_LLM_MODEL=llama3.2:1b
+  ```
+
+  Use the container's name instead of `host.docker.internal` if the server is
+  another Compose service.
+- **`OPENAI_BASE_URL` redirects embeddings *and* the OpenAI QA provider.** It is
+  the OpenAI SDK's own environment default, not a project feature, which is why
+  `embedding.py` never mentions it — it also happens to be the cleanest way to
+  point both at a local OpenAI-compatible server or a test stub.
+- **Unset means the app's own default, not empty.** Each variable's Compose
+  default mirrors the `os.getenv` fallback in the code, because
+  `load_dotenv()` does not override real environment variables — an empty value
+  passed from Compose would win over `backend/src/app/.env` and over the code's
+  fallback. `tests/test_compose_env.py` pins the two lists together.
+
 ## Interactive visual audit (`scripts/audit.mjs`)
 
 One command photographs every meaningful interactive state of the app and

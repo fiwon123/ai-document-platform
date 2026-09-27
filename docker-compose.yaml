@@ -68,6 +68,37 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/${POSTGRES_DB:-mydb}
+      # LLM provider passthrough. Values come from a gitignored root `.env` (or
+      # the shell) with NO edit to this file — Compose reads the project `.env`
+      # for `${...}` substitution. Only variable NAMES live here; no secret is
+      # ever committed.
+      #
+      # Every default below is the application's own default, and that is
+      # deliberate rather than cosmetic. `load_dotenv()` does not override real
+      # environment variables, so an empty value passed from here WINS over
+      # backend/src/app/.env and over the `os.getenv` fallback in the code:
+      #   EMBEDDING_MODEL=""  -> every embed call sends model="" and 400s
+      #   OPENAI_MODEL=""     -> qa._MODEL_BY_ID[""] is None -> TypeError
+      #   LOCAL_LLM_*=""      -> an empty model id in the registry, no base URL
+      # Defaulting to the app's value instead makes "unset" mean exactly what it
+      # means in the host-native loop. tests/test_compose_env.py pins this.
+      #
+      # The two keys default to empty because empty IS the app's default (no
+      # provider configured), so passing them through is a no-op until set.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      QA_MODEL: ${QA_MODEL:-}
+      LOCAL_LLM_ENABLED: ${LOCAL_LLM_ENABLED:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-ada-002}
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:11434/v1}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-llama3.2:1b}
+      # Redirects the OpenAI SDK itself (embeddings AND the OpenAI QA provider)
+      # — it is an SDK-wide default, not a project feature, so it also points
+      # at a local Ollama/stub server. An empty value is dropped by
+      # app.env.drop_blank_provider_vars() before any client is built, because
+      # the SDK treats "" as a real base URL and every request then fails.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       # GitHub passthrough for the sandboxed AI agent (trusted-agent model):
       # the `dev` service mounts gh config + the Docker socket and drives the
       # GitHub workflow, so it forwards the host token by name only. The
@@ -165,6 +196,18 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/${POSTGRES_DB:-mydb}
+      # LLM provider passthrough — the worker generates embeddings, so without
+      # these it can only ever do text-only search. Same contract and same
+      # "default to the app's own value" reasoning as the dev service above.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      QA_MODEL: ${QA_MODEL:-}
+      LOCAL_LLM_ENABLED: ${LOCAL_LLM_ENABLED:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-ada-002}
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:11434/v1}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-llama3.2:1b}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       # Processing-timeout tuning (large PDFs): job_timeout is arq's per-run
       # budget; the recovery floor is clamped to job_timeout × retries inside
       # the worker. Embedding knobs bound per-request latency and batch size.
