@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import httpx
+import pytest
 
 from app.models.chunk import DocumentChunk
 from app.models.document import DocumentDB, DocumentStatus
@@ -1197,3 +1198,151 @@ class TestUnconfiguredProviderHint:
         monkeypatch.setattr(httpx, "get", explode)
 
         assert qa_module.unconfigured_provider_hint("openai")
+
+
+class TestMisconfiguredModelNeverCrashes:
+    """A bad ``OPENAI_MODEL`` must degrade to a hint, not a 500.
+
+    ``_client_for_model`` used to index the registry with the configured model
+    name, so a blank or misspelled ``OPENAI_MODEL`` raised ``KeyError: ''`` and
+    every question returned 500 instead of the graceful "provider not
+    configured" answer. The dev sandbox masked this because Compose always
+    supplies a default, which is exactly why it survived — a hand-rolled or
+    Kubernetes deployment setting ``OPENAI_MODEL=`` empty hits it directly.
+    """
+
+    @staticmethod
+    def _probe(env_overrides: dict) -> dict:
+        """Read qa state in a fresh interpreter.
+
+        ``OPENAI_MODEL`` is an import-time constant, so it cannot be exercised
+        with monkeypatch — the value is fixed before the test body runs. A
+        subprocess is the only honest way to assert what the application does
+        when it boots with a given environment (same approach as
+        test_compose_env.py).
+        """
+        import json
+        import os
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        # Blank, not absent. `load_dotenv()` (override=False) leaves an existing
+        # variable alone, so an *absent* key would be re-supplied by
+        # backend/src/app/.env and the probe would silently test this machine's
+        # real configuration — the exact ambient dependence fixed in #478. An
+        # empty value is present, so the file cannot win, and it also means "no
+        # provider configured" to the import-time client construction.
+        env = dict(os.environ)
+        for name in (
+            "OPENAI_API_KEY",
+            "GROQ_API_KEY",
+            "QA_MODEL",
+            "OPENAI_MODEL",
+            "LOCAL_LLM_ENABLED",
+        ):
+            env[name] = ""
+        env.update(env_overrides)
+        script = """
+import json
+from app.services import qa
+resolved = qa.resolve_default_model()
+try:
+    client, provider = qa._client_for_model(resolved)
+    outcome = {"error": None, "provider": provider, "has_client": client is not None}
+except KeyError as exc:
+    outcome = {"error": repr(exc), "provider": None, "has_client": None}
+print(json.dumps({
+    "constant": qa.OPENAI_MODEL,
+    "resolved": resolved,
+    "in_registry": resolved in qa._MODEL_BY_ID,
+    **outcome,
+}))
+"""
+        result = subprocess.run(  # noqa: S603
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).resolve().parents[1],
+            env=env,
+            check=False,
+        )
+        assert result.returncode == 0, (
+            "the application must boot and answer, not crash:\n" + result.stderr
+        )
+        return json.loads(result.stdout)
+
+    @pytest.mark.parametrize(
+        "value",
+        ["", "   ", "gpt-5-ultra-not-real"],
+        ids=["blank", "whitespace", "misspelled"],
+    )
+    def test_bad_openai_model_resolves_to_something_usable(self, value):
+        """Blank, padded, or misspelled must all end up on a callable model."""
+        state = self._probe({"OPENAI_MODEL": value, "OPENAI_API_KEY": "sk-test"})
+
+        assert state["error"] is None, f"raised {state['error']}"
+        assert state["in_registry"], (
+            f"resolved to {state['resolved']!r}, which is not a known model"
+        )
+        assert state["has_client"], "no client resolved for a configured provider"
+
+    @pytest.mark.parametrize("value", ["", "   "], ids=["blank", "whitespace"])
+    def test_blank_model_with_nothing_configured_does_not_crash(self, value):
+        """The original 500, and the case the dev sandbox could not reproduce.
+
+        A blank ``OPENAI_MODEL`` reached ``return OPENAI_MODEL`` as the last
+        resort — but only when no provider was configured at all, because
+        otherwise resolution finds a real paid model first and never gets that
+        far. So the crash needs *both* conditions; testing only the first
+        passes against the broken code.
+        """
+        state = self._probe({"OPENAI_MODEL": value})
+
+        assert state["error"] is None, f"raised {state['error']}"
+        assert state["in_registry"], (
+            f"resolved to {state['resolved']!r}, which is not a known model"
+        )
+
+    def test_misspelled_model_falls_back_to_a_cheaper_known_model(self):
+        """A typo must not be forwarded to the provider as a model id."""
+        state = self._probe(
+            {"OPENAI_MODEL": "gpt-5-ultra-not-real", "OPENAI_API_KEY": "sk-test"}
+        )
+
+        assert state["resolved"] == "gpt-4o-mini"
+
+    def test_valid_model_is_still_honoured(self):
+        """The fix must not discard a legitimate operator choice."""
+        state = self._probe({"OPENAI_MODEL": "gpt-4-turbo", "OPENAI_API_KEY": "sk-test"})
+
+        assert state["resolved"] == "gpt-4-turbo"
+
+    def test_ask_answers_instead_of_raising(self, monkeypatch):
+        """End to end: the user gets an answer-shaped response, not a 500."""
+        from types import SimpleNamespace
+
+        fake_search = MagicMock()
+        result = SearchResult(
+            chunk_id=uuid4(),
+            document_id=uuid4(),
+            document_filename="a.txt",
+            content="context",
+            score=0.5,
+        )
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[result], total_count=1, has_more=False
+        )
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="An answer"))]
+        )
+        _patch_llm_client(monkeypatch, fake_client)
+        service = QAService(search_service=fake_search)
+
+        response = service.ask(
+            user_id=uuid4(), question="q", model="a-model-that-does-not-exist"
+        )
+
+        assert isinstance(response, QAResponse)
+        assert response.answer == "An answer"
