@@ -390,6 +390,28 @@ Navigation rules:
 ### Frontend
 - No additional environment variables required (uses proxy)
 
+### Dev sandbox (gitignored root `.env`)
+
+The sandbox does **not** read `backend/src/app/.env` — `docker-compose.yaml`
+sets the `dev`/`worker` environment inline and passes the LLM provider
+variables through. Supply them from a gitignored root `.env` (Compose reads it
+for `${VAR:-...}` substitution); no compose edit is needed:
+- `OPENAI_API_KEY`, `GROQ_API_KEY`: provider credentials (both optional)
+- `QA_MODEL`: pin the default QA model; otherwise the free-first resolver picks
+- `OPENAI_MODEL` (default: gpt-4), `EMBEDDING_MODEL` (default:
+  text-embedding-ada-002)
+- `LOCAL_LLM_ENABLED`, `LOCAL_LLM_BASE_URL` (default:
+  http://localhost:11434/v1), `LOCAL_LLM_MODEL` (default: llama3.2:1b) — opt-in
+  keyless provider for a local OpenAI-compatible server
+- `OPENAI_BASE_URL`: the OpenAI SDK's own default, so it redirects **both**
+  embeddings and the OpenAI QA provider (also the way to point at a local server
+  or a test stub)
+
+Each Compose default equals the application's `os.getenv` fallback, because
+`load_dotenv()` does not override real environment variables — an empty value
+from Compose would otherwise beat both `.env` and the code default. Variables are
+read at process start, so a config change needs `make dev-restart`.
+
 ## Development workflow
 
 Golden rules: `make dev-up` → `make dev-log` (2nd terminal) → `make dev-down`

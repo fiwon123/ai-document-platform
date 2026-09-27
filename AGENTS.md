@@ -259,6 +259,22 @@ Backend reads from `backend/src/app/.env` (gitignored):
 - `SECRET_KEY`: JWT signing key (required)
 - `ALGORITHM`: JWT algorithm (default: HS256)
 
+### The dev sandbox reads a different file
+
+`docker-compose.yaml` sets the whole `dev`/`worker` environment inline, so
+`backend/src/app/.env` is **not** read inside the sandbox. LLM provider config
+comes from a **gitignored root `.env`** (or a shell export) instead, substituted
+into `${VAR:-...}` by Compose: `OPENAI_API_KEY`, `GROQ_API_KEY`, `QA_MODEL`,
+`OPENAI_MODEL`, `EMBEDDING_MODEL`, `LOCAL_LLM_ENABLED`, `LOCAL_LLM_BASE_URL`,
+`LOCAL_LLM_MODEL`, `OPENAI_BASE_URL`. See `DEVELOPMENT.md` → *LLM provider config
+in the sandbox*.
+
+Each Compose default is the application's own default on purpose: `load_dotenv()`
+does not override real environment variables, so an empty value passed from
+Compose beats both `backend/src/app/.env` and the `os.getenv` fallback
+(`EMBEDDING_MODEL=""` would 400 on every embeddings call). `backend/tests/test_compose_env.py`
+fails if the two lists drift apart.
+
 ## Database Migrations
 
 Alembic manages database schema changes:

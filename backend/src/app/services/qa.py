@@ -8,11 +8,18 @@ from uuid import UUID
 from openai import OpenAI
 
 from app.cache.redis import redis_client
+from app.env import drop_blank_provider_vars
 from app.schemas.qa import QAResponse
 from app.schemas.search import SearchResult
 from app.services.search import SearchService, user_cache_version
 
 logger = logging.getLogger(__name__)
+
+# Before the provider clients are constructed further down: an empty
+# OPENAI_BASE_URL from the sandbox's Compose passthrough would otherwise become
+# the OpenAI client's base URL. Idempotent, and the embedding service does the
+# same before its own client exists.
+drop_blank_provider_vars()
 
 # Redact anything that looks like an API key inside logged provider errors
 # (OpenAI/Groq messages may echo the key prefix).
