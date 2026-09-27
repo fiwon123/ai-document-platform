@@ -47,7 +47,12 @@ _UNCACHEABLE_ANSWER_PREFIXES = (
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
+# Blank-safe, so a variable that is *set but empty* means "not chosen" rather
+# than becoming the model id. `os.getenv(name, default)` returns "" for a
+# blank-but-set variable, which would leave this constant empty and turn every
+# later registry lookup into a KeyError. Same reasoning as the `QA_MODEL` read
+# in resolve_default_model, which strips and validates.
+OPENAI_MODEL = (os.getenv("OPENAI_MODEL", "") or "").strip() or "gpt-4"
 
 # Groq serves Llama & friends through an OpenAI-compatible API. Model IDs
 # on Groq are free to use (free-tier rate limits apply) — only a free
@@ -334,7 +339,12 @@ def resolve_default_model() -> str:
     # read live from the environment rather than from the import-time constant,
     # so the value that was checked is the value that is returned.
     explicit_openai_model = os.getenv("OPENAI_MODEL", "").strip()
-    if explicit_openai_model:
+    # Registry-checked, like QA_MODEL above: a value that names no known model
+    # is a typo or a model that has since been retired, and honouring it would
+    # route every question to a model id the service cannot call. Falling
+    # through to the paid-model loop below keeps the deployment answering
+    # questions with the cheapest model that does exist.
+    if explicit_openai_model and explicit_openai_model in _MODEL_BY_ID:
         return explicit_openai_model
     for entry in MODEL_REGISTRY:
         if entry["tier"] == "paid" and _is_provider_available(entry["provider"]):
@@ -344,8 +354,18 @@ def resolve_default_model() -> str:
 
 
 def _client_for_model(model_id: str) -> tuple[OpenAI | None, str]:
-    """Resolve a model id to its provider client + provider name."""
-    entry = _MODEL_BY_ID.get(model_id) or _MODEL_BY_ID[OPENAI_MODEL]
+    """Resolve a model id to its provider client + provider name.
+
+    Never raises. An id that is in neither the request nor the registry — a
+    stale model name, or an operator whose ``OPENAI_MODEL`` names a model this
+    build does not know — resolves to no client instead of a ``KeyError``, so
+    the caller returns the graceful "provider not configured" answer rather
+    than a 500. A model that cannot be resolved is a configuration problem to
+    report to the operator, not a request to crash on.
+    """
+    entry = _MODEL_BY_ID.get(model_id) or _MODEL_BY_ID.get(OPENAI_MODEL)
+    if entry is None:
+        return None, "openai"
     return _provider_client(entry["provider"]), entry["provider"]
 
 

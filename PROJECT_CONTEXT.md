@@ -379,7 +379,9 @@ Navigation rules:
 - `REFRESH_COOKIE_SECURE`: Send refresh cookie only over HTTPS (default: true)
 - `OPENAI_API_KEY`: OpenAI API key (for embeddings/LLM)
 - `GROQ_API_KEY`: Groq API key (alternative LLM provider for Q&A)
-- `OPENAI_MODEL`: Model name (default: gpt-4)
+- `OPENAI_MODEL`: Model name (default: gpt-4). A blank value means "not
+  chosen" and a value naming no known model is ignored; both fall back to the
+  cheapest available model rather than failing the request
 - `EMBEDDING_MODEL`: Embedding model (default: text-embedding-ada-002)
 - `RATE_LIMIT_REQUESTS`: Rate limit requests (default: 100)
 - `RATE_LIMIT_WINDOW`: Rate limit window in seconds (default: 60)
