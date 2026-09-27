@@ -1,6 +1,16 @@
+import re
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import (
+    Integer,
+    String,
+    case,
+    column,
+    func,
+    literal_column,
+    select,
+    values,
+)
 from sqlalchemy.orm import Session
 
 from app.models.chunk import DocumentChunk
@@ -8,10 +18,113 @@ from app.models.document import DocumentDB
 from app.models.search import SearchHistory
 from app.schemas.search import SearchResult
 
+# The full-text search configuration, and the two expressions built from it.
+# Kept as module-level names for one reason: the GIN index created by migration
+# 007 is on the expression `to_tsvector('english', content)`, and Postgres only
+# uses an expression index when the query repeats the expression *exactly*.
+# Building it in two places is how a keyword search silently turns into a
+# sequential scan.
+TEXT_SEARCH_CONFIG = literal_column("'english'")
+
+
+def full_text_vector(column):
+    """``to_tsvector('english', <column>)`` — the indexed expression."""
+    return func.to_tsvector(TEXT_SEARCH_CONFIG, column)
+
+
+def full_text_query(text: str):
+    """``websearch_to_tsquery('english', <text>)``.
+
+    ``websearch_to_tsquery`` rather than ``plainto_tsquery`` because it never
+    raises on odd input: quotes, lone punctuation, and boolean words are treated
+    as plain terms instead of producing a query that errors out or silently
+    matches nothing. A search box must not 500 on a pasted sentence.
+    """
+    return func.websearch_to_tsquery(TEXT_SEARCH_CONFIG, text)
+
+
+# A term shorter than this carries no signal for substring matching: "a", "of"
+# and "c" are in nearly every chunk, so including them makes every query match
+# everything and ranks by nothing. Terms that contain a non-alphabetic character
+# are exempt, because that is exactly the case the substring fallback exists for
+# ("C++", "utf-8", "50%").
+_MIN_SUBSTRING_TERM = 3
+_TERM_SPLIT_RE = re.compile(r"[^\w.+#-]+", re.UNICODE)
+# Bound the number of OR'd ILIKE terms so a pasted paragraph cannot produce an
+# enormous CASE expression.
+_MAX_SUBSTRING_TERMS = 12
+
+
+def _candidate_terms(text: str) -> list[str]:
+    """Lowercased terms worth testing, deduped and capped.
+
+    Cheap and purely lexical — whether these terms mean anything is decided by
+    the database, in `_terms_with_lexemes`.
+    """
+    terms: list[str] = []
+    for raw in _TERM_SPLIT_RE.split(text.lower()):
+        term = raw.strip()
+        if not term:
+            continue
+        if len(term) < _MIN_SUBSTRING_TERM and term.isalpha():
+            continue
+        if term not in terms:
+            terms.append(term)
+        if len(terms) >= _MAX_SUBSTRING_TERMS:
+            break
+    return terms
+
+
+def _like_pattern(term: str) -> str:
+    """Escape LIKE wildcards so a term is matched literally.
+
+    Without this, searching for "50%_off" or "a_b" silently becomes a wildcard
+    search: ``%`` and ``_`` are metacharacters in both LIKE and ILIKE.
+    """
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
 
 class SearchRepository:
     def __init__(self, db: Session):
         self.db = db
+
+    def _terms_with_lexemes(self, terms: list[str]) -> list[str]:
+        """Drop the terms the text search configuration discards.
+
+        Asking `to_tsvector('english', ...)` which terms survive keeps the
+        stopword list in exactly one place — the Postgres dictionary the search
+        itself uses — instead of copying English stopwords into Python where they
+        would drift.
+
+        This matters: "a of the" produces an *empty* tsquery, which matches
+        nothing, and without this filter the query would fall through to substring
+        matching on "the" and return most of the corpus. That is the very
+        "always returns results" behaviour this path is supposed to have lost.
+        """
+        if not terms:
+            return []
+
+        # A VALUES table so every term is vectorised in one round trip, with an
+        # explicit position to order by: the pairing between a term and its
+        # vector must not depend on the database returning rows in order.
+        candidates = values(
+            column("position", Integer), column("term", String), name="candidate"
+        ).data([(i, term) for i, term in enumerate(terms)])
+        rows = self.db.execute(
+            select(
+                candidates.c.position,
+                func.to_tsvector(TEXT_SEARCH_CONFIG, candidates.c.term),
+            ).order_by(candidates.c.position)
+        ).all()
+        # One vector per candidate, in the order they were passed in, so the
+        # result can be mapped straight back onto the terms. `strict` makes a
+        # row-count mismatch an error instead of a silently short list.
+        return [
+            term
+            for term, (_position, vector) in zip(terms, rows, strict=True)
+            if vector
+        ]
 
     def search(
         self,
@@ -20,11 +133,17 @@ class SearchRepository:
         top_k: int = 5,
         offset: int = 0,
         document_ids: list[UUID] | None = None,
+        query_text: str = "",
     ) -> tuple[list[SearchResult], int]:
-        """Run a search and return ``(page_of_results, total_count)``."""
+        """Run a search and return ``(page_of_results, total_count)``.
+
+        ``query_text`` is only used by the keyword fallback, but it is required
+        there: without an embedding provider there is nothing else to match on.
+        """
         if query_embedding is None:
             return self._text_search(
                 user_id=user_id,
+                query_text=query_text,
                 top_k=top_k,
                 offset=offset,
                 document_ids=document_ids,
@@ -46,31 +165,36 @@ class SearchRepository:
             query = query.filter(DocumentDB.id.in_(document_ids))
         return query
 
-    def _text_search(
+    def _run_page(
         self,
         user_id: UUID,
+        score_expr,
+        order_by,
+        where,
         top_k: int,
-        offset: int = 0,
-        document_ids: list[UUID] | None = None,
+        offset: int,
+        document_ids: list[UUID] | None,
     ) -> tuple[list[SearchResult], int]:
-        # COUNT(*) OVER () computes the total matching rows in the same
-        # query that returns the page, avoiding a second round trip.
+        """Shared paging for both keyword strategies.
+
+        ``COUNT(*) OVER ()`` computes the total matching rows in the same query
+        that returns the page, avoiding a second round trip — and, importantly,
+        counting only rows that passed ``where``, so a query that matches
+        nothing reports ``total_count = 0`` instead of the size of the corpus.
+        """
         query = (
             self.db.query(
                 DocumentChunk,
                 DocumentDB.filename,
+                score_expr.label("score"),
                 func.count().over().label("total_count"),
             )
             .join(DocumentDB, DocumentChunk.document_id == DocumentDB.id)
         )
         query = self._apply_user_filter(query, user_id, document_ids)
+        query = query.filter(where)
 
-        rows = (
-            query.order_by(DocumentChunk.chunk_index, DocumentChunk.id)
-            .offset(offset)
-            .limit(top_k)
-            .all()
-        )
+        rows = query.order_by(*order_by).offset(offset).limit(top_k).all()
         total_count = rows[0].total_count if rows else 0
 
         return (
@@ -80,12 +204,89 @@ class SearchRepository:
                     document_id=chunk.document_id,
                     document_filename=filename,
                     content=chunk.content,
-                    score=0.0,
+                    score=float(score),
                     metadata_=chunk.metadata_,
                 )
-                for chunk, filename, _ in rows
+                for chunk, filename, score, _ in rows
             ],
             int(total_count),
+        )
+
+    def _text_search(
+        self,
+        user_id: UUID,
+        query_text: str,
+        top_k: int,
+        offset: int = 0,
+        document_ids: list[UUID] | None = None,
+    ) -> tuple[list[SearchResult], int]:
+        """Keyword search: match the query against the chunk text.
+
+        This is the path taken whenever no embedding provider is configured,
+        which is the state a fresh checkout is in, and the state #449 recorded as
+        supported. It therefore has to *search*, not merely enumerate: the earlier
+        version applied no filter at all and returned the user's first N chunks in
+        document order, so a query matching the last chunk of a document could not
+        find it, and a query matching nothing still looked like a hit (#451).
+
+        Scoring keeps the same contract as the vector path: ``score`` is a
+        *distance* in [0, 1] where smaller is closer, because the UI renders
+        ``1 - score`` as a match percentage. A cosine distance and a text rank are
+        different quantities, so they are not comparable to each other — only
+        ordering within one result set is meaningful, which is all the UI uses.
+
+        Two strategies, in order:
+
+        1. Postgres full-text (``to_tsvector``/``ts_rank``). Stemming means
+           "deploying" finds "deployment", and the GIN index from migration 007
+           applies.
+        2. Substring matching, used only when full-text found nothing. It catches
+           what the english text search configuration discards — symbols, version
+           strings, code identifiers. Ranked by how many query terms a chunk
+           contains, because there is no rank to use.
+        """
+        vector = full_text_vector(DocumentChunk.content)
+        tsquery = full_text_query(query_text)
+
+        # Normalisation 32 is rank / (rank + 1): bounded to (0, 1), monotonic in
+        # the raw rank, and free of any constant chosen to make the numbers look
+        # better. The distance is its complement, so a stronger match is a
+        # smaller score, exactly as in the vector path.
+        rank = func.ts_rank(vector, tsquery, 32)
+
+        results, total = self._run_page(
+            user_id=user_id,
+            score_expr=1.0 - rank,
+            order_by=(rank.desc(), DocumentChunk.chunk_index, DocumentChunk.id),
+            where=vector.op("@@")(tsquery),
+            top_k=top_k,
+            offset=offset,
+            document_ids=document_ids,
+        )
+        if results or offset > 0:
+            return results, total
+
+        # No full-text match. Only try the substring pass on the first page: at a
+        # non-zero offset an empty page legitimately means "past the end", and
+        # answering it with a first page of substring matches would page the
+        # wrong way.
+        terms = self._terms_with_lexemes(_candidate_terms(query_text))
+        if not terms:
+            return [], 0
+
+        # Coverage as a distance: a chunk containing every query term scores 0.0.
+        matched = sum(
+            case((DocumentChunk.content.ilike(_like_pattern(t), escape="\\"), 1), else_=0)
+            for t in terms
+        )
+        return self._run_page(
+            user_id=user_id,
+            score_expr=1.0 - (matched / len(terms)),
+            order_by=(matched.desc(), DocumentChunk.chunk_index, DocumentChunk.id),
+            where=matched > 0,
+            top_k=top_k,
+            offset=offset,
+            document_ids=document_ids,
         )
 
     def _vector_search(
