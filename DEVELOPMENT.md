@@ -341,7 +341,8 @@ the file matches the number in the console.
 
 Flags: `--base=`, `--out=`, `--only=`, `--keep-runs=`, `--budget-mb=`,
 `--video-themes=light,dark`, `--gate[=signals]`, `--baseline=`,
-`--update-baseline`, `--headed`.
+`--pixel-baseline=DIR`, `--update-pixel-baseline`, `--pixel-tolerance=`,
+`--changed-ratio=`, `--update-baseline`, `--headed`.
 
 ### Gating on regressions (`--gate`)
 
@@ -383,6 +384,79 @@ How to read it:
 
 `gate-report.json` lands in the run directory with the new / known / changed /
 resolved sets, so a CI job can annotate from JSON rather than scraping stdout.
+
+### Pixel diffing (`--pixel-baseline`)
+
+The gate above answers *"is this wrong"*. It cannot answer *"did this move"* — a
+card that shifted 8px, a badge that vanished or a panel that stopped rendering
+all pass every signal. `--pixel-baseline` compares this run's captures against a
+baseline **directory** of PNGs.
+
+```bash
+# First time, or after an intentional visual change: make this run the reference
+docker compose exec dev node scripts/audit.mjs --pixel-baseline=/tmp/opencode/pb --update-pixel-baseline
+
+# Compare a run against it
+docker compose exec dev node scripts/audit.mjs --pixel-baseline=/tmp/opencode/pb
+```
+
+Names are `--pixel-*` on purpose: `--baseline` and `--update-baseline` already
+mean the *signal* baseline (a JSON file), and one tool meaning "baseline" for
+both a JSON file and a directory of PNGs is a trap.
+
+- **The baseline is local and is never committed.** A full pass is 170 PNGs /
+  25.9 MB of images, and they are only meaningful on the machine that captured
+  them. `--update-pixel-baseline` refuses to run without an explicit
+  `--pixel-baseline=DIR` so it cannot drop 26 MB into a diff.
+- **It is not a CI gate, and never exits 1.** A baseline is only comparable
+  against its own CPU, Chromium build and font rasterisation; elsewhere every
+  edge is a difference. A mismatch is a reason to look, not a red X. CI uses the
+  signal gate, which is the environment-independent half.
+- **Captures match by run-relative path** (`<route>/<viewport>-<theme>-<state>.png`),
+  so a run directory *is* a valid baseline.
+- **Added and removed captures are first-class.** A capture that stopped being
+  produced is not a non-event — a capture count would hide it, because a dropped
+  state is offset by a new one appearing elsewhere.
+- **A resize is reported separately**, not scored as pixels, since a broken
+  responsive layout outranks a colour shift and has no meaningful pixel count.
+- **Two thresholds**, both recorded in `pixel-diff.json`: `--pixel-tolerance`
+  (per-pixel, default 0.1) ignores antialiasing; `--changed-ratio`
+  (per-capture, default 0.001) decides what counts as changed.
+- **Diff images are reviewable**: changed pixels at full strength over a dimmed
+  greyscale original, written to the run's `diff/`. A raw diff mask tells you
+  *that* something moved, not *what*.
+
+#### Capture determinism
+
+Pixel diffing is only as good as the captures, and the first comparison run
+immediately found the audit disagreeing with itself: **8 of 28 landing captures
+differed between two runs of identical code, up to 17.8% of a capture's
+pixels.** Two causes, both fixed:
+
+- **Infinite CSS animations.** The pages carry at least nine (`logo-scroll` 42s,
+  `mesh-drift` 16s, `auth-bg-shift` 18s, `preview-float` 9s, …) and none respect
+  `prefers-reduced-motion`, so the logo marquee's position at capture time was
+  arbitrary. Captures now pass `animations: "disabled"`, which fast-forwards
+  animations to their end state. App behaviour is untouched. → 8 → 4 unstable.
+- **Scroll-triggered reveals.** After a scroll, a `.reveal` element may be
+  mid-transition or not yet triggered, and in one run's capture a whole pricing
+  block was present while in the next it was still at `opacity: 0` — 39% of the
+  image. The audit now waits for every reveal the observer *would* have fired
+  for, mirroring `useScrollReveal` (threshold 0.15, `rootMargin … -10%`) rather
+  than guessing "is it on screen". Guessing strictly is worse than useless: the
+  pricing table is 837px tall, so "any part visible" is true when 150px peeks in
+  and the wait would demand a reveal that never comes.
+
+Two scenarios are still flaky and are tracked separately (#474):
+
+- **`carousel-hover`** — the product carousel auto-advances on a JS timer, which
+  `animations: "disabled"` cannot reach. Measured 3 distinct image states across
+  3 identical runs.
+- **`pricing-annual`** — the billing-toggle click occasionally lands in the other
+  state (measured 2 states across 3 runs for one theme; other themes stable).
+
+Stable captures, for contrast: `landing-*-hero` and
+`desktop-light-pricing-annual` hashed identically across 3 consecutive runs.
 
 Four behaviours worth knowing before you trust a run:
 

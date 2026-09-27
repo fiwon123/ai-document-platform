@@ -11,7 +11,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "preview": "vite preview",
-    "test": "vitest run && node --test ../scripts/audit-baseline.test.mjs",
+    "test": "vitest run && node --test ../scripts/audit-baseline.test.mjs ../scripts/audit-pixels.test.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },
