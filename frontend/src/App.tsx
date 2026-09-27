@@ -223,7 +223,24 @@ function App() {
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/register" element={<RegisterPage />} />
                     <Route path="/app/*" element={<ProtectedRoutes />} />
-                    <Route path="*" element={<NotFoundPage />} />
+                    {/* The public catch-all is the only route rendered without a
+                        shell, so it is the only page with no <main> landmark.
+                        The wrapper is deliberately bare: every other page gets
+                        its landmark from its own shell (PageLayout's
+                        `page-main`, AuthShell's `auth-shell`, ProtectedRoutes'
+                        `main-content`), and `main` has no default margin, so
+                        this is visually neutral. It lives here rather than in
+                        NotFoundPage because that page is also routed inside
+                        ProtectedRoutes, which already supplies a <main> — a
+                        second one would nest two on /app/* 404s. */}
+                    <Route
+                      path="*"
+                      element={
+                        <main>
+                          <NotFoundPage />
+                        </main>
+                      }
+                    />
                   </ViewTransitionRoutes>
                 </div>
               </ToastProvider>
