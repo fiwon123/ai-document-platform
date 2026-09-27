@@ -1,7 +1,16 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { MarketingShell } from "./components/PageLayout";
+import { NAV_COMPANY, NAV_LEGAL, NAV_PRODUCT } from "./content/marketing";
 import { NotFoundPage } from "./pages/NotFoundPage";
+
+/* The real MarketingShell pulls in LandingNavbar, which reads auth to decide
+   whether to show the "Dashboard" link. The mirrored tree is about route shape,
+   not auth, so auth is stubbed the way MarketingRoutes.test.tsx stubs it. */
+vi.mock("./hooks/useAuth", () => ({
+  useAuth: () => ({ user: null, login: vi.fn(), logout: vi.fn() }),
+}));
 
 /**
  * Mirrors the route tree declared in App.tsx to lock in the routing contract:
@@ -23,18 +32,18 @@ function AppRoutes({ path }: { path: string }) {
 }
 
 /**
- * The public catch-all, wrapped in `<main>` exactly as App.tsx does it.
+ * The public catch-all, wrapped in MarketingShell exactly as App.tsx does it.
  *
- * This wrapper is the whole fix for #460, and it is also the easy thing to drop
- * again: a `<main>` that renders nothing visible fails no visual review, and
- * nothing else in the app notices. Keeping it in the mirror means the tests
- * below measure what the app actually renders.
+ * This wrapper is the fix for #460 (a <main> landmark) and for #461 (the site
+ * chrome), and it is also the easy thing to drop again: a bare page fails no
+ * visual review, and nothing else in the app notices. Keeping the real shell in
+ * the mirror means the tests below measure what the app actually renders.
  */
 function NotFound404() {
   return (
-    <main>
+    <MarketingShell>
       <NotFoundPage />
-    </main>
+    </MarketingShell>
   );
 }
 
@@ -85,10 +94,9 @@ describe("app route tree", () => {
     expect(screen.getByText("This page could not be found.")).toBeTruthy();
   });
 
-  // #460: the public catch-all is the only route with no shell around it, so it
-  // is the only page that had no <main> landmark. Both 404 paths must end up
-  // with exactly one -- zero is the bug, and two (the public wrapper nested
-  // inside the protected shell's own <main>) would be the overcorrection.
+  // #460: both 404 paths must end up with exactly one <main>. Zero is the bug,
+  // and two (the public shell nested inside the protected shell's own <main>)
+  // would be the overcorrection.
   it("gives the public 404 exactly one main landmark", () => {
     const { container, unmount } = render(<AppRoutes path="/nope" />);
     expect(container.querySelectorAll("main")).toHaveLength(1);
@@ -100,6 +108,27 @@ describe("app route tree", () => {
     expect(screen.getByText("This page could not be found.")).toBeTruthy();
     expect(container.querySelectorAll("main")).toHaveLength(1);
     unmount();
+  });
+
+  // #461: the 404 rendered with nav=0, footer=0 — the only public route without
+  // the site chrome. Asserting a navbar merely *exists* would pass on a
+  // decorative one, so this asserts what the issue actually complained about:
+  // that a user who mistypes or follows a stale public URL can still reach the
+  // marketing pages from the 404. Driven by the nav arrays, so a link the
+  // navigation advertises but the 404 cannot reach fails here.
+  it("gives the public 404 a route back to the marketing pages", () => {
+    render(<AppRoutes path="/nope" />);
+    expect(screen.getByLabelText("AskDocs home")).toBeTruthy();
+    const hrefs = screen
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    for (const { label, to } of [
+      ...NAV_PRODUCT,
+      ...NAV_COMPANY,
+      ...NAV_LEGAL,
+    ]) {
+      expect(hrefs, `the 404 should link to ${to} (${label})`).toContain(to);
+    }
   });
 
   it("keeps the 404 heading structure intact", () => {

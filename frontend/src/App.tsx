@@ -20,6 +20,7 @@ import { ToastProvider } from "./context/ToastProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Navbar } from "./components/Navbar";
+import { MarketingShell } from "./components/PageLayout";
 import { queryClient } from "./lib/queryClient";
 import {
   getViewTransitionStart,
@@ -223,22 +224,27 @@ function App() {
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/register" element={<RegisterPage />} />
                     <Route path="/app/*" element={<ProtectedRoutes />} />
-                    {/* The public catch-all is the only route rendered without a
-                        shell, so it is the only page with no <main> landmark.
-                        The wrapper is deliberately bare: every other page gets
-                        its landmark from its own shell (PageLayout's
-                        `page-main`, AuthShell's `auth-shell`, ProtectedRoutes'
-                        `main-content`), and `main` has no default margin, so
-                        this is visually neutral. It lives here rather than in
-                        NotFoundPage because that page is also routed inside
-                        ProtectedRoutes, which already supplies a <main> — a
-                        second one would nest two on /app/* 404s. */}
+                    {/* The public catch-all is the only route that does not go
+                        through PageLayout, so it is the one place that has to
+                        supply its own chrome — and for #461 it now supplies the
+                        same MarketingShell every marketing page gets. It used to
+                        be a bare <main> around NotFoundPage, which fixed the
+                        missing landmark but left the page with nav=0, footer=0:
+                        a mistyped or stale public URL was a dead end whose only
+                        exits were "Back to dashboard" and "Go home", neither of
+                        which reaches the marketing pages.
+
+                        NotFoundPage is also routed inside ProtectedRoutes, which
+                        supplies its own <main className="main-content"> and
+                        navbar, so the shell lives here rather than in the page
+                        itself — nesting a second <main> on /app/* 404s is the
+                        overcorrection. */}
                     <Route
                       path="*"
                       element={
-                        <main>
+                        <MarketingShell>
                           <NotFoundPage />
-                        </main>
+                        </MarketingShell>
                       }
                     />
                   </ViewTransitionRoutes>
