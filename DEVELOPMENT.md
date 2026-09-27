@@ -308,6 +308,64 @@ Three things worth knowing:
   passed from Compose would win over `backend/src/app/.env` and over the code's
   fallback. `tests/test_compose_env.py` pins the two lists together.
 
+## Interactive visual audit (`scripts/audit.mjs`)
+
+One command photographs every meaningful interactive state of the app and
+records its animations, then prints the handful of numbers worth acting on. It
+exists because "the page looked fine" is not evidence, and because an audit
+that silently captures the wrong page is worse than none.
+
+```bash
+docker compose exec dev node scripts/audit.mjs                  # everything
+docker compose exec dev node scripts/audit.mjs --only=documents # one group
+docker compose exec dev node scripts/audit.mjs --help
+```
+
+It registers its own throwaway user, seeds four documents (ready, ready, ready,
+and a deliberately corrupt PDF so the failure card is real), waits for the
+worker, then walks the route groups. Output lands in
+`/tmp/opencode/visual-audit/<timestamp>/` with a `summary.json` and an
+`audit-manifest.json` that has one entry per capture. Copy the run out to look
+at it:
+
+```bash
+docker compose cp dev:/tmp/opencode/visual-audit/<timestamp> ./audit-run
+```
+
+Budget and retention: 500 MB per run (a hard stop, with GIF conversion checked
+before it can overshoot), the newest 2 runs kept, and Playwright's raw
+`.video-tmp` scratch directory removed at the end. Manifest and summary bytes
+count against the budget too, since they are what a reviewer opens first.
+
+Flags: `--base=`, `--out=`, `--only=`, `--keep-runs=`, `--budget-mb=`,
+`--video-themes=light,dark`, `--headed`.
+
+Four behaviours worth knowing before you trust a run:
+
+- **Presence is asserted before every capture, and the route is asserted after
+  every navigation.** A rate-limited `/app/*` load lands on `/login`, which
+  renders perfectly; a presence check on `main` alone would photograph the
+  login page and file it as a successful capture of the dashboard.
+- **Requests are paced off `X-RateLimit-Remaining`.** A full pass makes far
+  more than the 100 requests/minute the limiter allows, so the run sleeps out
+  the window instead of bouncing off 429s.
+- **Animations are WebM, not GIF.** The container's ffmpeg is Playwright's
+  screencast build (webm/image2 muxers, libvpx only — no GIF muxer), so the run
+  checks once and says so instead of failing a conversion per video.
+- **Small-target counts are split by WCAG 2.5.8's own excuses.** Inline prose
+  links, checkboxes (the `<label>` is the target) and off-screen elements are
+  counted separately, so the headline list is real leads rather than 200 links
+  in a paragraph.
+
+Known limitations are listed by `--help`: thumbnails and download links do not
+load in these captures (presigned URLs are signed for `localhost:9000`, which
+the in-container browser cannot reach — correct for a browser on the host), and
+`/app/admin` is captured as the access-denied branch because the fixture user is
+a customer and no public endpoint can promote it.
+
+A full pass currently takes about 11 minutes, of which roughly 5 are spent
+sleeping out the rate limiter. Individual groups take 1–2 minutes.
+
 ## Tools
 
 ```bash
