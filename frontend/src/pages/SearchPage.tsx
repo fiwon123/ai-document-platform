@@ -333,8 +333,11 @@ export function SearchPage() {
         <p className="search-mode-notice" role="status">
           <strong>Keyword-only search.</strong> No embedding provider is
           configured, so matches are literal rather than semantic and relevant
-          passages can be missed. Set <code>OPENAI_API_KEY</code> to enable
-          semantic search.
+          passages can be missed. Semantic search needs{" "}
+          <code>OPENAI_API_KEY</code>, which bills your OpenAI account per
+          token — a free <code>GROQ_API_KEY</code> or{" "}
+          <code>LOCAL_LLM_ENABLED=true</code> lets you ask questions, but cannot
+          supply embeddings.
         </p>
       )}
 
