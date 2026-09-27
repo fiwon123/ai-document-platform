@@ -103,6 +103,32 @@ def _truncate_all(engine) -> None:
 
 
 @pytest.fixture(autouse=True)
+def isolate_qa_model_env(monkeypatch):
+    """Stop QA tests from inheriting the developer's model selection.
+
+    ``resolve_default_model()`` reads ``QA_MODEL`` and ``OPENAI_MODEL`` live
+    from the environment on every call, by design so a config change applies
+    without a restart. That makes it the one piece of configuration a test
+    cannot control by patching a module attribute, and it meant any test which
+    called ``ask()`` without naming a model had its provider picked by whatever
+    the machine happened to export: ``QA_MODEL=llama-3.3-70b-versatile`` in a
+    developer's shell made the "local provider" and BYOK tests resolve to Groq
+    and fail on a suite that was green in CI.
+
+    Both are blanked to "" -- *set*, not deleted, because ``load_dotenv()``
+    (override=False) leaves an existing variable alone and would otherwise
+    re-supply them from ``backend/src/app/.env``. A test that needs one of
+    them sets it with ``monkeypatch.setenv`` in its own body, which runs after
+    this fixture, so the test always has the last word.
+
+    The import-time provider clients are a separate concern, handled per-test
+    by ``_patch_llm_client`` (see #478).
+    """
+    monkeypatch.setenv("QA_MODEL", "")
+    monkeypatch.setenv("OPENAI_MODEL", "")
+
+
+@pytest.fixture(autouse=True)
 def flush_test_redis():
     """Wipe the dedicated test Redis database before every test.
 
