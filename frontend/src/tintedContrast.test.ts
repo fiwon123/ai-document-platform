@@ -346,3 +346,89 @@ describe("scrims that carry light text", () => {
     expect(selected).toMatch(/color:\s*#[0-9a-f]{6}/i);
   });
 });
+
+describe("form feedback text takes the text step, not the fill step (#471)", () => {
+  // The third instance of the same mistake, found by the audit gate rather than
+  // by eye. `--green`/`--danger` are 600-level *fill* tokens; these three rules
+  // used them as the foreground of small body text:
+  //
+  //   .match-ok      green-600 on the auth card       3.30:1
+  //   .match-bad     red-600 on the auth card         4.85:1 (passes, but a
+  //                   sibling of a failing rule one line up)
+  //   .error-message red-600 on --danger-soft         4.41:1 light, 3.35:1 dark
+  //
+  // The light `.error-message` case is the instructive one: 4.41 against a 4.5
+  // bar reads as fine in review and fails every automated check. The dark case
+  // is worse and points the other way — red-600 on a near-black surface needs a
+  // *lighter* red, which is why this is the -text token and not a darker shade.
+
+  it("uses the text steps for the password-match indicator", () => {
+    const ok = ruleBody("\\.match-ok");
+    expect(ok).toMatch(/color:\s*var\(--green-text\)/);
+    expect(ok).not.toMatch(/color:\s*var\(--green\)/);
+    const bad = ruleBody("\\.match-bad");
+    expect(bad).toMatch(/color:\s*var\(--danger-text\)/);
+    expect(bad).not.toMatch(/color:\s*var\(--danger\)/);
+  });
+
+  it("uses the text step for the error notice, keeping --danger for its fill", () => {
+    const rule = ruleBody("\\.error-message");
+    expect(rule).toMatch(/color:\s*var\(--danger-text\)/);
+    expect(rule).not.toMatch(/color:\s*var\(--danger\)/);
+    // The background and border stay on the fill steps: those *are* fills.
+    expect(rule).toMatch(/background:\s*var\(--danger-soft\)/);
+    expect(rule).toMatch(/border:\s*1px solid var\(--danger-line\)/);
+  });
+
+  it("clears AA for the password-match text in both themes", () => {
+    // Worst case per theme: white in light, the lightest raised panel in dark
+    // (the hardest field for light text), matching the rest of this file.
+    for (const [theme, field] of [
+      ["light", white],
+      ["dark", themed("dark", "--surface-2")],
+    ] as const) {
+      for (const [selector, name] of [
+        ["\\.match-ok", "--green-text"],
+        ["\\.match-bad", "--danger-text"],
+      ] as const) {
+        const ratio = contrast(themed(theme, name), field);
+        expect(
+          ratio,
+          `${theme} ${selector} is ${ratio.toFixed(2)}:1 on ${field}, needs 4.5:1`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it("clears AA for the error notice on its own tint in both themes", () => {
+    // Light --danger-soft is a literal; dark is a 14% wash of --danger, so it
+    // has to be composited. The browser measured 5.82:1 on the real painted
+    // field; compositing over the theme's lightest panel is the conservative
+    // reading and still clears.
+    for (const theme of ["light", "dark"] as const) {
+      const soft = themed(theme, "--danger-soft");
+      const field = soft.startsWith("rgb(")
+        ? mix(themed(theme, "--danger"), 14, themed(theme, "--surface-2"))
+        : soft;
+      const ratio = contrast(themed(theme, "--danger-text"), field);
+      expect(
+        ratio,
+        `${theme} .error-message is ${ratio.toFixed(2)}:1 on ${field}, needs 4.5:1`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("leaves the match chip's fill step alone, since every tone overrides it", () => {
+    // `.result-match-chip`'s base rule paints 11px text green-600 on a 10% wash
+    // — 2.93:1, a real failure — but MatchChip always emits a `tone-*` class and
+    // each tone sets its own colour, background and border at higher
+    // specificity. Unreachable today; pinned here so deleting the dead base
+    // colour is a deliberate act rather than an accident.
+    expect(ruleBody("\\.result-match-chip")).toMatch(/color:\s*var\(--green\)/);
+    for (const tone of ["strong", "partial", "weak"]) {
+      const rule = ruleBody(`\\.result-match-chip\\.tone-${tone}`);
+      expect(rule, `tone-${tone} must set its own colour`).toMatch(/color:/);
+      expect(rule, `tone-${tone} must set its own background`).toMatch(/background:/);
+    }
+  });
+});

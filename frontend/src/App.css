@@ -3821,12 +3821,18 @@ nav.footer-col a:hover {
   font-weight: 600;
 }
 
+/* `--green`/`--danger` are *fill* tokens (600-level). As text on the auth
+   card's near-white surface they measured 3.30:1 and 4.85:1 respectively,
+   under AA's 4.5:1 for this 13.6px/600 text. The -text counterparts are the
+   steps tuned for a foreground: green-800 at 5.71:1, and red-700, which
+   clears both themes (red-400 is the dark mirror). The tick inherits the
+   colour via currentColor, so it tracks the label instead of drifting. */
 .match-ok {
-  color: var(--green);
+  color: var(--green-text);
 }
 
 .match-bad {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 /* Remember me / forgot password row */
@@ -4291,12 +4297,18 @@ nav.footer-col a:hover {
   color: var(--muted);
 }
 
+/* Error text uses --danger-text, not --danger. --danger is a fill token
+   (red-600): on light --danger-soft it measured 4.41:1 — a near-miss that
+   passes by eye and fails an automated check — and on the dark theme's
+   --danger-soft over its near-black surface it fell to 3.35:1. The -text
+   counterpart is the foreground step in both themes. Found by the audit gate
+   in #471, not by eye. */
 .error-message {
   padding: 12px;
   margin: 16px 0;
   background: var(--danger-soft);
   border: 1px solid var(--danger-line);
-  color: var(--danger);
+  color: var(--danger-text);
   font-size: 0.9rem;
 }
 
