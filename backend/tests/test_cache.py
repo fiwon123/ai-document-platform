@@ -171,7 +171,10 @@ class TestSearchServiceCaching:
         assert fake_redis.counters[_SEARCH_VERSION_KEY.format(user_id=user_id)] == 1
 
     def test_cache_read_failure_falls_back_to_database(self, monkeypatch):
-        monkeypatch.setattr(redis_client, "get_json", lambda key: (_ for _ in ()).throw(RuntimeError("redis down")))
+        def boom(key):
+            raise RuntimeError("redis down")
+
+        monkeypatch.setattr(redis_client, "get_json", boom)
         repo = MagicMock()
         repo.search.return_value = ([_make_result()], 1)
         service = SearchService(
@@ -185,7 +188,10 @@ class TestSearchServiceCaching:
         assert len(response.results) == 1
 
     def test_cache_write_failure_does_not_break_search(self, monkeypatch):
-        monkeypatch.setattr(redis_client, "set_json", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("redis down")))
+        def boom(*args, **kwargs):
+            raise RuntimeError("redis down")
+
+        monkeypatch.setattr(redis_client, "set_json", boom)
         repo = MagicMock()
         repo.search.return_value = ([_make_result()], 1)
         service = SearchService(
@@ -211,7 +217,7 @@ class TestSearchServiceCaching:
 
 class TestSearchCacheWithDatabase:
     def test_database_search_is_cached(self, db_session, fake_redis):
-        user = UserDB(username="carlos", hashed_password="x")
+        user = UserDB(username="carlos", hashed_password="x")  # noqa: S106
         db_session.add(user)
         db_session.flush()
 
@@ -254,7 +260,7 @@ class TestDocumentServiceCaching:
         )
 
     def test_get_caches_metadata_after_first_read(self, db_session, fake_redis):
-        user = UserDB(username="doc1", hashed_password="x")
+        user = UserDB(username="doc1", hashed_password="x")  # noqa: S106
         db_session.add(user)
         db_session.flush()
         doc = DocumentDB(
@@ -275,7 +281,7 @@ class TestDocumentServiceCaching:
         assert second.status == DocumentStatus.READY
 
     def test_get_returns_none_when_missing(self, db_session, fake_redis):
-        user = UserDB(username="doc2", hashed_password="x")
+        user = UserDB(username="doc2", hashed_password="x")  # noqa: S106
         db_session.add(user)
         db_session.commit()
 
@@ -292,7 +298,7 @@ class TestDocumentServiceCaching:
             document_module, "process_document_task", lambda _document_id: None
         )
 
-        user = UserDB(username="doc3", hashed_password="x")
+        user = UserDB(username="doc3", hashed_password="x")  # noqa: S106
         db_session.add(user)
         db_session.commit()
 
@@ -309,7 +315,7 @@ class TestDocumentServiceCaching:
         assert fake_redis.counters[_SEARCH_VERSION_KEY.format(user_id=user.id)] == 1
 
     def test_delete_clears_document_and_search_caches(self, db_session, fake_redis):
-        user = UserDB(username="doc4", hashed_password="x")
+        user = UserDB(username="doc4", hashed_password="x")  # noqa: S106
         db_session.add(user)
         db_session.flush()
         doc = DocumentDB(
@@ -371,7 +377,14 @@ class TestQAServiceCaching:
         fake_client.chat.completions.create.return_value = SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content=answer))]
         )
-        monkeypatch.setattr(qa_module, "_openai_client", fake_client)
+        # Every provider, not just OpenAI. `ask` resolves a model to a provider
+        # and reads that provider's client off the module at call time, so
+        # patching only `_openai_client` works only where nothing else is
+        # configured. With a real GROQ_API_KEY in the environment the
+        # free-first resolver picks Groq and answers from a live client instead
+        # of this mock — making a real network call and failing on its reply.
+        for attr in ("_openai_client", "_groq_client", "_local_client"):
+            monkeypatch.setattr(qa_module, attr, fake_client)
 
         fake_search = MagicMock()
         # A real SearchResponse, not a bare MagicMock: `ask()` reads .results
@@ -456,7 +469,11 @@ class TestQAServiceCaching:
 
         failing_client = MagicMock()
         failing_client.chat.completions.create.side_effect = RuntimeError("boom")
-        monkeypatch.setattr(qa_module, "_openai_client", failing_client)
+        # All providers, for the reason given in `_service`: patching only
+        # `_openai_client` lets a configured Groq key answer from a real client
+        # and this test then asserts against the wrong mock.
+        for attr in ("_openai_client", "_groq_client", "_local_client"):
+            monkeypatch.setattr(qa_module, attr, failing_client)
 
         service = QAService(search_service=_search_service_returning([]))
         user_id = uuid4()
