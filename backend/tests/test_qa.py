@@ -1,5 +1,6 @@
 """Tests for QA document filtering (document_ids)."""
 
+import os
 from contextlib import contextmanager
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -1337,6 +1338,15 @@ print(json.dumps({
         fake_client.chat.completions.create.return_value = SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="An answer"))]
         )
+        from app.services import qa as qa_module
+
+        # Pin the configured model, not just the requested one. An unknown
+        # request model falls back to OPENAI_MODEL, and that is an import-time
+        # constant captured before any fixture can influence it -- so with a
+        # machine exporting OPENAI_MODEL=bogus the fallback resolves to nothing
+        # and the caller correctly answers with the "not configured" hint
+        # instead. Pinning it keeps this test on the answer-producing path.
+        monkeypatch.setattr(qa_module, "OPENAI_MODEL", "gpt-4o-mini")
         _patch_llm_client(monkeypatch, fake_client)
         service = QAService(search_service=fake_search)
 
@@ -1346,3 +1356,36 @@ print(json.dumps({
 
         assert isinstance(response, QAResponse)
         assert response.answer == "An answer"
+
+
+class TestSuiteIsIsolatedFromTheDeveloperEnvironment:
+    """Guard the isolation itself, not a behaviour.
+
+    The failures this prevents were invisible: the suite was green in CI and
+    on the machine that wrote the tests, and only failed for a developer who
+    had pinned a model in their shell. A behavioural test cannot detect that,
+    so this asserts the invariant directly.
+    """
+
+    def test_ambient_model_pins_do_not_reach_default_resolution(self, monkeypatch):
+        """A test must not see QA_MODEL/OPENAI_MODEL from the environment."""
+        from app.services import qa as qa_module
+
+        # The conftest fixture blanks these; a developer exporting a real value
+        # must not change what any test observes.
+        assert os.environ.get("QA_MODEL", "") == ""
+        assert os.environ.get("OPENAI_MODEL", "") == ""
+
+        resolved = qa_module.resolve_default_model()
+
+        assert resolved in qa_module._MODEL_BY_ID, (
+            f"resolved to {resolved!r}, which is not a known model"
+        )
+
+    def test_a_test_may_still_choose_a_model(self, monkeypatch):
+        """Isolation must not take away the tests' own control."""
+        from app.services import qa as qa_module
+
+        monkeypatch.setenv("QA_MODEL", "llama-3.3-70b-versatile")
+
+        assert qa_module.resolve_default_model() == "llama-3.3-70b-versatile"
