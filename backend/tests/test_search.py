@@ -148,6 +148,77 @@ class TestVectorSearchWithDatabase:
         assert response.results[0].score < response.results[1].score
         assert response.results[0].document_filename == "animals.txt"
 
+    def test_score_is_a_distance_so_lower_means_a_better_match(self, db_session):
+        """Pin the direction of `score`, which is a distance and not a score.
+
+        The field name says "score" and readers assume higher is better, so a
+        refactor that started returning a similarity (or inverted the ordering)
+        would still return results in a sensible-looking order in some tests
+        while breaking every consumer that sorts on the number. The one-hot
+        vectors used here make the geometry exact: identical vectors are at
+        distance 0.0 and orthogonal ones at 1.0.
+        """
+        user = UserDB(username="directions", hashed_password="x")  # noqa: S106
+        db_session.add(user)
+        db_session.flush()
+
+        doc = DocumentDB(
+            owner_id=user.id,
+            filename="directions.txt",
+            object_key="k/directions.txt",
+            mime_type="text/plain",
+            status=DocumentStatus.READY,
+        )
+        db_session.add(doc)
+        db_session.flush()
+
+        exact = DocumentChunk(
+            document_id=doc.id,
+            content="the exact match",
+            chunk_index=0,
+            embedding=_make_vector(0),
+        )
+        unrelated = DocumentChunk(
+            document_id=doc.id,
+            content="an unrelated passage",
+            chunk_index=1,
+            embedding=_make_vector(1),
+        )
+        db_session.add_all([exact, unrelated])
+        db_session.commit()
+
+        embedding = MagicMock()
+        embedding.generate_embedding.return_value = _make_vector(0)
+        response = SearchService(
+            repository=SearchRepository(db_session),
+            embedding_service=embedding,
+        ).search(user_id=user.id, query="the exact match", top_k=2)
+
+        assert response.results[0].chunk_id == exact.id
+        # Lower is closer: the identical vector is 0.0 away, the orthogonal one
+        # is 1.0 away, which is the maximum.
+        assert response.results[0].score == pytest.approx(0.0, abs=1e-6)
+        assert response.results[1].score == pytest.approx(1.0, abs=1e-6)
+        # Both live in [0, 1] and are ordered closest-first.
+        assert all(0.0 <= r.score <= 1.0 for r in response.results)
+        assert [r.score for r in response.results] == sorted(
+            r.score for r in response.results
+        )
+        # The conversion the UI relies on: 1 - distance is the match percentage.
+        assert (1 - response.results[0].score) * 100 == pytest.approx(100, abs=1e-4)
+        assert (1 - response.results[1].score) * 100 == pytest.approx(0, abs=1e-4)
+
+    def test_score_field_documents_its_direction(self):
+        """The direction has to survive in the schema, not just in this file.
+
+        `score` reaches API consumers through the OpenAPI document, and the whole
+        reason this field is confusing is that nothing said which way it points.
+        """
+        description = SearchResult.model_fields["score"].description or ""
+
+        assert "smaller is a better match" in description
+        assert "1 - score" in description
+
 
 class TestSearchPagination:
     def _seed_chunks(self, db_session, count: int = 3, marker: str = "a"):
@@ -437,14 +508,40 @@ class TestSearchExport:
             "content-disposition"
         ]
         lines = resp.text.splitlines()
+        # The relevance column is headed `distance`, not `score`: a file headed
+        # `score` invites sorting descending, which puts the worst matches
+        # first. `match_percent` carries the value the UI displays.
         assert lines[0] == (
-            "document_filename,chunk_id,document_id,score,content,metadata"
+            "document_filename,chunk_id,document_id,distance,match_percent,"
+            "content,metadata"
         )
         # CSV quoting must handle commas, quotes, and newlines in content.
         assert lines[1].startswith('notes.txt,00000000-0000-0000-0000-000000000001,')
         assert '"contains ""quoted, text"" and newline\nline2"' in resp.text
-        assert ",0.123456," in resp.text
+        assert ",0.123456,87.7," in resp.text
         assert '"{""page"":2}"' in resp.text
+
+    def test_export_csv_match_percent_is_the_inverse_of_distance(
+        self, client, auth_headers
+    ):
+        """The two columns must move in opposite directions.
+
+        If a future change ever made `match_percent` track the distance instead
+        of its inverse, sorting it high-to-low would silently start returning
+        the worst matches first -- the exact trap the rename was meant to close.
+        """
+        resp = self._export_response(client, auth_headers, "csv")
+        header = resp.text.splitlines()[0].split(",")
+        row = resp.text.splitlines()[1].split(",", len(header) - 1)
+
+        distance = float(row[header.index("distance")])
+        match_percent = float(row[header.index("match_percent")])
+
+        assert distance == 0.123456
+        assert match_percent == pytest.approx((1 - distance) * 100, abs=0.05)
+        # Sanity: a perfect distance is a 100% match, the worst is 0%.
+        assert (1 - 0.0) * 100 == 100
+        assert (1 - 1.0) * 100 == 0
 
     def test_export_csv_uses_correct_score_precision(self, client, auth_headers):
         resp = self._export_response(client, auth_headers, "csv")

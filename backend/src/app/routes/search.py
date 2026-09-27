@@ -103,7 +103,20 @@ def _csv_safe(value: str) -> str:
 
 
 def _to_csv(response: SearchResponse) -> str:
-    """Serialize a SearchResponse into CSV (RFC 4180 via the csv module)."""
+    """Serialize a SearchResponse into CSV (RFC 4180 via the csv module).
+
+    The relevance column is headed ``distance`` and not ``score`` because the
+    number is a distance: smaller is the better match. A file headed ``score``
+    invites the reader to sort descending and get the *worst* matches first,
+    which is the opposite of what they want from an export of search results.
+
+    ``match_percent`` is the same value expressed the way the UI shows it, so a
+    spreadsheet can be sorted high-to-low and read against what the user saw on
+    screen. The exact metric behind the distance depends on the search mode (a
+    cosine distance when semantic, a full-text rank distance when keyword), so
+    the header says "distance" rather than naming a metric that would be wrong
+    half the time.
+    """
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(
@@ -111,7 +124,8 @@ def _to_csv(response: SearchResponse) -> str:
             "document_filename",
             "chunk_id",
             "document_id",
-            "score",
+            "distance",
+            "match_percent",
             "content",
             "metadata",
         ]
@@ -123,6 +137,7 @@ def _to_csv(response: SearchResponse) -> str:
                 str(result.chunk_id),
                 str(result.document_id),
                 f"{result.score:.6f}",
+                f"{(1 - result.score) * 100:.1f}",
                 _csv_safe(result.content),
                 _csv_safe(_json_or_empty(result.metadata_)),
             ]
