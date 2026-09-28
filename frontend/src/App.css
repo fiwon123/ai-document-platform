@@ -5896,6 +5896,17 @@ nav.footer-col a:hover {
   color: var(--ink);
 }
 
+.chat-input-counter {
+  /* Sits with the field it counts, so it reads as that field's own readout
+     rather than as chrome for the button. Tabular figures stop the label
+     jittering as the digits change. */
+  align-self: center;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .chat-input:focus {
   outline: none;
   border-color: var(--blue);

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  ApiError,
   auth,
   describeRateLimit,
   documents,
@@ -998,6 +999,119 @@ describe("error envelope plumbing (#499)", () => {
 
     expect(error.message).toBe("Question is too long");
     expect(error.code).toBeUndefined();
+  });
+});
+
+describe("validation error messages", () => {
+  const mockFetch = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockFetch);
+    localStorage.clear();
+  });
+
+  // Typed as `Promise<ApiError>` rather than `.catch((e) => e as ApiError)`, which
+  // would widen to `ApiError | QAResponse` and hide every `.message` access
+  // behind a union. The throw also means a mock that wrongly *succeeds* fails
+  // the test here, instead of yielding an undefined error three lines later.
+  const askWithBody = async (body: unknown): Promise<ApiError> => {
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        status: 422,
+        headers: { "content-type": "application/json" },
+      })
+    );
+    try {
+      await qa.ask("q");
+      throw new Error("expected the 422 to reject");
+    } catch (e) {
+      return e as ApiError;
+    }
+  };
+
+  it("names the field and the reason instead of the bare summary", async () => {
+    // The real body for a 2001-character question. "Request validation failed"
+    // is true and useless: it says nothing about the field or the limit.
+    const error = await askWithBody({
+      error: {
+        code: "validation_error",
+        message: "Request validation failed",
+        details: { question: "String should have at most 2000 characters" },
+      },
+    });
+
+    expect(error.message).toBe(
+      "question: String should have at most 2000 characters"
+    );
+  });
+
+  it("joins every field reason rather than dropping the rest", async () => {
+    const error = await askWithBody({
+      error: {
+        code: "validation_error",
+        message: "Request validation failed",
+        details: { top_k: "not an integer", document_ids: "invalid UUID" },
+      },
+    });
+
+    expect(error.message).toBe(
+      "top_k: not an integer; document_ids: invalid UUID"
+    );
+  });
+
+  it("summarises past three fields instead of printing a wall", async () => {
+    const error = await askWithBody({
+      error: {
+        code: "validation_error",
+        message: "Request validation failed",
+        details: { a: "1", b: "2", c: "3", d: "4", e: "5" },
+      },
+    });
+
+    expect(error.message).toBe("a: 1; b: 2; c: 3; and 2 more");
+  });
+
+  it("falls back to the summary when details is not a field map", async () => {
+    // FastAPI's own un-wrapped 422 is a *list* of objects, not a map. Rendering
+    // that as the message would hand a user "[object Object]".
+    for (const details of [[{ loc: ["body", "q"] }], "plain string", null, 7]) {
+      const error = await askWithBody({
+        error: { code: "validation_error", message: "Request validation failed", details },
+      });
+      expect(error.message).toBe("Request validation failed");
+    }
+  });
+
+  it("ignores non-string reasons rather than printing undefined", async () => {
+    const error = await askWithBody({
+      error: {
+        code: "validation_error",
+        message: "Request validation failed",
+        details: { question: 42, empty: "" },
+      },
+    });
+
+    expect(error.message).toBe("Request validation failed");
+  });
+
+  it("leaves a rate limit's sentence alone", async () => {
+    // A rate limit's `details` is the retry contract, not field reasons, and its
+    // `message` is the sentence the user is meant to read. Prefixing field
+    // reasons onto it would turn good copy into noise.
+    const error = await askWithBody({
+      error: {
+        code: "provider_rate_limited",
+        message: "Daily allowance used up. Try again tomorrow.",
+        details: { retry_after: 3600, scope: "daily" },
+      },
+    });
+
+    expect(error.message).toBe("Daily allowance used up. Try again tomorrow.");
+  });
+
+  it("still honours a legacy {detail} body", async () => {
+    const error = await askWithBody({ detail: "Question is too long" });
+    expect(error.message).toBe("Question is too long");
   });
 });
 

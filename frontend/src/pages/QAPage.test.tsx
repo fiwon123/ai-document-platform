@@ -60,6 +60,63 @@ async function askQuestion(question: string) {
   await act(async () => {});
 }
 
+describe("the question length limit", () => {
+  // The limit lives in `backend/src/app/schemas/qa.py` and nowhere on the
+  // client, so these tests pin the two halves that make it discoverable: an
+  // input that cannot over-run, and a count that appears before the cap is hit.
+  const type = (question: string) =>
+    fireEvent.change(screen.getByLabelText(/ask a question/i), {
+      target: { value: question },
+    });
+
+  beforeEach(() => {
+    mockedAsk.mockReset();
+    mockedGetModels.mockReset();
+    mockedGetModels.mockResolvedValue({ free: [], paid: [] } as never);
+    mockedList.mockResolvedValue([] as never);
+    renderWithClient(<QAPage />);
+  });
+
+  it("caps the input at the limit the backend enforces", () => {
+    const input = screen.getByLabelText(/ask a question/i);
+    expect(input).toHaveAttribute("maxlength", "2000");
+  });
+
+  it("keeps the count out of the way while the question is short", () => {
+    type("what is the retention policy?");
+    expect(screen.queryByText(/\/\s*2000/)).toBeNull();
+  });
+
+  it("shows the count as the cap is approached", () => {
+    // 1800 of 2000: the point where a user is about to be surprised, and the
+    // last moment the warning can be cheap rather than an error.
+    type("a".repeat(1800));
+    expect(screen.getByText("1800 / 2000")).toBeInTheDocument();
+  });
+
+  it("shows the count for an over-long paste rather than swallowing it", () => {
+    // jsdom's `maxLength` does not truncate programmatic values, so a paste
+    // longer than the cap renders here. The count must report what the user
+    // actually has, not clamp the number to look tidy.
+    type("a".repeat(2400));
+    expect(screen.getByText("2400 / 2000")).toBeInTheDocument();
+  });
+
+  it("hides the count again when the question is cut back", () => {
+    type("a".repeat(1900));
+    expect(screen.getByText("1900 / 2000")).toBeInTheDocument();
+    type("short");
+    expect(screen.queryByText("1900 / 2000")).toBeNull();
+  });
+
+  it("is not announced on every keystroke", () => {
+    type("a".repeat(1850));
+    // Polite, not assertive: the count changes per character, and asserting it
+    // would talk over the question being typed.
+    expect(screen.getByText("1850 / 2000")).toHaveAttribute("aria-live", "polite");
+  });
+});
+
 describe("QAPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();

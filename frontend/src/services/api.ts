@@ -255,6 +255,29 @@ async function fetchWithAuth(
 }
 
 /** Shared error parsing for non-2xx responses (JSON body or fallback). */
+/**
+ * Turn a `validation_error`'s `details` into something a user can act on.
+ *
+ * The backend already explains the rejection: for an over-long question it sends
+ * `{question: "String should have at most 2000 characters"}`. The generic
+ * `message` beside it is "Request validation failed" — true, and useless, since
+ * it names neither the field nor the limit. So the field reasons win when there
+ * are any, joined so a second field is not silently dropped.
+ *
+ * Only the *first* few are listed: this is an error line, not a report, and a
+ * wall of Pydantic messages is as unreadable as none at all.
+ */
+function describeValidationError(details: unknown): string | undefined {
+  if (!details || typeof details !== "object" || Array.isArray(details)) return undefined;
+  const fields = Object.entries(details as Record<string, unknown>).filter(
+    ([, reason]) => typeof reason === "string" && reason.length > 0
+  );
+  if (fields.length === 0) return undefined;
+  const shown = fields.slice(0, 3).map(([field, reason]) => `${field}: ${reason}`);
+  const extra = fields.length - shown.length;
+  return shown.join("; ") + (extra > 0 ? `; and ${extra} more` : "");
+}
+
 async function parseError(response: Response, fallback: string): Promise<ApiError> {
   // A body that is absent or not JSON (a proxy's HTML error page, an empty
   // 502) still has to produce the caller's fallback rather than "[object
@@ -264,16 +287,20 @@ async function parseError(response: Response, fallback: string): Promise<ApiErro
   const body = parsed ?? { detail: fallback };
   // Support both the legacy `{detail}` and the standardized
   // `{error: {code, message, details}}` response shapes.
-  const message =
-    body?.detail ??
-    body?.error?.message ??
-    `Request failed (${response.status})`;
-
   const details =
     body?.error?.details && typeof body.error.details === "object"
       ? (body.error.details as ErrorDetails)
       : undefined;
   const code = typeof body?.error?.code === "string" ? body.error.code : undefined;
+
+  // A validation failure already carries per-field reasons, so prefer them over
+  // the summary. Rate limits must not go through here: their `details` is the
+  // retry contract, and `message` is the sentence the user is meant to read.
+  const message =
+    (code === "validation_error" ? describeValidationError(details) : undefined) ??
+    body?.detail ??
+    body?.error?.message ??
+    `Request failed (${response.status})`;
 
   return new ApiError(response.status, message, {
     code,
