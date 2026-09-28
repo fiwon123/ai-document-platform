@@ -96,6 +96,14 @@ def main(argv: list[str] | None = None) -> int:
         plan = plan_backfill(db, service=service)
         print(f"dry run: {plan.summary()}")
         if not args.apply:
+            if args.limit is not None:
+                # `--limit` bounds the work a write run does. It is not a dry-run
+                # filter, so say what it would do rather than leaving a flag that
+                # is accepted, printed in the help text, and quietly ignored.
+                print(
+                    f"a run with --limit {args.limit} would examine at most "
+                    f"{min(args.limit, plan.total)} chunk(s) of these"
+                )
             print("no writes (pass --apply to re-embed)")
             return 0
         if plan.to_embed == 0:
