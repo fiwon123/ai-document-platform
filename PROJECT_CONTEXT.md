@@ -491,6 +491,20 @@ Navigation rules:
   768; all-minilm is 384, mxbai-embed-large 1024)
 - `RATE_LIMIT_REQUESTS`: Rate limit requests (default: 100)
 - `RATE_LIMIT_WINDOW`: Rate limit window in seconds (default: 60)
+- `TRUST_PROXY_HEADERS`: trust `X-Forwarded-For` for client identification
+  (default: **off**, and set in no shipped config). Off is correct for a directly
+  exposed app: with no proxy, the socket peer *is* the client, and a trusted
+  header would just be a header the client writes. Turn it on when a reverse
+  proxy fronts the app, so limits are counted per real client rather than per
+  proxy. Safe behind a proxy that **overwrites** the header (nginx,
+  `frontend/nginx.conf`) or **appends** the address it saw
+  (`$proxy_add_x_forwarded_for`, k8s ingress): only the **rightmost** entry is
+  read, and that is the one a client cannot choose. Still unsafe behind a proxy
+  that forwards the header through untouched — then the client picks even the last
+  entry, so the limiter is bypassable. With two trusted proxies stacked, the
+  rightmost entry is the inner proxy's own address and everything behind it
+  shares one bucket; that is deliberate, since an imprecise limit cannot be
+  escaped, and overwriting the header in the proxy restores per-client precision
 - `CORS_ORIGINS`: Comma-separated allowed CORS origins (defaults to the dev
   ports 5173/5175/3000; `*` forces a wildcard — dev/testing only, and it
   disables credentialed requests)

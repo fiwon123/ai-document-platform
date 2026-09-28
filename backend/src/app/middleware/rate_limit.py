@@ -13,9 +13,12 @@ RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
 RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
 
 # Only trust proxy-provided headers when explicitly enabled. Off by default:
-# an untrusted client must never be able to rotate X-Forwarded-For and
-# bypass the limiter. Enable in production behind a proxy that overwrites
-# X-Forwarded-For (e.g. k8s ingress, nginx proxy_set_header).
+# an untrusted client must never be able to rotate X-Forwarded-For and bypass
+# the limiter. Safe to enable behind a proxy that *appends* to the header
+# (nginx, k8s ingress) as well as one that overwrites it, because only the
+# rightmost entry is read -- see _client_ip. Still unsafe behind a proxy that
+# forwards the header through untouched, since then the client chooses even the
+# last entry.
 TRUST_PROXY_HEADERS = (
     os.getenv("TRUST_PROXY_HEADERS", "").strip().lower() in {"1", "true", "yes", "on"}
 )
@@ -37,15 +40,31 @@ _RATE_LIMIT_429_MESSAGE = "Too many requests. Please try again later."
 def _client_ip(request: Request) -> str:
     """Best-effort client IP.
 
-    When ``TRUST_PROXY_HEADERS`` is enabled the socket peer is the proxy
-    itself, so the real client is the leftmost entry of ``X-Forwarded-For``
-    (proxies append, never prepend). Falls back to the socket peer when the
-    header is absent, empty, or implausibly long.
+    When ``TRUST_PROXY_HEADERS`` is enabled the socket peer is a proxy we
+    operate, so the real client is the **rightmost** entry of
+    ``X-Forwarded-For``: the one the innermost trusted hop observed for itself.
+
+    Rightmost, not leftmost, because the client chooses the leftmost. A proxy
+    either overwrites the header (then both ends agree) or appends the address it
+    saw to whatever arrived (then the appended entry is the trustworthy one) —
+    and the second is what ``$proxy_add_x_forwarded_for`` in ``nginx.conf`` does.
+    Reading the leftmost entry therefore let any client mint a fresh rate-limit
+    bucket per request by prepending a value, which is a total bypass rather than
+    a leak. ``nginx.conf`` now overwrites the header as well, so this is the
+    second of two independent defences rather than the only one.
+
+    Where two trusted proxies are stacked the rightmost entry is the inner proxy's
+    own address, so everything behind it shares one bucket. That is a coarser
+    limit on purpose: an imprecise limit cannot be escaped by a client, and
+    precision comes back once the proxy overwrites the header.
+
+    Falls back to the socket peer when the header is absent, empty, or
+    implausibly long.
     """
     if TRUST_PROXY_HEADERS:
         forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
-            client = forwarded.split(",")[0].strip()
+            client = forwarded.rsplit(",", 1)[-1].strip()
             if client and len(client) <= _MAX_FORWARDED_TOKEN_LENGTH:
                 return client
     return request.client.host if request.client else "unknown"
@@ -93,12 +112,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     because that is the granularity the provider enforces.
 
     ``TRUST_PROXY_HEADERS`` assumption: when enabled, the socket peer is a proxy
-    the operator controls, which **overwrites** ``X-Forwarded-For`` rather than
-    appending to client-supplied values. Behind nginx or a k8s ingress that
-    holds (``proxy_set_header X-Forwarded-For $remote_addr``). In front of a
-    proxy that merely passes the header through, enabling this lets any client
-    mint a fresh identity per request and bypass the limiter entirely — so it
-    stays off by default and is a deployment decision, not a default.
+    the operator controls, and that proxy either overwrites ``X-Forwarded-For``
+    or appends the address it saw to whatever the client sent. Only the
+    rightmost entry is read, so both are fine -- and nginx's
+    ``$proxy_add_x_forwarded_for`` (append) is now handled, where the leftmost
+    entry it used to read was the client's own. A proxy that forwards the header
+    through *untouched* is still unsafe, because then the client picks even the
+    last entry, so it stays off by default and remains a deployment decision.
     """
 
     def __init__(self, app, requests: int = 100, window: int = 60):
