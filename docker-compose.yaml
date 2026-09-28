@@ -106,6 +106,16 @@ services:
       QA_MAX_TOKENS: ${QA_MAX_TOKENS:-1000}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-ada-002}
+      # The OpenAI space's width. Set together with EMBEDDING_MODEL when
+      # switching to another hosted model, because a vector of the wrong width
+      # cannot be written or compared, and the service refuses it loudly rather
+      # than storing it.
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+      # The local embedding space (Ollama). Used only when OPENAI_API_KEY is
+      # unset, so a deployment that has always embedded with OpenAI keeps
+      # doing so — see app.services.embedding for why the order is deliberate.
+      LOCAL_EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}
+      LOCAL_EMBEDDING_DIMENSIONS: ${LOCAL_EMBEDDING_DIMENSIONS:-768}
       LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:11434/v1}
       LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-llama3.2:1b}
       # Redirects the OpenAI SDK itself (embeddings AND the OpenAI QA provider)
@@ -225,6 +235,9 @@ services:
       QA_MAX_TOKENS: ${QA_MAX_TOKENS:-1000}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-ada-002}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+      LOCAL_EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}
+      LOCAL_EMBEDDING_DIMENSIONS: ${LOCAL_EMBEDDING_DIMENSIONS:-768}
       LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:11434/v1}
       LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-llama3.2:1b}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}

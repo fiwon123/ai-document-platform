@@ -347,10 +347,11 @@ export function QAPage() {
             <strong>Keyword-only retrieval.</strong> No embedding provider is
             configured, so the passages given to the model were found by literal
             matching. Relevant context can be missing from the answer. Semantic
-            retrieval needs <code>OPENAI_API_KEY</code>, which bills your OpenAI
-            account per token — a free <code>GROQ_API_KEY</code> or{" "}
-            <code>LOCAL_LLM_ENABLED=true</code> lets you ask questions, but
-            cannot supply embeddings.
+            retrieval needs either <code>OPENAI_API_KEY</code>, which bills your
+            OpenAI account per token, or{" "}
+            <code>LOCAL_LLM_ENABLED=true</code> with a local model server, which
+            is free. A free <code>GROQ_API_KEY</code> serves chat models only —
+            it cannot supply embeddings.
           </p>
         )}
 

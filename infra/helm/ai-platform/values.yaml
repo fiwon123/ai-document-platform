@@ -139,6 +139,19 @@ config:
   ai:
     openaiModel: gpt-4
     embeddingModel: text-embedding-ada-002
+    # The width this space's vectors must be. A vector of any other width cannot
+    # be written or compared, and the service refuses it rather than storing it,
+    # so changing embeddingModel means changing this too.
+    embeddingDimensions: 1536
+    # The local embedding space (Ollama), used only when no OpenAI key is
+    # configured — the order is deliberate, so an existing OpenAI deployment is
+    # never silently moved to a different space and left unable to search its
+    # own vectors. nomic-embed-text is 768-wide; all-minilm is 384 and
+    # mxbai-embed-large 1024. baseUrl is the same server as localLlm.baseUrl
+    # above, and has the same reachability caveat: a cluster IP, not 127.0.0.1.
+    localEmbedding:
+      model: nomic-embed-text
+      dimensions: 768
     # Default QA model. Empty means "let the application decide", which is
     # free-first: a configured Groq or local provider wins, and a paid OpenAI
     # model is only reached when nothing free is available. Set this to pin a

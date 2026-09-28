@@ -9,6 +9,11 @@ from openai import OpenAI
 
 from app.cache.redis import redis_client
 from app.env import drop_blank_provider_vars
+from app.local_provider import (
+    LOCAL_LLM_BASE_URL,
+    LOCAL_LLM_ENABLED,
+    LOCAL_PLACEHOLDER_KEY,
+)
 from app.schemas.qa import QAResponse
 from app.schemas.search import SearchResult
 from app.services.search import SearchService, user_cache_version
@@ -60,7 +65,7 @@ OPENAI_MODEL = (os.getenv("OPENAI_MODEL", "") or "").strip() or "gpt-4"
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 # A local, keyless provider for anyone running an OpenAI-compatible server
-# (Ollama is the common one). This is the only path that works with no API
+# (Ollama is the common one). This is the only chat path that works with no API
 # key at all, so it is the fallback when nothing else is configured.
 #
 # Opt-in rather than probed: discovering it would mean a network call, and a
@@ -68,14 +73,12 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 # latency to every request or route answers to a dead endpoint. Requiring
 # LOCAL_LLM_ENABLED means "I am running a local model server" is something the
 # operator states, and the hint below says exactly what to set.
-LOCAL_LLM_BASE_URL = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434/v1")
+#
+# `LOCAL_LLM_ENABLED` and `LOCAL_LLM_BASE_URL` are read in `app.local_provider`
+# rather than here, because the embedding provider needs the same two answers
+# and importing this module from the embedding service would close an import
+# cycle (qa -> services.search -> services.embedding).
 LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "llama3.2:1b")
-LOCAL_LLM_ENABLED = os.getenv("LOCAL_LLM_ENABLED", "").strip().lower() in (
-    "1",
-    "true",
-    "yes",
-    "on",
-)
 
 # Upper bound on the answer length. This matters most for a CPU-only local
 # model: measured on Ollama with `tinyllama` at OLLAMA_NUM_THREADS=2, generation
@@ -105,9 +108,8 @@ if _raw_max_tokens:
             QA_MAX_TOKENS = QA_MAX_TOKENS_DEFAULT
 
 # The OpenAI SDK refuses to build a client without a key, even when the
-# endpoint ignores it. Local servers do, so a placeholder is passed through and
-# never leaves the machine.
-_LOCAL_PLACEHOLDER_KEY = "local-no-key"
+# endpoint ignores it. Local servers do, so `app.local_provider` passes
+# LOCAL_PLACEHOLDER_KEY through and it never leaves the machine.
 
 # Central registry of QA models. Each entry:
 #   id       — the model id sent to the provider API
@@ -213,7 +215,7 @@ _groq_client = (
 # Built whenever the local provider is enabled, key or no key: the endpoint
 # ignores the placeholder, so requiring a key here would defeat the point.
 _local_client = (
-    OpenAI(api_key=_LOCAL_PLACEHOLDER_KEY, base_url=LOCAL_LLM_BASE_URL)
+    OpenAI(api_key=LOCAL_PLACEHOLDER_KEY, base_url=LOCAL_LLM_BASE_URL)
     if LOCAL_LLM_ENABLED
     else None
 )

@@ -549,9 +549,25 @@ describe("QAPage keyword-only retrieval", () => {
     expect(text).toContain("bills your OpenAI account");
     expect(text).toContain("GROQ_API_KEY");
     expect(text).toContain("LOCAL_LLM_ENABLED=true");
-    // Groq and a local server serve chat models, not embeddings. Promising
-    // otherwise would send the reader to set a key that cannot fix the notice.
+    // Groq serves chat models, not embeddings. Promising otherwise would send
+    // the reader to set a key that cannot fix the notice.
     expect(text).toContain("cannot supply embeddings");
+  });
+
+  it("offers the local model server as a free way to get semantic retrieval", async () => {
+    // The inverse, and the reason the copy was rewritten: the local provider
+    // serves embeddings too, so telling a zero-cost reader that its only free
+    // option cannot fix the notice was simply wrong.
+    ask("q", "A", "llama3.2:1b", [], "keyword");
+
+    await askQuestion("q");
+
+    const text = document.querySelector(".search-mode-notice")?.textContent ?? "";
+    expect(text).toMatch(
+      /LOCAL_LLM_ENABLED=true[\s\S]*local model server[\s\S]*free/i
+    );
+    // The limitation must be attributed to Groq, not left with no subject.
+    expect(text).toMatch(/GROQ_API_KEY[\s\S]*cannot supply embeddings/i);
   });
 
   it("says nothing when retrieval was semantic", async () => {

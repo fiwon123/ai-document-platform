@@ -202,10 +202,11 @@ host ports (`127.0.0.1:18001` backend, `127.0.0.1:18080` frontend).
 ./infra/scripts/smoke-test.sh
 ```
 
-The Infra CI workflow runs this job (`smoke`) on every dev push. Note:
-without an `OPENAI_API_KEY`, document processing ends in `failed` (no
-embeddings) — the smoke test asserts the API surface (upload/status/search
-respond correctly), not processing success.
+The Infra CI workflow runs this job (`smoke`) on every dev push. Note: with
+neither `OPENAI_API_KEY` nor a local embedding provider (`LOCAL_LLM_ENABLED` plus
+a pulled embedding model), document processing ends in `failed` (no embeddings)
+— the smoke test asserts the API surface (upload/status/search respond
+correctly), not processing success.
 
 ## GitOps (ArgoCD)
 

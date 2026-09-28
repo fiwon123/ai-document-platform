@@ -542,9 +542,35 @@ describe("SearchPage keyword-only mode", () => {
     expect(text).toContain("bills your OpenAI account");
     expect(text).toContain("GROQ_API_KEY");
     expect(text).toContain("LOCAL_LLM_ENABLED=true");
-    // Honest about what the free paths cannot do: they serve chat models, not
-    // the embeddings this notice is about.
+    // Honest about what the free paths cannot do. This is narrower than it
+    // used to be: the local provider serves embeddings too, so only Groq is
+    // left out -- claiming otherwise would send a zero-cost operator away from
+    // the one option that actually removes the warning.
     expect(text).toContain("cannot supply embeddings");
+  });
+
+  it("offers the local model server as a free way to get semantic search", async () => {
+    // The inverse of the assertion above, and the reason the notice was
+    // rewritten: LOCAL_LLM_ENABLED used to be described as chat-only, which
+    // stopped being true once local embeddings landed. A notice that names a
+    // free fix and then says it cannot work is worse than no notice.
+    mockedSearch.mockResolvedValue({
+      query: "q3",
+      results: [result],
+      total_count: 1,
+      has_more: false,
+      mode: "keyword",
+    });
+
+    await runSearch("q3");
+
+    const text = document.querySelector(".search-mode-notice")?.textContent ?? "";
+    expect(text).toMatch(
+      /LOCAL_LLM_ENABLED=true[\s\S]*local model server[\s\S]*free/i
+    );
+    // The chat-only limitation must be attributed to Groq specifically, not
+    // left as a floating "cannot supply embeddings" of unclear subject.
+    expect(text).toMatch(/GROQ_API_KEY[\s\S]*cannot supply embeddings/i);
   });
 
   it("does not claim keyword-only when semantic search was used", async () => {

@@ -5,7 +5,7 @@ from uuid import UUID
 from app.cache.redis import redis_client
 from app.models.search import SearchHistory
 from app.repositories.search import SearchRepository
-from app.schemas.search import SearchMode, SearchResponse
+from app.schemas.search import SearchResponse
 from app.services.embedding import EmbeddingService
 
 logger = logging.getLogger(__name__)
@@ -136,7 +136,8 @@ class SearchService:
 
         # Generate a query embedding so the repository can run semantic
         # (vector) search. Falls back to plain text search when embedding
-        # generation is unavailable (no API key, API error, etc.).
+        # generation is unavailable (no provider configured, wrong embedding
+        # width, API error, etc.).
         query_embedding = None
         try:
             query_embedding = self.embedding_service.generate_embedding(query)
@@ -145,7 +146,7 @@ class SearchService:
                 f"Query embedding unavailable, falling back to text search: {e}"
             )
 
-        results, total_count = self.repository.search(
+        outcome = self.repository.search(
             user_id=user_id,
             query_embedding=query_embedding,
             # The keyword fallback has no embedding to work from, so the query
@@ -156,29 +157,32 @@ class SearchService:
             top_k=top_k,
             offset=offset,
             document_ids=document_ids,
+            # Which column the query vector is comparable with, and which model
+            # produced it. Both are needed so the repository reads the right
+            # column and never ranks vectors from another model.
+            query_space=self.embedding_service.space,
+            query_model=self.embedding_service.model,
         )
 
         if record_history:
             search_history = SearchHistory(
                 user_id=user_id,
                 query=query,
-                results_count=total_count,
+                results_count=outcome.total_count,
             )
             self.repository.save_search_history(search_history)
 
         response = SearchResponse(
             query=query,
-            results=results,
-            total_count=total_count,
-            has_more=offset + len(results) < total_count,
-            # `query_embedding is None` is already the branch the repository
-            # took, so reporting it costs nothing and cannot disagree with what
-            # actually happened.
-            mode=(
-                SearchMode.semantic
-                if query_embedding is not None
-                else SearchMode.keyword
-            ),
+            results=outcome.results,
+            total_count=outcome.total_count,
+            has_more=offset + len(outcome.results) < outcome.total_count,
+            # Taken from what the repository reported, not from whether an
+            # embedding was generated: a vector query that the database
+            # rejected is answered by the keyword path, and reporting
+            # `semantic` for keyword results is exactly the kind of quiet lie
+            # this field exists to prevent.
+            mode=outcome.mode,
         )
         _cache_search(user_id, query, top_k, offset, document_ids, response)
         return response
