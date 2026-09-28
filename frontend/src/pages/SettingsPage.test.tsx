@@ -19,9 +19,12 @@ vi.mock("../hooks/useAuth", () => ({
 
 vi.mock("../services/api", () => ({
   qa: { getModels: vi.fn() },
+  // The page now imports the key name from here rather than redeclaring it,
+  // so the mock has to carry the real value (#522).
+  API_KEY_STORAGE_KEY: "askdocs-api-key",
 }));
 
-import { qa } from "../services/api";
+import { qa, API_KEY_STORAGE_KEY } from "../services/api";
 
 const mockedGetModels = vi.mocked(qa.getModels);
 
@@ -32,7 +35,7 @@ const MODELS = {
 };
 
 const MODEL_STORAGE_KEY = "askdocs-model";
-const API_KEY_STORAGE_KEY = "askdocs-api-key";
+// API_KEY_STORAGE_KEY is imported from ../services/api (see the mock above).
 
 function renderPage() {
   return renderWithClient(

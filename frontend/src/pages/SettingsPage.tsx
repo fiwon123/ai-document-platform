@@ -2,12 +2,12 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import type { QAModels } from "../services/api";
+import { API_KEY_STORAGE_KEY } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 import { useQAModels } from "../hooks/useQAModels";
 import { Spinner } from "../components/Spinner";
 
 const MODEL_STORAGE_KEY = "askdocs-model";
-const API_KEY_STORAGE_KEY = "askdocs-api-key";
 
 /**
  * Shown when the models endpoint is unavailable so the page never breaks.

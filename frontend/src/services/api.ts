@@ -17,6 +17,29 @@ import type {
 
 const API_BASE = "/v1";
 
+/**
+ * Names of the keys this app writes to `localStorage`.
+ *
+ * They live here, in one place, because the set that gets *written* has to be
+ * the same set that gets *cleared* on sign-out — the BYOK provider key was
+ * persisted by two call sites and removed by neither, so a paid third-party
+ * credential outlived logout and account deletion (#522).
+ */
+export const ACCESS_TOKEN_STORAGE_KEY = "token";
+export const API_KEY_STORAGE_KEY = "askdocs-api-key";
+
+/**
+ * Drop everything tied to the signed-in user.
+ *
+ * Called on logout and on account deletion. The provider key is a paid secret
+ * belonging to an *external* provider and does not expire, so unlike a device
+ * preference it must not survive the user asking to sign out.
+ */
+export function clearPersistedSession(): void {
+  localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  localStorage.removeItem(API_KEY_STORAGE_KEY);
+}
+
 /** The `details` object the backend attaches to a standardized error. */
 export type ErrorDetails = Record<string, unknown>;
 
@@ -205,7 +228,7 @@ async function fetchWithAuth(
   path: string,
   options: RequestOptions = {},
 ): Promise<Response> {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
 
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
@@ -243,10 +266,10 @@ async function fetchWithAuth(
     // clear the token and send the user back to login.
     const refreshed = await getRefreshPromise();
     if (refreshed) {
-      localStorage.setItem("token", refreshed.access_token);
+      localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, refreshed.access_token);
       return fetchWithAuth(path, { ...options, _retried: true });
     }
-    localStorage.removeItem("token");
+    localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
     window.location.href = "/login";
     throw new ApiError(401, "Session expired. Please log in again.");
   }
@@ -605,7 +628,7 @@ export const qa = {
   ): Promise<QAResponse> {
     // Bring-your-own-key: send the user's key (stored in localStorage by
     // the Settings page) so the backend can route this request through it.
-    const apiKey = localStorage.getItem("askdocs-api-key");
+    const apiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
     return request<QAResponse>("/qa/ask", {
       method: "POST",
       body: JSON.stringify({
