@@ -73,6 +73,13 @@ import {
   parseThresholds,
   planComparison,
 } from "./audit-pixels.mjs";
+import {
+  buildAttrWaitArgs,
+  checkClassExpectation,
+  describeSkip,
+  orderedStepKeys,
+  unreachableStepKeys,
+} from "./audit-interactions.mjs";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Playwright resolution
@@ -1334,16 +1341,28 @@ GROUPS.landing = [
   { route: "/", state: "footer", require: ".landing-navbar", expect: ".landing-navbar", scrollTo: "bottom" },
   { route: "/", state: "disclosure-open", require: ".nav-group-trigger", expect: ".landing-navbar", click: ".nav-group-trigger" },
   {
+    // The captured state is the *annual* table, so the post-condition is
+    // asserted rather than assumed. The click occasionally lands before React
+    // has attached the handler, and the capture then silently showed the
+    // monthly table — same pixels as `pricing-monthly`, so nothing downstream
+    // could tell. Asserting `aria-checked` makes that a reported skip.
     route: "/", state: "pricing-annual", require: ".billing-toggle", expect: ".landing-navbar",
     scrollTo: "selector:.billing-toggle", click: '.billing-toggle [role="switch"]',
+    assertAttr: { selector: '.billing-toggle [role="switch"]', attr: "aria-checked", value: "true" },
   },
   {
     route: "/", state: "pricing-monthly", require: ".billing-toggle", expect: ".landing-navbar",
     scrollTo: "selector:.billing-toggle",
   },
   {
+    // Pinned to a known slide on purpose. The carousel auto-advances every 5s,
+    // so which slide is showing when the shutter opens depended on elapsed
+    // wall-clock time since load — three identical runs produced three
+    // different images. `clickNth` hovers first (which stops the interval) and
+    // then clicks dot 1, and refuses to capture unless dot 1 ends up `.active`.
     route: "/", state: "carousel-hover", require: ".screenshot-carousel", expect: ".landing-navbar",
-    scrollTo: "selector:.screenshot-carousel", hover: ".carousel-dot",
+    scrollTo: "selector:.screenshot-carousel",
+    clickNth: { selector: ".carousel-dot", index: 1, expectClass: "active" },
   },
 ];
 
@@ -1586,78 +1605,335 @@ const GROUP_TIERS = {
 // ─────────────────────────────────────────────────────────────────────────────
 // Scenario execution
 // ─────────────────────────────────────────────────────────────────────────────
-async function applyInteraction(page, scenario) {
-  const acts = [];
-  if (scenario.fill) {
-    for (const [selector, value] of Object.entries(scenario.fill)) {
-      const locator = page.locator(selector).first();
-      if (await locator.count()) {
-        await locator.fill(value);
-        acts.push({ action: "fill", selector, value: value.length > 8 ? `${value.slice(0, 4)}…` : value });
-      } else {
-        warn(`fill target missing: ${selector}`);
-      }
-    }
+/**
+ * The element a scenario's `scrollTo` centres, if it has one.
+ *
+ * Shared by `applyScroll` and `waitForStablePage` so the thing being scrolled
+ * to and the thing being waited on cannot be different elements.
+ */
+function settleSelector(scenario) {
+  if (typeof scenario.scrollTo === "string" && scenario.scrollTo.startsWith("selector:")) {
+    return scenario.scrollTo.slice("selector:".length);
   }
-  if (scenario.check) {
-    const locator = page.locator(scenario.check).first();
-    if (await locator.count()) {
-      await locator.check();
-      acts.push({ action: "check", selector: scenario.check });
-    }
-  }
+  return null;
+}
+
+/**
+ * Wait until the page stops moving: the scroll position and the scenario's
+ * target geometry must be identical on two consecutive animation frames.
+ *
+ * This is the general answer to "the capture is a snapshot of a transient
+ * frame", and it was found by measurement rather than guessed. Two captures
+ * that differ by a *single pixel* of scroll were being reported as 0.12% of the
+ * image changing, and the billing toggle was captured at scrollY 508 in one run
+ * and 509 in the next with identical code and identical DOM. The culprit is
+ * `scrollIntoView({ block: "center" })`, which computes a fractional target and
+ * lets the browser round it — so a half-pixel difference in the target's height
+ * decides which integer the page lands on, and the shutter records whichever it
+ * got.
+ *
+ * `settleVisuals` cannot catch this: it runs at load, when the page is at
+ * scroll 0 and nothing has been interacted with yet. Everything that moves the
+ * page happens after it.
+ *
+ * Returns false on timeout, and the caller reports the capture as skipped. A
+ * page that genuinely never settles — an auto-advancing carousel with nothing
+ * pinning it, say — is not a capture to take, it is a scenario to pin.
+ */
+async function waitForStablePage(page, scenario, { frames = 2, timeout = 3000 } = {}) {
+  const selector = settleSelector(scenario);
+  const ok = await page
+    .waitForFunction(
+      ({ sel, frames: need }) => {
+        const el = sel ? document.querySelector(sel) : null;
+        const rect = el?.getBoundingClientRect();
+        // Rounded: sub-pixel jitter below a pixel is not visible in the capture,
+        // so insisting on it would wait forever on a page that is otherwise fine.
+        const key = [
+          Math.round(window.scrollX),
+          Math.round(window.scrollY),
+          rect ? Math.round(rect.top) : null,
+          rect ? Math.round(rect.height) : null,
+          Math.round(document.body.scrollHeight),
+        ].join(":");
+        const seen = window.__auditStableKey;
+        window.__auditStableKey = key;
+        window.__auditStableHits = seen === key ? (window.__auditStableHits ?? 0) + 1 : 0;
+        return window.__auditStableHits >= need;
+      },
+      { sel: selector, frames },
+      { timeout, polling: "raf" },
+    )
+    .then(() => true)
+    .catch(() => false);
+  return ok;
+}
+
+/**
+ * Put the page where the scenario says the photograph should be taken.
+ *
+ * The one place the framing of a capture is defined, so the `scrollTo` step and
+ * `waitForStablePage` cannot end up centring different elements. A click that
+ * finds its target outside the viewport does its own scroll in `clickAtPoint`,
+ * because it has to: the framing has to be re-measured from the element's box.
+ */
+async function applyScroll(page, scenario, acts) {
+  const label = "scrollTo";
   if (scenario.scrollTo === "bottom") {
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(500);
-    acts.push({ action: "scrollTo", to: "bottom" });
+    acts.push({ action: label, to: "bottom" });
   } else if (scenario.scrollTo === "middle") {
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2));
     await page.waitForTimeout(500);
-    acts.push({ action: "scrollTo", to: "middle" });
-  } else if (typeof scenario.scrollTo === "string" && scenario.scrollTo.startsWith("selector:")) {
-    const selector = scenario.scrollTo.slice("selector:".length);
+    acts.push({ action: label, to: "middle" });
+  } else if (settleSelector(scenario)) {
+    const selector = settleSelector(scenario);
     // Scrolled from inside the page rather than with locator.scrollIntoViewIfNeeded:
     // Playwright waits for the target to be *stable*, and the carousel is
     // auto-advancing, so its box never settles and the action times out.
+    //
+    // The centring is computed here and rounded to a whole pixel rather than
+    // delegated to `scrollIntoView({ block: "center" })`. That call computes a
+    // fractional target and lets the browser round it, so a half-pixel
+    // difference in the target's height — which image decode can produce — picks
+    // the integer the page lands on, and two runs of identical code capture
+    // scrollY 508 and 509. Measured as 0.12% of a capture's pixels changing, in
+    // a band only 34px tall, which reads as a mysterious flicker in review.
     const found = await page.evaluate((sel) => {
       const el = document.querySelector(sel);
       if (!el) return false;
-      el.scrollIntoView({ block: "center" });
+      const rect = el.getBoundingClientRect();
+      const absoluteTop = rect.top + window.scrollY;
+      const centred = absoluteTop - (window.innerHeight - rect.height) / 2;
+      window.scrollTo(0, Math.round(centred));
       return true;
     }, selector);
     if (found) {
       await page.waitForTimeout(400);
-      acts.push({ action: "scrollTo", selector });
+      acts.push({ action: label, selector });
     } else {
       warn(`scrollTo target missing: ${selector}`);
     }
   }
-  if (scenario.click) {
-    const locator = page.locator(scenario.click).first();
-    if (await locator.count()) {
-      await locator.click();
-      await page.waitForTimeout(450);
-      acts.push({ action: "click", selector: scenario.click });
-      if (scenario.clickAgain) {
-        await locator.click();
-        await page.waitForTimeout(450);
-        acts.push({ action: "click", selector: scenario.click, note: "toggled back" });
-      }
-    } else {
-      warn(`click target missing: ${scenario.click}`);
-    }
-  }
-  if (scenario.hover) {
-    if (await safeHover(page, scenario.hover)) {
-      await page.waitForTimeout(350);
-      acts.push({ action: "hover", selector: scenario.hover });
-    } else {
-      warn(`hover target missing or unreachable: ${scenario.hover}`);
-    }
-  }
-  return acts;
 }
 
+/**
+ * Click an element without letting Playwright choose where to scroll.
+ *
+ * `locator.click()` is the obvious way to do this and it is wrong for a
+ * capture tool. Before clicking, it scrolls the target into view — and *where*
+ * it scrolls to is not the audit's decision: it lands the element wherever its
+ * actionability check decided, which is usually flush against the top of the
+ * viewport rather than framed as the scenario asked. Whether it re-scrolls at
+ * all depends on sampling the element's box over two consecutive frames, so it
+ * is timing-dependent. Measured over six identical runs of `pricing-annual`,
+ * four captured with the billing toggle at the viewport top (scrollY 3711) and
+ * two centred (scrollY 3274) — 39% of the image differing between two runs of
+ * the same code, with identical DOM.
+ *
+ * So the framing decision is made here, from geometry alone: an element already
+ * inside the viewport is clicked where it is, and one that is not gets scrolled
+ * to a rounded centred position. Either way the click is dispatched at measured
+ * coordinates via `page.mouse`, which performs no scroll and no actionability
+ * wait of its own.
+ *
+ * Dropping actionability is acceptable *because* every click in the audit is
+ * verified by a post-condition instead of by the mechanism: a click that missed
+ * leaves its post-condition unsatisfied and the capture is reported as skipped
+ * rather than photographed. That is the trade #474 makes — verify the outcome,
+ * not the mechanism.
+ */
+async function clickAtPoint(page, locator, { align = "centre" } = {}) {
+  let box = await locator.boundingBox().catch(() => null);
+  if (!box) return { clicked: false, reason: "no box" };
+
+  const inView =
+    box.y >= 0 && box.x >= 0 && box.y + box.height <= page.viewportSize().height &&
+    box.x + box.width <= page.viewportSize().width;
+  if (!inView) {
+    await locator.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const centred = r.top + window.scrollY - (window.innerHeight - r.height) / 2;
+      window.scrollTo(0, Math.round(centred));
+    });
+    await page.waitForTimeout(250);
+    box = await locator.boundingBox().catch(() => null);
+    if (!box) return { clicked: false, reason: "no box after scroll" };
+  }
+  const x = align === "centre" ? box.x + box.width / 2 : box.x;
+  const y = align === "centre" ? box.y + box.height / 2 : box.y;
+  await page.mouse.click(x, y);
+  return { clicked: true, point: { x: Math.round(x), y: Math.round(y) }, moved: !inView };
+}
+
+/**
+ * Run a scenario's interactions, in the order `STEP_ORDER` fixes.
+ *
+ * Returns the actions performed and, when a step could not complete, a skip
+ * reason. A skip means "do not photograph this": the capture would show
+ * whatever state the page happened to be in, and a plausible wrong image is
+ * worse than a missing one because pixel diffing would report it as a real
+ * regression.
+ */
+async function applyInteraction(page, scenario) {
+  const acts = [];
+
+  /**
+   * One entry per step. Each returns a skip reason — a string — when it cannot
+   * complete, which ends the scenario: the capture would otherwise photograph
+   * whatever state the page happened to be in. Returning `null` continues.
+   *
+   * The *order* these run in is not this object's property order. It comes from
+   * `orderedStepKeys(scenario)`, so the declared order in ORDER_AFTER_ACT is the
+   * one the audit performs.
+   */
+  const steps = {
+    fill: async () => {
+      for (const [selector, value] of Object.entries(scenario.fill)) {
+        const locator = page.locator(selector).first();
+        if (await locator.count()) {
+          await locator.fill(value);
+          acts.push({ action: "fill", selector, value: value.length > 8 ? `${value.slice(0, 4)}…` : value });
+        } else {
+          warn(`fill target missing: ${selector}`);
+        }
+      }
+      return null;
+    },
+    check: async () => {
+      const locator = page.locator(scenario.check).first();
+      if (await locator.count()) {
+        await locator.check();
+        acts.push({ action: "check", selector: scenario.check });
+      }
+      return null;
+    },
+    scrollTo: async () => {
+      await applyScroll(page, scenario, acts);
+      return null;
+    },
+    click: async () => {
+      const locator = page.locator(scenario.click).first();
+      if (await locator.count()) {
+        const res = await clickAtPoint(page, locator);
+        if (!res.clicked) {
+          warn(`click target unreachable: ${scenario.click} (${res.reason})`);
+        } else {
+          await page.waitForTimeout(450);
+          acts.push({ action: "click", selector: scenario.click, ...res.point });
+          if (scenario.clickAgain) {
+            await clickAtPoint(page, locator);
+            await page.waitForTimeout(450);
+            acts.push({ action: "click", selector: scenario.click, note: "toggled back" });
+          }
+        }
+      } else {
+        warn(`click target missing: ${scenario.click}`);
+      }
+      return null;
+    },
+    hover: async () => {
+      if (await safeHover(page, scenario.hover)) {
+        await page.waitForTimeout(350);
+        acts.push({ action: "hover", selector: scenario.hover });
+      } else {
+        warn(`hover target missing or unreachable: ${scenario.hover}`);
+      }
+      return null;
+    },
+    clickNth: async () => {
+      // Click the nth match, then check the click actually took effect.
+      const { selector, index, expectClass } = scenario.clickNth;
+      const locator = page.locator(selector).nth(index);
+      if (!(await locator.count())) {
+        return describeSkip("missing", { selector, index, action: "clickNth" });
+      }
+      // Moving the mouse here is what stops the auto-advance: the component
+      // clears its interval on mouseenter, so the hover both stops the motion
+      // and leaves the pointer where a hover state needs it to be. A raw mouse
+      // move rather than `hover()`, whose stability wait could never pass on
+      // this target (see `clickAtPoint`).
+      const box = await locator.boundingBox().catch(() => null);
+      if (!box) {
+        return describeSkip("missing", { selector, index, action: "clickNth" });
+      }
+      const cx = box.x + box.width / 2;
+      const cy = box.y + box.height / 2;
+      await page.mouse.move(cx, cy);
+      await page.waitForTimeout(250);
+      // The click goes through the same coordinate path as a plain `click`, so
+      // it cannot scroll the carousel out from under the pointer that just
+      // paused it. The measured consequence of letting Playwright do this: the
+      // carousel's 1px scroll jitter, which the capture then records as a
+      // change in a 34px-tall band of the dots.
+      const res = await clickAtPoint(page, locator);
+      if (!res.clicked) {
+        return describeSkip("missing", { selector, index, action: "clickNth" });
+      }
+      acts.push({ action: "clickNth", selector, index });
+      if (expectClass) {
+        if (!checkClassExpectation(await locator.getAttribute("class"), expectClass)) {
+          // Photographing here would capture whatever slide happened to be
+          // showing, which is the flake this whole field exists to remove.
+          return describeSkip("clickNth", { selector, index, action: "clickNth" }, expectClass);
+        }
+        acts.push({ action: "assertClass", selector, index, name: expectClass });
+      }
+      return null;
+    },
+    assertAttr: async () => {
+      // Post-condition for an interaction whose effect is a state change rather
+      // than a visible one. Asserting it turns a silent flake into a loud skip:
+      // a click that landed before React attached its handler, or a re-render
+      // that undid it, used to be photographed as if it had worked.
+      const { selector, attr, value } = scenario.assertAttr;
+      const satisfied = await page
+        .waitForFunction(
+          ({ sel, a, v }) => document.querySelector(sel)?.getAttribute(a) === v,
+          buildAttrWaitArgs(selector, attr, value),
+          { timeout: scenario.assertMs ?? 2500 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (!satisfied) {
+        return describeSkip("assertAttr", { selector }, { attr, value });
+      }
+      acts.push({ action: "assertAttr", selector, attr, value });
+      return null;
+    },
+    settle: async () => {
+      // Wait for the page to stop moving before the shutter opens. Nothing else
+      // here scrolls or clicks, so this can safely run last.
+      const settled = await waitForStablePage(page, scenario);
+      acts.push({ action: "settle", stable: settled });
+      if (!settled) {
+        // Photographing a page that is still moving is how the audit ends up
+        // disagreeing with itself: the capture is a snapshot of a transient
+        // frame, and the next run photographs a different one.
+        return describeSkip("unsettled", { selector: settleSelector(scenario) ?? "page" }, {});
+      }
+      return null;
+    },
+  };
+
+  // A step implemented here but absent from ORDER_AFTER_ACT could never run, and
+  // its scenario would be photographed as if it had. Fail loudly at the first
+  // scenario instead of shipping a wrong image into the pixel baseline.
+  const unreachable = unreachableStepKeys(Object.keys(steps));
+  if (unreachable.length) {
+    throw new Error(
+      `applyInteraction implements step(s) that can never run: ${unreachable.join(", ")} ` +
+        "— add them to ORDER_AFTER_ACT in audit-interactions.mjs",
+    );
+  }
+
+  for (const key of orderedStepKeys(scenario)) {
+    const skip = await steps[key]();
+    if (skip) return { acts, skip };
+  }
+  return { acts, skip: null };
+}
 /**
  * Hover a selector, coping with targets that never stop moving.
  *
@@ -1723,7 +1999,24 @@ async function runRouteGroup(audit, group, route, viewport, theme) {
       // remaining states — they would all fail the same way.
       break;
     }
-    const acts = await applyInteraction(page, scenario);
+    const { acts, skip } = await applyInteraction(page, scenario);
+    if (skip) {
+      // A scenario whose post-condition did not hold is reported, never
+      // photographed: the image would look plausible and be wrong, and a
+      // plausible wrong image is worse than a missing one because pixel
+      // diffing would happily report it as a real regression.
+      warn(`SKIP ${route} [${viewport}/${theme}] ${scenario.state}: ${skip}`);
+      audit.addEntry({
+        route: scenario.route,
+        viewport,
+        theme,
+        state: scenario.state,
+        type: "screenshot",
+        file: null,
+        skipped: skip,
+      });
+      continue;
+    }
     await audit.shot(page, {
       route: scenario.route,
       viewport,
