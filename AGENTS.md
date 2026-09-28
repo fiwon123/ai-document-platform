@@ -265,7 +265,9 @@ Backend reads from `backend/src/app/.env` (gitignored):
 `backend/src/app/.env` is **not** read inside the sandbox. LLM provider config
 comes from a **gitignored root `.env`** (or a shell export) instead, substituted
 into `${VAR:-...}` by Compose: `OPENAI_API_KEY`, `GROQ_API_KEY`, `QA_MODEL`,
-`QA_MAX_TOKENS`, `OPENAI_MODEL`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`,
+`QA_MAX_TOKENS`, `GROQ_REQUESTS_PER_MINUTE`, `GROQ_TOKENS_PER_DAY`,
+`PROVIDER_QUOTA_ENABLED`, `OPENAI_MODEL`, `EMBEDDING_MODEL`,
+`EMBEDDING_DIMENSIONS`,
 `LOCAL_LLM_ENABLED`, `LOCAL_LLM_BASE_URL`, `LOCAL_LLM_MODEL`,
 `LOCAL_EMBEDDING_MODEL`, `LOCAL_EMBEDDING_DIMENSIONS`, `OPENAI_BASE_URL`. See
 `DEVELOPMENT.md` → *LLM provider config in the sandbox*.

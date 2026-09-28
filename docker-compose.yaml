@@ -104,6 +104,11 @@ services:
       QA_MODEL: ${QA_MODEL:-}
       LOCAL_LLM_ENABLED: ${LOCAL_LLM_ENABLED:-}
       QA_MAX_TOKENS: ${QA_MAX_TOKENS:-1000}
+      # Provider ceilings the QA service enforces itself, matching Groq's
+      # free tier so the app refuses a call before the provider does.
+      GROQ_REQUESTS_PER_MINUTE: ${GROQ_REQUESTS_PER_MINUTE:-30}
+      GROQ_TOKENS_PER_DAY: ${GROQ_TOKENS_PER_DAY:-200000}
+      PROVIDER_QUOTA_ENABLED: ${PROVIDER_QUOTA_ENABLED:-true}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-ada-002}
       # The OpenAI space's width. Set together with EMBEDDING_MODEL when
@@ -233,6 +238,11 @@ services:
       QA_MODEL: ${QA_MODEL:-}
       LOCAL_LLM_ENABLED: ${LOCAL_LLM_ENABLED:-}
       QA_MAX_TOKENS: ${QA_MAX_TOKENS:-1000}
+      # Provider ceilings the QA service enforces itself, matching Groq's
+      # free tier so the app refuses a call before the provider does.
+      GROQ_REQUESTS_PER_MINUTE: ${GROQ_REQUESTS_PER_MINUTE:-30}
+      GROQ_TOKENS_PER_DAY: ${GROQ_TOKENS_PER_DAY:-200000}
+      PROVIDER_QUOTA_ENABLED: ${PROVIDER_QUOTA_ENABLED:-true}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-ada-002}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}

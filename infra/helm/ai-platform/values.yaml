@@ -161,6 +161,15 @@ config:
     # for a CPU-only local model, where generation runs at a few tokens per
     # second and the default turns a short answer into a multi-minute wait.
     maxTokens: 1000
+    # Provider ceilings the app enforces on itself (#489), so a Groq quota
+    # is refused locally with 429 rather than by the provider with a message
+    # identical to a dead one. These match the application's own defaults;
+    # 0 means "no ceiling". The budget is org-wide because that is what
+    # Groq enforces, and it fails open if Redis is unreachable.
+    providerQuota:
+      enabled: true
+      groqRequestsPerMinute: 30
+      groqTokensPerDay: 200000
     # Local OpenAI-compatible provider (Ollama) — the only path that needs no
     # API key at all. Off by default, and *opt-in* rather than probed: enabling
     # it states that a local model server is running, which avoids a network

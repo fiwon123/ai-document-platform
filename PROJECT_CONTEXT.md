@@ -429,6 +429,16 @@ Navigation rules:
   and a paid OpenAI model only when nothing free is available
 - `QA_MAX_TOKENS`: answer length cap (default: 1000). Lower it for a CPU-only
   local model, where generation runs at a few tokens per second
+- `GROQ_REQUESTS_PER_MINUTE` (default: 30) and `GROQ_TOKENS_PER_DAY`
+  (default: 200000): the ceilings the QA service enforces on Groq before sending
+  a call, matching that provider's free tier. Exceeding either returns
+  `provider_rate_limited` (HTTP 429) with `source: "app"`. A value of 0 or less
+  means "no ceiling" — a literal zero would otherwise be indistinguishable from a
+  typo and would take Q&A offline entirely
+- `PROVIDER_QUOTA_ENABLED` (default: true): kill switch for the ceilings above.
+  Set it to `false`/`0`/`no`/`off` to stop enforcing, which puts a Groq
+  deployment back at the mercy of the provider's own 429s. Redis failures also
+  fail **open**: a quota layer that cannot be reached must not take Q&A down
 - `OPENAI_MODEL`: Model name (default: gpt-4). A blank value means "not
   chosen" and a value naming no known model is ignored; both fall back to the
   cheapest available model rather than failing the request
@@ -457,7 +467,8 @@ variables through. Supply them from a gitignored root `.env` (Compose reads it
 for `${VAR:-...}` substitution); no compose edit is needed:
 - `OPENAI_API_KEY`, `GROQ_API_KEY`: provider credentials (both optional)
 - `LOCAL_LLM_ENABLED`, `LOCAL_LLM_BASE_URL`, `LOCAL_LLM_MODEL`, `QA_MODEL`,
-  `QA_MAX_TOKENS` — see the backend list above
+  `QA_MAX_TOKENS`, `GROQ_REQUESTS_PER_MINUTE`, `GROQ_TOKENS_PER_DAY`,
+  `PROVIDER_QUOTA_ENABLED` — see the backend list above
 - `OPENAI_BASE_URL`: the OpenAI SDK's own default, so it redirects **both**
   embeddings and the OpenAI QA provider (also the way to point at a local server
   or a test stub)
