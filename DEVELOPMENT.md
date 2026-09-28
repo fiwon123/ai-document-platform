@@ -380,13 +380,28 @@ that feels like a hang is usually this, not a broken provider.
 `QA_MAX_TOKENS` (default `1000`) bounds this; set it to `200` or less locally.
 It is read once at startup, so it also needs `make dev-restart`.
 
-**A local model does not provide embeddings.** `embedding.py` builds its client
-from `OPENAI_API_KEY` only, and Groq offers no embedding model. With no
-`OPENAI_API_KEY`, search reports `mode: keyword` — PostgreSQL full-text ranking
-instead of pgvector — and QA answers from whatever keyword matching surfaced.
-That is fine for testing the pipeline end to end, but retrieval quality is then
-limited by the keyword fallback rather than by the chat model, so do not read a
-weak local answer as a QA-quality problem.
+**A local model server can provide embeddings too.** `embedding.py` resolves one
+active space: `OPENAI_API_KEY` wins, and only when it is absent does
+`LOCAL_LLM_ENABLED` select the local space. Ollama serves both chat and
+embeddings, so a zero-cost setup gets real semantic search — pull the embedding
+model once, or the worker's embedding call fails and the document ends
+`failed`:
+
+```bash
+ollama pull nomic-embed-text
+```
+
+`LOCAL_EMBEDDING_MODEL` / `LOCAL_EMBEDDING_DIMENSIONS` must agree with the model:
+`nomic-embed-text` is 768-wide, `all-minilm` 384, `mxbai-embed-large` 1024. A
+mismatch is refused loudly (`EmbeddingDimensionMismatch`) instead of being
+stored, because the local column is unconstrained and a mixed-width column makes
+the *query* fail rather than the insert.
+
+With **no** provider at all, search reports `mode: keyword` — PostgreSQL
+full-text ranking instead of pgvector — and QA answers from whatever keyword
+matching surfaced. That is fine for testing the pipeline end to end, but
+retrieval quality is then limited by the keyword fallback rather than by the chat
+model, so do not read a weak local answer as a QA-quality problem.
 
 ### Provider configuration in production (Kubernetes)
 
@@ -400,10 +415,15 @@ local and hosted paths are not sandbox-only:
 | `LOCAL_LLM_ENABLED` | `localLlm.enabled` | `LOCAL_LLM_ENABLED` |
 | `LOCAL_LLM_BASE_URL` | `localLlm.baseUrl` | `LOCAL_LLM_BASE_URL` |
 | `LOCAL_LLM_MODEL` | `localLlm.model` | `LOCAL_LLM_MODEL` |
+| `EMBEDDING_MODEL` | `embeddingModel` | `EMBEDDING_MODEL` |
+| `EMBEDDING_DIMENSIONS` | `embeddingDimensions` | `EMBEDDING_DIMENSIONS` |
+| `LOCAL_EMBEDDING_MODEL` | `localEmbedding.model` | `LOCAL_EMBEDDING_MODEL` |
+| `LOCAL_EMBEDDING_DIMENSIONS` | `localEmbedding.dimensions` | `LOCAL_EMBEDDING_DIMENSIONS` |
 
 A pod's `localhost` is the pod itself, so a pod cannot reach a model server on
 the host the way the dev container can: point `LOCAL_LLM_BASE_URL` at an
-in-cluster Service, a node IP, or a Gateway — not `127.0.0.1`.
+in-cluster Service, a node IP, or a Gateway — not `127.0.0.1`. That applies to
+the local embedding space too, since it uses the same server and base URL.
 
 ### Two more things worth knowing
 
@@ -419,7 +439,9 @@ in-cluster Service, a node IP, or a Gateway — not `127.0.0.1`.
 
 A typical free-tier production setup is `GROQ_API_KEY` for chat plus
 `OPENAI_API_KEY` for embeddings; see the `QA_MAX_TOKENS` note above for why
-hosted providers do not need a lowered cap.
+hosted providers do not need a lowered cap. To avoid an OpenAI embedding bill
+entirely, run Ollama in-cluster and leave `OPENAI_API_KEY` unset, so both the
+chat and the embedding space are local.
 
 ## Interactive visual audit (`scripts/audit.mjs`)
 

@@ -133,10 +133,11 @@ LLM and Embedding APIs
 │   │       ├── 004_add_documents_composite_index.py
 │   │       ├── 005_align_models_with_schema.py
 │   │       ├── 006_webhook_subscriptions.py
-│   │       └── 007_keyword_search_index.py  # GIN index for keyword search
+│   │       ├── 007_keyword_search_index.py  # GIN index for keyword search
+│   │       └── 008_local_embedding_space.py  # local embedding space + per-row model
 │   ├── tests/                 # pytest suite (conftest fixtures; document, search, qa,
 │   │                          # user, worker, status, cache, webhook, thumbnail,
-│   │                          # statistics tests)
+│   │                          # statistics, embedding-space tests)
 │   ├── pyproject.toml         # Python dependencies (uv)
 │   └── uv.lock                # Locked dependency versions
 ├── frontend/                   # React 19 / Vite / TypeScript SPA
@@ -214,9 +215,48 @@ LLM and Embedding APIs
 - `document_id`: foreign key to Document
 - `content`: extracted text content
 - `chunk_index`: position in document
-- `embedding`: vector embedding (1536 dimensions for OpenAI)
+- `embedding`: OpenAI-space vector (`vector(1536)`, the only ANN-indexed column)
+- `embedding_local`: local-space vector, unconstrained width, for Ollama models
+  that are 384/768/1024-wide
+- `embedding_model`: the model that produced this row's vector, or NULL. A vector
+  is only comparable with vectors from the same model, so a search filters on
+  this; a NULL row (everything written before migration 008) is deliberately
+  invisible to vector search rather than relabelled with a guess
 - `metadata_`: JSON metadata (page number, section, etc.)
 - `created_at`: creation timestamp
+
+A row may hold a vector in **one** space or the other, never both — a CHECK
+constraint (`ck_document_chunks_single_embedding_space`) enforces it, because a
+row with two vectors makes every later search ambiguous and nothing in the query
+would reveal it.
+
+#### Why two columns (measured on pgvector 0.8.6)
+
+pgvector can only index vectors of a single width, which is three refusals
+rather than an assumption:
+
+```sql
+CREATE INDEX ... USING ivfflat (embedding vector_cosine_ops);  -- unconstrained column
+ERROR:  column does not have dimensions
+INSERT 3-wide value into a vector(5) column
+ERROR:  different vector dimensions 3 and 5
+SELECT ... ORDER BY a::vector(4) over a 3-wide row
+ERROR:  expected 4 dimensions, not 3
+```
+
+So a single unconstrained column could hold both providers but could not be
+indexed, and a single width-typed column would reject the other provider's
+vectors outright. One column per embedding *space* keeps `embedding` exactly as
+it was — still `vector(1536)`, still ivfflat-indexed, no behaviour change for a
+deployment with an OpenAI key.
+
+`embedding_model` is load-bearing rather than bookkeeping, for a second reason
+the type system cannot catch: `text-embedding-ada-002` and
+`text-embedding-3-small` are **both** 1536-wide, so a same-space model swap is
+invisible to a width check, to the column type and to the database — and cosine
+distance across unrelated spaces returns a confident, wrong number rather than
+an error. Filtering on the model is what prevents it, and it is also what makes
+the unconstrained local column safe to search.
 
 ### SearchHistory
 - `id`: UUID primary key
@@ -392,7 +432,14 @@ Navigation rules:
 - `OPENAI_MODEL`: Model name (default: gpt-4). A blank value means "not
   chosen" and a value naming no known model is ignored; both fall back to the
   cheapest available model rather than failing the request
-- `EMBEDDING_MODEL`: Embedding model (default: text-embedding-ada-002)
+- `EMBEDDING_MODEL`: OpenAI-space embedding model (default: text-embedding-ada-002)
+- `EMBEDDING_DIMENSIONS`: the width that model's vectors must be (default: 1536).
+  Set together with `EMBEDDING_MODEL`: a vector of any other width cannot be
+  written or compared, so the service refuses it and says so rather than storing
+  it
+- `LOCAL_EMBEDDING_MODEL`: local-space embedding model (default: nomic-embed-text)
+- `LOCAL_EMBEDDING_DIMENSIONS`: the width that model's vectors must be (default:
+  768; all-minilm is 384, mxbai-embed-large 1024)
 - `RATE_LIMIT_REQUESTS`: Rate limit requests (default: 100)
 - `RATE_LIMIT_WINDOW`: Rate limit window in seconds (default: 60)
 - `CORS_ORIGINS`: Comma-separated allowed CORS origins (defaults to the dev
@@ -430,11 +477,31 @@ it is a daemon setting, not an app variable). Full walkthrough, including the
 `OLLAMA_NUM_THREADS` / `OLLAMA_ORIGINS` notes and measured CPU throughput, in
 `DEVELOPMENT.md` → *Using a local model (Ollama)*.
 
-The same variables are settable in Kubernetes — `QA_MODEL`, `QA_MAX_TOKENS` and
-the three `LOCAL_LLM_*` values are present in both the Helm configmap
-(`config.ai.*`) and the Kustomize base, so the keyless local path is not
-sandbox-only. A pod's `localhost` is the pod itself, so `LOCAL_LLM_BASE_URL`
+The same variables are settable in Kubernetes — `QA_MODEL`, `QA_MAX_TOKENS`, the
+three `LOCAL_LLM_*` values and the four `*EMBEDDING*` ones are present in both
+the Helm configmap (`config.ai.*` / `config.ai.localEmbedding.*`) and the
+Kustomize base, so neither the keyless local path nor the local embedding space
+is sandbox-only. A pod's `localhost` is the pod itself, so `LOCAL_LLM_BASE_URL`
 there must name a Service or node IP rather than `127.0.0.1`.
+
+### Which embedding provider is used
+
+`app.services.embedding` resolves one active space, and the order is deliberate
+rather than "newest wins":
+
+1. `OPENAI_API_KEY` set → the **OpenAI** space, exactly as before. A deployment
+   that has always embedded with OpenAI keeps doing so even if the operator also
+   runs Ollama for chat; switching it silently would strand every vector it owns,
+   and nothing would say so.
+2. No key, but `LOCAL_LLM_ENABLED` → the **local** space (`nomic-embed-text`,
+   768-wide by default). This is what makes a zero-cost deployment's semantic
+   search work at all.
+3. Neither → no provider, and search reports its documented `keyword` mode.
+
+Every vector is width-checked on the way out against the space's configured
+width, and refused loudly (`EmbeddingDimensionMismatch`, naming both widths) if
+it does not match — because the local column is unconstrained and a mixed-width
+column makes the *query* fail rather than the insert.
 
 ## Development workflow
 
@@ -514,7 +581,9 @@ when done; `make check` before every push; only `dev-up` requires opencode
 - [x] Document processing worker (background jobs)
 - [x] Text extraction service (PDF, text, JSON)
 - [x] Document chunking service
-- [x] Embedding generation service (OpenAI)
+- [x] Embedding generation service (OpenAI, or a keyless local model server)
+- [x] Local embedding space (one column per provider, per-row model filter, and a
+      width check that refuses a mismatched vector instead of writing it)
 - [x] Semantic search with pgvector (top_k, offset pagination, document_ids filter)
 - [x] Keyword search fallback with PostgreSQL full-text ranking when no embedding
       provider is configured (reports `mode: keyword`; stemmed matching, a
