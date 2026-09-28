@@ -1,14 +1,29 @@
 """Tests for the document status polling endpoint."""
 
+import uuid
 from uuid import UUID, uuid4
 
 from app.models.document import DocumentDB, DocumentStatus
+from app.models.user import Role, UserDB
 
 
 def _current_user_id(client, headers) -> UUID:
     me = client.get("/v1/auth/me", headers=headers)
     assert me.status_code == 200, me.text
     return UUID(me.json()["id"])
+
+
+def _seed_other_user(db_session) -> UserDB:
+    """A second, unrelated account, for owner-scoping tests."""
+    other = UserDB(
+        username=f"stranger_{uuid.uuid4().hex[:8]}",
+        hashed_password="x",  # noqa: S106
+        role=Role.customer,
+    )
+    db_session.add(other)
+    db_session.commit()
+    db_session.refresh(other)
+    return other
 
 
 def _seed_doc(
@@ -151,9 +166,12 @@ class TestDocumentStatusEndpoint:
         assert resp.json()["error"]["message"] == "Document not found"
 
     def test_other_users_document_returns_404(self, client, auth_headers, db_session):
-        # A different user's document is invisible (owner scoping).
-        stranger_id = uuid4()
-        doc = _seed_doc(db_session, stranger_id, DocumentStatus.READY)
+        # A different user's document is invisible (owner scoping). The stranger
+        # has to be a real account: since migration 009 a document must belong to
+        # an existing user, so seeding a document under a bare UUID would test
+        # owner scoping against a row no scoping rule could ever match.
+        stranger = _seed_other_user(db_session)
+        doc = _seed_doc(db_session, stranger.id, DocumentStatus.READY)
 
         resp = client.get(f"/v1/documents/{doc.id}/status", headers=auth_headers)
         assert resp.status_code == 404

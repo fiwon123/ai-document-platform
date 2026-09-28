@@ -6,6 +6,7 @@ import it from here rather than each other, which also keeps the dependency
 arrow pointing route → service → repository.
 """
 
+import logging
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -15,18 +16,38 @@ from sqlalchemy.orm import Session
 from app.models.user import Role, UserDB
 from app.repositories.user import UserRepository
 from app.schemas.user import UpdateActiveRequest, UpdateRoleRequest, UpdateUserRequest
+from app.services.thumbnail import thumbnail_object_key
+from app.storage.storage import MinioStorage
+from app.storage.storage import storage as default_storage
+
+logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class UserService:
-    def __init__(self, repository: UserRepository):
+    def __init__(
+        self,
+        repository: UserRepository,
+        storage: MinioStorage | None = None,
+    ):
         self.repo = repository
+        # Optional so the many tests that exercise the user endpoints without
+        # object storage keep working unchanged. When it is absent, rows are
+        # still cascaded by the database; only the uploaded files are left in
+        # the bucket, which is why `from_session` always supplies one.
+        self.storage = storage
 
     @classmethod
     def from_session(cls, db: Session) -> UserService:
-        """Build a service bound to a request-scoped session."""
-        return cls(repository=UserRepository(db))
+        """Build a service bound to a request-scoped session.
+
+        Uses the shared storage singleton rather than a fresh client: boto3
+        clients hold a connection pool and are not cheap to build, so making one
+        per request would leak a pool per request for the life of the process.
+        This is the same instance the document service is given.
+        """
+        return cls(repository=UserRepository(db), storage=default_storage)
 
     # --- lookups -----------------------------------------------------------
 
@@ -127,14 +148,61 @@ class UserService:
             )
         return user
 
+    def _delete_account(self, user_id: UUID):
+        """Delete the account and everything that belongs to it.
+
+        Returns the deleted `UserDB`, or `None` if there was no such account —
+        taken from the single `DELETE` itself rather than a preceding lookup, so
+        a caller cannot observe an account that has already gone.
+
+        The rows go first and unconditionally, because the database cascades
+        them: documents, their chunks, search history and webhook
+        subscriptions are all removed by the `ON DELETE CASCADE` constraints
+        added in migration 009, so erasure does not depend on this method
+        remembering to clean each table.
+
+        The stored objects are then removed on a best-effort basis, and the
+        order matters. The keys have to be read *before* the delete, because
+        afterwards the document rows that named them are gone; and the delete
+        must not depend on the object store answering, or a MinIO outage would
+        leave someone unable to delete their own account. A failed object
+        removal is logged with the key rather than swallowed: the row is gone,
+        so the object is now unreachable through the API but is still a file
+        sitting in the bucket, and that is worth an operator's attention.
+        """
+        object_keys = self.repo.list_object_keys(user_id)
+        deleted = self.repo.delete(user_id)
+        if deleted is None or self.storage is None:
+            return deleted
+        for object_key in object_keys:
+            try:
+                self.storage.delete(object_key)
+                # The thumbnail lives beside the document, so a document delete
+                # removes it too; skipping it here would leak one PNG per
+                # document for the lifetime of the bucket.
+                self.storage.delete(thumbnail_object_key(object_key))
+            except Exception as e:  # noqa: BLE001 - the account row is already gone
+                logger.warning(
+                    f"Object cleanup failed for {object_key} during account "
+                    f"deletion: {e}. The database rows are deleted; this object "
+                    f"remains in the bucket and should be removed manually."
+                )
+        return deleted
+
     def delete_self(self, current_user_id: UUID) -> None:
         """Permanently delete the caller's account.
 
-        Related documents, chunks, and webhook subscriptions are removed by the
-        cascading relationships on the model. The client must sign out
-        afterwards — this drops the row backing the JWT immediately.
+        Guaranteed by the database, not by this method: `documents`,
+        `document_chunks`, `search_history` and `webhook_subscriptions` all
+        carry `ON DELETE CASCADE` to `users`, and `document_chunks` cascades
+        from `documents` in turn. Uploaded files and their thumbnails are
+        removed from object storage on a best-effort basis — see
+        `_delete_account` for why it is not part of the guarantee.
+
+        The client must sign out afterwards — this drops the row backing the
+        JWT immediately.
         """
-        self.repo.delete(current_user_id)
+        self._delete_account(current_user_id)
 
     # --- admin operations --------------------------------------------------
 
@@ -166,8 +234,13 @@ class UserService:
         return self.repo.update(user_id, {"is_active": request.is_active})
 
     def delete_user(self, user_id: UUID) -> None:
-        """Delete another user's account."""
-        if self.repo.delete(user_id) is None:
+        """Delete another user's account.
+
+        Same guarantee and same storage handling as `delete_self`; an admin
+        removing an account must not leave a weaker trail than the owner
+        removing their own.
+        """
+        if self._delete_account(user_id) is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",

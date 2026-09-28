@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, Enum, Index, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,8 +37,17 @@ class DocumentDB(Base):
         default=uuid.uuid4,
     )
 
+    # ON DELETE CASCADE is what makes deleting an account actually delete its
+    # documents (#495). It is declared on the column rather than as an ORM
+    # relationship on purpose: a relationship makes SQLAlchemy load and
+    # delete-or-nullify the children itself, and with a NOT NULL owner_id that
+    # raises `NotNullViolation` instead of cascading — the same trap that needed
+    # `passive_deletes=True` on the document -> chunks relationship. Leaving the
+    # cascade to the database means there is no ORM path that can break it.
+    # `document_chunks` follows through the cascade migration 002 established.
     owner_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
