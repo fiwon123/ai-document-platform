@@ -242,6 +242,15 @@ class SearchRepository:
         that returns the page, avoiding a second round trip — and, importantly,
         counting only rows that passed ``where``, so a query that matches
         nothing reports ``total_count = 0`` instead of the size of the corpus.
+
+        That count rides along on each returned row, so it is only readable when
+        the page is non-empty. An empty page is ambiguous on its own — it can mean
+        "nothing matched" (count 0, correct) or "you paged past the end" (count is
+        whatever matched) — and the UI trusts this number: it takes ``total_count``
+        from the last page it holds, so reporting 0 for the second case renders
+        "Showing 5 of 0 results" beside five results. Hence the separate count
+        when, and only when, the page comes back empty. The common path still
+        costs one round trip.
         """
         query = (
             self.db.query(
@@ -256,7 +265,17 @@ class SearchRepository:
         query = query.filter(where)
 
         rows = query.order_by(*order_by).offset(offset).limit(top_k).all()
-        total_count = rows[0].total_count if rows else 0
+        if rows:
+            total_count = rows[0].total_count
+        else:
+            # No row to read the window count from, so ask for it directly.
+            # Swapping the selected entities for a COUNT and dropping the
+            # ordering turns the page query into the plain count it now needs to
+            # be; the filters are untouched, so this answers "how many matched",
+            # not "how many exist".
+            total_count = (
+                query.with_entities(func.count()).order_by(None).scalar() or 0
+            )
 
         return (
             [
