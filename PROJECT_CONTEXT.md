@@ -219,6 +219,13 @@ token means a copy is in circulation. Rows are swept daily by an arq cron
 (`sweep_expired_refresh_sessions`): the table otherwise grows forever, since
 every login and every rotation adds a row and nothing else removes one.
 
+Changing a password revokes **every** session the account holds, including the
+one that made the request. The refresh cookie is scoped to `/v1/auth`, so it is
+not sent to `PUT /v1/users/me` and the server cannot tell which session is asking
+— ending all of them is what "I think this account is compromised" means anyway.
+A username change revokes nothing, and validation runs first so a rejected change
+does not log anyone out.
+
 A valid, unexpired token with **no** row is adopted rather than refused, so
 deploying the table does not sign out everyone who logged in beforehand. It is
 still retired on adoption, so an adopted token is no more replayable than any
@@ -323,7 +330,7 @@ the unconstrained local column safe to search.
 - `GET /v1/auth/me` - Get current user profile
 
 ### Users (self-service)
-- `PUT /v1/users/me` - Update own username/password
+- `PUT /v1/users/me` - Update own username/password (a password change ends every session)
 - `DELETE /v1/users/me` - Delete own account
 
 ### Users (admin only)

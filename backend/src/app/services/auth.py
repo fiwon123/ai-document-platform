@@ -138,6 +138,21 @@ class RefreshSessionService:
             self.repo.mark_revoked(row, datetime.now(UTC))
         return True
 
+    def revoke_all_for_user(self, user_id: UUID) -> int:
+        """End every live session a user holds. Returns how many were ended.
+
+        Used when a password changes. The user's own session goes with the rest:
+        the refresh cookie is scoped to `/v1/auth`, so the request that changes a
+        password does not carry it and the server cannot tell which session is
+        making the change. Ending all of them is both the safe reading of "I think
+        this account is compromised" and the only one that needs no way to
+        identify the caller.
+        """
+        removed = self.repo.revoke_all_for_user(user_id, datetime.now(UTC))
+        if removed:
+            logger.info("Revoked %s refresh session(s) for user %s", removed, user_id)
+        return removed
+
     def sweep_expired(self) -> int:
         """Forget tokens that have expired. Returns rows removed."""
         removed = self.repo.delete_expired(datetime.now(UTC))
