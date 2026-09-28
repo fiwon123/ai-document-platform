@@ -42,6 +42,13 @@ PROVIDER_VARS = (
     "QA_MAX_TOKENS",
     "OPENAI_MODEL",
     "EMBEDDING_MODEL",
+    # The two embedding spaces' widths, and the local space's model. These are
+    # not tuning knobs: a vector of the wrong width is refused on the way out,
+    # so a sandbox that cannot set them is a sandbox where the local provider
+    # cannot be configured for anything but its default model.
+    "EMBEDDING_DIMENSIONS",
+    "LOCAL_EMBEDDING_MODEL",
+    "LOCAL_EMBEDDING_DIMENSIONS",
     "LOCAL_LLM_BASE_URL",
     "LOCAL_LLM_MODEL",
     "OPENAI_BASE_URL",
@@ -74,6 +81,9 @@ print(json.dumps({
     "LOCAL_LLM_MODEL": qa.LOCAL_LLM_MODEL,
     "QA_MAX_TOKENS": str(qa.QA_MAX_TOKENS),
     "EMBEDDING_MODEL": embedding.EMBEDDING_MODEL,
+    "EMBEDDING_DIMENSIONS": str(embedding.OPENAI_SPACE_CONFIG.dimensions),
+    "LOCAL_EMBEDDING_MODEL": embedding.LOCAL_SPACE_CONFIG.model,
+    "LOCAL_EMBEDDING_DIMENSIONS": str(embedding.LOCAL_SPACE_CONFIG.dimensions),
 }))
 """
 
@@ -90,7 +100,8 @@ def app_defaults() -> dict:
         k: v
         for k, v in os.environ.items()
         if k not in ("OPENAI_MODEL", "LOCAL_LLM_BASE_URL", "LOCAL_LLM_MODEL",
-                     "QA_MAX_TOKENS", "EMBEDDING_MODEL")
+                     "QA_MAX_TOKENS", "EMBEDDING_MODEL", "EMBEDDING_DIMENSIONS",
+                     "LOCAL_EMBEDDING_MODEL", "LOCAL_EMBEDDING_DIMENSIONS")
     }
     # S603: the command is a literal argv list built here, with no shell and
     # no external input — sys.executable, -c, and a constant script.

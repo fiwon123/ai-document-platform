@@ -14,14 +14,14 @@ from uuid import uuid4
 import pytest
 
 from app.cache.redis import redis_client
-from app.models.chunk import DocumentChunk
+from app.models.chunk import OPENAI_EMBEDDING_SPACE, DocumentChunk
 from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
 from app.repositories.document import DocumentRepository
-from app.repositories.search import SearchRepository
+from app.repositories.search import SearchOutcome, SearchRepository
 from app.schemas.document import FileResponse
 from app.schemas.qa import QAResponse
-from app.schemas.search import SearchResponse, SearchResult
+from app.schemas.search import SearchMode, SearchResponse, SearchResult
 from app.services.document import DocumentService
 from app.services.qa import QAService
 from app.services.search import (
@@ -34,15 +34,39 @@ from app.worker import _invalidate_caches
 
 DIM = 1536
 
+# Chunk seeds must name the model: a vector search filters on
+# `embedding_model`, so a chunk with a vector and a NULL model is
+# deliberately invisible to it (that is what makes a pre-008 row safe).
+SEED_MODEL = "text-embedding-ada-002"
+
 
 def _make_vector(on_dim: int) -> list[float]:
     return [1.0 if i == on_dim else 0.0 for i in range(DIM)]
 
 
 def _embedding_service_mock() -> MagicMock:
+    """An embedder double carrying a real space and model.
+
+    Both are needed here, not just for the assertions: the search service
+    forwards them to the repository so it reads the right column, and an
+    auto-mocked `space` reaches `embedding_column_for` as a MagicMock and raises
+    `KeyError` for an unknown space.
+    """
     embedding = MagicMock()
     embedding.generate_embedding.return_value = _make_vector(0)
+    embedding.space = OPENAI_EMBEDDING_SPACE
+    embedding.model = SEED_MODEL
     return embedding
+
+
+def _search_outcome(results):
+    """A repository outcome carrying `results` and their count.
+
+    The repository reports an outcome object rather than a `(results, count)`
+    tuple, because the mode is part of the answer — a vector query the database
+    refused comes back as `keyword` even though an embedding existed.
+    """
+    return SearchOutcome(results, len(results), SearchMode.semantic)
 
 
 def _search_service_returning(results):
@@ -122,7 +146,7 @@ def fake_redis(monkeypatch):
 class TestSearchServiceCaching:
     def test_second_identical_search_is_served_from_cache(self, fake_redis):
         repo = MagicMock()
-        repo.search.return_value = ([_make_result()], 1)
+        repo.search.return_value = _search_outcome([_make_result()])
         service = SearchService(
             repository=repo,
             embedding_service=_embedding_service_mock(),
@@ -139,7 +163,7 @@ class TestSearchServiceCaching:
 
     def test_cache_key_includes_document_ids(self, fake_redis):
         repo = MagicMock()
-        repo.search.return_value = ([_make_result()], 1)
+        repo.search.return_value = _search_outcome([_make_result()])
         service = SearchService(
             repository=repo,
             embedding_service=_embedding_service_mock(),
@@ -153,7 +177,7 @@ class TestSearchServiceCaching:
 
     def test_invalidation_forces_fresh_search(self, fake_redis):
         repo = MagicMock()
-        repo.search.return_value = ([_make_result()], 1)
+        repo.search.return_value = _search_outcome([_make_result()])
         service = SearchService(
             repository=repo,
             embedding_service=_embedding_service_mock(),
@@ -176,7 +200,7 @@ class TestSearchServiceCaching:
 
         monkeypatch.setattr(redis_client, "get_json", boom)
         repo = MagicMock()
-        repo.search.return_value = ([_make_result()], 1)
+        repo.search.return_value = _search_outcome([_make_result()])
         service = SearchService(
             repository=repo,
             embedding_service=_embedding_service_mock(),
@@ -193,7 +217,7 @@ class TestSearchServiceCaching:
 
         monkeypatch.setattr(redis_client, "set_json", boom)
         repo = MagicMock()
-        repo.search.return_value = ([_make_result()], 1)
+        repo.search.return_value = _search_outcome([_make_result()])
         service = SearchService(
             repository=repo,
             embedding_service=_embedding_service_mock(),
@@ -235,6 +259,7 @@ class TestSearchCacheWithDatabase:
                 content="cached content",
                 chunk_index=0,
                 embedding=_make_vector(0),
+                embedding_model=SEED_MODEL,
             )
         )
         db_session.commit()

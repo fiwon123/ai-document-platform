@@ -103,8 +103,55 @@ def test_the_embedding_service_drops_a_blank_base_url_at_import():
     os.environ["OPENAI_BASE_URL"] = ""
     try:
         reloaded = importlib.reload(embedding)
-        assert reloaded.client is not None
-        assert str(reloaded.client.base_url) == "https://api.openai.com/v1/"
+        assert reloaded._openai_client is not None
+        assert str(reloaded._openai_client.base_url) == "https://api.openai.com/v1/"
     finally:
         os.environ.pop("OPENAI_API_KEY", None)
         importlib.reload(embedding)
+
+
+def test_a_blank_local_base_url_falls_back_to_the_default():
+    """A local server address that is set but empty must not become the base URL.
+
+    Same hazard as `OPENAI_BASE_URL`, one module over: the OpenAI SDK
+    distinguishes absent from empty, so `""` becomes the client's base_url and
+    every local call fails with a bare "Connection error." against no host.
+
+    The guard cannot come from `drop_blank_provider_vars()` — `local_provider`
+    is imported *before* that call runs — so the read itself has to be
+    blank-safe. This is the assertion that keeps that ordering from mattering.
+    """
+    import importlib
+
+    import app.local_provider as local_provider
+
+    original = os.environ.get("LOCAL_LLM_BASE_URL")
+    os.environ["LOCAL_LLM_BASE_URL"] = ""
+    try:
+        reloaded = importlib.reload(local_provider)
+        assert reloaded.LOCAL_LLM_BASE_URL == "http://localhost:11434/v1"
+    finally:
+        if original is None:
+            os.environ.pop("LOCAL_LLM_BASE_URL", None)
+        else:
+            os.environ["LOCAL_LLM_BASE_URL"] = original
+        importlib.reload(local_provider)
+
+
+def test_a_configured_local_base_url_is_used_verbatim():
+    """The positive case, so the test above is not just always-falling-back."""
+    import importlib
+
+    import app.local_provider as local_provider
+
+    original = os.environ.get("LOCAL_LLM_BASE_URL")
+    os.environ["LOCAL_LLM_BASE_URL"] = "http://ollama.internal:11434/v1"
+    try:
+        reloaded = importlib.reload(local_provider)
+        assert reloaded.LOCAL_LLM_BASE_URL == "http://ollama.internal:11434/v1"
+    finally:
+        if original is None:
+            os.environ.pop("LOCAL_LLM_BASE_URL", None)
+        else:
+            os.environ["LOCAL_LLM_BASE_URL"] = original
+        importlib.reload(local_provider)

@@ -12,7 +12,11 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.models.chunk import DocumentChunk
+from app.models.chunk import (
+    LOCAL_EMBEDDING_SPACE,
+    OPENAI_EMBEDDING_SPACE,
+    DocumentChunk,
+)
 from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
 from app.services.chunking import TextChunk
@@ -65,9 +69,26 @@ class FakeChunker:
 
 
 class FakeEmbedder:
-    def __init__(self, vectors: list | None = None, raise_error: bool = False):
+    """Stands in for EmbeddingService, including which space it writes into.
+
+    `space` and `model` are load-bearing in the pipeline, not decoration: the
+    worker asks the embedder which space and model its vectors belong to, looks
+    up the column for that space, and records the model on every row so a later
+    search only compares vectors from the same model. Without them the worker
+    would raise on `embedding_column_for(None)`.
+    """
+
+    def __init__(
+        self,
+        vectors: list | None = None,
+        raise_error: bool = False,
+        space: str | None = OPENAI_EMBEDDING_SPACE,
+        model: str | None = "text-embedding-ada-002",
+    ):
         self.vectors = vectors if vectors is not None else [_make_vector(0)]
         self.raise_error = raise_error
+        self.space = space
+        self.model = model
 
     def generate_embeddings(self, texts):
         if self.raise_error:
@@ -188,6 +209,90 @@ class TestProcessDocumentTask:
         assert chunks[0].embedding is None
         assert invalidated.call_count == 1
         assert invalidated.call_args.args[0].id == doc.id
+
+
+class TestEmbeddingSpaceWrite:
+    """Where the worker's vector lands, and what is recorded alongside it.
+
+    A write that names the wrong column, or records no model, is invisible
+    until search stops finding the document — so these assert the columns
+    themselves, not just that *a* vector was saved.
+    """
+
+    def _run(self, db_session, monkeypatch, embedder):
+        doc = _seed_pending_document(db_session)
+        _patch_worker_deps(monkeypatch, embedder=embedder)
+        asyncio.run(process_document({}, str(doc.id)))
+        db_session.refresh(doc)
+        return doc, (
+            db_session.query(DocumentChunk)
+            .filter(DocumentChunk.document_id == doc.id)
+            .one()
+        )
+
+    def test_openai_vectors_go_to_the_indexed_column_with_their_model(
+        self, db_session, monkeypatch
+    ):
+        _, chunk = self._run(
+            db_session,
+            monkeypatch,
+            FakeEmbedder(
+                vectors=[_make_vector(0)],
+                space=OPENAI_EMBEDDING_SPACE,
+                model="text-embedding-ada-002",
+            ),
+        )
+
+        assert chunk.embedding == _make_vector(0)
+        # The local column must stay empty: the CHECK constraint allows it, and
+        # only this test notices if a change starts filling it.
+        assert chunk.embedding_local is None
+        assert chunk.embedding_model == "text-embedding-ada-002"
+
+    def test_local_vectors_go_to_the_local_column_with_their_model(
+        self, db_session, monkeypatch
+    ):
+        """A 768-wide vector in the 1536-typed column would be rejected outright,
+        so the column choice is not a preference — it is the only thing that
+        lets a local model be used at all."""
+        local_vector = [0.1] * 768
+        _, chunk = self._run(
+            db_session,
+            monkeypatch,
+            FakeEmbedder(
+                vectors=[local_vector],
+                space=LOCAL_EMBEDDING_SPACE,
+                model="nomic-embed-text",
+            ),
+        )
+
+        assert chunk.embedding_local == local_vector
+        assert chunk.embedding is None
+        assert chunk.embedding_model == "nomic-embed-text"
+
+    def test_a_failed_embedding_records_no_model(self, db_session, monkeypatch):
+        """A model with no vector would make a model filter match a row it
+        cannot rank, so the model is written as NULL rather than omitted."""
+        _, chunk = self._run(
+            db_session, monkeypatch, FakeEmbedder(raise_error=True)
+        )
+
+        assert chunk.embedding is None
+        assert chunk.embedding_local is None
+        assert chunk.embedding_model is None
+
+    def test_a_document_with_no_provider_configured_stays_keyword_searchable(
+        self, db_session, monkeypatch
+    ):
+        """`space=None` is the fresh-checkout state: chunks are still saved, so
+        the document is reachable by keyword rather than invisible."""
+        _, chunk = self._run(
+            db_session, monkeypatch, FakeEmbedder(space=None, model=None)
+        )
+
+        assert chunk.embedding is None
+        assert chunk.embedding_local is None
+        assert chunk.embedding_model is None
 
     def test_fails_when_no_text_extracted(self, db_session, monkeypatch):
         doc = _seed_pending_document(db_session)

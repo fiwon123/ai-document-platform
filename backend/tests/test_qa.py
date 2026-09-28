@@ -8,7 +8,7 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from app.models.chunk import DocumentChunk
+from app.models.chunk import OPENAI_EMBEDDING_SPACE, DocumentChunk
 from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
 from app.repositories.search import SearchRepository
@@ -17,6 +17,12 @@ from app.schemas.search import SearchMode, SearchResponse, SearchResult
 from app.services.qa import LOCAL_LLM_MODEL, QAService
 
 DIM = 1536
+
+# Seeded chunks must name the model that produced their vector: a vector
+# search filters on `embedding_model`, so a row with a vector but a NULL
+# model is deliberately invisible to it (that is what keeps pre-008 rows
+# safe rather than silently mis-ranked).
+SEED_MODEL = "text-embedding-ada-002"
 
 
 def qa_entry(model_id):
@@ -76,12 +82,14 @@ def _seed_user_with_documents(db_session) -> tuple[UserDB, DocumentDB, DocumentD
                 content="quarterly revenue increased",
                 chunk_index=0,
                 embedding=_make_vector(0),
+                embedding_model=SEED_MODEL,
             ),
             DocumentChunk(
                 document_id=doc2.id,
                 content="meeting notes about strategy",
                 chunk_index=0,
                 embedding=_make_vector(1),
+                embedding_model=SEED_MODEL,
             ),
         ]
     )
@@ -132,23 +140,27 @@ class TestSearchRepositoryDocumentFilter:
         user, doc1, _doc2 = _seed_user_with_documents(db_session)
         repo = SearchRepository(db_session)
 
-        results, total_count = repo.search(
+        outcome = repo.search(
             user_id=user.id,
             query_embedding=_make_vector(0),
+            # Naming the space selects that space's column, and naming the
+            # model filters out vectors a different model produced.
+            query_space=OPENAI_EMBEDDING_SPACE,
+            query_model=SEED_MODEL,
             top_k=10,
             document_ids=[doc1.id],
         )
 
-        assert len(results) == 1
-        assert total_count == 1
-        assert results[0].document_id == doc1.id
-        assert "revenue" in results[0].content
+        assert len(outcome.results) == 1
+        assert outcome.total_count == 1
+        assert outcome.results[0].document_id == doc1.id
+        assert "revenue" in outcome.results[0].content
 
     def test_text_search_filters_by_document_ids(self, db_session):
         user, _doc1, doc2 = _seed_user_with_documents(db_session)
         repo = SearchRepository(db_session)
 
-        results, _ = repo.search(
+        outcome = repo.search(
             user_id=user.id,
             query_embedding=None,
             query_text="strategy",
@@ -156,14 +168,14 @@ class TestSearchRepositoryDocumentFilter:
             document_ids=[doc2.id],
         )
 
-        assert len(results) == 1
-        assert results[0].document_id == doc2.id
+        assert len(outcome.results) == 1
+        assert outcome.results[0].document_id == doc2.id
 
     def test_search_without_filter_returns_all_documents(self, db_session):
         user, doc1, _doc2 = _seed_user_with_documents(db_session)
         repo = SearchRepository(db_session)
 
-        results, total_count = repo.search(
+        outcome = repo.search(
             user_id=user.id,
             query_embedding=None,
             # Matches one term in each document, so the unfiltered case can
@@ -172,8 +184,8 @@ class TestSearchRepositoryDocumentFilter:
             top_k=10,
         )
 
-        assert {r.document_id for r in results} == {doc1.id, _doc2.id}
-        assert total_count == 2
+        assert {r.document_id for r in outcome.results} == {doc1.id, _doc2.id}
+        assert outcome.total_count == 2
 
 
 class TestQARoute:
@@ -901,9 +913,9 @@ class TestLocalProvider:
         """
         from app.services import qa as qa_module
 
-        assert qa_module._LOCAL_PLACEHOLDER_KEY
+        assert qa_module.LOCAL_PLACEHOLDER_KEY
         client = qa_module.OpenAI(
-            api_key=qa_module._LOCAL_PLACEHOLDER_KEY,
+            api_key=qa_module.LOCAL_PLACEHOLDER_KEY,
             base_url=qa_module.LOCAL_LLM_BASE_URL,
         )
         assert str(client.base_url).rstrip("/") == qa_module.LOCAL_LLM_BASE_URL
@@ -1068,7 +1080,7 @@ class TestLocalProviderOverRealHttp:
 
         with self._serve() as (base_url, captured):
             client = qa_module.OpenAI(
-                api_key=qa_module._LOCAL_PLACEHOLDER_KEY, base_url=base_url
+                api_key=qa_module.LOCAL_PLACEHOLDER_KEY, base_url=base_url
             )
             response = client.chat.completions.create(
                 model=LOCAL_LLM_MODEL,
@@ -1080,7 +1092,7 @@ class TestLocalProviderOverRealHttp:
             # carrying the placeholder credential.
             assert captured["path"] == "/v1/chat/completions"
             assert captured["model"] == LOCAL_LLM_MODEL
-            assert captured["auth"] == f"Bearer {qa_module._LOCAL_PLACEHOLDER_KEY}"
+            assert captured["auth"] == f"Bearer {qa_module.LOCAL_PLACEHOLDER_KEY}"
             assert captured["messages"] == [{"role": "user", "content": "hello"}]
 
 
