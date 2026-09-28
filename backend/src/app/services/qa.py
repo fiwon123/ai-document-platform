@@ -77,6 +77,33 @@ LOCAL_LLM_ENABLED = os.getenv("LOCAL_LLM_ENABLED", "").strip().lower() in (
     "on",
 )
 
+# Upper bound on the answer length. This matters most for a CPU-only local
+# model: measured on Ollama with `tinyllama` at OLLAMA_NUM_THREADS=2, generation
+# runs at ~3 tok/s, so the 1000-token default below takes minutes per answer and
+# reads as a hang. Hosted providers ignore this concern. Kept blank-safe for the
+# same reason as every other read here (Compose passes "" when unset), and a
+# malformed value warns rather than crashing the first question.
+QA_MAX_TOKENS_DEFAULT = 1000
+QA_MAX_TOKENS = QA_MAX_TOKENS_DEFAULT
+_raw_max_tokens = (os.getenv("QA_MAX_TOKENS", "") or "").strip()
+if _raw_max_tokens:
+    try:
+        QA_MAX_TOKENS = int(_raw_max_tokens)
+    except ValueError:
+        logger.warning(
+            "QA_MAX_TOKENS=%r is not a whole number; using %d",
+            _raw_max_tokens,
+            QA_MAX_TOKENS_DEFAULT,
+        )
+    else:
+        if QA_MAX_TOKENS < 1:
+            logger.warning(
+                "QA_MAX_TOKENS=%d is below 1; using %d",
+                QA_MAX_TOKENS,
+                QA_MAX_TOKENS_DEFAULT,
+            )
+            QA_MAX_TOKENS = QA_MAX_TOKENS_DEFAULT
+
 # The OpenAI SDK refuses to build a client without a key, even when the
 # endpoint ignores it. Local servers do, so a placeholder is passed through and
 # never leaves the machine.
@@ -92,7 +119,20 @@ _LOCAL_PLACEHOLDER_KEY = "local-no-key"
 # be filed as free because it is inexpensive, but it still bills an OpenAI
 # account per token, so a user reading a "free" group containing it would
 # reasonably expect a working free path and get a bill instead. It is paid.
+#
+# ORDER IS THE DEFAULT. `resolve_default_model` returns the first entry that is
+# both free and whose provider is configured, so a new free model must be
+# inserted at the position it should default from, not appended. `gpt-oss-120b`
+# leads because it is the best answer quality Groq's free tier offers
+# (~500 tok/s, prompt caching) and the deepest daily token allowance of the
+# free roster; the llama models stay as fallbacks behind it.
 MODEL_REGISTRY: list[dict] = [
+    {
+        "id": "openai/gpt-oss-120b",
+        "label": "GPT-OSS 120B (Groq, free)",
+        "provider": "groq",
+        "tier": "free",
+    },
     {
         "id": "llama-3.3-70b-versatile",
         "label": "Llama 3.3 70B (Groq, free)",
@@ -607,7 +647,7 @@ class QAService:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,
-                max_tokens=1000,
+                max_tokens=QA_MAX_TOKENS,
             )
             return response.choices[0].message.content or "No answer generated."
         except Exception as e:

@@ -33,6 +33,20 @@ services:
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     group_add:
       - "${DOCKER_GID:-999}"
+    # Lets the container reach services bound on the HOST, which is how a
+    # host-side Ollama is addressed (LOCAL_LLM_BASE_URL =
+    # http://host.docker.internal:11434/v1 — see DEVELOPMENT.md).
+    #
+    # Docker Desktop injects this name on its own, but plain Linux Docker does
+    # NOT: without this mapping the name fails to resolve with
+    # "Could not resolve host: host.docker.internal" and the local provider
+    # silently falls back to Groq. `host-gateway` resolves to the bridge
+    # gateway (172.17.0.1 on a default Linux install), which routes to the
+    # host, so the daemon must be listening on a non-loopback address
+    # (OLLAMA_HOST=0.0.0.0:11434) to answer. Harmless on Desktop.
+    # tests/test_compose_env.py pins this so the docs cannot drift again.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: ["/sandbox/ai-document-platform/dev-entrypoint.sh"]
     # Docker's default /dev/shm is 64 MB, which makes Chromium crash on any
     # non-trivial page. The baked headless Chromium (see Dockerfile) is what
@@ -89,6 +103,7 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       QA_MODEL: ${QA_MODEL:-}
       LOCAL_LLM_ENABLED: ${LOCAL_LLM_ENABLED:-}
+      QA_MAX_TOKENS: ${QA_MAX_TOKENS:-1000}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-ada-002}
       LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:11434/v1}
@@ -178,6 +193,10 @@ services:
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     command: ["/opt/backend-venv/bin/arq", "app.worker.WorkerSettings"]
     working_dir: /sandbox/ai-document-platform/backend
+    # Same host-Ollama reachability as the dev service above; see the comment
+    # there. Kept in sync deliberately so the two services cannot diverge.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       HOME: /home/appuser
       HOST_HOME: ${HOST_HOME:-${HOME}}
@@ -203,6 +222,7 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       QA_MODEL: ${QA_MODEL:-}
       LOCAL_LLM_ENABLED: ${LOCAL_LLM_ENABLED:-}
+      QA_MAX_TOKENS: ${QA_MAX_TOKENS:-1000}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-ada-002}
       LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:11434/v1}

@@ -342,7 +342,10 @@ class TestQARoute:
         # Free means usable without paying: the Groq models and the local one.
         # gpt-4o-mini is deliberately NOT here -- it is cheap, but it bills an
         # OpenAI account, and a "free" list containing it misleads.
+        # gpt-oss-120b leads: it is the best free-tier answer quality Groq
+        # offers, and registry order is what makes it the default.
         assert data["free"] == [
+            "openai/gpt-oss-120b",
             "llama-3.3-70b-versatile",
             "llama-3.1-8b-instant",
             LOCAL_LLM_MODEL,
@@ -356,6 +359,8 @@ class TestQARoute:
         assert set(by_id) == set(AVAILABLE_MODELS)
         assert by_id["gpt-4"]["provider"] == "openai"
         assert by_id["gpt-4"]["tier"] == "paid"
+        assert by_id["openai/gpt-oss-120b"]["provider"] == "groq"
+        assert by_id["openai/gpt-oss-120b"]["tier"] == "free"
         assert by_id["llama-3.3-70b-versatile"]["provider"] == "groq"
         assert by_id[LOCAL_LLM_MODEL]["provider"] == "local"
         assert "default" in data
@@ -702,7 +707,7 @@ class TestQAServiceAnswerGeneration:
             f"defaulted to the paid model {response.model!r} while a free one "
             "was configured"
         )
-        assert response.model == "llama-3.3-70b-versatile"
+        assert response.model == "openai/gpt-oss-120b"
 
 
 class TestDefaultModelResolution:
@@ -736,7 +741,10 @@ class TestDefaultModelResolution:
         self._configure(monkeypatch, groq=True, local=True)
         # Groq is hosted and answers better; the local CPU model is the
         # last free resort, not something to default everyone onto.
-        assert resolve_default_model() == "llama-3.3-70b-versatile"
+        # gpt-oss-120b is the free-tier model with the best answer quality and
+        # the deepest daily token allowance, so it leads the Groq entries and
+        # therefore wins this resolution.
+        assert resolve_default_model() == "openai/gpt-oss-120b"
 
     def test_uses_local_when_it_is_the_only_free_provider(self, monkeypatch):
         from app.services.qa import resolve_default_model
@@ -780,7 +788,105 @@ class TestDefaultModelResolution:
         from app.services.qa import resolve_default_model
 
         self._configure(monkeypatch, groq=True, qa_model="gpt-9-ultra")
-        assert resolve_default_model() == "llama-3.3-70b-versatile"
+        assert resolve_default_model() == "openai/gpt-oss-120b"
+
+    def test_gpt_oss_120b_is_the_best_free_groq_default(self):
+        """Pin *why* gpt-oss leads the free list, not just that it does.
+
+        Anything below it is a fallback, so the assertion is about ordering:
+        the model a Groq-only deployment defaults to must be the one with the
+        best free-tier allowance, and it must still be free and Groq-hosted.
+        """
+        from app.services.qa import FREE_MODELS, MODEL_REGISTRY
+
+        groq_free = [
+            e["id"]
+            for e in MODEL_REGISTRY
+            if e["provider"] == "groq" and e["tier"] == "free"
+        ]
+        assert groq_free, "no free Groq model is registered"
+        assert groq_free[0] == "openai/gpt-oss-120b"
+        assert "openai/gpt-oss-120b" in FREE_MODELS
+
+        # The llama entries must survive as fallbacks, not be displaced.
+        assert "llama-3.3-70b-versatile" in groq_free
+        assert groq_free.index("llama-3.3-70b-versatile") > 0
+
+        # A paid model may never outrank a free one.
+        tiers = [e["tier"] for e in MODEL_REGISTRY]
+        assert tiers.index("paid") > max(
+            i for i, t in enumerate(tiers) if t == "free"
+        )
+
+
+class TestQAMaxTokens:
+    """`QA_MAX_TOKENS` bounds answer length (#486).
+
+    It exists for CPU-only local models: measured on Ollama with `tinyllama` at
+    two threads, generation runs at ~3 tok/s, so the previous hardcoded 1000
+    turned a short answer into a multi-minute wait that reads as a hang.
+    """
+
+    @staticmethod
+    def _read(monkeypatch, value):
+        """Re-execute the module header's env read with one variable set."""
+        import importlib
+
+        from app.services import qa as qa_module
+
+        if value is None:
+            monkeypatch.delenv("QA_MAX_TOKENS", raising=False)
+        else:
+            monkeypatch.setenv("QA_MAX_TOKENS", value)
+        return importlib.reload(qa_module)
+
+    def test_unset_keeps_the_previous_behaviour(self, monkeypatch):
+        module = self._read(monkeypatch, None)
+        assert module.QA_MAX_TOKENS == 1000
+
+    def test_set_value_is_honoured(self, monkeypatch):
+        assert self._read(monkeypatch, "200").QA_MAX_TOKENS == 200
+
+    def test_blank_value_falls_back_rather_than_breaking_every_answer(self, monkeypatch):
+        """Compose passes "" when the variable is unset (see test_compose_env).
+
+        An unguarded `int("")` here would make every question 500 on a
+        deployment that never set the variable.
+        """
+        assert self._read(monkeypatch, "").QA_MAX_TOKENS == 1000
+
+    def test_malformed_value_falls_back_instead_of_crashing(self, monkeypatch):
+        assert self._read(monkeypatch, "plenty").QA_MAX_TOKENS == 1000
+
+    def test_zero_or_negative_falls_back(self, monkeypatch):
+        """0 would be a provider error on every single call."""
+        assert self._read(monkeypatch, "0").QA_MAX_TOKENS == 1000
+        assert self._read(monkeypatch, "-5").QA_MAX_TOKENS == 1000
+
+    def test_the_configured_value_reaches_the_provider(self, monkeypatch):
+        """The knob is only real if it is the value actually sent."""
+        from types import SimpleNamespace
+
+        from app.services import qa as qa_module
+
+        monkeypatch.setattr(qa_module, "QA_MAX_TOKENS", 37)
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Mocked answer"))]
+        )
+        _patch_llm_client(monkeypatch, fake_client)
+
+        fake_search = MagicMock()
+        fake_search.search.return_value = SearchResponse(
+            query="q", results=[], total_count=0, has_more=False
+        )
+        service = QAService(search_service=fake_search)
+
+        service.ask(user_id=uuid4(), question="q", model="gpt-4o-mini")
+
+        assert fake_client.chat.completions.create.call_args.kwargs[
+            "max_tokens"
+        ] == 37
 
 
 class TestLocalProvider:

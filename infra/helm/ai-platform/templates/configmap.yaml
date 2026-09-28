@@ -23,6 +23,11 @@ data:
   REFRESH_COOKIE_SECURE: {{ .Values.config.auth.refreshCookieSecure | quote }}
   OPENAI_MODEL: {{ .Values.config.ai.openaiModel | quote }}
   EMBEDDING_MODEL: {{ .Values.config.ai.embeddingModel | quote }}
+  QA_MODEL: {{ .Values.config.ai.qaModel | quote }}
+  QA_MAX_TOKENS: {{ .Values.config.ai.maxTokens | quote }}
+  LOCAL_LLM_ENABLED: {{ ternary "true" "" .Values.config.ai.localLlm.enabled | quote }}
+  LOCAL_LLM_BASE_URL: {{ .Values.config.ai.localLlm.baseUrl | quote }}
+  LOCAL_LLM_MODEL: {{ .Values.config.ai.localLlm.model | quote }}
   LOG_FORMAT: {{ .Values.config.logging.format | quote }}
   RATE_LIMIT_REQUESTS: {{ .Values.config.rateLimit.requests | quote }}
   RATE_LIMIT_WINDOW: {{ .Values.config.rateLimit.window | quote }}

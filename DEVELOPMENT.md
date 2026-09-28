@@ -287,26 +287,126 @@ project `.env` for `${...}` substitution), or export them in your shell before
 ```bash
 # ./.env  (gitignored — never commit keys)
 GROQ_API_KEY=gsk_...                     # free tier, console.groq.com
-QA_MODEL=llama-3.3-70b-versatile         # optional: pin the default model
+QA_MODEL=openai/gpt-oss-120b             # optional: pin the default model
 ```
+
+`QA_MODEL` is optional. Left unset, the app picks the first **free** model whose
+provider is actually configured — Groq before local, and a paid OpenAI model only
+when nothing free is available. `openai/gpt-oss-120b` is that free-first default:
+Groq's best free-tier answer quality, with the deepest daily token allowance of
+the free roster. Pin it only to override.
 
 Then `make dev-restart` (variables are read at process start, so a running
 container keeps the old environment). Confirm with `GET /v1/qa/models`, where
 each model reports `available`.
 
-Three things worth knowing:
+### Using a local model (Ollama) — dev and testing
 
-- **A local model server needs an opt-in *and* a reachable host.** Ollama on the
-  host is not at `localhost` from inside the container:
+The local provider is the only path that needs **no API key at all**, which makes
+it the cheapest way to exercise the whole QA pipeline. It needs three things, and
+all three are required — missing any one fails silently by falling back to
+another provider.
 
-  ```bash
-  LOCAL_LLM_ENABLED=true
-  LOCAL_LLM_BASE_URL=http://host.docker.internal:11434/v1
-  LOCAL_LLM_MODEL=llama3.2:1b
-  ```
+```bash
+# ./.env  (gitignored)
+LOCAL_LLM_ENABLED=true
+LOCAL_LLM_BASE_URL=http://host.docker.internal:11434/v1
+LOCAL_LLM_MODEL=tinyllama
+QA_MAX_TOKENS=200                        # see the CPU note below
+```
 
-  Use the container's name instead of `host.docker.internal` if the server is
-  another Compose service.
+**1. The container must be able to resolve the host.** `host.docker.internal` is
+injected by Docker Desktop automatically; plain Linux Docker does not do that, so
+`docker-compose.yaml` maps it explicitly:
+
+```yaml
+extra_hosts:
+  - "host.docker.internal:host-gateway"
+```
+
+It is declared on both the `dev` and `worker` services, and
+`tests/test_compose_env.py` fails if it is removed — otherwise the hostname stops
+resolving with `Could not resolve host: host.docker.internal`, which reads like a
+provider problem but is a networking one. If you hit that error, the mapping is
+the first thing to check.
+
+**2. The daemon must listen on a non-loopback address.** The default
+`127.0.0.1:11434` is unreachable from a container even with the hostname mapped,
+because it only accepts connections from the host's own loopback. Ollama reads
+this at **startup**, so it is a *daemon* setting, not an application one — it
+belongs in a systemd drop-in, **not** in the app's `.env`:
+
+```bash
+sudo systemctl edit ollama
+```
+
+```ini
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+Environment="OLLAMA_NUM_THREADS=2"
+```
+
+Then apply it and confirm the address actually changed:
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl restart ollama
+ss -tlnp | grep 11434      # must show 0.0.0.0:11434, not 127.0.0.1:11434
+```
+
+> **Ollama's API has no authentication.** `0.0.0.0` publishes a
+> model-execution endpoint to every host on your network. On a shared or
+> untrusted network, put a firewall rule in front of port 11434 or bind it to a
+> specific interface instead. `OLLAMA_NUM_THREADS` caps CPU use for the daemon;
+> raising it beyond your core count slows generation rather than speeding it up.
+
+If a request fails with an invalid-hostname error, Ollama's DNS-rebinding
+protection rejected the container's `Host` header. Add `OLLAMA_ORIGINS=*` to the
+same drop-in.
+
+**3. Expect it to be slow, and lower the answer cap.** A 1B model on CPU-only
+threads is for proving the wiring works, not for judging answer quality.
+Measured on an Ollama host at `OLLAMA_NUM_THREADS=2`:
+
+| model | throughput | a 1000-token answer takes |
+|---|---|---|
+| `tinyllama` | 3.2 tok/s | ~5 min |
+| `qwen2.5-coder:1.5b` | 2.6 tok/s | ~6 min |
+
+Throughput falls with host load: the same `tinyllama` call that took 13 s for 13
+tokens (~1 tok/s) on an otherwise busy machine. Treat the table as an idle-host
+figure and size `QA_MAX_TOKENS` for the machine you are on — a QA round trip
+that feels like a hang is usually this, not a broken provider.
+
+`QA_MAX_TOKENS` (default `1000`) bounds this; set it to `200` or less locally.
+It is read once at startup, so it also needs `make dev-restart`.
+
+**A local model does not provide embeddings.** `embedding.py` builds its client
+from `OPENAI_API_KEY` only, and Groq offers no embedding model. With no
+`OPENAI_API_KEY`, search reports `mode: keyword` — PostgreSQL full-text ranking
+instead of pgvector — and QA answers from whatever keyword matching surfaced.
+That is fine for testing the pipeline end to end, but retrieval quality is then
+limited by the keyword fallback rather than by the chat model, so do not read a
+weak local answer as a QA-quality problem.
+
+### Provider configuration in production (Kubernetes)
+
+The same variables are settable in the Helm chart and the Kustomize base, so the
+local and hosted paths are not sandbox-only:
+
+| Variable | Helm (`config.ai.*`) | Kustomize base |
+|---|---|---|
+| `QA_MODEL` | `qaModel` | `QA_MODEL` |
+| `QA_MAX_TOKENS` | `maxTokens` | `QA_MAX_TOKENS` |
+| `LOCAL_LLM_ENABLED` | `localLlm.enabled` | `LOCAL_LLM_ENABLED` |
+| `LOCAL_LLM_BASE_URL` | `localLlm.baseUrl` | `LOCAL_LLM_BASE_URL` |
+| `LOCAL_LLM_MODEL` | `localLlm.model` | `LOCAL_LLM_MODEL` |
+
+A pod's `localhost` is the pod itself, so a pod cannot reach a model server on
+the host the way the dev container can: point `LOCAL_LLM_BASE_URL` at an
+in-cluster Service, a node IP, or a Gateway — not `127.0.0.1`.
+
+### Two more things worth knowing
+
 - **`OPENAI_BASE_URL` redirects embeddings *and* the OpenAI QA provider.** It is
   the OpenAI SDK's own environment default, not a project feature, which is why
   `embedding.py` never mentions it — it also happens to be the cleanest way to
@@ -316,6 +416,10 @@ Three things worth knowing:
   `load_dotenv()` does not override real environment variables — an empty value
   passed from Compose would win over `backend/src/app/.env` and over the code's
   fallback. `tests/test_compose_env.py` pins the two lists together.
+
+A typical free-tier production setup is `GROQ_API_KEY` for chat plus
+`OPENAI_API_KEY` for embeddings; see the `QA_MAX_TOKENS` note above for why
+hosted providers do not need a lowered cap.
 
 ## Interactive visual audit (`scripts/audit.mjs`)
 
