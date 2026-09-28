@@ -822,11 +822,128 @@ class TestSearchRoute:
         assert resp.json()["mode"] == "keyword"
 
 
+class TestExportMatchPercentBounds:
+    """A cosine distance is bounded [0, 2], so `1 - score` can go negative.
+
+    `MatchChip` clamps to [0, 100] and the CSV has to agree with it, because the
+    docstring promises the export carries the value the UI shows. These use the
+    endpoint rather than `_to_csv` so the request path is what is pinned.
+    """
+
+    @staticmethod
+    def _row(resp):
+        header = resp.text.splitlines()[0].split(",")
+        row = resp.text.splitlines()[1].split(",", len(header) - 1)
+        return (
+            float(row[header.index("distance")]),
+            float(row[header.index("match_percent")]),
+        )
+
+    @pytest.mark.parametrize(
+        ("distance", "expected_pct"),
+        [
+            (0.0, 100.0),  # identical vectors
+            (0.123456, 87.7),  # the ordinary case, unchanged
+            (0.5, 50.0),
+            (1.0, 0.0),  # orthogonal vectors: the old worst case
+            # Anti-correlated. Before the clamp these emitted -25.0, -50.0 and
+            # -100.0, none of which is a percentage of a match.
+            (1.25, 0.0),
+            (1.5, 0.0),
+            (2.0, 0.0),
+        ],
+    )
+    def test_match_percent_stays_within_zero_to_one_hundred(
+        self, client, auth_headers, distance, expected_pct
+    ):
+        from app.main import app
+        from app.routes.search import get_search_service
+
+        fake = MagicMock()
+        fake.search.return_value = SearchResponse(
+            query="hello",
+            results=[
+                SearchResult(
+                    chunk_id=UUID("00000000-0000-0000-0000-000000000001"),
+                    document_id=UUID("00000000-0000-0000-0000-000000000002"),
+                    document_filename="notes.txt",
+                    content="text",
+                    score=distance,
+                )
+            ],
+            total_count=1,
+            has_more=False,
+        )
+        app.dependency_overrides[get_search_service] = lambda: fake
+        try:
+            resp = client.post(
+                "/v1/search/export",
+                json={"query": "hello", "top_k": 5, "format": "csv"},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        exported_distance, match_percent = self._row(resp)
+        assert match_percent == expected_pct
+        assert 0.0 <= match_percent <= 100.0
+        # The distance is a true cosine distance and is reported as found, so a
+        # reader can tell that a hit was anti-correlated rather than merely poor.
+        assert exported_distance == pytest.approx(distance, abs=1e-6)
+
+    def test_distance_column_is_not_clamped_to_a_similarity(
+        self, client, auth_headers
+    ):
+        """The clamp belongs to the percentage only.
+
+        Rounding 2.0 down to 1.0 would make an anti-correlated hit
+        indistinguishable from an orthogonal one, and the API documents `score`
+        as a distance.
+        """
+        from app.main import app
+        from app.routes.search import get_search_service
+
+        fake = MagicMock()
+        fake.search.return_value = SearchResponse(
+            query="hello",
+            results=[
+                SearchResult(
+                    chunk_id=UUID("00000000-0000-0000-0000-000000000001"),
+                    document_id=UUID("00000000-0000-0000-0000-000000000002"),
+                    document_filename="notes.txt",
+                    content="text",
+                    score=2.0,
+                )
+            ],
+            total_count=1,
+            has_more=False,
+        )
+        app.dependency_overrides[get_search_service] = lambda: fake
+        try:
+            resp = client.post(
+                "/v1/search/export",
+                json={"query": "hello", "top_k": 5, "format": "csv"},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        distance, match_percent = self._row(resp)
+        assert distance == 2.0
+        assert match_percent == 0.0
+
+
 class TestSearchExport:
     """Export endpoint: CSV and JSON rendering of search results."""
 
     def _export_response(
-        self, client, auth_headers, fmt: str, query: str = "hello"
+        self,
+        client,
+        auth_headers,
+        fmt: str,
+        query: str = "hello",
+        score: float = 0.123456,
     ):
         from app.main import app
         from app.routes.search import get_search_service
@@ -840,7 +957,7 @@ class TestSearchExport:
                     document_id=UUID("00000000-0000-0000-0000-000000000002"),
                     document_filename="notes.txt",
                     content='contains "quoted, text" and newline\nline2',
-                    score=0.123456,
+                    score=score,
                     metadata_={"page": 2},
                 )
             ],

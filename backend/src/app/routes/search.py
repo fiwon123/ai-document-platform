@@ -110,12 +110,23 @@ def _to_csv(response: SearchResponse) -> str:
     invites the reader to sort descending and get the *worst* matches first,
     which is the opposite of what they want from an export of search results.
 
-    ``match_percent`` is the same value expressed the way the UI shows it, so a
-    spreadsheet can be sorted high-to-low and read against what the user saw on
-    screen. The exact metric behind the distance depends on the search mode (a
-    cosine distance when semantic, a full-text rank distance when keyword), so
-    the header says "distance" rather than naming a metric that would be wrong
-    half the time.
+    ``match_percent`` is the value the way the UI shows it, so a spreadsheet can
+    be sorted high-to-low and read against what the user saw on screen. The
+    exact metric behind the distance depends on the search mode (a cosine
+    distance when semantic, a full-text rank distance when keyword), so the
+    header says "distance" rather than naming a metric that would be wrong half
+    the time.
+
+    "The way the UI shows it" is the operative phrase, and it includes a clamp
+    the UI applies and this file did not: ``MatchChip`` does
+    ``Math.min(100, Math.max(0, pct))``. A cosine distance is bounded [0, 2], not
+    [0, 1], so ``1 - score`` goes negative as soon as a hit is anti-correlated,
+    and a ``match_percent`` of ``-3.4`` is not a percentage of anything. Clamped
+    here for the same reason and to the same bounds. The two clamps cannot be
+    shared across the API boundary, so each names the other.
+
+    The distance column is left alone: 2.0 is a true cosine distance, and the API
+    documents ``score`` as a distance rather than a bounded similarity.
     """
     output = io.StringIO()
     writer = csv.writer(output)
@@ -137,7 +148,9 @@ def _to_csv(response: SearchResponse) -> str:
                 str(result.chunk_id),
                 str(result.document_id),
                 f"{result.score:.6f}",
-                f"{(1 - result.score) * 100:.1f}",
+                # Clamped to match `MatchChip`; see the docstring for why a
+                # cosine distance cannot be assumed to be within [0, 1].
+                f"{min(100.0, max(0.0, (1 - result.score) * 100)):.1f}",
                 _csv_safe(result.content),
                 _csv_safe(_json_or_empty(result.metadata_)),
             ]
