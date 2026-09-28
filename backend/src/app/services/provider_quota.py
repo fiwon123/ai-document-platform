@@ -29,10 +29,24 @@ concurrent burst, since every caller in the burst reads the same "29 of 30".
 The daily token ceiling is a **soft check plus hard accounting**: the real
 ``usage.total_tokens`` is not knowable until the call returns, so the budget is
 checked before the call against ``used + QA_MAX_TOKENS`` and reconciled with
-actual usage afterwards. This can overshoot the daily ceiling by at most
-(in-flight requests x max_tokens) and never refuses a question that would have
-fitted — the opposite trade would be a ceiling that rejects work the provider
-would have served.
+actual usage afterwards.
+
+The pre-check reserves room for what the call could cost *at most*, and that
+choice is a trade, not a free win:
+
+- It **can refuse a question whose actual usage would have fitted** — a 5-token
+  question is turned away when 1000 tokens of headroom are needed to admit it.
+  An earlier draft of this file claimed the opposite, which was simply false.
+- It **overshoots the daily ceiling** by at most (in-flight requests x
+  max_tokens) when several calls are admitted together.
+
+Over-refusing is the worse of the two here, so it is the one that is traded
+away. The ceiling is the operator's real allowance, and a day that ends a little
+over budget is recoverable while a user who is permanently refused is not. The
+effect is confined to the last call or two before the cap: with a cap many
+times ``QA_MAX_TOKENS`` (200K against 1000 by default) almost everything is
+admitted, and because real usage is charged back after each call, the reserved
+headroom shrinks as answers come in rather than staying pessimistic forever.
 
 Scope, and why it is org-wide
 -----------------------------
@@ -301,13 +315,17 @@ def reserve(provider: str, *, account: bool = True) -> QuotaDecision:
 def check_token_budget(
     provider: str, *, expected_tokens: int = 0, account: bool = True
 ) -> QuotaDecision:
-    """Refuse if the day's tokens are spent, allowing for tokens not yet spent.
+    """Refuse if the day's remaining tokens cannot cover the call's worst case.
 
     ``expected_tokens`` is what the call is about to cost at most
-    (``QA_MAX_TOKENS``). Checking against it rather than against zero is what
-    makes the refusal honest: a question that would have fitted in the
-    remaining allowance is not turned away because the allowance was not known
-    to be empty yet.
+    (``QA_MAX_TOKENS``), not what it will actually cost — the real figure is
+    unknown until the response arrives, and is charged by ``record_tokens``
+    afterwards.
+
+    So this deliberately trades the opposite way from the overshoot it causes: it
+    refuses a question whose real cost *would* have fitted, in exchange for not
+    blowing past the operator's allowance. See the module docstring for why that
+    is the better of the two failures.
     """
     limits = limits_for(provider)
     cap = limits.tokens_per_day
