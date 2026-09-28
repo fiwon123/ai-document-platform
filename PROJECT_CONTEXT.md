@@ -200,6 +200,36 @@ LLM and Embedding APIs
 - `created_at`: registration timestamp
 - `updated_at`: last update timestamp
 
+### RefreshSession
+The server-side state that makes refresh-token rotation enforceable. A refresh
+token is a signed JWT, so the service can verify it but cannot take it back; this
+table is what lets rotation and logout mean something.
+
+- `jti`: primary key — the `jti` claim of one issued refresh token
+- `user_id`: UUID of the owning user (foreign key, cascade delete)
+- `expires_at`: the token's own `exp`, so the row can be reclaimed without
+  verifying anything
+- `rotated_at`: set when the token was exchanged for a successor. A token that is
+  already rotated is **replayed**, not refreshed, and is refused with 401
+- `revoked_at`: set by logout
+- `created_at`: issuance timestamp
+
+A client only ever holds the newest token, so a second presentation of the same
+token means a copy is in circulation. Rows are swept daily by an arq cron
+(`sweep_expired_refresh_sessions`): the table otherwise grows forever, since
+every login and every rotation adds a row and nothing else removes one.
+
+A valid, unexpired token with **no** row is adopted rather than refused, so
+deploying the table does not sign out everyone who logged in beforehand. It is
+still retired on adoption, so an adopted token is no more replayable than any
+other. A token with no `jti` at all is refused outright — nothing this service
+signs omits it.
+
+The refresh cookie is scoped to `/v1/auth`, not to `/v1/auth/refresh`: a browser
+sends a cookie only to paths at or below its own, so the narrower scope meant
+`/v1/auth/logout` never received the token and could not revoke it. It is still
+excluded from document, search and QA requests.
+
 ### Document
 - `id`: UUID primary key
 - `owner_id`: UUID (user who owns the document)
@@ -289,7 +319,7 @@ the unconstrained local column safe to search.
 - `POST /v1/auth/register` - User registration
 - `POST /v1/auth/login` - User login (OAuth2 form)
 - `POST /v1/auth/refresh` - Refresh access token via cookie
-- `POST /v1/auth/logout` - Revoke refresh token
+- `POST /v1/auth/logout` - Revoke the presented refresh token and clear its cookie (idempotent; other sessions of the same user stay live)
 - `GET /v1/auth/me` - Get current user profile
 
 ### Users (self-service)

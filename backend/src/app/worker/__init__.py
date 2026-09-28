@@ -16,6 +16,7 @@ from app.logging_config import setup_logging
 from app.models.document import DocumentDB, DocumentStatus
 from app.repositories.document import DocumentRepository
 from app.schemas.webhook import WebhookEvent
+from app.services.auth import RefreshSessionService
 from app.services.chunking import ChunkingService
 from app.services.embedding import EmbeddingService
 from app.services.text_extraction import TextExtractionService
@@ -587,6 +588,25 @@ def _mark_stale_failed(document: DocumentDB) -> None:
     _schedule_webhook(WebhookEvent.FAILED, document)
 
 
+async def sweep_expired_refresh_sessions(ctx: dict) -> None:
+    """Forget refresh tokens that have expired, hourly.
+
+    `refresh_sessions` is the state that makes rotation and logout enforceable,
+    and it only ever grows otherwise: every login and every rotation adds a row,
+    and nothing else removes one. A token whose own `exp` has passed cannot be
+    presented successfully — the signature check rejects it — so its row is pure
+    accumulation.
+
+    Daily rather than hourly because the retention window is 7 days, so an hour
+    of slack is invisible next to it and the write is a single indexed DELETE.
+    """
+    db: Session = SessionLocal()
+    try:
+        RefreshSessionService.from_session(db).sweep_expired()
+    finally:
+        db.close()
+
+
 async def recover_stale_documents(ctx: dict) -> None:
     """Recover documents stuck in pending/processing.
 
@@ -669,6 +689,15 @@ WorkerSettings = {
         cron(
             recover_stale_documents,
             minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
+            second=0,
+            unique=False,
+        ),
+        # Once a day, just after the hour: an expired token is already rejected by
+        # its own `exp`, so a day's slack on the row that records it is harmless.
+        cron(
+            sweep_expired_refresh_sessions,
+            minute={7},
+            hour={4},
             second=0,
             unique=False,
         ),

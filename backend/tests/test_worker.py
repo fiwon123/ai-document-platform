@@ -7,6 +7,7 @@ task itself). Enqueueing is exercised with mocks so no Redis is required.
 import asyncio
 import io
 import os
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
@@ -30,6 +31,7 @@ from app.worker import (
     process_document,
     process_document_task,
     recover_stale_documents,
+    sweep_expired_refresh_sessions,
 )
 
 DIM = 1536
@@ -940,3 +942,38 @@ class TestWorkerLiveness:
     def test_uses_the_same_key_as_the_health_endpoint(self):
         """Liveness must not drift from /v1/health's notion of 'alive'."""
         assert WORKER_HEALTH_CHECK_KEY == "arq:queue:health-check"
+
+
+class TestSweepExpiredRefreshSessions:
+    """The scheduled reclaim for the refresh-session table."""
+
+    def test_cron_removes_only_expired_rows(self, db_session):
+        from app.models.refresh_session import RefreshSessionDB
+        from app.models.user import Role, UserDB
+
+        user = UserDB(
+            username="cron_sweeper", hashed_password="x", role=Role.customer  # noqa: S106
+        )
+        db_session.add(user)
+        db_session.commit()
+        now = datetime.now(UTC)
+        db_session.add_all(
+            [
+                RefreshSessionDB(
+                    jti="cron_expired",
+                    user_id=user.id,
+                    expires_at=now - timedelta(days=1),
+                ),
+                RefreshSessionDB(
+                    jti="cron_live",
+                    user_id=user.id,
+                    expires_at=now + timedelta(days=7),
+                ),
+            ]
+        )
+        db_session.commit()
+
+        asyncio.run(sweep_expired_refresh_sessions({}))
+
+        remaining = [row.jti for row in db_session.query(RefreshSessionDB).all()]
+        assert remaining == ["cron_live"]
