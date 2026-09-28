@@ -456,6 +456,27 @@ docker compose exec dev node scripts/audit.mjs --only=documents # one group
 docker compose exec dev node scripts/audit.mjs --help
 ```
 
+### Which browser it uses
+
+Playwright is installed globally in the image and is **not** declared in
+`scripts/package.json` — the project uses Vitest and this is a one-off tool — so
+the baked browsers under `/opt/ms-playwright` belong to that global install. The
+audit therefore resolves a Playwright that can actually launch: a local install
+is preferred, but it is only accepted if its browser is on disk, and the global
+one is used otherwise. A full pass is slow enough that silently capturing with the
+wrong browser would be worse than failing, so the first log line names what it
+resolved:
+
+```
+[audit] playwright       v1.63.0 (global, chromium-1243)
+```
+
+An `import("playwright")` that *succeeds* is not proof of a usable install — a
+stale copy resolves fine and then dies at launch, which is what #529 was. If the
+resolution ever fails, the error names every install it found, the revision each
+one wants and the revisions the image actually has. The rule and its tests live
+in `scripts/audit-playwright.mjs`.
+
 It registers its own throwaway user, seeds four documents (ready, ready, ready,
 and a deliberately corrupt PDF so the failure card is real), waits for the
 worker, then walks the route groups. Output lands in
