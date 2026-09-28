@@ -581,6 +581,20 @@ class TestVectorQueryFailureFallsBackToKeyword:
 
 
 class TestSearchPagination:
+    def _service(self, db_session):
+        """A real service over the real repository, in keyword mode.
+
+        The embedding double raises so the service takes the keyword path, which
+        is what a deployment with no provider configured gets. Mocking the service
+        away (as the route tests do) would test the mock, not the count.
+        """
+        from app.services.search import SearchService
+
+        return SearchService(
+            repository=SearchRepository(db_session),
+            embedding_service=_embedding_double(error=RuntimeError("no provider")),
+        )
+
     def _seed_chunks(self, db_session, count: int = 3, marker: str = "a"):
         user = UserDB(
             username=f"page_user_{marker}", hashed_password="x"  # noqa: S106
@@ -673,6 +687,79 @@ class TestSearchPagination:
         # order, so chunk_index 1 comes first, then 2.
         assert [r.content for r in page.results] == ["section 1 content", "section 2 content"]
 
+    def test_paging_to_the_end_keeps_the_total_consistent(self, db_session):
+        """Every page of a walk must report the same total.
+
+        The UI reads `total_count` from the last page it holds, so a walk whose
+        final page reports 0 while earlier pages reported 3 renders "Showing 3 of
+        0 results" — results on screen, a total of none.
+        """
+        user, _ = self._seed_chunks(db_session, count=3)
+        # At the service, not the repository: `has_more` is derived there from
+        # `offset + len(results) < total_count`, and this is the layer the route
+        # serialises for the UI.
+        service = self._service(db_session)
+
+        first = service.search(user_id=user.id, query="content", top_k=2, offset=0)
+        second = service.search(user_id=user.id, query="content", top_k=2, offset=2)
+
+        assert len(first.results) == 2
+        assert first.total_count == 3
+        assert first.has_more is True
+        assert len(second.results) == 1
+        assert second.total_count == 3
+        assert second.has_more is False
+
+    def test_walking_past_the_end_still_reports_the_total(self, db_session):
+        """An empty page is not the same claim as "nothing matched"."""
+        user, _ = self._seed_chunks(db_session, count=3)
+        service = self._service(db_session)
+
+        response = service.search(user_id=user.id, query="content", top_k=2, offset=99)
+
+        assert response.results == []
+        assert response.total_count == 3
+        assert response.has_more is False
+
+    def test_the_count_query_only_runs_when_the_page_is_empty(self, db_session):
+        """The single-query counting #451 introduced is kept for a real page.
+
+        Paying a second round trip on every search to fix a rare case would trade
+        a common cost for an uncommon one, so the count query must stay behind
+        the empty-page branch.
+        """
+        from sqlalchemy import event
+
+        user, _ = self._seed_chunks(db_session, count=3)
+        repo = SearchRepository(db_session)
+        def _record(conn, cursor, statement, parameters, context, executemany):
+            # Only the search itself: a freshly committed `user` is expired, so
+            # touching `user.id` re-fetches the row and would be counted as
+            # search traffic. `user_id` is read once below to warm that.
+            if "document_chunks" in statement:
+                page_statements.append(statement)
+
+        page_statements: list[str] = []
+        event.listen(db_session.get_bind(), "before_cursor_execute", _record)
+        try:
+            _ = user.id  # warm the identity map before counting
+            repo.search(
+                user_id=user.id, query_embedding=None, query_text="content", top_k=2, offset=0
+            )
+            with_results = len(page_statements)
+            page_statements.clear()
+            repo.search(
+                user_id=user.id, query_embedding=None, query_text="content", top_k=2, offset=99
+            )
+            without_results = len(page_statements)
+        finally:
+            event.remove(db_session.get_bind(), "before_cursor_execute", _record)
+
+        # The page query itself contains `count(*) OVER ()`, so both statements
+        # are counted here: the empty page is the one that adds a second.
+        assert with_results == 1, "a page with results must stay one round trip"
+        assert without_results == 2, "an empty page asks for the count separately"
+
     def test_text_fallback_past_the_end_returns_nothing(self, db_session):
         """A page beyond the last match is empty, not a repeated first page.
 
@@ -692,7 +779,11 @@ class TestSearchPagination:
         )
 
         assert outcome.results == []
-        assert outcome.total_count == 0
+        # 3, not 0: an empty page cannot read the count off a row, and "you paged
+        # past the end" is not the same claim as "nothing matched". This
+        # assertion used to be 0, which is the defect #514 describes -- it made
+        # the UI report "Showing 5 of 0 results" whenever a page came back empty.
+        assert outcome.total_count == 3
         assert outcome.mode == SearchMode.keyword
 
     def test_search_route_forwards_offset(self, client, auth_headers):
