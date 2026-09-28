@@ -1,4 +1,6 @@
+import logging
 import re
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import (
@@ -11,12 +13,15 @@ from sqlalchemy import (
     select,
     values,
 )
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.models.chunk import DocumentChunk
+from app.models.chunk import DocumentChunk, embedding_column_for
 from app.models.document import DocumentDB
 from app.models.search import SearchHistory
-from app.schemas.search import SearchResult
+from app.schemas.search import SearchMode, SearchResult
+
+logger = logging.getLogger(__name__)
 
 # The full-text search configuration, and the two expressions built from it.
 # Kept as module-level names for one reason: the GIN index created by migration
@@ -85,6 +90,23 @@ def _like_pattern(term: str) -> str:
     return f"%{escaped}%"
 
 
+@dataclass(frozen=True)
+class SearchOutcome:
+    """What a search actually did, as opposed to what it set out to do.
+
+    ``mode`` is reported rather than re-derived by the caller. It used to be
+    computed from whether a query embedding had been generated, which is
+    *intent*, not outcome: a vector query that fails against the database
+    degrades to the keyword path, and a caller inferring the mode from the
+    presence of an embedding would have reported ``semantic`` for results that
+    came from a full-text scan.
+    """
+
+    results: list[SearchResult]
+    total_count: int
+    mode: SearchMode
+
+
 class SearchRepository:
     def __init__(self, db: Session):
         self.db = db
@@ -134,27 +156,66 @@ class SearchRepository:
         offset: int = 0,
         document_ids: list[UUID] | None = None,
         query_text: str = "",
-    ) -> tuple[list[SearchResult], int]:
-        """Run a search and return ``(page_of_results, total_count)``.
+        query_space: str | None = None,
+        query_model: str | None = None,
+    ) -> SearchOutcome:
+        """Run a search and report how it was answered.
 
         ``query_text`` is only used by the keyword fallback, but it is required
         there: without an embedding provider there is nothing else to match on.
+
+        ``query_space`` and ``query_model`` are only needed by the vector path,
+        and describe the ``query_embedding``: which column holds comparable
+        vectors, and which model produced them. Both are required for a vector
+        search and ignored otherwise.
         """
         if query_embedding is None:
-            return self._text_search(
+            results, total_count = self._text_search(
                 user_id=user_id,
                 query_text=query_text,
                 top_k=top_k,
                 offset=offset,
                 document_ids=document_ids,
             )
-        return self._vector_search(
-            user_id=user_id,
-            query_embedding=query_embedding,
-            top_k=top_k,
-            offset=offset,
-            document_ids=document_ids,
-        )
+            return SearchOutcome(results, total_count, SearchMode.keyword)
+
+        try:
+            results, total_count = self._vector_search(
+                user_id=user_id,
+                query_embedding=query_embedding,
+                query_space=query_space,
+                query_model=query_model,
+                top_k=top_k,
+                offset=offset,
+                document_ids=document_ids,
+            )
+        except SQLAlchemyError as e:
+            # The vector query failed against the database, so the keyword
+            # fallback has to take over *inside* this repository rather than
+            # being left to the caller's error handling: the alternative was a
+            # 500 for a search the platform can still answer.
+            #
+            # The rollback is not optional. A failed statement leaves the
+            # session's transaction aborted, so every statement after it fails
+            # with "current transaction is aborted" — the fallback query would
+            # error too, and the request would still 500, just with a more
+            # confusing message.
+            logger.warning(
+                "Vector search failed (%s: %s); falling back to keyword search",
+                type(e).__name__,
+                e,
+            )
+            self.db.rollback()
+            results, total_count = self._text_search(
+                user_id=user_id,
+                query_text=query_text,
+                top_k=top_k,
+                offset=offset,
+                document_ids=document_ids,
+            )
+            return SearchOutcome(results, total_count, SearchMode.keyword)
+
+        return SearchOutcome(results, total_count, SearchMode.semantic)
 
     @staticmethod
     def _apply_user_filter(query, user_id: UUID, document_ids: list[UUID] | None):
@@ -296,8 +357,26 @@ class SearchRepository:
         top_k: int,
         offset: int = 0,
         document_ids: list[UUID] | None = None,
+        query_space: str | None = None,
+        query_model: str | None = None,
     ) -> tuple[list[SearchResult], int]:
-        distance = DocumentChunk.embedding.cosine_distance(query_embedding)
+        """Rank chunks by cosine distance to the query embedding.
+
+        The column comes from ``query_space`` rather than being hardcoded,
+        because the local provider's vectors live in a different column (see
+        `app.models.chunk`). Reading the space's column — the one the query
+        vector is actually comparable with — is what keeps the two providers
+        from being mixed: a local query must not rank OpenAI vectors and vice
+        versa, and cosine distance would happily compute a number for either.
+
+        ``embedding_model`` is the other half of that guarantee, and the one
+        that catches what the space cannot: two *different* models in the same
+        space and the same width (ada-002 and text-embedding-3-small are both
+        1536) are indistinguishable to the column, and a query that compared
+        against them would return confidently mis-ranked results.
+        """
+        embedding = embedding_column_for(query_space)
+        distance = embedding.cosine_distance(query_embedding)
 
         query = self.db.query(
             DocumentChunk,
@@ -305,7 +384,9 @@ class SearchRepository:
             distance.label("score"),
             func.count().over().label("total_count"),
         ).join(DocumentDB, DocumentChunk.document_id == DocumentDB.id)
-        query = query.filter(DocumentChunk.embedding.isnot(None))
+        query = query.filter(embedding.isnot(None))
+        if query_model is not None:
+            query = query.filter(DocumentChunk.embedding_model == query_model)
         query = self._apply_user_filter(query, user_id, document_ids)
 
         rows = query.order_by(distance, DocumentChunk.id).offset(offset).limit(top_k).all()

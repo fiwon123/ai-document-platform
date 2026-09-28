@@ -196,6 +196,30 @@ def _generate_thumbnail(
         raise
 
 
+def _vector_fields(
+    embedding: list[float] | None,
+    embedding_column,
+    model: str | None,
+) -> dict:
+    """The vector-related columns for one chunk row.
+
+    Split out because the interesting part is what happens when there is *no*
+    vector, and that used to be a single expression buried in a comprehension.
+    The rules:
+
+    * no provider configured -> no column, and no model. `embedding_column` is
+      None and a vector cannot exist.
+    * a vector -> the space's column, and the model that produced it, so a
+      search can find it again and refuse to compare it with another model's.
+    * no vector (provider failed, or the width was wrong) -> nothing set, and
+      `embedding_model` explicitly NULL: claiming a model for a row that has no
+      vector would make a model filter match rows it cannot rank.
+    """
+    if embedding is None or embedding_column is None:
+        return {"embedding_model": None}
+    return {embedding_column.key: embedding, "embedding_model": model}
+
+
 async def _process_document_impl(document_id: UUID) -> DocumentDB | None:
     """Run the full processing pipeline once for a document.
 
@@ -244,9 +268,16 @@ async def _process_document_impl(document_id: UUID) -> DocumentDB | None:
         embedding_service = EmbeddingService()
 
         # Generate embeddings for every chunk. This is best-effort:
-        # if the OpenAI client is not configured (or the API call
-        # fails), we still save the chunks without vectors so the
+        # if no embedding provider is configured (or the API call
+        # fails, or the model returns a width other than the one
+        # configured), we still save the chunks without vectors so the
         # document remains searchable via plain text search.
+        embeddings: list[list[float] | None] = [None] * len(chunks)
+        # The space and model the vectors belong to, or None when no provider is
+        # configured. Read before the call so a failure cannot leave them
+        # describing a vector that was never written.
+        space = embedding_service.space
+        model = embedding_service.model
         try:
             embeddings = embedding_service.generate_embeddings(
                 [chunk.content for chunk in chunks]
@@ -257,8 +288,15 @@ async def _process_document_impl(document_id: UUID) -> DocumentDB | None:
                 f"saving chunks without vectors: {e}"
             )
             embeddings = [None] * len(chunks)
+            model = None
 
-        from app.models.chunk import DocumentChunk
+        from app.models.chunk import DocumentChunk, embedding_column_for
+
+        # One column per embedding space, so a vector is written where the same
+        # model's vectors can be found again. `embedding_column_for` raises for
+        # an unknown space, which can only be a code error — and it is left to
+        # propagate rather than silently writing nowhere.
+        embedding_column = embedding_column_for(space) if space else None
 
         # A reprocess (or a retry after a partial commit) must not pile up
         # duplicate chunks: drop anything from a previous run first.
@@ -269,7 +307,9 @@ async def _process_document_impl(document_id: UUID) -> DocumentDB | None:
         # Bulk insert instead of per-chunk add()/flush: for large documents
         # this skips the unit-of-work machinery (identity map, dependency
         # tracking, per-object events) for thousands of rows. Order/indices
-        # are preserved via chunk_index; embedding is attached per chunk.
+        # are preserved via chunk_index; the vector goes to its space's column
+        # and `embedding_model` records which model produced it, so a later
+        # search only ever compares vectors from the same model.
         db.bulk_save_objects(
             [
                 DocumentChunk(
@@ -277,9 +317,11 @@ async def _process_document_impl(document_id: UUID) -> DocumentDB | None:
                     content=chunk.content,
                     chunk_index=chunk.chunk_index,
                     metadata_=chunk.metadata,
-                    embedding=embedding,
+                    **_vector_fields(chunk_embedding, embedding_column, model),
                 )
-                for chunk, embedding in zip(chunks, embeddings, strict=False)
+                for chunk, chunk_embedding in zip(
+                    chunks, embeddings, strict=False
+                )
             ]
         )
 
