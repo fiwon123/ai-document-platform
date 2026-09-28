@@ -20,7 +20,7 @@ PG_USER = os.getenv("POSTGRES_USER", "postgres")
 PG_PASSWORD = os.getenv("POSTGRES_PASSWORD", "mysecretpassword")
 
 # App modules read environment variables at import time:
-# - auth.py raises if SECRET_KEY is empty
+# - auth.py raises if SECRET_KEY is empty or is the published placeholder
 # - database/db.py builds the engine from POSTGRES_* vars
 # Configure everything before any `app.*` import.
 os.environ["POSTGRES_DB"] = TEST_DB_NAME
@@ -28,7 +28,11 @@ os.environ["POSTGRES_DB"] = TEST_DB_NAME
 # anymore); align it with the maintenance-connection password so the
 # suite runs without extra environment configuration.
 os.environ.setdefault("POSTGRES_PASSWORD", PG_PASSWORD)
-os.environ.setdefault("SECRET_KEY", "test-only-secret-key")
+# Forced, not setdefault: a developer shell that exports the project's
+# placeholder SECRET_KEY (the docker-compose default) would otherwise leak into
+# the suite and trip the startup guard in app/config.py, failing every test that
+# imports app.routes.auth. The suite must not depend on ambient configuration.
+os.environ["SECRET_KEY"] = "test-only-secret-key"
 # Keep the in-memory rate limiter from tripping during long test runs.
 os.environ.setdefault("RATE_LIMIT_REQUESTS", "10000")
 # httpx (TestClient) never sends Secure cookies over plain http:// — disable

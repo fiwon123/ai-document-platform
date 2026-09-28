@@ -10,6 +10,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 # Registers the operational gauges (worker heartbeat, stale documents, Redis
 # memory) that back the platform alerting rules.
 from . import system_metrics  # noqa: F401
+from .config import ensure_secret_key_acceptable
 from .errors import register_exception_handlers
 from .logging_config import setup_logging
 from .middleware import LoggingMiddleware, RateLimitMiddleware
@@ -68,6 +69,11 @@ def _validate_environment() -> None:
         raise RuntimeError(
             "Missing required environment variables: " + ", ".join(missing)
         )
+
+    # A present-but-published signing key is a vulnerability rather than a
+    # missing value, so it gets its own message: the operator has to choose a
+    # real key or acknowledge the placeholder explicitly (#524).
+    ensure_secret_key_acceptable(os.getenv("SECRET_KEY", ""))
 
     if os.getenv("MINIO_ACCESS_KEY", "minioadmin") == "minioadmin" or os.getenv(
         "MINIO_SECRET_KEY", "minioadmin"

@@ -460,7 +460,18 @@ Navigation rules:
 - `MINIO_BUCKET`: Bucket name (default: documents)
 - `MINIO_SECURE`: Use TLS for MinIO connections (default: false in dev)
 - `MINIO_REGION`: MinIO region (default: us-east-1)
-- `SECRET_KEY`: JWT signing key (required)
+- `SECRET_KEY`: JWT signing key (required). Startup **fails** if it is empty *or*
+  equal to a value this repository publishes (`PUBLISHED_SECRET_KEYS` in
+  `app/config.py`: the compose/kustomize default and the Helm chart default). A
+  committed signing key is not a secret — anyone who can read the repo can mint an
+  access token for any user id, and a forged token is never tracked server-side,
+  so it also defeats refresh rotation, logout and revocation. Staging was found
+  inheriting the base placeholder with no real secret injected (#524).
+- `ALLOW_PLACEHOLDER_SECRET_KEY`: set to `1`/`true`/`yes`/`on` to boot **anyway**
+  with a published signing key. Local development only — the dev sandbox and the
+  Kind dev overlay set it, staging and production must not. Truthy spelling
+  matters: anything else, including an empty value, is treated as "not
+  acknowledged"
 - `ALGORITHM`: JWT algorithm (default: HS256)
 - `ACCESS_TOKEN_EXPIRE_MINUTES`: Access-token expiration (default: 30)
 - `REFRESH_TOKEN_EXPIRE_DAYS`: Refresh-token expiration in days (default: 7)
@@ -679,6 +690,17 @@ when done; `make check` before every push; only `dev-up` requires opencode
   that go nowhere; the blog shows an empty state rather than fabricated posts
 - **Production deployment**: Multi-stage production Docker images,
   Kustomize overlays, and a standalone Helm chart for Kubernetes
+- **A committed signing key fails the boot, loudly**: `app/config.py` holds every
+  JWT signing key this repository publishes and refuses them at both the lifespan
+  gate and `app.routes.auth` import. It is a crash rather than a warning because a
+  known key does not merely expose storage on a network the operator still
+  controls (the MinIO default-credentials check, which stays a warning) — it lets
+  an unauthenticated caller authenticate as any user. The escape hatch is an
+  explicit opt-in rather than an environment sniff, because a guard that only
+  fires in "production-like" environments is bypassed by one variable, which is
+  the same mistake as trusting a header the client writes. The consequence is
+  deliberate: a staging install left with the base Secret now CrashLoops until a
+  real secret is provisioned (#524)
 
 ## Current implementation status
 

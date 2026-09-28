@@ -81,6 +81,11 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      # The SECRET_KEY default above is the placeholder committed to this repo,
+      # and the app refuses to boot on it (#524). This dev sandbox is the one
+      # place that is knowingly fine, so it acknowledges the risk explicitly
+      # rather than the check being weakened to accommodate it.
+      ALLOW_PLACEHOLDER_SECRET_KEY: ${ALLOW_PLACEHOLDER_SECRET_KEY:-1}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/${POSTGRES_DB:-mydb}
       # LLM provider passthrough. Values come from a gitignored root `.env` (or
       # the shell) with NO edit to this file — Compose reads the project `.env`
@@ -229,6 +234,11 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      # The SECRET_KEY default above is the placeholder committed to this repo,
+      # and the app refuses to boot on it (#524). This dev sandbox is the one
+      # place that is knowingly fine, so it acknowledges the risk explicitly
+      # rather than the check being weakened to accommodate it.
+      ALLOW_PLACEHOLDER_SECRET_KEY: ${ALLOW_PLACEHOLDER_SECRET_KEY:-1}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/${POSTGRES_DB:-mydb}
       # LLM provider passthrough — the worker generates embeddings, so without
       # these it can only ever do text-only search. Same contract and same
