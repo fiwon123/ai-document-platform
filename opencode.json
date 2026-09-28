@@ -45,7 +45,8 @@
         "task": {
           "*": "deny",
           "explore": "allow",
-          "reviewer": "allow"
+          "reviewer": "allow",
+          "visual": "allow"
         },
         "skill": {
           "*": "allow"
