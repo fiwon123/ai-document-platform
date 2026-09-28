@@ -124,6 +124,8 @@ LLM and Embedding APIs
 │   │   │   └── logging.py     # Request logging
 │   │   └── worker/            # Arq background processor
 │   │       └── __init__.py    # WorkerSettings + document pipeline (chunking, embeddings, thumbnails)
+│   ├── scripts/               # Operator CLIs (not part of the API surface)
+│   │   └── backfill_embeddings.py  # Re-embed chunks left unsearchable by migration 008
 │   ├── migrations/            # Alembic migrations
 │   │   ├── env.py             # Migration environment
 │   │   └── versions/          # Migration versions
@@ -513,6 +515,47 @@ Every vector is width-checked on the way out against the space's configured
 width, and refused loudly (`EmbeddingDimensionMismatch`, naming both widths) if
 it does not match — because the local column is unconstrained and a mixed-width
 column makes the *query* fail rather than the insert.
+
+### Chunks that are invisible to vector search
+
+Everything written before migration 008 has `embedding_model = NULL`, and a NULL
+row is **deliberately excluded from vector search** — a vector is only
+comparable with vectors from the same model, and relabelling an existing vector
+with the currently configured model would produce confident, wrong rankings
+rather than an error. So those documents are keyword-searchable only until they
+are re-embedded.
+
+`backend/scripts/backfill_embeddings.py` is the way back. It **recomputes** each
+vector from the chunk's `content` (the source of truth) and writes it together
+with the model that produced it, so it cannot be wrong about who wrote a vector.
+Attributing an existing vector to a new model is exactly the guess 008 refused,
+and the tool has no option to do it.
+
+```bash
+cd backend
+uv run python scripts/backfill_embeddings.py                    # dry run: the plan, no writes
+uv run python scripts/backfill_embeddings.py --limit 50 --apply  # write at most 50 chunks
+uv run python scripts/backfill_embeddings.py --apply            # write everything waiting
+```
+
+`--limit` bounds a **write** run; in a dry run it only reports what a bounded
+run would cover, because the plan is a count of the whole corpus rather than a
+selection from it.
+
+- **Dry run by default.** The work costs money, takes longer than a request, and
+  is not undone by anything except re-processing the documents.
+- **One space per run**, because the active space is resolved at import. Filling
+  the other space is a config change plus a second run.
+- **It refuses three things rather than writing them**: a row already holding
+  the other space's vector (`ck_document_chunks_single_embedding_space` forbids
+  it), a row with no text, and any run past a dimension mismatch (a config error
+  that would otherwise repeat on every page).
+- **Idempotent.** A second run is a no-op, not a relabel — so it is safe to
+  re-run after a fix.
+
+On a deployment that predates 008, run it once per space. It reports what it
+skipped, and a skipped row is still unsearchable by vector: re-upload or
+re-process that document.
 
 ## Development workflow
 

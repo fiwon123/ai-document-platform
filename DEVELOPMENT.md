@@ -634,3 +634,28 @@ make host-tools   # mise install — kind/kubectl/helm/kustomize/devspace (host)
 - Sandbox: `alembic upgrade head` runs automatically on `make dev-up`.
 - Host-native: `cd backend && uv run alembic upgrade head`.
 - New migrations: `cd backend && uv run alembic revision --autogenerate -m "..."`.
+
+## Re-embedding chunks left unsearchable by migration 008
+
+Migration 008 added `embedding_model` and left pre-existing rows NULL rather than
+guess which model wrote their vector — so those chunks are keyword-searchable
+only. If semantic search returns nothing from a database created before 008, this
+is why. Check the state first; the command reports a plan and writes nothing
+unless you pass `--apply`:
+
+```bash
+cd backend
+uv run python scripts/backfill_embeddings.py                    # dry run: the plan, no writes
+uv run python scripts/backfill_embeddings.py --limit 50 --apply  # write at most 50 chunks
+uv run python scripts/backfill_embeddings.py --apply            # write everything waiting
+```
+
+`--limit` bounds a **write** run. In a dry run it is reported but the plan still
+counts the whole corpus, so it is not a way to preview a subset.
+
+It recomputes each vector from the chunk's `content` rather than relabelling the
+existing one, so it cannot attribute a vector to a model that did not write it.
+It fills **one** space per run (whichever is active — a config change plus a
+second run covers the other), and a re-run is a no-op rather than a relabel, so
+it is safe to repeat. Skipped rows are reported and stay unsearchable by vector:
+re-upload or re-process those documents.
