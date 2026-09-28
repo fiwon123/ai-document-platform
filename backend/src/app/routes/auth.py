@@ -1,7 +1,9 @@
+import logging
 import os
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
@@ -22,6 +24,7 @@ from app.schemas.user import (
     TokenResponse,
     UserResponse,
 )
+from app.services.auth import RefreshOutcome, RefreshSessionService
 from app.services.user import UserService
 
 SECRET_KEY = os.getenv("SECRET_KEY", "")
@@ -31,11 +34,17 @@ ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
-# Refresh tokens live in an httpOnly cookie scoped to the refresh endpoint.
-# The browser never exposes them to JavaScript, and the cookie is only sent
-# back on /v1/auth/refresh — never on API or static requests.
+logger = logging.getLogger(__name__)
+
+# Refresh tokens live in an httpOnly cookie, so the browser never exposes them to
+# JavaScript, and it is only ever sent back to the auth routes below — never on
+# document, search or QA requests.
 REFRESH_COOKIE_NAME = "refresh_token"
-REFRESH_COOKIE_PATH = "/v1/auth/refresh"
+# Scoped to the auth routes, and *not* to /v1/auth/refresh alone: a browser sends
+# a cookie only to paths at or below its own, so the narrower scope meant
+# /v1/auth/logout never received the token and could not revoke the very thing it
+# was asked to revoke.
+REFRESH_COOKIE_PATH = "/v1/auth"
 REFRESH_COOKIE_SECURE = os.getenv("REFRESH_COOKIE_SECURE", "true").lower() in {
     "1",
     "true",
@@ -60,25 +69,43 @@ def create_access_token(user_id: str, username: str, role: str) -> str:
     return jwt.encode(encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def create_refresh_token(user_id: str, username: str, role: str) -> str:
+@dataclass(frozen=True)
+class IssuedRefreshToken:
+    """A refresh token plus the two claims the session store needs.
+
+    Returned rather than just the string because the `jti` has to be recorded at
+    the moment of issuance, and decoding the token back out to recover it would
+    make the caller verify a token it had just created.
+    """
+
+    token: str
+    jti: str
+    expires_at: datetime
+
+
+def create_refresh_token(user_id: str, username: str, role: str) -> IssuedRefreshToken:
     """Long-lived token (default 7 days) that can only mint new access tokens.
 
-    Includes a unique ``jti`` claim so every issuance is distinct — required
-    for rotation to be meaningful (a fresh token is never byte-identical to
-    the previous one) and ready for server-side revocation later.
+    The unique ``jti`` claim is what makes rotation enforceable: it is the primary
+    key of `refresh_sessions`, so the store can tell a spent token from the live
+    one. That is no longer aspirational — `RefreshSessionService` retires the row
+    on every refresh and refuses it afterwards.
     """
-    from uuid import uuid4
-
+    jti = uuid4().hex
     expire = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     encode = {
         "sub": username,
         "id": user_id,
         "role": role,
         "type": "refresh",
-        "jti": uuid4().hex,
+        "jti": jti,
         "exp": expire,
     }
-    return jwt.encode(encode, SECRET_KEY, algorithm=ALGORITHM)
+    return IssuedRefreshToken(
+        token=jwt.encode(encode, SECRET_KEY, algorithm=ALGORITHM),
+        jti=jti,
+        expires_at=expire,
+    )
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
@@ -148,6 +175,12 @@ def get_user_service(
     return UserService.from_session(db)
 
 
+def get_refresh_session_service(
+    db: Annotated[Session, Depends(get_db)],
+) -> RefreshSessionService:
+    return RefreshSessionService.from_session(db)
+
+
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=UserResponse)
 def register(
     request: CreateUserRequest,
@@ -172,13 +205,18 @@ def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     response: Response,
     service: Annotated[UserService, Depends(get_user_service)],
+    sessions: Annotated[RefreshSessionService, Depends(get_refresh_session_service)],
 ):
     """Exchange credentials for a Bearer access token.
 
     Accepts the OAuth2 password flow (``application/x-www-form-urlencoded``
-    with ``username``/``password``). On success, a rotation-ready refresh
-    token is set as an httpOnly cookie scoped to ``/v1/auth/refresh`` and an
-    access token plus the user profile are returned in the body.
+    with ``username``/``password``). On success, a refresh token is set as an
+    httpOnly cookie scoped to the auth routes and an access token plus the user
+    profile are returned in the body.
+
+    The session is recorded at issuance, not at first refresh, because the store
+    has to know a token exists before anything can be revoked. A login that
+    recorded nothing would hand out a token no logout could ever reach.
     """
     user = service.authenticate(form_data.username, form_data.password)
 
@@ -189,12 +227,13 @@ def login(
         role=role,
     )
 
-    refresh_token = create_refresh_token(
+    issued = create_refresh_token(
         user_id=str(user.id),
         username=user.username,
         role=role,
     )
-    _set_refresh_cookie(response, refresh_token)
+    sessions.record_issue(issued.jti, user.id, issued.expires_at)
+    _set_refresh_cookie(response, issued.token)
 
     return TokenResponse(
         access_token=token,
@@ -208,13 +247,23 @@ def refresh_access_token(
     request: Request,
     response: Response,
     service: Annotated[UserService, Depends(get_user_service)],
+    sessions: Annotated[RefreshSessionService, Depends(get_refresh_session_service)],
 ):
     """Exchange a valid refresh cookie for a fresh access token.
 
     Tokens are rotated on every refresh: a new refresh token (with a fresh
-    ``jti``) replaces the cookie value, so the old one can never be replayed
-    in subsequent refreshes. A stolen cookie is limited to the 7-day window
-    of a single token; server-side revocation can later key off the ``jti``.
+    ``jti``) replaces the cookie value and the presented ``jti`` is retired in
+    ``refresh_sessions``. Presenting a retired one is therefore refused with 401,
+    which is what makes rotation mean anything — previously a retired token was
+    accepted and minted another token, so rotation rotated nothing away from
+    anyone holding a copy.
+
+    A valid, unexpired token with no stored session is *adopted* rather than
+    refused, so deploying this does not sign out everyone who logged in before it.
+
+    A stolen token is bounded to its own 7-day window, but detecting the reuse
+    and revoking the rest of the session chain is a separate policy decision, not
+    something to assume here.
     """
     token = request.cookies.get(REFRESH_COOKIE_NAME)
     if not token:
@@ -228,7 +277,9 @@ def refresh_access_token(
         if payload.get("type") != "refresh":
             raise JWTError("Not a refresh token")
         user_id = UUID(payload.get("id", ""))
-    except (JWTError, ValueError, TypeError):
+        jti = str(payload.get("jti", ""))
+        expires_at = datetime.fromtimestamp(payload["exp"], tz=UTC)
+    except (JWTError, ValueError, TypeError, KeyError):
         # Garbage, expired, malformed, or abused token — clear the cookie
         # and re-auth from scratch.
         _clear_refresh_cookie(response)
@@ -236,6 +287,15 @@ def refresh_access_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         ) from None
+
+    if not jti:
+        # A token signed by this service always carries a `jti`, so its absence
+        # means the token did not come from here. Refuse rather than adopt.
+        _clear_refresh_cookie(response)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
 
     user = service.get_active_by_id(user_id)
     if user is None:
@@ -245,18 +305,30 @@ def refresh_access_token(
             detail="Invalid or expired refresh token",
         )
 
+    outcome = sessions.begin_refresh(jti, user.id, expires_at)
+    if outcome in (RefreshOutcome.REPLAY, RefreshOutcome.REVOKED):
+        # The client only ever holds the newest token, so a spent or revoked one
+        # arriving here means a copy is in circulation. Refuse and clear the
+        # cookie so the browser stops presenting it.
+        _clear_refresh_cookie(response)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token is no longer valid",
+        )
+
     role = user.role.value if user.role else "customer"
     access_token = create_access_token(
         user_id=str(user.id),
         username=user.username,
         role=role,
     )
-    new_refresh_token = create_refresh_token(
+    issued = create_refresh_token(
         user_id=str(user.id),
         username=user.username,
         role=role,
     )
-    _set_refresh_cookie(response, new_refresh_token)
+    sessions.record_issue(issued.jti, user.id, issued.expires_at)
+    _set_refresh_cookie(response, issued.token)
 
     return TokenResponse(
         access_token=access_token,
@@ -266,9 +338,45 @@ def refresh_access_token(
 
 
 @router.post("/logout", response_model=LogoutResponse)
-def logout(response: Response):
-    """Clear the httpOnly refresh cookie (client JS cannot read it)."""
+def logout(
+    request: Request,
+    response: Response,
+    sessions: Annotated[RefreshSessionService, Depends(get_refresh_session_service)],
+):
+    """Revoke the current refresh token and clear its cookie.
+
+    Clearing the cookie alone is not logging out: the token stays valid until it
+    expires, so anything holding a copy — a backup, a proxy log, a shared machine
+    that kept the value — could keep minting access tokens for the rest of its
+    7-day life. `AGENTS.md` documents this endpoint as "Revoke refresh token",
+    which is what it now does.
+
+    Only the *presented* session is revoked, which is the contract: logging out
+    of one browser should not sign the user out of their phone. Revoking every
+    session for a user is a separate, explicitly-named operation.
+
+    Idempotent by design. A missing, malformed, or already-revoked cookie is not
+    an error — there is nothing left to revoke, and refusing to acknowledge a
+    logout would leave the user unsure whether they are still signed in. An
+    unparseable token is still worth logging, since it is the only trace of it.
+    """
     _clear_refresh_cookie(response)
+
+    token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if not token:
+        return LogoutResponse(message="Logged out successfully")
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise JWTError("Not a refresh token")
+        jti = str(payload.get("jti", ""))
+    except (JWTError, ValueError, TypeError):
+        logger.info("Logout presented an unreadable refresh token; nothing to revoke")
+        return LogoutResponse(message="Logged out successfully")
+
+    if jti and sessions.revoke(jti):
+        logger.info("Revoked refresh session %s on logout", jti)
     return LogoutResponse(message="Logged out successfully")
 
 
