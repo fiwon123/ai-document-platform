@@ -705,18 +705,27 @@ describe("QAPage rate limits (#499)", () => {
   });
 
   it("describes an exhausted daily allowance as a spent day, not a busy minute", async () => {
+    // 15 hours is what the backend sends when the daily cap is hit mid-morning,
+    // so the notice is rendered from a real daily-cap refusal rather than a
+    // missing wait.
     mockedAsk.mockRejectedValue(
       new ApiError(429, "rate limited", {
         code: "provider_rate_limited",
         details: { provider: "groq", scope: "tokens", source: "app" },
+        retryAfterSeconds: 52200,
       }),
     );
 
     await askQuestion("q");
 
     const notice = document.querySelector(".rate-limit-notice");
-    expect(notice?.textContent).toMatch(/today/i);
-    expect(notice?.textContent).toMatch(/temporary/i);
+    // "daily" and "resets", not "today" and "temporary": a half-day wait is not
+    // a temporary blip, and what comes back is a fresh allowance, not a retry.
+    expect(notice?.textContent).toMatch(/daily/i);
+    expect(notice?.textContent).toMatch(/resets/i);
+    expect(notice?.textContent).toMatch(/15 hours/);
+    expect(notice?.textContent).not.toMatch(/temporary/i);
+    expect(notice?.textContent).not.toMatch(/groq/i);
   });
 
   it("handles the app's own per-IP limiter with the same notice", async () => {

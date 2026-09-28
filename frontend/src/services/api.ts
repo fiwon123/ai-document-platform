@@ -120,21 +120,50 @@ export function rateLimitFrom(error: unknown): RateLimitInfo | null {
 }
 
 /** A rate limit in words a user can act on, without an internal provider id. */
+/**
+ * A wait, phrased in the largest unit that still reads naturally.
+ *
+ * Seconds is only the right unit under a minute. The daily token cap sends a
+ * wait measured to the next UTC midnight, which is up to 24 hours: the original
+ * formatter rendered that as "Try again in about 52200 seconds", which is both
+ * unreadable and, paired with "this is temporary", self-contradictory.
+ *
+ * `lead` carries the verb, because the two callers mean different things by the
+ * same duration — a provider burst is something to retry, while an exhausted
+ * daily allowance is something to wait out.
+ */
+function formatWait(seconds: number | undefined, lead: string): string {
+  if (seconds === undefined) return "";
+  // A sub-minute wait is worth naming precisely; a fraction of a second is not.
+  const [value, unit] =
+    seconds < 60
+      ? [Math.max(1, Math.round(seconds)), "second"]
+      : seconds < 3600
+        ? [Math.round(seconds / 60), "minute"]
+        : [Math.round(seconds / 3600), "hour"];
+  return ` ${lead} in about ${value} ${unit}${value === 1 ? "" : "s"}.`;
+}
+
 export function describeRateLimit(info: RateLimitInfo): string {
   const wait = info.retryAfterSeconds;
-  const when = wait === undefined ? "" : ` Try again in about ${wait} second${wait === 1 ? "" : "s"}.`;
 
   // The provider id stays out of the user-facing text on purpose: "groq" is an
   // internal name, and showing it makes a temporary limit look like a broken
   // backend. The source distinguishes our ceiling from the provider's, which is
   // the part that tells a user whether waiting is likely to help.
   if (info.source === "provider") {
-    return `The AI provider's own rate limit was reached, so this is temporary.${when}`;
+    return `The AI provider's own rate limit was reached, so this is temporary.${formatWait(wait, "Try again")}`;
   }
   if (info.scope === "tokens" || info.scope === "tokens_per_day") {
-    return `The AI provider's request allowance for today is used up, so this is temporary.${when}`;
+    // Not "try again" and not "temporary": the daily allowance is spent, and what
+    // resets is the allowance when the day turns over. Calling a 14-hour wait
+    // temporary is the sentence contradicting itself.
+    // The base sentence already ends in a period, so the fallback for an unknown
+    // wait is nothing at all — "." here produced "is used up..".
+    const resets = formatWait(wait, "It resets");
+    return `The AI provider's daily request allowance is used up.${resets}`;
   }
-  return `Too many questions in a short time. Please wait a moment.${when}`;
+  return `Too many questions in a short time. Please wait a moment.${formatWait(wait, "Try again")}`;
 }
 
 type RequestOptions = RequestInit & { _retried?: boolean };
