@@ -1113,10 +1113,59 @@ describe("describeRateLimit", () => {
   });
 
   it("explains an exhausted daily token allowance differently from a busy minute", () => {
-    const text = describeRateLimit({ scope: "tokens", source: "app" });
+    const text = describeRateLimit({ scope: "tokens", source: "app", retryAfterSeconds: 52200 });
 
-    expect(text).toMatch(/today/i);
-    expect(text).toMatch(/temporary/i);
+    expect(text).toMatch(/daily/i);
+    expect(text).toMatch(/resets/i);
+  });
+
+  it.each([
+    [1800, /in about 30 minutes/],
+    [19800, /in about 6 hours/],
+    [52200, /in about 15 hours/],
+  ])("phrases a %i-second wait in a unit a person can read", (seconds, expected) => {
+    // The daily cap sends a wait measured to the next UTC midnight, so it is
+    // routinely hours. Rendered as seconds this reached users as "Try again in
+    // about 52200 seconds" — 14.5 hours, asked for in arithmetic.
+    const text = describeRateLimit({ scope: "tokens", source: "app", retryAfterSeconds: seconds });
+
+    expect(text).toMatch(expected);
+  });
+
+  it("never shows a raw second count once the wait is over a minute", () => {
+    // A guard rather than a case: the formatter went back to seconds once, and
+    // nothing caught it, because each duration was only tested at the one value
+    // the author happened to look at.
+    for (const seconds of [61, 300, 3599, 3600, 19800, 52200, 86399]) {
+      const text = describeRateLimit({ scope: "tokens", source: "app", retryAfterSeconds: seconds });
+      expect(text).not.toMatch(/\d{3,} seconds/);
+      expect(text).not.toMatch(/\bsecond\b/);
+    }
+  });
+
+  it("does not call a 14-hour wait temporary", () => {
+    // The original copy said "so this is temporary. Try again in about 52200
+    // seconds" — a half-day wait described as temporary, in seconds.
+    const text = describeRateLimit({ scope: "tokens", source: "app", retryAfterSeconds: 52200 });
+
+    expect(text).not.toMatch(/temporary/i);
+    expect(text).toMatch(/resets/i);
+  });
+
+  it("rounds rather than truncates, so a wait never reads as zero", () => {
+    expect(describeRateLimit({ retryAfterSeconds: 0.4 })).toMatch(/1 second/);
+    expect(describeRateLimit({ retryAfterSeconds: 59 })).toMatch(/59 seconds/);
+    expect(describeRateLimit({ retryAfterSeconds: 90 })).toMatch(/2 minutes/);
+    expect(describeRateLimit({ retryAfterSeconds: 3599 })).toMatch(/60 minutes/);
+  });
+
+  it("uses the singular only when the value really is one", () => {
+    expect(describeRateLimit({ retryAfterSeconds: 1 })).toMatch(/1 second\./);
+    expect(describeRateLimit({ retryAfterSeconds: 2 })).toMatch(/2 seconds\./);
+    expect(describeRateLimit({ retryAfterSeconds: 60 })).toMatch(/1 minute\./);
+    expect(describeRateLimit({ retryAfterSeconds: 120 })).toMatch(/2 minutes\./);
+    expect(describeRateLimit({ retryAfterSeconds: 3600 })).toMatch(/1 hour\./);
+    expect(describeRateLimit({ retryAfterSeconds: 7200 })).toMatch(/2 hours\./);
   });
 
   it("still reads as advice when the server sent no retry delay", () => {
@@ -1126,6 +1175,21 @@ describe("describeRateLimit", () => {
     // without the number.
     expect(text).not.toMatch(/undefined|NaN/);
     expect(text).not.toMatch(/second\b/);
+  });
+
+  it.each<[Parameters<typeof describeRateLimit>[0]]>([
+    [{ source: "provider" }],
+    [{ source: "app", scope: "minute" }],
+    [{ source: "app", scope: "tokens" }],
+  ])("stays a clean sentence with no wait to report (%#)", (info) => {
+    // The daily branch once appended "." to a sentence that already ended in
+    // one, giving users "is used up.." — an error the previous test could not
+    // see, because it only ever supplied a wait.
+    const text = describeRateLimit(info);
+
+    expect(text).toMatch(/\.$/);
+    expect(text).not.toMatch(/\.\./);
+    expect(text).not.toMatch(/\s$/);
   });
 
   it("uses the singular for a one-second wait", () => {
