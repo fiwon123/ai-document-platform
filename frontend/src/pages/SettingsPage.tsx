@@ -9,10 +9,19 @@ import { Spinner } from "../components/Spinner";
 const MODEL_STORAGE_KEY = "askdocs-model";
 const API_KEY_STORAGE_KEY = "askdocs-api-key";
 
-/** Shown when the models endpoint is unavailable so the page never breaks. */
+/**
+ * Shown when the models endpoint is unavailable so the page never breaks.
+ *
+ * `free` must only contain models that are genuinely usable without paying,
+ * matching the backend's own `tier: "free"` classification. It used to list
+ * `gpt-4o-mini` here, which the backend deliberately reclassifies as paid
+ * because it bills per token — so the offline fallback offered, under a "free"
+ * heading, the one option that costs the operator money. `gpt-oss-120b` is the
+ * free-tier Groq model and the backend's own free-first default.
+ */
 const DEFAULT_MODELS: QAModels = {
-  free: ["gpt-4o-mini"],
-  paid: ["gpt-4o", "gpt-4", "gpt-4-turbo"],
+  free: ["openai/gpt-oss-120b", "llama-3.3-70b-versatile"],
+  paid: ["gpt-4o-mini", "gpt-4o", "gpt-4", "gpt-4-turbo"],
 };
 
 interface Notice {
@@ -78,7 +87,13 @@ export function SettingsPage() {
     ? (modelsQuery.error as Error).message
     : null;
   const [selectedModel, setSelectedModel] = useState<string>(
-    () => localStorage.getItem(MODEL_STORAGE_KEY) ?? DEFAULT_MODELS.free[0] ?? "gpt-4o-mini",
+    // Last resort only: DEFAULT_MODELS.free is never empty, so a save that
+    // points at a model the backend no longer offers simply falls back to the
+    // first free one rather than selecting nothing.
+    () =>
+      localStorage.getItem(MODEL_STORAGE_KEY) ??
+      DEFAULT_MODELS.free[0] ??
+      "gpt-4o-mini",
   );
   const [hasApiKey, setHasApiKey] = useState<boolean>(() =>
     Boolean(localStorage.getItem(API_KEY_STORAGE_KEY)),

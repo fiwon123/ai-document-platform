@@ -265,9 +265,15 @@ Backend reads from `backend/src/app/.env` (gitignored):
 `backend/src/app/.env` is **not** read inside the sandbox. LLM provider config
 comes from a **gitignored root `.env`** (or a shell export) instead, substituted
 into `${VAR:-...}` by Compose: `OPENAI_API_KEY`, `GROQ_API_KEY`, `QA_MODEL`,
-`OPENAI_MODEL`, `EMBEDDING_MODEL`, `LOCAL_LLM_ENABLED`, `LOCAL_LLM_BASE_URL`,
-`LOCAL_LLM_MODEL`, `OPENAI_BASE_URL`. See `DEVELOPMENT.md` → *LLM provider config
-in the sandbox*.
+`QA_MAX_TOKENS`, `OPENAI_MODEL`, `EMBEDDING_MODEL`, `LOCAL_LLM_ENABLED`,
+`LOCAL_LLM_BASE_URL`, `LOCAL_LLM_MODEL`, `OPENAI_BASE_URL`. See
+`DEVELOPMENT.md` → *LLM provider config in the sandbox*.
+
+Both services also map `host.docker.internal:host-gateway`, which is what lets the
+container reach a model server bound to the host (`LOCAL_LLM_BASE_URL` pointing at
+a host-side Ollama). Docker Desktop provides that name on its own; plain Linux
+Docker does not, and `backend/tests/test_compose_env.py` fails if the mapping is
+removed.
 
 Each Compose default is the application's own default on purpose: `load_dotenv()`
 does not override real environment variables, so an empty value passed from

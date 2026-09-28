@@ -139,6 +139,26 @@ config:
   ai:
     openaiModel: gpt-4
     embeddingModel: text-embedding-ada-002
+    # Default QA model. Empty means "let the application decide", which is
+    # free-first: a configured Groq or local provider wins, and a paid OpenAI
+    # model is only reached when nothing free is available. Set this to pin a
+    # specific model, e.g. openai/gpt-oss-120b.
+    qaModel: ""
+    # Answer length cap (#486). The application's own default is 1000; lower it
+    # for a CPU-only local model, where generation runs at a few tokens per
+    # second and the default turns a short answer into a multi-minute wait.
+    maxTokens: 1000
+    # Local OpenAI-compatible provider (Ollama) — the only path that needs no
+    # API key at all. Off by default, and *opt-in* rather than probed: enabling
+    # it states that a local model server is running, which avoids a network
+    # call on every request. baseUrl must be reachable *from the pod*; inside
+    # Kubernetes a pod's "localhost" is the pod itself, so this has to be a
+    # cluster IP or node IP (an Ollama Service), not 127.0.0.1. The dev sandbox
+    # equivalent is host.docker.internal — see DEVELOPMENT.md.
+    localLlm:
+      enabled: false
+      baseUrl: http://localhost:11434/v1
+      model: llama3.2:1b
   rateLimit:
     requests: "100"
     window: "60"

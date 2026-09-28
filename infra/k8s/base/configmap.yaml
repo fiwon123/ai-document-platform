@@ -31,6 +31,23 @@ data:
   # --- AI ---
   OPENAI_MODEL: "gpt-4"
   EMBEDDING_MODEL: "text-embedding-ada-002"
+  # Default QA model. Empty means "let the application decide", which is
+  # free-first: a configured Groq or local provider wins, and a paid OpenAI
+  # model is reached only when nothing free is available. Set to
+  # "openai/gpt-oss-120b" to pin Groq's best free-tier model explicitly.
+  QA_MODEL: ""
+  # Answer length cap. The application's own default is 1000; lower it for a
+  # CPU-only local model, where generation runs at a few tokens per second.
+  QA_MAX_TOKENS: "1000"
+  # Local OpenAI-compatible provider (Ollama) — the only path needing no API
+  # key. Off by default and opt-in rather than probed, so a request never pays
+  # for a health check against an endpoint that may not exist.
+  # A pod's "localhost" is the pod itself, so baseUrl must be a cluster IP or
+  # a node IP (e.g. an Ollama Service), NOT 127.0.0.1. Same values as the Helm
+  # chart's config.ai.localLlm.*.
+  LOCAL_LLM_ENABLED: ""
+  LOCAL_LLM_BASE_URL: "http://localhost:11434/v1"
+  LOCAL_LLM_MODEL: "llama3.2:1b"
   # --- Logging ---
   # Structured JSON access/service logs for Loki/Promtail (request-id,
   # method, path, status_code, process_time are emitted as JSON fields).

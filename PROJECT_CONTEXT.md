@@ -378,7 +378,17 @@ Navigation rules:
 - `REFRESH_TOKEN_EXPIRE_DAYS`: Refresh-token expiration in days (default: 7)
 - `REFRESH_COOKIE_SECURE`: Send refresh cookie only over HTTPS (default: true)
 - `OPENAI_API_KEY`: OpenAI API key (for embeddings/LLM)
-- `GROQ_API_KEY`: Groq API key (alternative LLM provider for Q&A)
+- `GROQ_API_KEY`: Groq API key (alternative LLM provider for Q&A). The free
+  tier's default QA model is `openai/gpt-oss-120b`; Groq serves chat only, so
+  `OPENAI_API_KEY` is still required for semantic search
+- `LOCAL_LLM_ENABLED`, `LOCAL_LLM_BASE_URL` (default:
+  http://localhost:11434/v1), `LOCAL_LLM_MODEL` (default: llama3.2:1b): opt-in
+  keyless provider for a local OpenAI-compatible server (Ollama)
+- `QA_MODEL`: pin the default QA model. Unset, the resolver is free-first and
+  takes the first free model whose provider is configured — Groq before local,
+  and a paid OpenAI model only when nothing free is available
+- `QA_MAX_TOKENS`: answer length cap (default: 1000). Lower it for a CPU-only
+  local model, where generation runs at a few tokens per second
 - `OPENAI_MODEL`: Model name (default: gpt-4). A blank value means "not
   chosen" and a value naming no known model is ignored; both fall back to the
   cheapest available model rather than failing the request
@@ -399,12 +409,8 @@ sets the `dev`/`worker` environment inline and passes the LLM provider
 variables through. Supply them from a gitignored root `.env` (Compose reads it
 for `${VAR:-...}` substitution); no compose edit is needed:
 - `OPENAI_API_KEY`, `GROQ_API_KEY`: provider credentials (both optional)
-- `QA_MODEL`: pin the default QA model; otherwise the free-first resolver picks
-- `OPENAI_MODEL` (default: gpt-4), `EMBEDDING_MODEL` (default:
-  text-embedding-ada-002)
-- `LOCAL_LLM_ENABLED`, `LOCAL_LLM_BASE_URL` (default:
-  http://localhost:11434/v1), `LOCAL_LLM_MODEL` (default: llama3.2:1b) — opt-in
-  keyless provider for a local OpenAI-compatible server
+- `LOCAL_LLM_ENABLED`, `LOCAL_LLM_BASE_URL`, `LOCAL_LLM_MODEL`, `QA_MODEL`,
+  `QA_MAX_TOKENS` — see the backend list above
 - `OPENAI_BASE_URL`: the OpenAI SDK's own default, so it redirects **both**
   embeddings and the OpenAI QA provider (also the way to point at a local server
   or a test stub)
@@ -413,6 +419,22 @@ Each Compose default equals the application's `os.getenv` fallback, because
 `load_dotenv()` does not override real environment variables — an empty value
 from Compose would otherwise beat both `.env` and the code default. Variables are
 read at process start, so a config change needs `make dev-restart`.
+
+To reach a model server on the **host** from the sandbox, set
+`LOCAL_LLM_BASE_URL=http://host.docker.internal:11434/v1`. Both services map that
+name via `extra_hosts: host.docker.internal:host-gateway`, because Docker Desktop
+injects it but plain Linux Docker does not, and `tests/test_compose_env.py` fails
+if the mapping is dropped. The host daemon must also be listening on a
+non-loopback address (`OLLAMA_HOST=0.0.0.0:11434` in Ollama's systemd drop-in —
+it is a daemon setting, not an app variable). Full walkthrough, including the
+`OLLAMA_NUM_THREADS` / `OLLAMA_ORIGINS` notes and measured CPU throughput, in
+`DEVELOPMENT.md` → *Using a local model (Ollama)*.
+
+The same variables are settable in Kubernetes — `QA_MODEL`, `QA_MAX_TOKENS` and
+the three `LOCAL_LLM_*` values are present in both the Helm configmap
+(`config.ai.*`) and the Kustomize base, so the keyless local path is not
+sandbox-only. A pod's `localhost` is the pod itself, so `LOCAL_LLM_BASE_URL`
+there must name a Service or node IP rather than `127.0.0.1`.
 
 ## Development workflow
 
@@ -454,6 +476,16 @@ when done; `make check` before every push; only `dev-up` requires opencode
   per-user cache versions, so document changes invalidate stale cache entries
 - **PDF thumbnails**: First-page previews rendered with PyMuPDF in the background
   worker (best-effort; `has_thumbnail` flag on the document)
+- **Free-first model resolution**: `resolve_default_model` takes the first *free*
+  registry entry whose provider is configured, so a paid model is never the
+  default while a free one is available. Groq precedes local, because a hosted
+  model answers better than a CPU-only one. **Registry order is the default**, so
+  a new free model is inserted where it should win from, never appended.
+- **Tiers mean "can this cost money"**: `tier: "free"` is usable without paying,
+  not merely cheap — `gpt-4o-mini` bills per token and is therefore `paid`
+  despite the name. The frontend's offline model fallback follows the same
+  classification, so an unreachable `/v1/qa/models` cannot offer a paid model as
+  the free choice
 - **Marketing content in one module**: `frontend/src/content/marketing.ts` holds
   the route list, navigation, pricing, and copy, so the header, footer, hub
   pages, and the routing test cannot disagree about what exists
@@ -490,6 +522,9 @@ when done; `make check` before every push; only `dev-up` requires opencode
 - [x] Search result export (CSV, formula-injection safe; JSON)
 - [x] Question answering with LLM (OpenAI or Groq, optional bring-your-own-key
   via per-request `api_key`; per-user answer caching)
+- [x] Free and local LLM providers (Groq `openai/gpt-oss-120b` as the free-first
+  default, keyless Ollama reachable from the sandbox and from Kubernetes, and a
+  `QA_MAX_TOKENS` cap for CPU-only local models)
 - [x] PDF first-page thumbnails (PyMuPDF, best-effort in the worker)
 - [x] Semantic caching (QA answers, dashboard statistics)
 - [x] Semantic search result caching (per-user cache versions; search results and

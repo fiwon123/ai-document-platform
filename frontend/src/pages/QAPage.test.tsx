@@ -393,9 +393,11 @@ describe("QAPage", () => {
   });
 
   it("renders the model picker with free and paid models", async () => {
+    // Mirrors the backend registry's tiering: gpt-4o-mini is paid, so it must
+    // not appear in the free group.
     mockedGetModels.mockResolvedValue({
-      free: ["gpt-4o-mini", "llama-3.3-70b-versatile"],
-      paid: ["gpt-4o"],
+      free: ["openai/gpt-oss-120b", "llama-3.3-70b-versatile"],
+      paid: ["gpt-4o-mini", "gpt-4o"],
     });
 
     renderWithClient(<QAPage />);
@@ -403,10 +405,13 @@ describe("QAPage", () => {
 
     const select = screen.getByLabelText("Model");
     expect(
-      screen.getByRole("option", { name: "gpt-4o-mini" }),
+      screen.getByRole("option", { name: "openai/gpt-oss-120b" }),
     ).toBeTruthy();
     expect(
       screen.getByRole("option", { name: "llama-3.3-70b-versatile" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: "gpt-4o-mini" }),
     ).toBeTruthy();
     expect(screen.getByRole("option", { name: "gpt-4o" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "Provider default" })).toBeTruthy();

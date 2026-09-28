@@ -12,6 +12,10 @@ environment variables, so a value passed by Compose wins over both
 empty model id sent to the embeddings API on every call. So each default here is
 the application's own default, which makes "unset" mean in the sandbox exactly
 what it means in the host-native loop.
+
+``#486`` added the ``extra_hosts`` guards at the bottom: passing the *variables*
+through is worthless if the container cannot resolve the hostname the
+documentation tells operators to point them at.
 """
 
 import json
@@ -35,6 +39,7 @@ PROVIDER_VARS = (
     "GROQ_API_KEY",
     "QA_MODEL",
     "LOCAL_LLM_ENABLED",
+    "QA_MAX_TOKENS",
     "OPENAI_MODEL",
     "EMBEDDING_MODEL",
     "LOCAL_LLM_BASE_URL",
@@ -67,6 +72,7 @@ print(json.dumps({
     "OPENAI_MODEL": qa.OPENAI_MODEL,
     "LOCAL_LLM_BASE_URL": qa.LOCAL_LLM_BASE_URL,
     "LOCAL_LLM_MODEL": qa.LOCAL_LLM_MODEL,
+    "QA_MAX_TOKENS": str(qa.QA_MAX_TOKENS),
     "EMBEDDING_MODEL": embedding.EMBEDDING_MODEL,
 }))
 """
@@ -84,7 +90,7 @@ def app_defaults() -> dict:
         k: v
         for k, v in os.environ.items()
         if k not in ("OPENAI_MODEL", "LOCAL_LLM_BASE_URL", "LOCAL_LLM_MODEL",
-                     "EMBEDDING_MODEL")
+                     "QA_MAX_TOKENS", "EMBEDDING_MODEL")
     }
     # S603: the command is a literal argv list built here, with no shell and
     # no external input — sys.executable, -c, and a constant script.
@@ -172,3 +178,37 @@ def test_no_provider_value_looks_like_a_secret(compose):
             assert not secretish.search(str(value)), (
                 f"{service}.{name} looks like it contains a credential: {value!r}"
             )
+
+
+def test_both_services_can_reach_a_host_side_ollama(compose):
+    """``host.docker.internal`` must resolve inside the sandbox (#486).
+
+    Docker Desktop injects this name automatically; plain Linux Docker does not.
+    Without the mapping the documented ``LOCAL_LLM_BASE_URL`` of
+    ``http://host.docker.internal:11434/v1`` fails with "Could not resolve host"
+    and the local provider is unusable — the failure is silent, because the QA
+    layer then simply answers from another provider.
+
+    ``host-gateway`` (not a literal IP) is required, because the bridge gateway
+    differs between hosts and the daemon may be bound to a different one.
+    """
+    for service in ("dev", "worker"):
+        extra_hosts = compose["services"][service].get("extra_hosts") or []
+        assert "host.docker.internal:host-gateway" in extra_hosts, (
+            f"{service} cannot resolve host.docker.internal, so a host-side "
+            f"Ollama is unreachable (extra_hosts={extra_hosts!r}). Add "
+            "'host.docker.internal:host-gateway' — DEVELOPMENT.md documents "
+            "that name as the way to reach a local model."
+        )
+
+
+def test_no_service_maps_host_docker_internal_to_a_hardcoded_ip(compose):
+    """The gateway must stay dynamic, not pinned to one machine's bridge."""
+    for service, config in compose["services"].items():
+        for mapping in config.get("extra_hosts") or []:
+            host, _, target = str(mapping).partition(":")
+            if host == "host.docker.internal":
+                assert target == "host-gateway", (
+                    f"{service} pins host.docker.internal to {target!r}; use "
+                    "'host-gateway' so this works on any host."
+                )
