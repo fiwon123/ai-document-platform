@@ -82,7 +82,13 @@ class TestStatisticsEndpoint:
     def test_only_counts_own_documents(self, client, auth_headers, db_session):
         owner_id = _current_user_id(client, auth_headers)
         _seed_doc(db_session, owner_id, DocumentStatus.READY)
-        _seed_doc(db_session, uuid4(), DocumentStatus.READY)  # stranger's doc
+        # A real second account, not just a random UUID: since migration 009 a
+        # document must belong to an existing user, so a document "owned by
+        # nobody" is no longer constructible. Seeding one would have tested
+        # owner scoping against a row no owner scoping could match, which is a
+        # weaker claim than the one this test is named for.
+        stranger = _seed_other_user(db_session)
+        _seed_doc(db_session, stranger.id, DocumentStatus.READY)
 
         body = client.get("/v1/statistics/me", headers=auth_headers).json()
 
@@ -91,6 +97,19 @@ class TestStatisticsEndpoint:
     def test_requires_authentication(self, client):
         resp = client.get("/v1/statistics/me")
         assert resp.status_code == 401
+
+
+def _seed_other_user(db_session) -> UserDB:
+    """Create a second, unrelated account to own rows in isolation tests."""
+    other = UserDB(
+        username=f"stranger_{uuid.uuid4().hex[:8]}",
+        hashed_password="x",  # noqa: S106
+        role=Role.customer,
+    )
+    db_session.add(other)
+    db_session.commit()
+    db_session.refresh(other)
+    return other
 
 
 def _seed_admin(db_session) -> UserDB:
