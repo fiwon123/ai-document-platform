@@ -139,9 +139,9 @@ playwright screenshot --viewport-size=390,844 --full-page <url> /tmp/opencode/mo
 
 - The agent runs **inside** the dev container, so `localhost:5173` is the app and
   the capture path is readable directly — no `docker compose cp`.
-- `scripts/audit.mjs` (the multi-route audit) is currently broken in this
-  container: it resolves a Playwright wanting browser revision 1194 while the
-  image ships 1243, so it fails at launch (#529). Use the CLI.
+- `scripts/audit.mjs` (the multi-route audit) is the objective layer: `--gate` to
+  fail on a new contrast/overflow/unlabelled/landmark/page-error finding. Its
+  first log line names the Playwright and chromium revision it resolved (#529).
 - Animation captures are **WebM, not GIF** — the image's ffmpeg has no GIF muxer.
 - Delegate the looking to the `visual` subagent, and act on what it reports.
 - **Check both themes.** A change verified only in light mode is unverified.

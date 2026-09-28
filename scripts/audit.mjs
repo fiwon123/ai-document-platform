@@ -74,6 +74,12 @@ import {
   planComparison,
 } from "./audit-pixels.mjs";
 import {
+  BROWSERS_ROOT,
+  installedBrowsers,
+  launchFailure,
+  resolvePlaywright,
+} from "./audit-playwright.mjs";
+import {
   buildAttrWaitArgs,
   checkClassExpectation,
   describeSkip,
@@ -85,39 +91,25 @@ import {
 // Playwright resolution
 //
 // Playwright is installed globally in the dev image and is deliberately NOT a
-// project dependency (the project uses Vitest; this is a one-off tool). So try a
-// bare import first, then fall back to `npm root -g` — resolving that at runtime
-// rather than hardcoding a path, because the image installs several Node
-// versions side by side (`22`, `22.23.3`, `latest`, `lts`, ...).
+// project dependency (the project uses Vitest; this is a one-off tool), so the
+// image's baked browsers belong to that global install. What used to go wrong:
+// `import("playwright")` resolved an *undeclared* leftover in
+// `scripts/node_modules` whose browser revision the image does not have, the
+// import succeeded anyway, and the audit died at launch with a raw Playwright
+// banner. The resolution rule (prefer a local install, but only accept one whose
+// browser is on disk, and name the versions and revisions when none is) lives in
+// `audit-playwright.mjs` so it can be tested without a browser — see #529.
 // ─────────────────────────────────────────────────────────────────────────────
 async function loadPlaywright() {
-  try {
-    return await import("playwright");
-  } catch {
-    /* fall through to the global install */
-  }
-  let globalRoot;
-  try {
-    globalRoot = execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
-  } catch (err) {
-    throw new Error(
-      "Playwright not found, and `npm root -g` failed. Run this inside the dev " +
-        `container (docker compose exec dev node scripts/audit.mjs). (${err.message})`,
-    );
-  }
-  try {
-    return await import(path.join(globalRoot, "playwright", "index.mjs"));
-  } catch (err) {
-    try {
-      return await import(path.join(globalRoot, "playwright"));
-    } catch {
-      throw new Error(
-        `Could not import Playwright from ${globalRoot}. ` +
-          "The dev image ships it globally; rebuild with `make dev-build`. " +
-          `(${err.message})`,
-      );
-    }
-  }
+  return resolvePlaywright({
+    importModule: (specifier) => import(specifier),
+    // A thunk, not a value: `npm root -g` is only needed if the local import
+    // turns out to be unusable, and its failure is not fatal on its own.
+    globalRoot: () => execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim(),
+    existsSync: (p) => fs.existsSync(p),
+    readFileSync: (p, encoding) => fs.readFileSync(p, encoding),
+    readdirSync: (dir) => fs.readdirSync(dir),
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2239,7 +2231,9 @@ async function main() {
     throw new Error("--gate cannot be combined with --only: the baseline describes a full pass (see --help)");
   }
 
-  const { chromium } = await loadPlaywright();
+  const playwright = await loadPlaywright();
+  const { chromium } = playwright;
+  log(`playwright       v${playwright.version ?? "?"} (${playwright.source}, chromium-${playwright.revision ?? "?"})`);
 
   // Retention first: prune before writing, so the budget applies to this run only.
   // The new run directory has not been created yet, so pruning to `keepRuns`
@@ -2269,7 +2263,16 @@ async function main() {
   }
 
   // Backend availability decides whether authenticated routes exist at all.
-  audit.browser = await chromium.launch({ headless: !opts.headed });
+  // The preflight in resolvePlaywright() checks the full chromium build; a launch
+  // can still pick the headless shell, so a failure here is re-raised as the same
+  // revision diagnosis instead of a raw Playwright banner over the run's output.
+  try {
+    audit.browser = await chromium.launch({ headless: !opts.headed });
+  } catch (err) {
+    throw launchFailure(playwright, err, {
+      baked: installedBrowsers(BROWSERS_ROOT, (dir) => fs.readdirSync(dir)),
+    });
+  }
   try {
     const health = await fetch(`${BASE_URL}/v1/health`).catch(() => null);
     const backendUp = health && health.status < 500;

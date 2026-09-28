@@ -46,11 +46,11 @@ or delegated by the build agent through the Task tool for a verification step.
    container, so `localhost:5173` is the app and no `docker compose exec` is
    needed.
 
-   `node scripts/audit.mjs` (the multi-route audit) is **currently broken in this
-   container**: it resolves a Playwright that wants browser revision 1194 while
-   the image ships 1243, so it fails at launch. Do not spend a turn on it —
-   capture pages with the CLI instead, and take dark and light yourself so both
-   themes are always covered.
+   `node scripts/audit.mjs` (the multi-route audit) drives the same browser and is
+   the objective layer — use it for a full pass, and `--gate` to fail on a new
+   contrast/overflow/unlabelled/landmark/page-error finding. It reports the
+   Playwright and chromium revision it resolved on its first line, so a capture
+   run that silently used the wrong browser is visible in the log.
 
    Video/animation captures are **WebM, not GIF** — the image's ffmpeg is
    Playwright's screencast build and has no GIF muxer. Write a short script with

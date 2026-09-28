@@ -104,9 +104,10 @@ playwright screenshot --viewport-size=390,844 --full-page http://localhost:5173/
 fetch. The agent runs inside the container, so `localhost:5173` is the app.
 
 The multi-route audit (`node scripts/audit.mjs`, with `--gate`,
-`--pixel-baseline=DIR`, `--only=`, `--video-themes=`) is **broken in this
-container** — a Playwright/browser revision mismatch (#529) — so it cannot be
-relied on until that is fixed.
+`--pixel-baseline=DIR`, `--only=`, `--video-themes=`) drives the same baked
+Chromium. Its first log line names the Playwright version, the install it came
+from and the chromium revision — check it when a capture looks wrong, because
+that is what a browser mismatch looks like from the outside (#529).
 
 Animation capture is **WebM, not GIF**: the image's ffmpeg is Playwright's
 screencast build and has no GIF muxer. For motion, write a short script using
@@ -124,7 +125,7 @@ where the agent runs, so the path is readable as-is, with no `docker compose cp`
 
 The audit's `--gate` is the objective layer: contrast ratios, page errors,
 landmarks, overflow, unlabelled controls. It is deterministic and it is a real
-CI signal — once #529 unbreaks the audit.
+CI signal.
 
 The visual read is the semantic layer: is this page actually *usable and
 correct-looking*? It catches what no signal encodes.
