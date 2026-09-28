@@ -184,6 +184,27 @@ moderate replicas and smaller resource limits, so a production-like deploy
 can be validated before going live. Hostnames/issuers are placeholders
 (`staging.example.com`, `ops@example.com`) — replace before use.
 
+### Staging needs its own JWT signing key
+
+Unlike production, the staging overlay does **not** replace the base
+`app-secrets` Secret: it includes only the base, the cert-manager resources
+and the ingress, so `SECRET_KEY` is still the value committed in
+`infra/k8s/base/secret.yaml` (`your-secret-key-change-in-production`).
+
+Since #524 the backend refuses to start on any signing key this repository
+publishes, so **staging will CrashLoop until a real secret is injected** —
+that is the intended fail-closed behaviour, not a regression. Anyone who
+could read this repository could otherwise mint a valid access token for any
+staging user id.
+
+To bring it up, add a real secret to the staging overlay (an `ExternalSecret`
+mirroring the production one, or a `secretGenerator`/patch setting `SECRET_KEY`
+to a generated value). Do **not** reach for `ALLOW_PLACEHOLDER_SECRET_KEY`:
+only `infra/k8s/overlays/dev` sets it, and
+`backend/tests/test_published_key_deployment.py` fails if staging or production
+ever does. The Helm chart is covered by the same guard — a chart install left at
+`secrets.jwtSecretKey: "change-me-jwt-secret"` also refuses to boot.
+
 ## End-to-end smoke test (Kind)
 
 `infra/scripts/smoke-test.sh` runs the full stack on a Kind cluster (host or

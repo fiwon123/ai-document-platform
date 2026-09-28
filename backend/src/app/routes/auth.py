@@ -17,6 +17,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
+from app.config import ensure_secret_key_acceptable
 from app.database.db import get_db
 from app.schemas.user import (
     CreateUserRequest,
@@ -27,9 +28,12 @@ from app.schemas.user import (
 from app.services.auth import RefreshOutcome, RefreshSessionService
 from app.services.user import UserService
 
+# Guarded at import time as well as in the startup lifespan: this module can be
+# imported without the app ever starting (a script, a test, the worker's import
+# chain), and it signs and verifies every token it touches. See app.config for
+# why the rule is defined there rather than duplicated here.
+ensure_secret_key_acceptable(os.getenv("SECRET_KEY", ""))
 SECRET_KEY = os.getenv("SECRET_KEY", "")
-if not SECRET_KEY:
-    raise RuntimeError("SECRET_KEY environment variable must be set")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))

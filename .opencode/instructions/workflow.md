@@ -124,6 +124,35 @@ Post these comments automatically — no user prompting required:
 - Verify no regressions before pushing
 - CI only validates on `dev` → `main` PRs — local testing is your gate
 
+#### 4b. Visual verification (anything that changes what a user sees)
+
+Tests and numbers do not catch a page that renders wrong. For any change to a
+page, component, style, colour, copy or responsive behaviour, capture the real
+rendering and **look at it** before opening the PR. This is a multimodal agent
+(`visual`, `opencode/mimo-v2.6-flash-free`), so looking is a real step.
+
+```bash
+playwright screenshot --full-page <url> /tmp/opencode/shot.png
+playwright screenshot --color-scheme=dark --full-page <url> /tmp/opencode/dark.png
+playwright screenshot --viewport-size=390,844 --full-page <url> /tmp/opencode/mobile.png
+```
+
+- The agent runs **inside** the dev container, so `localhost:5173` is the app and
+  the capture path is readable directly — no `docker compose cp`.
+- `scripts/audit.mjs` (the multi-route audit) is currently broken in this
+  container: it resolves a Playwright wanting browser revision 1194 while the
+  image ships 1243, so it fails at launch (#529). Use the CLI.
+- Animation captures are **WebM, not GIF** — the image's ffmpeg has no GIF muxer.
+- Delegate the looking to the `visual` subagent, and act on what it reports.
+- **Check both themes.** A change verified only in light mode is unverified.
+- Re-capture after a fix. Do not report a visual fix on the strength of the edit.
+- A pixel-diff mismatch is a reason to look, not proof of a bug: captures vary by
+  a sub-pixel band (#485) and a baseline is only comparable against the machine
+  that produced it. The audit's `--gate` signals (contrast, page-errors, skips,
+  overflow, unlabelled, landmarks) are the objective layer; the visual read is
+  the semantic one. Use both.
+- Details and rationale: `.opencode/instructions/testing.md` → "Visual checks".
+
 ### 5. Push & PR (feature branch → dev)
 
 ```bash

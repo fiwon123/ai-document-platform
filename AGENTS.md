@@ -284,6 +284,16 @@ Compose beats both `backend/src/app/.env` and the `os.getenv` fallback
 (`EMBEDDING_MODEL=""` would 400 on every embeddings call). `backend/tests/test_compose_env.py`
 fails if the two lists drift apart.
 
+One Compose default deliberately is not the application default:
+`ALLOW_PLACEHOLDER_SECRET_KEY: ${ALLOW_PLACEHOLDER_SECRET_KEY:-1}` on the `dev`
+and `worker` services. The app refuses to start on the signing key committed to
+this repository (#524), so the dev sandbox — the one environment where a
+published key is knowingly fine — acknowledges it explicitly instead of the check
+being weakened to accommodate it. It is set in no other shipped config; staging
+inherits the same base Secret and must supply a real key.
+`backend/tests/test_published_key_deployment.py` pins which environments set it,
+and that every key published anywhere in the repo is one the guard refuses.
+
 ## Database Migrations
 
 Alembic manages database schema changes:
