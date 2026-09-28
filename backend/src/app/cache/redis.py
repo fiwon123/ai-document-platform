@@ -67,5 +67,29 @@ class RedisClient:
         """Atomically increment a counter; used for cache versioning."""
         return self.client.incr(key)
 
+    def increment_by(self, key: str, amount: int) -> int:
+        """Atomically add ``amount`` to a counter and return the new value.
+
+        One round trip and one server-side operation, so two concurrent callers
+        cannot both read a value and write back a lossy sum. Used by the
+        provider token budget, where losing a concurrent increment would
+        under-count the day's usage and quietly lift the ceiling.
+        """
+        if amount == 0:
+            return int(self.client.get(key) or 0)
+        return int(self.client.incrby(key, amount))
+
+    def decrement(self, key: str, amount: int = 1) -> int:
+        """Atomically subtract ``amount``, returning the new value.
+
+        Lets a refused caller hand back a slot it reserved, so being turned
+        away does not consume quota that a later request could have used.
+        """
+        return int(self.client.decrby(key, amount))
+
+    def expire(self, key: str, seconds: int) -> bool:
+        """Set a TTL on an existing key."""
+        return self.client.expire(key, seconds) > 0
+
 
 redis_client = RedisClient()

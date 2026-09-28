@@ -40,6 +40,9 @@ PROVIDER_VARS = (
     "QA_MODEL",
     "LOCAL_LLM_ENABLED",
     "QA_MAX_TOKENS",
+    "GROQ_REQUESTS_PER_MINUTE",
+    "GROQ_TOKENS_PER_DAY",
+    "PROVIDER_QUOTA_ENABLED",
     "OPENAI_MODEL",
     "EMBEDDING_MODEL",
     # The two embedding spaces' widths, and the local space's model. These are
@@ -73,13 +76,15 @@ EMPTY_DEFAULT_VARS = (
 # to inherit. Run in a subprocess because the constants are import-time.
 _APP_DEFAULTS = """
 import json
-from app.services import embedding, qa
+from app.services import embedding, provider_quota as quota, qa
 
 print(json.dumps({
     "OPENAI_MODEL": qa.OPENAI_MODEL,
     "LOCAL_LLM_BASE_URL": qa.LOCAL_LLM_BASE_URL,
     "LOCAL_LLM_MODEL": qa.LOCAL_LLM_MODEL,
     "QA_MAX_TOKENS": str(qa.QA_MAX_TOKENS),
+    "GROQ_REQUESTS_PER_MINUTE": str(quota.DEFAULT_RPM),
+    "GROQ_TOKENS_PER_DAY": str(quota.DEFAULT_TOKENS_PER_DAY),
     "EMBEDDING_MODEL": embedding.EMBEDDING_MODEL,
     "EMBEDDING_DIMENSIONS": str(embedding.OPENAI_SPACE_CONFIG.dimensions),
     "LOCAL_EMBEDDING_MODEL": embedding.LOCAL_SPACE_CONFIG.model,
@@ -100,7 +105,9 @@ def app_defaults() -> dict:
         k: v
         for k, v in os.environ.items()
         if k not in ("OPENAI_MODEL", "LOCAL_LLM_BASE_URL", "LOCAL_LLM_MODEL",
-                     "QA_MAX_TOKENS", "EMBEDDING_MODEL", "EMBEDDING_DIMENSIONS",
+                     "QA_MAX_TOKENS", "GROQ_REQUESTS_PER_MINUTE",
+                     "GROQ_TOKENS_PER_DAY", "EMBEDDING_MODEL",
+                     "EMBEDDING_DIMENSIONS",
                      "LOCAL_EMBEDDING_MODEL", "LOCAL_EMBEDDING_DIMENSIONS")
     }
     # S603: the command is a literal argv list built here, with no shell and

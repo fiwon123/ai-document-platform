@@ -14,6 +14,7 @@ from app.models.user import UserDB
 from app.repositories.search import SearchRepository
 from app.schemas.qa import QARequest, QAResponse
 from app.schemas.search import SearchMode, SearchResponse, SearchResult
+from app.services import qa as qa_module
 from app.services.qa import LOCAL_LLM_MODEL, QAService
 
 DIM = 1536
@@ -621,9 +622,10 @@ class TestQAServiceAnswerGeneration:
         )
         captured: dict = {}
 
-        def fake_openai_factory(api_key=None, base_url=None):
+        def fake_openai_factory(api_key=None, base_url=None, max_retries=None):
             captured["api_key"] = api_key
             captured["base_url"] = base_url
+            captured["max_retries"] = max_retries
             return fake_client
 
         monkeypatch.setattr(qa_module, "OpenAI", fake_openai_factory)
@@ -661,8 +663,8 @@ class TestQAServiceAnswerGeneration:
         monkeypatch.setattr(
             qa_module,
             "OpenAI",
-            lambda api_key=None, base_url=None: captured.update(
-                api_key=api_key, base_url=base_url
+            lambda api_key=None, base_url=None, max_retries=None: captured.update(
+                api_key=api_key, base_url=base_url, max_retries=max_retries
             )
             or fake_client,
         )
@@ -683,6 +685,8 @@ class TestQAServiceAnswerGeneration:
 
         assert captured["api_key"] == "sk-user-groq"
         assert captured["base_url"] == qa_module.GROQ_BASE_URL
+        # The BYOK client must not retry a rate-limited call either.
+        assert captured["max_retries"] == 0
         assert response.answer == "Groq BYOK"
 
     def test_ask_defaults_to_a_free_model_not_the_paid_one(self, monkeypatch):
@@ -1507,3 +1511,375 @@ class TestSuiteIsIsolatedFromTheDeveloperEnvironment:
         monkeypatch.setenv("QA_MODEL", "llama-3.3-70b-versatile")
 
         assert qa_module.resolve_default_model() == "llama-3.3-70b-versatile"
+
+
+def _sdk_error(cls, status, retry_after=None):
+    """A genuine SDK/API exception carrying a real httpx response.
+
+    Constructing the provider's own exception type matters: a stand-in with a
+    `status_code` attribute would be recognised by the check under test for the
+    wrong reason, and would not prove the real thing is recognised.
+    """
+    import httpx
+
+    headers = {"retry-after": retry_after} if retry_after else {}
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    return cls(
+        "rate limited",
+        response=httpx.Response(status, headers=headers, request=request),
+        body=None,
+    )
+
+
+def _answering_client(answer="An answer.", total_tokens=0):
+    """A client that answers, optionally reporting token usage."""
+    from types import SimpleNamespace
+
+    client = MagicMock()
+    client.chat.completions.create.return_value = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=answer))],
+        usage=SimpleNamespace(total_tokens=total_tokens),
+    )
+    return client
+
+
+def _raising_client(exc):
+    client = MagicMock()
+    client.chat.completions.create.side_effect = exc
+    return client
+
+
+def _empty_search():
+    fake_search = MagicMock()
+    fake_search.search.return_value = SearchResponse(
+        query="q", results=[], total_count=0, has_more=False
+    )
+    return fake_search
+
+
+class TestProviderRateLimitIsA429:
+    """A provider ceiling must not arrive as a 200 carrying a failure string.
+
+    Before this, an exhausted free tier and an unreachable provider both
+    produced HTTP 200 with the identical body "Could not generate an answer
+    with the AI provider. Please try again.", so the ceiling was invisible
+    until the allowance was gone.
+    """
+
+    def test_upstream_429_becomes_a_real_429(self, monkeypatch):
+        from openai import RateLimitError
+
+        from app.services import qa as qa_module
+        from app.services.provider_quota import ProviderRateLimited
+
+        _patch_llm_client(
+            monkeypatch, _raising_client(_sdk_error(RateLimitError, 429))
+        )
+        service = QAService(search_service=_empty_search())
+
+        with pytest.raises(ProviderRateLimited) as caught:
+            service.ask(user_id=uuid4(), question="q", model="llama-3.3-70b-versatile")
+
+        exc = caught.value
+        assert exc.provider == "groq"
+        assert exc.source == qa_module.provider_quota.SOURCE_PROVIDER
+        assert qa_module._is_rate_limit_error(exc.__cause__)
+
+    def test_a_dead_provider_is_not_reported_as_rate_limited(self, monkeypatch):
+        # The distinctness the issue asks for. A 500 from the same provider, on
+        # the same endpoint, with the same "the provider let us down" feeling,
+        # must NOT be reported as a quota problem — otherwise an operator
+        # chasing a quota ceiling would be looking at an outage.
+        from openai import APIStatusError
+
+        from app.services import qa as qa_module
+
+        _patch_llm_client(
+            monkeypatch, _raising_client(_sdk_error(APIStatusError, 500))
+        )
+        service = QAService(search_service=_empty_search())
+
+        response = service.ask(
+            user_id=uuid4(), question="q", model="llama-3.3-70b-versatile"
+        )
+
+        assert qa_module._is_rate_limit_error(Exception("nope")) is False
+        assert "Could not generate an answer" in response.answer
+
+    def test_the_providers_own_retry_after_is_passed_through(self, monkeypatch):
+        from openai import RateLimitError
+
+        from app.services.provider_quota import ProviderRateLimited
+
+        _patch_llm_client(
+            monkeypatch,
+            _raising_client(_sdk_error(RateLimitError, 429, retry_after="23")),
+        )
+        service = QAService(search_service=_empty_search())
+
+        with pytest.raises(ProviderRateLimited) as caught:
+            service.ask(user_id=uuid4(), question="q", model="llama-3.3-70b-versatile")
+
+        # The provider knows when its window rolls over; a guess is worse.
+        assert caught.value.retry_after == 23
+
+    def test_an_unparseable_retry_after_falls_back(self, monkeypatch):
+        from openai import RateLimitError
+
+        from app.services import qa as qa_module
+        from app.services.provider_quota import ProviderRateLimited
+
+        _patch_llm_client(
+            monkeypatch,
+            _raising_client(_sdk_error(RateLimitError, 429, retry_after="Wed, 21 Oct")),
+        )
+        service = QAService(search_service=_empty_search())
+
+        with pytest.raises(ProviderRateLimited) as caught:
+            service.ask(user_id=uuid4(), question="q", model="llama-3.3-70b-versatile")
+
+        assert caught.value.retry_after == 60
+        assert qa_module._retry_after_seconds(Exception("x"), default=42) == 42
+
+    def test_our_own_refusal_never_calls_the_provider(self, monkeypatch):
+        from app.services import provider_quota
+        from app.services.provider_quota import ProviderRateLimited
+
+        monkeypatch.setitem(
+            provider_quota.PROVIDER_LIMITS,
+            "groq",
+            provider_quota.ProviderLimits(requests_per_minute=1, tokens_per_day=None),
+        )
+        # Spend the only slot, so the next caller is refused locally.
+        assert provider_quota.reserve("groq").allowed is True
+        client = _answering_client()
+        _patch_llm_client(monkeypatch, client)
+        service = QAService(search_service=_empty_search())
+
+        with pytest.raises(ProviderRateLimited) as caught:
+            service.ask(user_id=uuid4(), question="q", model="llama-3.3-70b-versatile")
+
+        assert caught.value.source == provider_quota.SOURCE_APP
+        # The point of refusing locally: no request is spent, and none is made.
+        client.chat.completions.create.assert_not_called()
+
+
+class TestTheProviderIsNotRetriedBehindOurBack:
+    """The SDK's own retries must stay off.
+
+    Found by measurement, not reasoning: with retries on, a provider 429 took
+    34s to reach the client (two attempts at the provider's Retry-After) and
+    issued three real requests against an allowance that had already rejected
+    the first. A unit test with a hand-built exception cannot see any of that.
+    """
+
+    def test_no_module_client_retries_on_its_own(self):
+        for client in (
+            qa_module._openai_client,
+            qa_module._groq_client,
+            qa_module._local_client,
+        ):
+            if client is None:
+                continue
+            assert client.max_retries == 0, (
+                "a rate-limited call would be retried silently, hiding the 429 "
+                "from the user and spending quota that does not exist"
+            )
+
+    def test_a_brought_your_own_key_client_does_not_retry_either(self):
+        # Built per request from a user's key, so the module-level assertion
+        # above never sees it.
+        client = qa_module._client_for_api_key("sk-user-supplied", "groq")
+        assert client.max_retries == 0
+
+    def test_the_configured_value_is_zero(self):
+        assert qa_module._CLIENT_RETRIES == 0
+
+
+class TestRateLimit429Response:
+    """The envelope, since a bare 429 would not tell a client what happened."""
+
+    def test_the_envelope_carries_provider_and_scope(
+        self, client, auth_headers, monkeypatch
+    ):
+        from openai import RateLimitError
+
+        from app.main import app
+        from app.routes.qa import get_qa_service
+        from app.services import qa as qa_module
+
+        # Use the real service so the exception travels the whole path.
+        real_service = QAService(search_service=_empty_search())
+        monkeypatch.setattr(
+            qa_module,
+            "_groq_client",
+            _raising_client(_sdk_error(RateLimitError, 429, retry_after="11")),
+        )
+        app.dependency_overrides[get_qa_service] = lambda: real_service
+        try:
+            resp = client.post(
+                "/v1/qa/ask",
+                json={"question": "q", "model": "llama-3.3-70b-versatile"},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 429
+        error = resp.json()["error"]
+        assert error["code"] == "provider_rate_limited"
+        # Distinguishable from the app's own limiter hitting (rate_limit_exceeded).
+        assert error["code"] != "rate_limit_exceeded"
+        assert "groq" in error["message"]
+        assert error["details"]["provider"] == "groq"
+        assert error["details"]["source"] == "provider"
+        assert error["details"]["retry_after"] == 11
+        assert resp.headers["Retry-After"] == "11"
+        assert resp.headers["X-Provider"] == "groq"
+
+    def test_our_own_ceiling_is_marked_as_coming_from_the_app(
+        self, client, auth_headers, monkeypatch
+    ):
+        from app.main import app
+        from app.routes.qa import get_qa_service
+        from app.services import provider_quota
+        from app.services.provider_quota import (
+            ProviderLimits,
+        )
+
+        monkeypatch.setitem(
+            provider_quota.PROVIDER_LIMITS,
+            "groq",
+            ProviderLimits(requests_per_minute=1, tokens_per_day=None),
+        )
+        assert provider_quota.reserve("groq").allowed is True
+        app.dependency_overrides[get_qa_service] = lambda: QAService(
+            search_service=_empty_search()
+        )
+        try:
+            resp = client.post(
+                "/v1/qa/ask",
+                json={"question": "q", "model": "llama-3.3-70b-versatile"},
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 429
+        assert resp.json()["error"]["code"] == "provider_rate_limited"
+        # "we predicted this" and "the provider rejected us" are different
+        # operator problems, so the source is reported rather than smoothed over.
+        assert resp.json()["error"]["details"]["source"] == "app"
+
+
+class TestBudgetIsNotSpentCarelessly:
+    def test_a_cached_answer_costs_no_provider_budget(self, monkeypatch):
+        # The check sits after the cache short-circuit, so a repeat question is
+        # served without spending a request from an allowance this deployment has
+        # only 30 of per minute.
+        from app.services import provider_quota
+        from app.services.provider_quota import ProviderLimits
+
+        monkeypatch.setitem(
+            provider_quota.PROVIDER_LIMITS,
+            "groq",
+            ProviderLimits(requests_per_minute=1, tokens_per_day=None),
+        )
+        client = _answering_client("Cached answer.")
+        _patch_llm_client(monkeypatch, client)
+        service = QAService(search_service=_empty_search())
+        user = uuid4()
+
+        first = service.ask(user_id=user, question="q", model="llama-3.3-70b-versatile")
+        second = service.ask(user_id=user, question="q", model="llama-3.3-70b-versatile")
+
+        assert first.answer == second.answer == "Cached answer."
+        # One real call, not two: the second was served from cache.
+        assert client.chat.completions.create.call_count == 1
+
+    def test_a_brought_key_is_not_charged_to_the_operator(self, monkeypatch):
+        from app.services import provider_quota
+        from app.services.provider_quota import ProviderLimits
+
+        monkeypatch.setitem(
+            provider_quota.PROVIDER_LIMITS,
+            "groq",
+            ProviderLimits(requests_per_minute=1, tokens_per_day=None),
+        )
+        client = _answering_client()
+        _patch_llm_client(monkeypatch, client)
+        # A supplied key builds its OWN client inside the service, so patching
+        # the module-level ones does not reach it — without this the test sends
+        # a real request to Groq with a fake key and takes whatever comes back.
+        from app.services import qa as qa_module
+
+        monkeypatch.setattr(
+            qa_module, "_client_for_api_key", lambda api_key, provider: client
+        )
+        service = QAService(search_service=_empty_search())
+
+        for _ in range(4):
+            resp = service.ask(
+                user_id=uuid4(),
+                question="q",
+                model="llama-3.3-70b-versatile",
+                api_key="sk-user-supplied",
+            )
+            assert resp.answer == "An answer."
+
+        assert client.chat.completions.create.call_count == 4
+
+    def test_reported_usage_is_charged_to_the_daily_allowance(self, monkeypatch):
+        from app.services import provider_quota
+        from app.services.provider_quota import ProviderLimits
+
+        monkeypatch.setitem(
+            provider_quota.PROVIDER_LIMITS,
+            "groq",
+            ProviderLimits(requests_per_minute=None, tokens_per_day=100_000),
+        )
+        _patch_llm_client(monkeypatch, _answering_client(total_tokens=400))
+        service = QAService(search_service=_empty_search())
+        user = uuid4()
+
+        service.ask(user_id=user, question="one", model="llama-3.3-70b-versatile")
+        service.ask(user_id=user, question="two", model="llama-3.3-70b-versatile")
+
+        # The real reported usage, not the max_tokens worst case: charging the
+        # maximum would refuse questions the allowance can still pay for.
+        assert provider_quota.snapshot("groq")["tokens_used_today"] == 800
+
+    def test_a_response_without_usage_is_charged_nothing(self, monkeypatch):
+        from app.services import provider_quota
+        from app.services import qa as qa_module
+        from app.services.provider_quota import ProviderLimits
+
+        monkeypatch.setitem(
+            provider_quota.PROVIDER_LIMITS,
+            "groq",
+            ProviderLimits(requests_per_minute=None, tokens_per_day=100_000),
+        )
+        # Some OpenAI-compatible servers omit the usage block entirely.
+        assert qa_module._total_tokens(MagicMock()) == 0
+        _patch_llm_client(monkeypatch, _answering_client())
+        QAService(search_service=_empty_search()).ask(
+            user_id=uuid4(), question="q", model="llama-3.3-70b-versatile"
+        )
+        assert provider_quota.snapshot("groq")["tokens_used_today"] == 0
+
+
+class TestQuotasAreVisible:
+    def test_models_endpoint_reports_each_providers_ceiling(self, client):
+        # The limit that will eventually reject a question should be readable
+        # before it does, rather than being something an operator infers from a
+        # 429 or from a hard-coded memory of Groq's pricing page.
+        resp = client.get("/v1/qa/models")
+        assert resp.status_code == 200
+
+        quotas = resp.json()["quotas"]
+        assert quotas["groq"]["capped"] is True
+        assert quotas["groq"]["requests_per_minute"] == 30
+        assert quotas["groq"]["tokens_per_day"] == 200_000
+        # Paid and self-hosted are deliberately uncapped, and say so.
+        assert quotas["openai"]["capped"] is False
+        assert quotas["local"]["capped"] is False

@@ -49,6 +49,12 @@ data:
   # Answer length cap. The application's own default is 1000; lower it for a
   # CPU-only local model, where generation runs at a few tokens per second.
   QA_MAX_TOKENS: "1000"
+  # Provider ceilings the app enforces itself (#489), matching Groq's free
+  # tier so a call is refused before the provider rejects it. Same values as
+  # the Helm chart's config.ai.providerQuota.*.
+  GROQ_REQUESTS_PER_MINUTE: "30"
+  GROQ_TOKENS_PER_DAY: "200000"
+  PROVIDER_QUOTA_ENABLED: "true"
   # Local OpenAI-compatible provider (Ollama) — the only path needing no API
   # key. Off by default and opt-in rather than probed, so a request never pays
   # for a health check against an endpoint that may not exist.

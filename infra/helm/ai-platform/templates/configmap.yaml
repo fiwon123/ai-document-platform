@@ -28,6 +28,13 @@ data:
   LOCAL_EMBEDDING_DIMENSIONS: {{ .Values.config.ai.localEmbedding.dimensions | quote }}
   QA_MODEL: {{ .Values.config.ai.qaModel | quote }}
   QA_MAX_TOKENS: {{ .Values.config.ai.maxTokens | quote }}
+  # Provider ceilings the app enforces itself (#489), matching Groq's free
+  # tier so a call is refused before the provider rejects it. The budget is
+  # org-wide (Groq's own granularity), and it fails open: a Redis outage
+  # leaves question answering working, just uncapped.
+  GROQ_REQUESTS_PER_MINUTE: {{ .Values.config.ai.providerQuota.groqRequestsPerMinute | quote }}
+  GROQ_TOKENS_PER_DAY: {{ .Values.config.ai.providerQuota.groqTokensPerDay | quote }}
+  PROVIDER_QUOTA_ENABLED: {{ .Values.config.ai.providerQuota.enabled | quote }}
   LOCAL_LLM_ENABLED: {{ ternary "true" "" .Values.config.ai.localLlm.enabled | quote }}
   LOCAL_LLM_BASE_URL: {{ .Values.config.ai.localLlm.baseUrl | quote }}
   LOCAL_LLM_MODEL: {{ .Values.config.ai.localLlm.model | quote }}

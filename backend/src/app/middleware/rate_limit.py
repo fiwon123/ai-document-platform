@@ -66,6 +66,39 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     limits hold across multiple app instances. Falls back to an
     in-process sliding window when Redis is unreachable (local dev
     without Redis, automated tests).
+
+    Why per-IP, and what that means (#489)
+    --------------------------------------
+    This limiter guards *this application*, and it is deliberately keyed by IP
+    rather than by user. Three reasons, and the cost of each:
+
+    - **It runs before authentication.** A per-user key would mean parsing a
+      JWT in the middleware for every request, including anonymous ones, and
+      deciding what to do with requests that carry no user at all.
+    - **It must bound a single hostile client.** One IP generating a flood is
+      the case a limiter exists for, and IP is the only identifier available
+      before a credential is presented.
+    - **Its cost is shared-NAT unfairness.** Several users behind one corporate
+      gateway, NAT, or the container bridge consume a single bucket, so one user
+      can exhaust the allowance of everyone else on that network. This is
+      accepted, not overlooked: the ceiling it protects is the app's own, and
+      the alternative lets a single client behind rotating IPs consume the
+      service unthrottled.
+
+    This limiter is NOT what bounds LLM provider usage, and lowering it to
+    satisfy a provider's quota would be the wrong lever — it throttles document
+    listing, search and login to pay for one endpoint's upstream budget. The
+    per-provider request and token budgets live in
+    ``app.services.provider_quota`` instead, keyed by provider and org-wide
+    because that is the granularity the provider enforces.
+
+    ``TRUST_PROXY_HEADERS`` assumption: when enabled, the socket peer is a proxy
+    the operator controls, which **overwrites** ``X-Forwarded-For`` rather than
+    appending to client-supplied values. Behind nginx or a k8s ingress that
+    holds (``proxy_set_header X-Forwarded-For $remote_addr``). In front of a
+    proxy that merely passes the header through, enabling this lets any client
+    mint a fresh identity per request and bypass the limiter entirely — so it
+    stays off by default and is a deployment decision, not a default.
     """
 
     def __init__(self, app, requests: int = 100, window: int = 60):
