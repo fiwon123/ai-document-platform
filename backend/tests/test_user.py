@@ -764,6 +764,166 @@ class TestRefreshTokens:
         assert db_session.query(RefreshSessionDB).count() == 0
 
 
+class TestPasswordChangeRevokesSessions:
+    """Changing a password must end the sessions it was meant to end.
+
+    Before #518, `PUT /v1/users/me` changed the hash and nothing else, so a
+    refresh cookie taken during a compromise kept working for the rest of its
+    7-day life. Every test here keeps one session *untouched* — a session that is
+    first exchanged would already be retired by rotation, and the 401 would be
+    reported as a revocation that never happened.
+    """
+
+    def _two_sessions(self, client, username: str) -> tuple[str, str, str]:
+        """Register, then log in twice. Returns (held, spare, access_token)."""
+        _register(client, username)
+
+        def login() -> tuple[str, str]:
+            resp = client.post(
+                "/v1/auth/login",
+                data={"username": username, "password": "testpass123"},
+            )
+            assert resp.status_code == 200, resp.text
+            return resp.cookies.get(REFRESH_COOKIE_NAME), resp.json()["access_token"]
+
+        held, _ = login()
+        spare, access = login()
+        assert held and spare and held != spare
+        # The positive path, proved before anything is revoked: a live session
+        # really does refresh. Without this a 401 below proves nothing.
+        assert _post_with_refresh(client, "/v1/auth/refresh", spare).status_code == 200
+        return held, spare, access
+
+    def test_a_password_change_revokes_an_untouched_session(self, client):
+        held, _, access = self._two_sessions(client, "pwrevoked")
+
+        changed = client.put(
+            "/v1/users/me",
+            json={"password": "newpass456", "confirm_password": "newpass456"},
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert changed.status_code == 200, changed.text
+
+        replay = _post_with_refresh(client, "/v1/auth/refresh", held)
+        assert replay.status_code == 401
+        assert replay.json()["error"]["code"] == "unauthorized"
+
+    def test_a_password_change_ends_the_callers_own_session(self, client):
+        """The session that changed the password is revoked too.
+
+        The refresh cookie is scoped to `/v1/auth`, so it is not sent to
+        `/v1/users/me` and the server cannot tell which session is asking. Ending
+        the caller's session as well is the consequence of not being able to, and
+        the user logs back in with the new password.
+        """
+        _, _, access = self._two_sessions(client, "pwself")
+        callers_cookie = _post_with_refresh(
+            client, "/v1/auth/refresh", None
+        )  # clears the jar, no cookie sent
+
+        assert callers_cookie.status_code == 401  # sanity: no cookie -> 401
+
+        # Log in again so the jar holds a cookie belonging to the caller, and use
+        # the access token from that same login for the change.
+        login = client.post(
+            "/v1/auth/login",
+            data={"username": "pwself", "password": "testpass123"},
+        )
+        own_cookie = login.cookies.get(REFRESH_COOKIE_NAME)
+        own_access = login.json()["access_token"]
+
+        changed = client.put(
+            "/v1/users/me",
+            json={"password": "newpass456", "confirm_password": "newpass456"},
+            headers={"Authorization": f"Bearer {own_access}"},
+        )
+        assert changed.status_code == 200, changed.text
+
+        assert _post_with_refresh(client, "/v1/auth/refresh", own_cookie).status_code == 401
+
+    def test_a_username_change_revokes_nothing(self, client):
+        """The control: a username is not a credential, so sessions survive it."""
+        held, _, access = self._two_sessions(client, "rename_me")
+
+        changed = client.put(
+            "/v1/users/me",
+            json={"username": "renamed_user"},
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert changed.status_code == 200, changed.text
+
+        assert _post_with_refresh(client, "/v1/auth/refresh", held).status_code == 200
+
+    def test_rejecting_the_change_leaves_sessions_alone(self, client):
+        """Validation runs first, so a rejected change must not log anyone out.
+
+        Otherwise a typo in the confirmation field would silently end every
+        session — the user would be bounced out for a request that never applied.
+        """
+        held, _, access = self._two_sessions(client, "mismatch_user")
+
+        bad = client.put(
+            "/v1/users/me",
+            json={"password": "newpass456", "confirm_password": "different456"},
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert bad.status_code == 400, bad.text
+
+        assert _post_with_refresh(client, "/v1/auth/refresh", held).status_code == 200
+
+    def test_other_users_sessions_are_untouched(self, client, db_session):
+        """Only the account being changed is affected."""
+        other = UserDB(
+            username="bystander", hashed_password="x", role=Role.customer  # noqa: S106
+        )
+        db_session.add(other)
+        db_session.commit()
+        db_session.add(
+            RefreshSessionDB(
+                jti="bystander-session",
+                user_id=other.id,
+                expires_at=datetime.now(UTC) + timedelta(days=7),
+            )
+        )
+        db_session.commit()
+
+        _, _, access = self._two_sessions(client, "target_user")
+        changed = client.put(
+            "/v1/users/me",
+            json={"password": "newpass456", "confirm_password": "newpass456"},
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert changed.status_code == 200, changed.text
+
+        db_session.expire_all()
+        bystander = (
+            db_session.query(RefreshSessionDB)
+            .filter(RefreshSessionDB.jti == "bystander-session")
+            .one()
+        )
+        assert bystander.revoked_at is None
+
+    def test_repeated_password_changes_stay_revoked(self, client, db_session):
+        """Logging in again after a change creates a session that works."""
+        _, _, access = self._two_sessions(client, "rotate_pw")
+
+        first = client.put(
+            "/v1/users/me",
+            json={"password": "newpass456", "confirm_password": "newpass456"},
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert first.status_code == 200, first.text
+
+        # The new password works, and the session it produces is live.
+        again = client.post(
+            "/v1/auth/login",
+            data={"username": "rotate_pw", "password": "newpass456"},
+        )
+        assert again.status_code == 200, again.text
+        fresh = again.cookies.get(REFRESH_COOKIE_NAME)
+        assert _post_with_refresh(client, "/v1/auth/refresh", fresh).status_code == 200
+
+
 class TestUserDeactivation:
     """Deactivated accounts must not be able to log in or use the API."""
 

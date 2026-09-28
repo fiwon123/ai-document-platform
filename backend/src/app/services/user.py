@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.models.user import Role, UserDB
 from app.repositories.user import UserRepository
 from app.schemas.user import UpdateActiveRequest, UpdateRoleRequest, UpdateUserRequest
+from app.services.auth import RefreshSessionService
 from app.services.thumbnail import thumbnail_object_key
 from app.storage.storage import MinioStorage
 from app.storage.storage import storage as default_storage
@@ -30,6 +31,7 @@ class UserService:
         self,
         repository: UserRepository,
         storage: MinioStorage | None = None,
+        sessions: RefreshSessionService | None = None,
     ):
         self.repo = repository
         # Optional so the many tests that exercise the user endpoints without
@@ -37,6 +39,11 @@ class UserService:
         # still cascaded by the database; only the uploaded files are left in
         # the bucket, which is why `from_session` always supplies one.
         self.storage = storage
+        # Optional for the same reason as storage: tests that build this service
+        # by hand should not have to know about refresh sessions to update a
+        # username. `from_session` always supplies one, which is what makes
+        # "changing a password ends the sessions" true in the running app.
+        self.sessions = sessions
 
     @classmethod
     def from_session(cls, db: Session) -> UserService:
@@ -47,7 +54,13 @@ class UserService:
         per request would leak a pool per request for the life of the process.
         This is the same instance the document service is given.
         """
-        return cls(repository=UserRepository(db), storage=default_storage)
+        return cls(
+            repository=UserRepository(db),
+            storage=default_storage,
+            # Same `db`, so the session rows and the user row are written in one
+            # transaction and cannot drift apart.
+            sessions=RefreshSessionService.from_session(db),
+        )
 
     # --- lookups -----------------------------------------------------------
 
@@ -116,7 +129,20 @@ class UserService:
     def update_self(
         self, current_user: UserDB, request: UpdateUserRequest
     ) -> UserDB:
-        """Update the caller's own username and/or password."""
+        """Update the caller's own username and/or password.
+
+        A password change also ends every refresh session the account holds.
+        Changing a password is what a user does when they think an account is
+        compromised, and without this the attacker's refresh cookie keeps minting
+        access tokens for the rest of its 7-day life while the user sits there
+        locked out of their own account. A username change revokes nothing: it is
+        not a credential, and it is a normal thing to do.
+
+        Sessions are revoked *before* the new hash is written, so a failure in
+        between leaves the user logged out rather than logged in under a password
+        they believe they have just secured. The uncomfortable direction is the
+        only safe one to fail in.
+        """
         update_data: dict = {}
 
         if request.username is not None:
@@ -132,6 +158,9 @@ class UserService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Passwords do not match",
                 )
+            # Before `repo.update`, which commits: see the docstring.
+            if self.sessions is not None:
+                self.sessions.revoke_all_for_user(current_user.id)
             update_data["hashed_password"] = pwd_context.hash(request.password)
 
         if not update_data:

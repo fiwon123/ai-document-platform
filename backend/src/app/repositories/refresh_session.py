@@ -58,6 +58,27 @@ class RefreshSessionRepository:
         row.revoked_at = when
         self.db.commit()
 
+    def revoke_all_for_user(self, user_id: UUID, when: datetime) -> int:
+        """Revoke every live session a user holds. Returns rows affected.
+
+        One statement, so a user with sessions on several devices is ended in a
+        single step rather than one lookup at a time. Rows already rotated or
+        revoked are left alone: they cannot be presented successfully anyway, and
+        rewriting their timestamps would erase the distinction between "logged
+        out" and "superseded" that `begin_refresh` reports on.
+        """
+        result = self.db.execute(
+            update(RefreshSessionDB)
+            .where(
+                RefreshSessionDB.user_id == user_id,
+                RefreshSessionDB.revoked_at.is_(None),
+                RefreshSessionDB.rotated_at.is_(None),
+            )
+            .values(revoked_at=when)
+        )
+        self.db.commit()
+        return int(result.rowcount or 0)
+
     def delete_expired(self, now: datetime) -> int:
         """Drop rows whose token has expired anyway.
 
