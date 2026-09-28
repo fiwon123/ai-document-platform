@@ -324,6 +324,78 @@ class TestEmbeddingSpaceWrite:
         assert invalidated.call_count == 1
         assert invalidated.call_args.args[0].id == doc.id
 
+    def test_inline_fallback_records_the_same_generic_message(self, db_session, monkeypatch):
+        """The queue-down path must not be the one that leaks detail.
+
+        `process_document_sync` persists its own message, and it used to persist
+        `str(e)`. That made the two failure paths disagree: the arq path holds
+        the "internal detail stays in the log" rule and the fallback did not, so a
+        document failing while Redis was unavailable had a psycopg2 message —
+        database host, container IP, port, user — rendered on the documents page.
+        """
+        from app.worker import GENERIC_PROCESSING_FAILURE, process_document_sync
+
+        doc = _seed_pending_document(db_session)
+        _patch_worker_deps(monkeypatch, extractor=FakeExtractorError())
+
+        with pytest.raises(RuntimeError, match="extraction boom"):
+            process_document_sync(doc.id)
+
+        db_session.refresh(doc)
+        assert doc.status == DocumentStatus.FAILED
+        assert doc.error_message == GENERIC_PROCESSING_FAILURE
+
+    def test_inline_fallback_persists_no_infrastructure_detail(
+        self, db_session, monkeypatch
+    ):
+        """A realistic exception, checked for the parts that must not survive.
+
+        Asserted against a real `OperationalError` rather than a synthetic string,
+        because the whole failure mode is "whatever the driver happened to put in
+        the message" — a fabricated 'connection to postgres:5432' would pass
+        against any implementation and prove nothing.
+        """
+        from sqlalchemy.exc import OperationalError
+
+        from app.worker import process_document_sync
+
+        class FailingExtractor:
+            def extract_text(self, file_object, mime_type):
+                raise OperationalError(
+                    "SELECT 1",
+                    {},
+                    Exception(
+                        'connection to server at "postgres" (172.24.0.3), port 5432 '
+                        "failed: FATAL: password authentication failed for user "
+                        '"postgres"'
+                    ),
+                )
+
+        doc = _seed_pending_document(db_session)
+        _patch_worker_deps(monkeypatch, extractor=FailingExtractor())
+
+        with pytest.raises(OperationalError):
+            process_document_sync(doc.id)
+
+        db_session.refresh(doc)
+        stored = doc.error_message or ""
+        for leak in ("postgres", "172.24.0.3", "5432", "password", "OperationalError"):
+            assert leak not in stored, f"{leak!r} leaked into error_message: {stored!r}"
+
+    def test_inline_fallback_still_logs_the_detail(self, db_session, monkeypatch, caplog):
+        """Withheld from the client, not lost: the log is where operators look."""
+        import logging
+
+        from app.worker import process_document_sync
+
+        doc = _seed_pending_document(db_session)
+        _patch_worker_deps(monkeypatch, extractor=FakeExtractorError())
+
+        with caplog.at_level(logging.ERROR), pytest.raises(RuntimeError):
+            process_document_sync(doc.id)
+
+        assert "extraction boom" in caplog.text
+
     def test_processing_error_retries_when_tries_remain(self, db_session, monkeypatch):
         """Transient errors re-raise as arq Retry and keep PROCESSING."""
         from arq.worker import Retry
