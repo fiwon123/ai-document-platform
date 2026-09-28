@@ -16,6 +16,8 @@ from app.local_provider import (
 )
 from app.schemas.qa import QAResponse
 from app.schemas.search import SearchResult
+from app.services import provider_quota
+from app.services.provider_quota import ProviderRateLimited
 from app.services.search import SearchService, user_cache_version
 
 logger = logging.getLogger(__name__)
@@ -207,15 +209,43 @@ AVAILABLE_MODELS = [entry["id"] for entry in MODEL_REGISTRY]
 FREE_MODELS = [entry["id"] for entry in MODEL_REGISTRY if entry["tier"] == "free"]
 
 _MODEL_BY_ID = {entry["id"]: entry for entry in MODEL_REGISTRY}
+# The SDK retries by default (2 attempts, honouring Retry-After). That is the
+# wrong behaviour for a rate-limited call and not merely a slow one:
+#
+#   - It hides the 429. Measured end-to-end, a provider 429 took 34s to reach
+#     the client (two retries at the provider's own Retry-After) instead of
+#     surfacing at once, holding the HTTP request open the whole time.
+#   - It spends quota that does not exist. A rate-limited provider rejects every
+#     attempt, so each retry is another request against an already-exhausted
+#     allowance — the retry makes the limit worse, not the request likely to
+#     succeed.
+#   - It hides our own accounting. One logical question would be several real
+#     requests to the provider while the RPM budget counted one.
+#
+# Retries, when wanted, are the caller's decision: a 429 comes back with
+# Retry-After, which the route returns to the client for it to honour.
+_CLIENT_RETRIES = 0
 
-_openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+_openai_client = (
+    OpenAI(api_key=OPENAI_API_KEY, max_retries=_CLIENT_RETRIES)
+    if OPENAI_API_KEY
+    else None
+)
 _groq_client = (
-    OpenAI(api_key=GROQ_API_KEY, base_url=GROQ_BASE_URL) if GROQ_API_KEY else None
+    OpenAI(
+        api_key=GROQ_API_KEY, base_url=GROQ_BASE_URL, max_retries=_CLIENT_RETRIES
+    )
+    if GROQ_API_KEY
+    else None
 )
 # Built whenever the local provider is enabled, key or no key: the endpoint
 # ignores the placeholder, so requiring a key here would defeat the point.
 _local_client = (
-    OpenAI(api_key=LOCAL_PLACEHOLDER_KEY, base_url=LOCAL_LLM_BASE_URL)
+    OpenAI(
+        api_key=LOCAL_PLACEHOLDER_KEY,
+        base_url=LOCAL_LLM_BASE_URL,
+        max_retries=_CLIENT_RETRIES,
+    )
     if LOCAL_LLM_ENABLED
     else None
 )
@@ -417,7 +447,11 @@ def _client_for_api_key(api_key: str, provider: str) -> OpenAI:
     The key is used only for this one request and the client is discarded
     after the call returns — BYOK keys are never stored or logged.
     """
-    return OpenAI(api_key=api_key, base_url=_provider_base_url(provider))
+    return OpenAI(
+        api_key=api_key,
+        base_url=_provider_base_url(provider),
+        max_retries=_CLIENT_RETRIES,
+    )
 
 
 def _qa_cache_key(
@@ -491,6 +525,65 @@ def _cache_qa(
 def _is_uncacheable_answer(answer: str) -> bool:
     """True when the answer is a fallback that must never be cached."""
     return answer.lstrip().startswith(_UNCACHEABLE_ANSWER_PREFIXES)
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """True when an exception is a provider refusing on rate grounds.
+
+    Matched structurally rather than by importing the SDK's class, so a provider
+    reached through a different client (or an OpenAI-compatible server that
+    raises its own error type) is still recognised, and so this keeps working if
+    the SDK re-exports the class under a different name. The status code is
+    authoritative when present; the class name is the fallback for an error that
+    has no response attached.
+    """
+    status = getattr(exc, "status_code", None)
+    if status == 429:
+        return True
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status == 429:
+        return True
+    return type(exc).__name__ == "RateLimitError"
+
+
+def _retry_after_seconds(exc: Exception, default: int = 60) -> int:
+    """The provider's own ``Retry-After``, when it sent one.
+
+    Preferred over a guessed value because the provider knows when its window
+    rolls over. Its value is a hint either way — it may be a delay or a date —
+    so an unparseable value falls back rather than propagating.
+    """
+    headers = getattr(getattr(exc, "response", None), "headers", None) or {}
+    raw = headers.get("retry-after") or headers.get("Retry-After")
+    if not raw:
+        return default
+    try:
+        return max(1, int(str(raw).strip()))
+    except ValueError:
+        return default
+
+
+def _total_tokens(response) -> int:
+    """``usage.total_tokens`` from a completion, or 0 when absent.
+
+    Counted as whatever the provider reports rather than estimated from
+    ``max_tokens``: the daily ceiling is the operator's real allowance, and
+    charging the maximum for every answer would refuse questions the allowance
+    could still pay for.
+
+    Only genuine numbers are accepted. A response without a usage block — some
+    OpenAI-compatible servers omit it — contributes nothing rather than raising,
+    so the ceiling weakens but the request does not break. An object whose
+    ``total_tokens`` is not a number is treated the same way, because anything
+    else that can be coerced to an ``int`` here would be a silent miscount of the
+    operator's allowance.
+    """
+    usage = getattr(response, "usage", None)
+    total = getattr(usage, "total_tokens", None) if usage is not None else None
+    if isinstance(total, bool) or not isinstance(total, (int, float)):
+        return 0
+    return max(0, int(total))
 
 
 class QAService:
@@ -576,11 +669,21 @@ class QAService:
         offer a model that can only answer "AI service is not configured".
         Each entry therefore carries whether it can be used right now, and
         ``default`` is the model a request without one would actually use.
+
+        ``quotas`` reports each provider's ceiling and how much of it is left,
+        so the limit that will eventually reject a question is visible before it
+        does rather than being something an operator has to infer from a 429
+        (#489). It is informational: nothing in the request path depends on it.
         """
+        providers = {entry["provider"] for entry in MODEL_REGISTRY}
         return {
             "free": FREE_MODELS,
             "paid": [m for m in AVAILABLE_MODELS if m not in FREE_MODELS],
             "default": resolve_default_model(),
+            "quotas": {
+                provider: provider_quota.snapshot(provider)
+                for provider in sorted(providers)
+            },
             "models": [
                 {
                     "id": entry["id"],
@@ -628,6 +731,45 @@ class QAService:
         if client is None:
             return unconfigured_provider_hint(provider)
 
+        # A supplied key carries its own quota, so it is not charged to the
+        # operator's shared budget — see `provider_quota` for why the budget is
+        # org-wide at all.
+        charged = api_key is None
+
+        # Both ceilings are checked here, *after* the cache short-circuit in
+        # `ask`, so a cached answer costs no provider budget: the user gets a
+        # reply without a request ever being sent.
+        #
+        # The slot is kept even when the call then fails, including a connection
+        # error that may never have reached the provider. That is deliberate.
+        # A provider under load often answers with resets rather than 429s, so
+        # "the request did not arrive" is not knowable from here; refunding on a
+        # transport error would let a client keep retrying through an outage and
+        # send well past the ceiling, which is the harm this budget exists to
+        # prevent. A provider quota is the thing being protected, so the safe
+        # error is to count the attempt.
+        for decision in (
+            provider_quota.reserve(provider, account=charged),
+            provider_quota.check_token_budget(
+                provider, expected_tokens=QA_MAX_TOKENS, account=charged
+            ),
+        ):
+            if not decision.allowed:
+                logger.warning(
+                    "Refusing a %s call before sending it (%s)",
+                    provider,
+                    decision.reason,
+                )
+                raise ProviderRateLimited(
+                    provider=provider,
+                    scope=decision.scope,
+                    limit=decision.limit,
+                    used=decision.used,
+                    retry_after=decision.retry_after,
+                    source=provider_quota.SOURCE_APP,
+                    detail=decision.reason,
+                )
+
         system_prompt = (
             "You are a helpful assistant that answers questions based on "
             "the provided document context. If the context doesn't contain "
@@ -651,8 +793,28 @@ class QAService:
                 temperature=0.3,
                 max_tokens=QA_MAX_TOKENS,
             )
-            return response.choices[0].message.content or "No answer generated."
         except Exception as e:
+            # A provider that answers 429 has run out of quota, which is a
+            # different condition from one that is unreachable, misconfigured
+            # or broken — and the only difference a user or operator gets is
+            # this except clause. Reporting both as the same 200-with-a-sorry
+            # string is what made the ceiling invisible until it was hit.
+            if _is_rate_limit_error(e):
+                retry_after = _retry_after_seconds(e)
+                logger.warning(
+                    "Provider %s rejected the call with 429 (upstream quota "
+                    "exhausted): %s. Our configured ceiling may be too high.",
+                    provider,
+                    _KEY_PATTERN.sub("sk-***", str(e)),
+                )
+                raise ProviderRateLimited(
+                    provider=provider,
+                    scope=provider_quota.SCOPE_MINUTE,
+                    limit=provider_quota.limits_for(provider).requests_per_minute,
+                    retry_after=retry_after,
+                    source=provider_quota.SOURCE_PROVIDER,
+                    detail="the provider's own rate limit was reached",
+                ) from e
             # Never echo provider internals to the user — the SDK message may
             # contain key prefixes or account hints. Log the detail (with any
             # key-shaped strings redacted) instead.
@@ -662,3 +824,8 @@ class QAService:
                 _KEY_PATTERN.sub("sk-***", str(e)),
             )
             return "Could not generate an answer with the AI provider. Please try again."
+
+        provider_quota.record_tokens(
+            provider, _total_tokens(response), account=charged
+        )
+        return response.choices[0].message.content or "No answer generated."

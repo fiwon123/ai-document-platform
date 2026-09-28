@@ -477,7 +477,7 @@ class TestQAServiceCaching:
         monkeypatch.setattr(
             qa_module,
             "OpenAI",
-            lambda api_key=None, base_url=None: fake_client,
+            lambda api_key=None, base_url=None, max_retries=None: fake_client,
         )
 
         service = QAService(search_service=_search_service_returning([]))

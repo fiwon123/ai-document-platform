@@ -13,6 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .schemas.error import ErrorDetail, ErrorResponse
+from .services.provider_quota import ProviderRateLimited
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,13 @@ _EXCEPTION_CODES: dict[int, str] = {
     500: "internal_error",
     503: "service_unavailable",
 }
+
+# A provider that ran out of quota is NOT the app's own rate limit hitting, and
+# the two call for different responses: the app limiter is a client that should
+# back off, a provider ceiling is a server whose upstream allowance is gone.
+# Both are 429, but they carry different codes so a caller — and anyone reading
+# the logs — can tell "you sent too much" from "we are out of provider quota".
+PROVIDER_RATE_LIMITED_CODE = "provider_rate_limited"
 
 
 def error_code(status_code: int) -> str:
@@ -53,6 +61,49 @@ def error_response(status_code: int, message: str, details: dict | None = None) 
 
 def register_exception_handlers(app: FastAPI) -> None:
     """Attach the envelope-emitting exception handlers to the app."""
+
+    @app.exception_handler(ProviderRateLimited)
+    async def provider_rate_limited_handler(
+        request: Request, exc: ProviderRateLimited
+    ) -> JSONResponse:
+        """A provider ceiling stopped the call — report it as a real 429.
+
+        Previously this reached the client as a 200 whose body said the
+        provider could not be reached, which is why an exhausted free tier was
+        indistinguishable from a misconfigured one. ``Retry-After`` is passed
+        through so a client can back off for as long as the provider (or our
+        own counter) says, rather than guessing.
+
+        ``details`` carries the provider, which ceiling, the limit, the
+        ``source`` and, when the provider reported one, its own message — enough
+        for an operator to act without exposing anything account-specific.
+        """
+        message = (
+            f"The {exc.provider} provider is rate limited. "
+            f"Please retry in {exc.retry_after} seconds."
+        )
+        return JSONResponse(
+            status_code=429,
+            content=ErrorResponse(
+                error=ErrorDetail(
+                    code=PROVIDER_RATE_LIMITED_CODE,
+                    message=message,
+                    details={
+                        "provider": exc.provider,
+                        "scope": exc.scope or None,
+                        "limit": exc.limit,
+                        "used": exc.used,
+                        "source": exc.source,
+                        "retry_after": exc.retry_after,
+                        "detail": exc.detail or None,
+                    },
+                )
+            ).model_dump(),
+            headers={
+                "Retry-After": str(exc.retry_after),
+                "X-Provider": exc.provider,
+            },
+        )
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
