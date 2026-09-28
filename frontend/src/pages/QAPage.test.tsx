@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen } from "@testing-library/react";
 import { QAPage } from "./QAPage";
 import { renderWithClient } from "../test/renderWithClient";
-import { documents, qa } from "../services/api";
+import { ApiError, documents, qa } from "../services/api";
 import type { QAResponse } from "../types";
 
 const navigateMock = vi.hoisted(() => vi.fn());
@@ -11,10 +11,17 @@ vi.mock("react-router-dom", () => ({
   useNavigate: () => navigateMock,
 }));
 
-vi.mock("../services/api", () => ({
-  qa: { ask: vi.fn(), getModels: vi.fn() },
-  documents: { list: vi.fn() },
-}));
+// Only the network calls are mocked. `rateLimitFrom` and `describeRateLimit`
+// are pure functions under test here, and stubbing them would let the page
+// tests pass while the notice said nothing.
+vi.mock("../services/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/api")>();
+  return {
+    ...actual,
+    qa: { ask: vi.fn(), getModels: vi.fn() },
+    documents: { list: vi.fn() },
+  };
+});
 
 const mockedAsk = vi.mocked(qa.ask);
 const mockedList = vi.mocked(documents.list);
@@ -589,5 +596,139 @@ describe("QAPage keyword-only retrieval", () => {
     await askQuestion("q");
 
     expect(document.querySelector(".search-mode-notice")).toBeNull();
+  });
+});
+
+describe("QAPage rate limits (#499)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.removeItem("askdocs-model");
+    mockedList.mockResolvedValue([]);
+    mockedGetModels.mockResolvedValue({ free: [], paid: [] });
+  });
+
+  /** The error the backend sends for a question the provider refused. */
+  function rateLimited(retryAfterSeconds = 17) {
+    return new ApiError(
+      429,
+      "The groq provider is rate limited. Please retry in 17 seconds.",
+      {
+        code: "provider_rate_limited",
+        details: {
+          provider: "groq",
+          scope: "minute",
+          limit: 30,
+          used: 30,
+          source: "provider",
+          retry_after: retryAfterSeconds,
+        },
+        retryAfterSeconds,
+      },
+    );
+  }
+
+  it("shows a temporary notice with the wait, not the provider's message", async () => {
+    mockedAsk.mockRejectedValue(rateLimited());
+
+    await askQuestion("What is the refund window?");
+
+    const notice = document.querySelector(".rate-limit-notice");
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent).toMatch(/17 seconds/);
+    expect(notice?.textContent).toMatch(/temporary/i);
+    // The backend message names the provider, which means nothing to a user and
+    // makes a healthy system look broken.
+    expect(notice?.textContent).not.toMatch(/groq/i);
+  });
+
+  it("does not render a rate limit as an error alert", async () => {
+    mockedAsk.mockRejectedValue(rateLimited());
+
+    await askQuestion("q");
+
+    // role="status" is a polite condition; role="alert" interrupts as a fault.
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("puts the question back in the box so retrying is one action", async () => {
+    mockedAsk.mockRejectedValue(rateLimited());
+
+    await askQuestion("What is the refund window?");
+
+    const input = screen.getByPlaceholderText(
+      "Ask a question about your documents...",
+    ) as HTMLTextAreaElement;
+    expect(input.value).toBe("What is the refund window?");
+  });
+
+  it("keeps the question in the transcript as well as the input", async () => {
+    mockedAsk.mockRejectedValue(rateLimited());
+
+    await askQuestion("What is the refund window?");
+
+    expect(screen.getByText("What is the refund window?")).toBeInTheDocument();
+  });
+
+  it("clears the notice once the next question succeeds", async () => {
+    // One render, two asks: `askQuestion` renders a fresh page each time, so a
+    // second call would mount a second copy and the queries would match both.
+    renderWithClient(<QAPage />);
+    const box = () =>
+      screen.getByPlaceholderText("Ask a question about your documents...");
+    const send = async (question: string) => {
+      fireEvent.change(box(), { target: { value: question } });
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      await act(async () => {});
+    };
+
+    mockedAsk.mockRejectedValueOnce(rateLimited());
+    await send("first question");
+    expect(document.querySelector(".rate-limit-notice")).not.toBeNull();
+
+    ask("second question", "An answer.", "gpt-4o-mini");
+    await send("second question");
+
+    expect(document.querySelector(".rate-limit-notice")).toBeNull();
+    expect(screen.getByText("An answer.")).toBeInTheDocument();
+  });
+
+  it("still renders an ordinary failure as an error alert", async () => {
+    // A non-rate-limit error must be unaffected by all of the above.
+    mockedAsk.mockRejectedValue(new Error("Network request failed"));
+
+    await askQuestion("q");
+
+    const alert = document.querySelector('[role="alert"]');
+    expect(alert?.textContent).toBe("Network request failed");
+    expect(document.querySelector(".rate-limit-notice")).toBeNull();
+  });
+
+  it("describes an exhausted daily allowance as a spent day, not a busy minute", async () => {
+    mockedAsk.mockRejectedValue(
+      new ApiError(429, "rate limited", {
+        code: "provider_rate_limited",
+        details: { provider: "groq", scope: "tokens", source: "app" },
+      }),
+    );
+
+    await askQuestion("q");
+
+    const notice = document.querySelector(".rate-limit-notice");
+    expect(notice?.textContent).toMatch(/today/i);
+    expect(notice?.textContent).toMatch(/temporary/i);
+  });
+
+  it("handles the app's own per-IP limiter with the same notice", async () => {
+    mockedAsk.mockRejectedValue(
+      new ApiError(429, "Too many requests", { code: "rate_limit_exceeded" }),
+    );
+
+    await askQuestion("q");
+
+    const notice = document.querySelector(".rate-limit-notice");
+    expect(notice?.textContent).toMatch(/wait a moment/i);
+    // No number was sent, so the sentence must not claim one.
+    expect(notice?.textContent).not.toMatch(/undefined|NaN|second/);
   });
 });

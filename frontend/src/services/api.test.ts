@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { auth, documents, qa, search, statistics, users } from "./api";
+import {
+  auth,
+  describeRateLimit,
+  documents,
+  qa,
+  rateLimitFrom,
+  search,
+  statistics,
+  users,
+} from "./api";
 
 describe("api client request paths", () => {
   const mockFetch = vi.fn();
@@ -850,5 +859,276 @@ describe("users admin methods", () => {
     const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0]!;
     expect(String(url)).toBe("/v1/users/me");
     expect(options?.method).toBe("DELETE");
+  });
+});
+
+describe("error envelope plumbing (#499)", () => {
+  const mockFetch = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockFetch);
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  /** A rate-limited QA call, exactly as the backend returns one. */
+  function rateLimited(headers: Record<string, string> = {}) {
+    return new Response(
+      JSON.stringify({
+        error: {
+          code: "provider_rate_limited",
+          message: "The groq provider is rate limited. Please retry in 17 seconds.",
+          details: {
+            provider: "groq",
+            scope: "minute",
+            limit: 30,
+            used: 30,
+            source: "provider",
+            retry_after: 17,
+          },
+        },
+      }),
+      { status: 429, headers },
+    );
+  }
+
+  it("keeps the code and details that the standard envelope carries", async () => {
+    mockFetch.mockResolvedValue(rateLimited());
+
+    const error = await qa.ask("how long do refunds take?").catch((e) => e);
+
+    // The message alone is not enough to act on: the code is what separates
+    // "wait" from "this will never work".
+    expect(error.status).toBe(429);
+    expect(error.code).toBe("provider_rate_limited");
+    expect(error.details).toMatchObject({
+      provider: "groq",
+      scope: "minute",
+      source: "provider",
+    });
+  });
+
+  it("reads the retry delay from the Retry-After header", async () => {
+    mockFetch.mockResolvedValue(rateLimited({ "retry-after": "17" }));
+
+    const error = await qa.ask("q").catch((e) => e);
+
+    expect(error.retryAfterSeconds).toBe(17);
+  });
+
+  it("falls back to the body's retry_after when no header was sent", async () => {
+    // A proxy can drop the header; the body carries the same fact.
+    mockFetch.mockResolvedValue(rateLimited());
+
+    const error = await qa.ask("q").catch((e) => e);
+
+    expect(error.retryAfterSeconds).toBe(17);
+  });
+
+  it("accepts an HTTP-date Retry-After and converts it to seconds", async () => {
+    const when = new Date(Date.now() + 30_000).toUTCString();
+    mockFetch.mockResolvedValue(rateLimited({ "retry-after": when }));
+
+    const error = await qa.ask("q").catch((e) => e);
+
+    // Approximate: the date has one-second resolution, so allow a small band.
+    expect(error.retryAfterSeconds).toBeGreaterThan(25);
+    expect(error.retryAfterSeconds).toBeLessThanOrEqual(30);
+  });
+
+  it("falls back to the body when the header is unparseable", async () => {
+    // "soon" is not a delay and not a date, so the header is no help at all —
+    // but the body still knows, and a wait is more useful than silence.
+    mockFetch.mockResolvedValue(rateLimited({ "retry-after": "soon" }));
+
+    const error = await qa.ask("q").catch((e) => e);
+
+    expect(error.retryAfterSeconds).toBe(17);
+  });
+
+  it("reports no wait when neither the header nor the body gives one", async () => {
+    // Must be undefined, not NaN and not 0: "undefined seconds" in the notice
+    // is the failure this guards against.
+    mockFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "rate_limit_exceeded",
+            message: "Too many requests",
+          },
+        }),
+        { status: 429, headers: { "retry-after": "whenever" } },
+      ),
+    );
+
+    const error = await qa.ask("q").catch((e) => e);
+
+    expect(error.retryAfterSeconds).toBeUndefined();
+  });
+
+  it("still uses the caller's fallback when the body is not JSON", async () => {
+    // A proxy's HTML error page must not become "[object Object]", and the
+    // fallback must not be lost now that the body is parsed separately.
+    mockFetch.mockResolvedValue(
+      new Response("<html>Bad Gateway</html>", {
+        status: 502,
+        headers: { "content-type": "text/html" },
+      }),
+    );
+
+    const error = await qa.ask("q").catch((e) => e);
+
+    expect(error.status).toBe(502);
+    expect(error.message).toBe("Request failed");
+    expect(error.code).toBeUndefined();
+  });
+
+  it("keeps the legacy {detail} shape working", async () => {
+    // Deliberately not a 401: that is intercepted as a session expiry before
+    // the body is read, so it would not exercise the legacy shape at all.
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Question is too long" }), { status: 400 }),
+    );
+
+    const error = await qa.ask("q").catch((e) => e);
+
+    expect(error.message).toBe("Question is too long");
+    expect(error.code).toBeUndefined();
+  });
+});
+
+describe("rateLimitFrom", () => {
+  const mockFetch = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockFetch);
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  /** Send a real response through the real client and inspect the thrown error. */
+  async function askAndCatch(response: Response) {
+    mockFetch.mockResolvedValue(response);
+    return qa.ask("q").catch((e) => e);
+  }
+
+  function envelope(
+    code: string,
+    details: Record<string, unknown>,
+    headers: Record<string, string> = {},
+  ) {
+    return new Response(
+      JSON.stringify({ error: { code, message: "m", details } }),
+      { status: 429, headers },
+    );
+  }
+
+  it("returns the provider's facts for a provider rate limit", async () => {
+    const info = rateLimitFrom(
+      await askAndCatch(
+        envelope(
+          "provider_rate_limited",
+          { provider: "groq", scope: "minute", source: "provider", retry_after: 17 },
+          { "retry-after": "17" },
+        ),
+      ),
+    );
+
+    expect(info).toEqual({
+      retryAfterSeconds: 17,
+      provider: "groq",
+      scope: "minute",
+      source: "provider",
+    });
+  });
+
+  it("treats the app's own per-IP limiter as a rate limit too", async () => {
+    const info = rateLimitFrom(
+      await askAndCatch(
+        new Response(
+          JSON.stringify({
+            error: { code: "rate_limit_exceeded", message: "Too many requests" },
+          }),
+          { status: 429 },
+        ),
+      ),
+    );
+
+    // Same user-facing meaning ("come back shortly"), so the UI must not need a
+    // second code path for the app limiter versus the provider.
+    expect(info).not.toBeNull();
+    expect(info?.retryAfterSeconds).toBeUndefined();
+  });
+
+  it("returns null for a 429 that is not a rate limit", async () => {
+    const info = rateLimitFrom(
+      await askAndCatch(
+        new Response(
+          JSON.stringify({ error: { code: "validation_error", message: "bad question" } }),
+          { status: 429 },
+        ),
+      ),
+    );
+
+    expect(info).toBeNull();
+  });
+
+  it("returns null for errors that are not ApiErrors at all", async () => {
+    expect(rateLimitFrom(new Error("boom"))).toBeNull();
+    expect(rateLimitFrom(null)).toBeNull();
+    expect(rateLimitFrom("boom")).toBeNull();
+    expect(rateLimitFrom({ code: "provider_rate_limited" })).toBeNull();
+  });
+});
+
+describe("describeRateLimit", () => {
+  it("says the wait is temporary and how long, without naming the provider", async () => {
+    const text = describeRateLimit({
+      retryAfterSeconds: 17,
+      provider: "groq",
+      scope: "minute",
+      source: "provider",
+    });
+
+    // The provider id is the point: "groq" is an internal name that makes a
+    // healthy, temporarily busy system look broken.
+    expect(text).toMatch(/temporary/i);
+    expect(text).toMatch(/17 seconds/);
+    expect(text).not.toMatch(/groq/i);
+  });
+
+  it("distinguishes the provider's own limit from our ceiling", () => {
+    expect(describeRateLimit({ source: "provider" })).toMatch(/AI provider's own rate limit/);
+    expect(describeRateLimit({ source: "app", scope: "minute" })).toMatch(
+      /Too many questions in a short time/,
+    );
+  });
+
+  it("explains an exhausted daily token allowance differently from a busy minute", () => {
+    const text = describeRateLimit({ scope: "tokens", source: "app" });
+
+    expect(text).toMatch(/today/i);
+    expect(text).toMatch(/temporary/i);
+  });
+
+  it("still reads as advice when the server sent no retry delay", () => {
+    const text = describeRateLimit({ source: "provider" });
+
+    // No "Try again in undefined seconds": the sentence has to be complete
+    // without the number.
+    expect(text).not.toMatch(/undefined|NaN/);
+    expect(text).not.toMatch(/second\b/);
+  });
+
+  it("uses the singular for a one-second wait", () => {
+    expect(describeRateLimit({ retryAfterSeconds: 1 })).toMatch(/1 second\./);
   });
 });

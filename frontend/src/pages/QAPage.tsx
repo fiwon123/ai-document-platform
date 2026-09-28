@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { DocumentFilter } from "../components/DocumentFilter";
-import { qa } from "../services/api";
+import { describeRateLimit, qa, rateLimitFrom } from "../services/api";
+import type { RateLimitInfo } from "../services/api";
 import type { QAResponse, SearchResult } from "../types";
 import { Spinner } from "../components/Spinner";
 import { Markdown } from "../components/Markdown";
@@ -46,6 +47,9 @@ export function QAPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Rate limits are kept apart from `error` so the notice can be its own
+  // thing: temporary, with a wait, and not phrased like a crash.
+  const [rateLimit, setRateLimit] = useState<RateLimitInfo | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // Answer quality is bounded by retrieval quality, so a keyword-only backend
   // degrades this page too -- and an answer that quietly missed the relevant
@@ -88,7 +92,22 @@ export function QAPage() {
         selectedIds.length > 0 ? selectedIds : undefined,
         localStorage.getItem(MODEL_KEY) ?? undefined,
       ),
-    onError: (err) => {
+    onError: (err, question) => {
+      // A rate limit is a temporary condition with a known wait, not a
+      // failure: it gets its own state so the notice can say when it lifts
+      // instead of quoting an internal provider id at the user. Every other
+      // error keeps the message it always had.
+      const limit = rateLimitFrom(err);
+      if (limit) {
+        setRateLimit(limit);
+        setError(null);
+        // The question is already in the transcript as a user turn, so nothing
+        // is lost — but putting it back in the box makes retrying one action
+        // (press send) instead of retyping a long question.
+        setInput((current) => current || question || "");
+        return;
+      }
+      setRateLimit(null);
       setError(err instanceof Error ? err.message : "Failed to get answer");
     },
   });
@@ -113,6 +132,7 @@ export function QAPage() {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setError(null);
+    setRateLimit(null);
     setCopiedId(null);
 
     try {
@@ -339,6 +359,12 @@ export function QAPage() {
 
           <div ref={endRef} />
         </div>
+
+        {rateLimit && (
+          <p className="rate-limit-notice" role="status">
+            {describeRateLimit(rateLimit)}
+          </p>
+        )}
 
         {error && <p className="error-message" role="alert">{error}</p>}
 
