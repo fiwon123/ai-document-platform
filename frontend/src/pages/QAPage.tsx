@@ -42,6 +42,18 @@ interface Message {
     // contexts (e.g. plain-http previews that lack the Clipboard API).
   }
 
+/**
+ * Mirrors `question: str = Field(..., max_length=2000)` in
+ * `backend/src/app/schemas/qa.py`. Nothing exposes the server's limits at
+ * runtime, so the two are kept in step by hand and by this comment; the browser
+ * cap turns an over-long paste into visible feedback rather than a 422 the user
+ * cannot act on.
+ */
+const MAX_QUESTION_LENGTH = 2000;
+
+/** Show the count once the cap is close enough to be worth the pixels. */
+const QUESTION_COUNTER_FROM = MAX_QUESTION_LENGTH - 200;
+
 export function QAPage() {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -393,7 +405,18 @@ export function QAPage() {
             autoComplete="off"
             className="chat-input"
             disabled={isLoading}
+            maxLength={MAX_QUESTION_LENGTH}
           />
+          {input.length >= QUESTION_COUNTER_FROM && (
+            <span
+              className="chat-input-counter"
+              // Polite: the count changes on every keystroke, so announcing it
+              // would talk over the question being typed.
+              aria-live="polite"
+            >
+              {input.length} / {MAX_QUESTION_LENGTH}
+            </span>
+          )}
           <button
             type="submit"
             className="btn btn-primary"
