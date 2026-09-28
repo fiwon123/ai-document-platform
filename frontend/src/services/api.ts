@@ -17,14 +17,124 @@ import type {
 
 const API_BASE = "/v1";
 
-class ApiError extends Error {
-  status: number;
+/** The `details` object the backend attaches to a standardized error. */
+export type ErrorDetails = Record<string, unknown>;
 
-  constructor(status: number, message: string) {
+export class ApiError extends Error {
+  status: number;
+  /**
+   * The stable machine-readable code (`provider_rate_limited`,
+   * `rate_limit_exceeded`, `validation_error`, …).
+   *
+   * Kept because the message is for people and this is for the program: the UI
+   * needs to tell "wait a moment" apart from "this will never work" without
+   * pattern-matching English. Absent for the legacy `{detail}` shape and for
+   * responses with no body, so every read of it is optional.
+   */
+  code?: string;
+  details?: ErrorDetails;
+  /**
+   * Seconds to wait before retrying.
+   *
+   * The `Retry-After` header is preferred — it is the interoperable signal, the
+   * one a proxy or any other client reads — and the body's `retry_after` is the
+   * fallback for when a proxy dropped it. Accepts both forms the header may
+   * take (a delay in seconds, or an HTTP date) and resolves them here, so the
+   * field means "how long to wait" whichever source answered.
+   */
+  retryAfterSeconds?: number;
+
+  constructor(
+    status: number,
+    message: string,
+    extra: { code?: string; details?: ErrorDetails; retryAfterSeconds?: number } = {},
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = extra.code;
+    this.details = extra.details;
+    this.retryAfterSeconds = extra.retryAfterSeconds;
   }
+}
+
+/** What a caller needs to explain a rate limit and offer a retry. */
+export interface RateLimitInfo {
+  /** Seconds until the limit is expected to reset, if the server said. */
+  retryAfterSeconds?: number;
+  /** Which provider refused, when the error named one. */
+  provider?: string;
+  /** What was exhausted: the per-minute or per-day budget. */
+  scope?: string;
+  /** Whether the refusal came from our own ceiling or the provider's. */
+  source?: string;
+}
+
+/** `Retry-After` is either a delay in seconds or an HTTP date. */
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, Math.ceil(seconds));
+  }
+  const when = Date.parse(value);
+  if (Number.isNaN(when)) return undefined;
+  return Math.max(0, Math.ceil((when - Date.now()) / 1000));
+}
+
+function str(details: ErrorDetails | undefined, key: string): string | undefined {
+  const value = details?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function num(details: ErrorDetails | undefined, key: string): number | undefined {
+  const value = details?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * The rate-limit facts for an error, or null when it is not a rate limit.
+ *
+ * One helper rather than per-call-site checks, so every surface describes a rate
+ * limit the same way and a future third caller cannot forget a field.
+ *
+ * Both codes are handled: `provider_rate_limited` is the LLM provider refusing,
+ * and `rate_limit_exceeded` is the app's own per-IP limiter. They mean the same
+ * thing to a user — come back shortly — while differing in whether a retry will
+ * help sooner or is already known to have hit a shared provider budget.
+ */
+export function rateLimitFrom(error: unknown): RateLimitInfo | null {
+  if (!(error instanceof ApiError)) return null;
+  if (
+    error.code !== "provider_rate_limited" &&
+    error.code !== "rate_limit_exceeded"
+  ) {
+    return null;
+  }
+  return {
+    retryAfterSeconds: error.retryAfterSeconds,
+    provider: str(error.details, "provider"),
+    scope: str(error.details, "scope"),
+    source: str(error.details, "source"),
+  };
+}
+
+/** A rate limit in words a user can act on, without an internal provider id. */
+export function describeRateLimit(info: RateLimitInfo): string {
+  const wait = info.retryAfterSeconds;
+  const when = wait === undefined ? "" : ` Try again in about ${wait} second${wait === 1 ? "" : "s"}.`;
+
+  // The provider id stays out of the user-facing text on purpose: "groq" is an
+  // internal name, and showing it makes a temporary limit look like a broken
+  // backend. The source distinguishes our ceiling from the provider's, which is
+  // the part that tells a user whether waiting is likely to help.
+  if (info.source === "provider") {
+    return `The AI provider's own rate limit was reached, so this is temporary.${when}`;
+  }
+  if (info.scope === "tokens" || info.scope === "tokens_per_day") {
+    return `The AI provider's request allowance for today is used up, so this is temporary.${when}`;
+  }
+  return `Too many questions in a short time. Please wait a moment.${when}`;
 }
 
 type RequestOptions = RequestInit & { _retried?: boolean };
@@ -117,12 +227,36 @@ async function fetchWithAuth(
 
 /** Shared error parsing for non-2xx responses (JSON body or fallback). */
 async function parseError(response: Response, fallback: string): Promise<ApiError> {
-  const body = await response.json().catch(() => ({ detail: fallback }));
+  // A body that is absent or not JSON (a proxy's HTML error page, an empty
+  // 502) still has to produce the caller's fallback rather than "[object
+  // Object]", so an unparsable body is treated as `{detail: fallback}` exactly
+  // as before — that is where a useful message comes from.
+  const parsed = await response.json().catch(() => undefined);
+  const body = parsed ?? { detail: fallback };
   // Support both the legacy `{detail}` and the standardized
-  // `{error: {code, message}}` response shapes.
+  // `{error: {code, message, details}}` response shapes.
   const message =
-    body?.detail ?? body?.error?.message ?? `Request failed (${response.status})`;
-  return new ApiError(response.status, message);
+    body?.detail ??
+    body?.error?.message ??
+    `Request failed (${response.status})`;
+
+  const details =
+    body?.error?.details && typeof body.error.details === "object"
+      ? (body.error.details as ErrorDetails)
+      : undefined;
+  const code = typeof body?.error?.code === "string" ? body.error.code : undefined;
+
+  return new ApiError(response.status, message, {
+    code,
+    details,
+    // The header wins because it is the interoperable signal, but the body
+    // carries the same fact and a proxy can drop the header. Deciding the
+    // precedence here — rather than in each caller — means `retryAfterSeconds`
+    // means "how long to wait" whichever source answered.
+    retryAfterSeconds:
+      parseRetryAfter(response.headers.get("retry-after")) ??
+      num(details, "retry_after"),
+  });
 }
 
 async function request<T>(
