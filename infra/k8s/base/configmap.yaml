@@ -31,6 +31,16 @@ data:
   # --- AI ---
   OPENAI_MODEL: "gpt-4"
   EMBEDDING_MODEL: "text-embedding-ada-002"
+  # The width each space's vectors must be. Set together with the model when
+  # switching either space, because vectors of different widths cannot be
+  # compared and the service refuses one of the wrong width rather than storing
+  # it. Same values as the Helm chart's config.ai.*.
+  EMBEDDING_DIMENSIONS: "1536"
+  # The local embedding space (Ollama), used only when OPENAI_API_KEY is unset
+  # so an existing OpenAI deployment is never silently moved. nomic-embed-text
+  # is 768-wide; all-minilm is 384 and mxbai-embed-large 1024.
+  LOCAL_EMBEDDING_MODEL: "nomic-embed-text"
+  LOCAL_EMBEDDING_DIMENSIONS: "768"
   # Default QA model. Empty means "let the application decide", which is
   # free-first: a configured Groq or local provider wins, and a paid OpenAI
   # model is reached only when nothing free is available. Set to
