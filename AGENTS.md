@@ -134,6 +134,8 @@ docker compose down -v
 1. `make dev-up` to start → `make dev-log` (2nd terminal) → `make dev-down` when done
 2. `make check` before every push — always green before PR
 3. Only `dev-up` requires opencode; `infra-up` + host loop (`make check`) don't
+4. **UI changes are verified by looking at them.** Captures are part of the gate,
+   not an optional extra — see `.opencode/instructions/testing.md` → "Visual checks"
 
 ## Runtime Environment
 
@@ -402,12 +404,28 @@ main          ← release merges (CI runs here)
 
 Agent definitions live in `opencode.json` and `.opencode/agents/`:
 
-- **build** (primary): Full development work with all tools enabled
-- **plan** (primary): Analysis and planning without making changes
+- **build** (primary): Full development work with all tools enabled — `opencode/big-pickle`
+- **plan** (primary): Analysis and planning without making changes — `opencode/nemotron-3-ultra-free`
+- **visual** (primary + subagent, yellow): Looks at screenshots/GIF/video of the
+  running app and reports or fixes what is visually wrong —
+  `opencode/mimo-v2.6-flash-free`. This is the only reason a visual claim is
+  allowed: the agent is multimodal, so "look at the capture" is a step, not an
+  inference. `mode: "all"` on purpose — you can Tab into it to review a page
+  directly, *and* `build` delegates to it via the Task tool for the
+  visual-verification step. `subagent` would make it invisible in the mode
+  switcher (#531)
 - **backend** (subagent): Implements routes, services, database changes
 - **frontend** (subagent): Implements UI components and client-side behavior
 - **tester** (subagent): Writes and runs tests
 - **reviewer** (subagent): Reviews code for bugs, security, and regressions
+
+Model and `mode` per role are in `opencode.json` **and** mirrored in
+`.opencode/agents/*.md`; the two are duplicated today, so change both — a `mode`
+that differs between them is a role that silently does not appear. `color`
+accepts `#RRGGBB` or `primary|secondary|accent|success|warning|error|info` — a
+bare `"yellow"` is rejected and would break startup. Verify model ids with
+`opencode models`. Config is read once at startup: after changing it, restart
+opencode — a running session keeps the agent list it loaded with.
 
 ### Skills
 
