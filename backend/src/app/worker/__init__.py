@@ -139,6 +139,14 @@ def _schedule_webhook(event: WebhookEvent, document: DocumentDB) -> None:
         logger.warning(f"Webhook scheduling failed for {event.value}: {e}")
 
 
+# What a document records when the pipeline fails for a reason the *user* cannot
+# act on. One constant, because the policy that internal error detail stays in
+# the log and out of the API payload is written in two places, and two literals
+# will drift: the arq path held this rule and the inline fallback did not, so a
+# real database error was persisted verbatim whenever the queue was down.
+GENERIC_PROCESSING_FAILURE = "Document processing failed"
+
+
 def _mark_failed(document_id: UUID, error_message: str) -> DocumentDB | None:
     """Record a processing failure without leaving the doc stuck.
 
@@ -381,7 +389,7 @@ async def process_document(ctx: dict, document_id: str) -> None:
             # raw exception stays in the log; the persisted message is
             # generic so internal error details never reach the client.
             document = _mark_failed(
-                document_uuid, "Document processing failed"
+                document_uuid, GENERIC_PROCESSING_FAILURE
             )
             if document is not None:
                 _schedule_webhook(WebhookEvent.FAILED, document)
@@ -434,8 +442,13 @@ def process_document_sync(document_id: UUID) -> None:
     try:
         document = asyncio.run(_process_document_impl(document_id))
     except Exception as e:  # noqa: BLE001 - record the failure then re-raise
+        # The detail goes to the log; the document gets the same generic message
+        # the arq path records, because `error_message` is returned by the API
+        # and rendered on the documents page. A psycopg2 or boto3 exception names
+        # the database host, its container IP, the port and the database user —
+        # none of which the user can act on.
         logger.error(f"Synchronous processing failed for {document_id}: {e}")
-        document = _mark_failed(document_id, str(e))
+        document = _mark_failed(document_id, GENERIC_PROCESSING_FAILURE)
         if document is not None:
             # Sync context with no event loop: fire via a background thread.
             from app.services.webhook import (
