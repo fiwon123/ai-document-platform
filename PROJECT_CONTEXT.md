@@ -383,6 +383,15 @@ without anyone having to know the direction of the underlying number.
   optional bring-your-own-key; answers are cached per user)
 - `GET /v1/qa/models` - List available QA models
 
+A bring-your-own-key is pasted on the Settings page and kept in `localStorage`
+under `askdocs-api-key`, then sent per request. It is a **paid secret for an
+external provider and does not expire**, so it is not treated like a device
+preference: signing out or deleting the account removes it alongside the access
+token (`clearPersistedSession` in `frontend/src/services/api.ts`, #522). The
+storage key names live in that one module for the same reason — the set of keys
+that gets written has to be the set that gets cleared, and when the name was
+duplicated in two files the clearing code had no reference to it.
+
 ### Statistics
 - `GET /v1/statistics/me` - Dashboard summary for the current user
   (documents by status, chunks, recent documents)

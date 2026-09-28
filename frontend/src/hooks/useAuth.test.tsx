@@ -13,6 +13,12 @@ vi.mock("../services/api", () => ({
     refresh: vi.fn(),
     logout: vi.fn(),
   },
+  // Real behaviour, not a stub: the tests below assert on what actually gets
+  // removed from localStorage, so a mock here would assert nothing.
+  clearPersistedSession: () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("askdocs-api-key");
+  },
 }));
 
 const mockedLogin = vi.mocked(auth.login);
@@ -169,6 +175,40 @@ describe("useAuth", () => {
     expect(screen.getByTestId("token").textContent).toBe("none");
     expect(localStorage.getItem("token")).toBeNull();
     expect(mockedLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes the stored bring-your-own LLM key on logout", async () => {
+    localStorage.setItem("token", makeToken(3600));
+    // A real provider key, paid for by the user, sitting in the origin's storage.
+    localStorage.setItem("askdocs-api-key", "sk-user-provider-key");
+    mockedGetMe.mockResolvedValue(testUser);
+    mockedLogout.mockResolvedValue(undefined);
+
+    renderAuth();
+    expect(await screen.findByText("alice")).toBeTruthy();
+
+    act(() => {
+      screen.getByText("logout").click();
+    });
+
+    expect(localStorage.getItem("askdocs-api-key")).toBeNull();
+  });
+
+  it("removes the stored bring-your-own LLM key on account deletion", async () => {
+    localStorage.setItem("token", makeToken(3600));
+    localStorage.setItem("askdocs-api-key", "sk-user-provider-key");
+    mockedGetMe.mockResolvedValue(testUser);
+
+    renderAuth();
+    await screen.findByText("alice");
+
+    act(() => {
+      screen.getByText("delete-account").click();
+    });
+
+    // Deleting the account promises to remove the user's data; a paid
+    // third-party credential must not outlive it on disk.
+    expect(localStorage.getItem("askdocs-api-key")).toBeNull();
   });
 
   it("clears the local session on account deletion without calling logout", async () => {

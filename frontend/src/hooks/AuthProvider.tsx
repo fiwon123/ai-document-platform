@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AuthContext } from "../context/authContext";
-import { auth } from "../services/api";
+import { auth, clearPersistedSession } from "../services/api";
 import type { User } from "../types";
 
 /** Refresh the access token shortly BEFORE it expires so requests never 401. */
@@ -117,7 +117,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     clearRefreshTimer();
-    localStorage.removeItem("token");
+    // Clears the access token *and* the stored BYOK provider key: the latter is
+    // a paid secret for an external provider and has no business outliving the
+    // session (#522).
+    clearPersistedSession();
     setToken(null);
     setUser(null);
     // Best-effort: clear the httpOnly refresh cookie server-side.
@@ -132,7 +135,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    *  refresh cookie, so this only clears the local session. */
   const deleteAccount = () => {
     clearRefreshTimer();
-    localStorage.removeItem("token");
+    // Deleting the account promises to remove the user's data, so the stored
+    // provider key goes with it (#522).
+    clearPersistedSession();
     setToken(null);
     setUser(null);
   };
