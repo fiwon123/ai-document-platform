@@ -12,6 +12,7 @@ not exercise the INCR/DECR interleaving that the reservation logic depends on.
 
 import threading
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 
@@ -154,6 +155,41 @@ class TestRequestBudget:
         assert reserve(GROQ).allowed is True
 
 
+class _FrozenClock:
+    """A stand-in for the ``datetime`` class whose ``now()`` is a fixed instant.
+
+    Not a subclass on purpose: the quota module only ever calls
+    ``datetime.now(UTC)`` and then does arithmetic on the *result*, so the
+    stand-in has to hand back a real ``datetime`` and nothing more. A subclass
+    would also have to satisfy ``__new__`` for every internal reconstruction
+    (a ``+`` on a datetime subclass rebuilds one), which is more machinery than
+    the module's use of the clock deserves.
+    """
+
+    def __init__(self, instant: datetime):
+        self._instant = instant
+
+    def now(self, tz=None) -> datetime:
+        return self._instant if tz is None else self._instant.astimezone(tz)
+
+
+def _freeze_clock(monkeypatch, instant: datetime) -> None:
+    """Pin every ``datetime.now()`` in the quota module to one instant.
+
+    The module reads the clock through ``datetime.now(UTC)`` at three call sites
+    (the day key it reads, the day key it writes, and the reset time it
+    reports), so freezing ``provider_quota.datetime`` fixes all three together —
+    which is what makes a recorded token land in the same day as the check that
+    reads it back.
+
+    The alternative to freezing is to assert only that the answer is "within a
+    day". That stops the failure and loses the property the assertion is there
+    to pin: that the allowance resets at the next UTC *midnight* rather than on
+    a rolling window, which is what the operator is promised.
+    """
+    monkeypatch.setattr(provider_quota, "datetime", _FrozenClock(instant))
+
+
 class TestTokenBudget:
     def test_allows_while_the_allowance_covers_the_expected_cost(self, monkeypatch):
         _limits(monkeypatch, tokens=1_000)
@@ -162,6 +198,7 @@ class TestTokenBudget:
 
     def test_refuses_when_the_remaining_allowance_is_short(self, monkeypatch):
         _limits(monkeypatch, tokens=1_000)
+        _freeze_clock(monkeypatch, datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
         record_tokens(GROQ, 700)
         decision = check_token_budget(GROQ, expected_tokens=400)
 
@@ -169,8 +206,41 @@ class TestTokenBudget:
         assert decision.scope == provider_quota.SCOPE_TOKENS
         assert decision.limit == 1_000
         assert decision.used == 700
-        # Until the next UTC day, when the allowance resets.
-        assert decision.retry_after > 3_600
+        # Until the next UTC day, when the allowance resets. Frozen at noon,
+        # that is exactly twelve hours away.
+        assert decision.retry_after == 12 * 3_600
+
+    @pytest.mark.parametrize(
+        ("hour", "minute", "second", "expected"),
+        [
+            (0, 0, 0, 86_400),  # a whole day remains just after midnight
+            (9, 30, 0, 52_200),
+            (12, 0, 0, 43_200),
+            (23, 0, 0, 3_600),  # the exact hour the suite used to start failing
+            (23, 30, 0, 1_800),  # the window in which it failed, nightly
+            (23, 59, 59, 1),  # one second before the reset
+        ],
+    )
+    def test_the_allowance_resets_at_the_next_utc_midnight(
+        self, monkeypatch, hour, minute, second, expected
+    ):
+        """Every hour of the day, not just the comfortable ones.
+
+        A single "more than an hour remains" assertion is true for 23 hours and
+        false for the last one, so the suite was green except between 23:00 and
+        24:00 UTC, where it reported a defect in the quota service that was not
+        there (#534). Pinning the instant across the whole day is what makes the
+        reset time a fact about the code rather than about when it was run.
+        """
+        _limits(monkeypatch, tokens=1_000)
+        _freeze_clock(
+            monkeypatch, datetime(2026, 1, 1, hour, minute, second, tzinfo=UTC)
+        )
+        record_tokens(GROQ, 700)
+        decision = check_token_budget(GROQ, expected_tokens=400)
+
+        assert decision.allowed is False
+        assert decision.retry_after == expected
 
     def test_exactly_enough_remaining_is_allowed(self, monkeypatch):
         # Checking against `used + expected` rather than `used` is what stops a
