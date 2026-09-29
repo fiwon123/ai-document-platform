@@ -42,6 +42,15 @@ def _overlay_patches(name: str) -> list[str]:
     return [p.get("patch", "") for p in doc.get("patches", [])]
 
 
+def _load_yaml_documents(overlay: str) -> list[dict]:
+    """Every YAML document in one overlay directory, so a test can assert a
+    resource *exists* without caring which file it was added to."""
+    docs: list[dict] = []
+    for path in sorted((OVERLAYS / overlay).glob("*.yaml")):
+        docs.extend(yaml.safe_load_all(path.read_text()))
+    return [d for d in docs if isinstance(d, dict)]
+
+
 class TestAcknowledgementWiring:
     """The dev environments may run with a published key; nothing else may."""
 
@@ -68,6 +77,80 @@ class TestAcknowledgementWiring:
             assert ALLOW_PLACEHOLDER_ENV_VAR not in body, (
                 f"the {overlay} overlay acknowledges the published signing key"
             )
+
+class TestDeployedOverlaysReplaceTheBaseSecret:
+    """Not acknowledging the key is only half the invariant.
+
+    ``TestAcknowledgementWiring`` proves staging and production do not opt in to
+    the published key, but that check passes just as happily on an overlay that
+    still inherits ``infra/k8s/base/secret.yaml`` verbatim — which is exactly the
+    state staging was in (#525), a real deployment running with a forgeable
+    signing key. These tests pin the other half: that the placeholder is deleted
+    *and* replaced, so deleting the delete-patch is a test failure rather than a
+    silent regression.
+
+    Staging historically fell back to the base Secret because it included only
+    the base, cert-manager and the ingress. Static reads again, since kustomize
+    cannot run here.
+    """
+
+    @pytest.mark.parametrize("overlay", ["staging", "production"])
+    def test_overlay_deletes_the_placeholder_secret(self, overlay):
+        doc = yaml.safe_load((OVERLAYS / overlay / "kustomization.yaml").read_text())
+        deleted = [
+            p
+            for p in doc.get("patches", [])
+            if p.get("path", "").endswith("delete-app-secrets.yaml")
+            or p.get("target", {}).get("name") == "app-secrets"
+        ]
+        assert deleted, (
+            f"the {overlay} overlay does not delete the base app-secrets Secret, "
+            f"so it inherits the published SECRET_KEY from infra/k8s/base"
+        )
+
+    @pytest.mark.parametrize("overlay", ["staging", "production"])
+    def test_overlay_materializes_its_own_secret(self, overlay):
+        """Deleting the base without providing a replacement is a CrashLoop, not a
+        fix — since #524 the app refuses to boot on a published key."""
+        found = [
+            doc
+            for doc in (_load_yaml_documents(overlay))
+            if doc.get("kind") == "ExternalSecret"
+            and doc.get("metadata", {}).get("name") == "app-secrets"
+        ]
+        assert found, f"the {overlay} overlay ships no app-secrets ExternalSecret"
+
+    @pytest.mark.parametrize("overlay", ["staging", "production"])
+    def test_secret_key_is_environment_specific(self, overlay):
+        """Two environments sharing one remote secret share one signing key, so a
+        staging compromise would mint tokens for production. Each overlay must
+        read its own path."""
+        remote_keys = {
+            entry["remoteRef"]["key"]
+            for doc in _load_yaml_documents(overlay)
+            if doc.get("kind") == "ExternalSecret"
+            for entry in doc.get("spec", {}).get("data", [])
+            if entry.get("secretKey") == "SECRET_KEY"
+        }
+        assert remote_keys, f"the {overlay} ExternalSecret maps no SECRET_KEY"
+        assert all(f"/{overlay}/" in key for key in remote_keys), (
+            f"the {overlay} overlay reads SECRET_KEY from {remote_keys}, which is "
+            f"not an {overlay}-scoped path — environments must not share a key"
+        )
+
+    def test_dev_overlay_keeps_the_placeholder(self):
+        """The counterpart: dev is *supposed* to run on the published key (Kind
+        smoke test boots it with no secret manager), so it must not start
+        deleting or externalizing it."""
+        doc = yaml.safe_load((OVERLAYS / "dev" / "kustomization.yaml").read_text())
+        assert not [
+            p
+            for p in doc.get("patches", [])
+            if "delete-app-secrets" in p.get("path", "")
+        ]
+        assert not [
+            d for d in _load_yaml_documents("dev") if d.get("kind") == "ExternalSecret"
+        ]
 
     def test_the_flag_is_not_baked_into_the_shared_base(self):
         """The base is inherited by every environment, so the opt-in cannot live

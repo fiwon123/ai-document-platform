@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - ../../base
   - cert-manager.yaml
+  - eso.yaml
   - ingress.yaml
 
 # Staging is a pre-production environment: real registry images (ghcr.io),
@@ -14,7 +15,8 @@ labels:
       environment: staging
 
 # Staging images: ghcr.io registry (built + pushed by the Infra CI workflow
-# on every dev merge). Pin to an exact SHA tag for a controlled rollout:
+# on a ci-labelled dev->main PR or a manual dispatch, never on a dev push; see
+# .github/workflows/infra.yml). Pin to an exact SHA tag for a controlled rollout:
 #   kustomize edit set image ai-platform/backend=ghcr.io/fiwon123/ai-platform/backend:abc1234
 images:
   - name: ai-platform/backend
@@ -28,6 +30,13 @@ images:
     newTag: latest
 
 patches:
+  # Staging secrets come from External Secrets Operator (eso.yaml); drop the
+  # plaintext dev placeholder Secret shipped in the base. Its SECRET_KEY is
+  # published in this repository, and since #524 the app refuses to boot on it.
+  - path: delete-app-secrets.yaml
+    target:
+      kind: Secret
+      name: app-secrets
   # Moderate replicas: 2 backend, 1 worker, 1 frontend.
   - target:
       kind: Deployment

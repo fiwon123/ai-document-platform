@@ -1,0 +1,69 @@
+# External Secrets Operator resource for the staging overlay.
+#
+# Why this file exists: the base ships a committed `app-secrets` Secret whose
+# SECRET_KEY is the literal value this repository publishes. Staging used to
+# inherit it untouched, which meant anyone who could read the repo could mint a
+# valid access token for any staging user. Since #524 the app refuses to boot on
+# a published signing key at all, so leaving this out is not "insecure but
+# working" — it is a CrashLoop. See #525.
+#
+# The base Secret is removed by `delete-app-secrets.yaml` (declared as a patch
+# in kustomization.yaml), and the real values arrive here instead.
+#
+# Cluster prerequisite (installed once, NOT per overlay): the ClusterSecretStore
+# `aws-secretsmanager` that this references by name. It is cluster-scoped, so
+# defining it here as well as in the production overlay would make two ArgoCD
+# Applications fight over one resource. The production overlay ships it; if
+# staging is deployed without the production overlay, install it separately
+# (see infra/README.md → "Staging secrets").
+#
+# Expected layout in Secrets Manager: a secret named `ai-platform/staging/backend`
+# with the properties SECRET_KEY, POSTGRES_PASSWORD, MINIO_ACCESS_KEY,
+# MINIO_SECRET_KEY, DATABASE_URL, OPENAI_API_KEY, GROQ_API_KEY — the same
+# property names production uses, pointed at the staging path.
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: app-secrets
+  namespace: ai-platform
+  labels:
+    app.kubernetes.io/part-of: ai-platform
+spec:
+  # Staging is a pre-production rehearsal of production, so it mirrors
+  # production's refresh cadence rather than tightening it.
+  refreshInterval: 1h
+  secretStoreRef:
+    name: aws-secretsmanager
+    kind: ClusterSecretStore
+  target:
+    name: app-secrets
+    creationPolicy: Owner
+  data:
+    - secretKey: SECRET_KEY
+      remoteRef:
+        key: ai-platform/staging/backend
+        property: SECRET_KEY
+    - secretKey: POSTGRES_PASSWORD
+      remoteRef:
+        key: ai-platform/staging/backend
+        property: POSTGRES_PASSWORD
+    - secretKey: MINIO_ACCESS_KEY
+      remoteRef:
+        key: ai-platform/staging/backend
+        property: MINIO_ACCESS_KEY
+    - secretKey: MINIO_SECRET_KEY
+      remoteRef:
+        key: ai-platform/staging/backend
+        property: MINIO_SECRET_KEY
+    - secretKey: DATABASE_URL
+      remoteRef:
+        key: ai-platform/staging/backend
+        property: DATABASE_URL
+    - secretKey: OPENAI_API_KEY
+      remoteRef:
+        key: ai-platform/staging/backend
+        property: OPENAI_API_KEY
+    - secretKey: GROQ_API_KEY
+      remoteRef:
+        key: ai-platform/staging/backend
+        property: GROQ_API_KEY

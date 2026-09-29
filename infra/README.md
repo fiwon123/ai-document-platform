@@ -184,23 +184,45 @@ moderate replicas and smaller resource limits, so a production-like deploy
 can be validated before going live. Hostnames/issuers are placeholders
 (`staging.example.com`, `ops@example.com`) — replace before use.
 
-### Staging needs its own JWT signing key
+### Staging gets its own JWT signing key
 
-Unlike production, the staging overlay does **not** replace the base
-`app-secrets` Secret: it includes only the base, the cert-manager resources
-and the ingress, so `SECRET_KEY` is still the value committed in
-`infra/k8s/base/secret.yaml` (`your-secret-key-change-in-production`).
+The staging overlay carries its own `ExternalSecret`
+(`overlays/staging/eso.yaml`) and deletes the base placeholder Secret with a
+patch, exactly as production does. `SECRET_KEY` for staging is therefore a real
+per-environment value, not `your-secret-key-change-in-production` from
+`infra/k8s/base/secret.yaml`.
 
-Since #524 the backend refuses to start on any signing key this repository
-publishes, so **staging will CrashLoop until a real secret is injected** —
-that is the intended fail-closed behaviour, not a regression. Anyone who
-could read this repository could otherwise mint a valid access token for any
-staging user id.
+That matters more than "best practice": since #524 the backend refuses to boot
+on any signing key this repository publishes, so a staging overlay that still
+inherited the base Secret would not be insecure-but-running — it would
+CrashLoop. Before this change it did exactly that, and the fix is what unblocks
+the environment.
 
-To bring it up, add a real secret to the staging overlay (an `ExternalSecret`
-mirroring the production one, or a `secretGenerator`/patch setting `SECRET_KEY`
-to a generated value). Do **not** reach for `ALLOW_PLACEHOLDER_SECRET_KEY`:
-only `infra/k8s/overlays/dev` sets it, and
+**Operator steps, in order.** These are cluster-side and are deliberately not
+automated by the overlay:
+
+1. Create the remote secret `ai-platform/staging/backend` in the provider, with
+   the same property names production uses:
+   `SECRET_KEY`, `POSTGRES_PASSWORD`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`,
+   `DATABASE_URL`, `OPENAI_API_KEY`, `GROQ_API_KEY`.
+   Generate `SECRET_KEY` yourself (`openssl rand -hex 32`) — do not copy a value
+   out of this repository.
+2. Ensure the cluster-scoped `ClusterSecretStore` named `aws-secretsmanager`
+   exists. The staging overlay only *references* it. The production overlay
+   ships it, but `ClusterSecretStore` is cluster-scoped, so a cluster running
+   staging alone needs it installed separately (see the ESO prerequisites above)
+   — defining it in both overlays would leave two ArgoCD Applications fighting
+   over one resource.
+3. Confirm the ESO credentials for the cluster can read that path:
+   ```bash
+   kubectl -n ai-platform get externalsecret app-secrets   # must be Synced/Ready
+   kubectl -n ai-platform get secret app-secrets -o jsonpath='{.data.SECRET_KEY}' | wc -c   # non-zero
+   ```
+4. Verify the deployment came up — the migrate Job runs first, so give it a
+   moment: `kubectl -n ai-platform get pods`, then `GET /v1/health` → 200.
+
+Do **not** reach for `ALLOW_PLACEHOLDER_SECRET_KEY`: only
+`infra/k8s/overlays/dev` sets it, and
 `backend/tests/test_published_key_deployment.py` fails if staging or production
 ever does. The Helm chart is covered by the same guard — a chart install left at
 `secrets.jwtSecretKey: "change-me-jwt-secret"` also refuses to boot.
