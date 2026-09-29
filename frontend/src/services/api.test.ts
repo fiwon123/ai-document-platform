@@ -139,7 +139,7 @@ describe("api client request paths", () => {
         JSON.stringify({
           id: "doc-4",
           filename: "a.pdf",
-          download_url: "http://localhost:9000/...",
+          download_url: "/v1/documents/doc-4/content?kind=original&token=abc",
         }),
         { status: 200 },
       ),
@@ -197,7 +197,7 @@ describe("api client request paths", () => {
       new Response(
         JSON.stringify({
           id: "doc-6",
-          thumbnail_url: "http://localhost:9000/.../thumbnail.png",
+          thumbnail_url: "/v1/documents/doc-6/content?kind=thumbnail&token=abc",
         }),
         { status: 200 },
       ),
@@ -205,7 +205,11 @@ describe("api client request paths", () => {
 
     const result = await documents.getThumbnailUrl("doc-6");
 
-    expect(result.thumbnail_url).toContain("thumbnail.png");
+    // The URL is passed through verbatim: it is already scoped to one document
+    // and one asset kind by a server-issued token (#536), so the client's only
+    // job is to hand it to an <img>. It must stay relative — rebuilding it here
+    // would be how a storage host crept back into the frontend.
+    expect(result.thumbnail_url).toBe("/v1/documents/doc-6/content?kind=thumbnail&token=abc");
     expect(mockFetch).toHaveBeenCalledWith(
       "/v1/documents/doc-6/thumbnail",
       expect.anything(),

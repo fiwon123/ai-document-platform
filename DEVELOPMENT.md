@@ -634,11 +634,11 @@ Four behaviours worth knowing before you trust a run:
   and the excuse travels with each item. It is a lead-list, not a verdict, and
   the gate does not act on it.
 
-Known limitations are listed by `--help`: thumbnails and download links do not
-load in these captures (presigned URLs are signed for `localhost:9000`, which
-the in-container browser cannot reach — correct for a browser on the host), and
-`/app/admin` is captured as the access-denied branch because the fixture user is
-a customer and no public endpoint can promote it.
+Known limitations are listed by `--help`: `/app/admin` is captured as the
+access-denied branch because the fixture user is a customer and no public
+endpoint can promote it. Thumbnails *do* load since #536 — the document bytes
+are streamed by the API under a signed token instead of by the object store, so
+there is no browser-facing storage address left to be wrong.
 
 A full pass currently takes about 11 minutes, of which roughly 5 are spent
 sleeping out the rate limiter. Individual groups take 1–2 minutes.

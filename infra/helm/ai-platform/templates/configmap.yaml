@@ -13,7 +13,6 @@ data:
   REDIS_PORT: {{ .Values.config.redis.port | quote }}
   REDIS_DB: {{ .Values.config.redis.db | quote }}
   MINIO_ENDPOINT: {{ include "ai-platform.minioEndpoint" . | quote }}
-  MINIO_PUBLIC_ENDPOINT: {{ .Values.config.minio.publicEndpoint | default (include "ai-platform.minioEndpoint" .) | quote }}
   MINIO_BUCKET: {{ .Values.config.minio.bucket | quote }}
   MINIO_SECURE: {{ .Values.config.minio.secure | quote }}
   MINIO_REGION: {{ .Values.config.minio.region | quote }}

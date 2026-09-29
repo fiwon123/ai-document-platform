@@ -630,7 +630,7 @@ describe("DocumentsPage busy states", () => {
     mockedGetDownloadUrl.mockResolvedValue({
       id: "doc-ready",
       filename: "notes.txt",
-      download_url: "https://example.com/download/notes.txt",
+      download_url: "/v1/documents/doc-ready/content?kind=original&token=abc",
     });
     vi.spyOn(window, "confirm").mockReturnValue(true);
   });
@@ -723,7 +723,7 @@ describe("DocumentsPage busy states", () => {
       resolveDownload({
         id: "doc-ready",
         filename: "notes.txt",
-        download_url: "https://example.com/download/notes.txt",
+        download_url: "/v1/documents/doc-ready/content?kind=original&token=abc",
       });
     });
     await settle();

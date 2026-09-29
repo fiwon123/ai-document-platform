@@ -4,7 +4,9 @@ Storage (MinIO) and the worker queue are always mocked — no real
 external services are contacted.
 """
 
+import time
 from unittest.mock import MagicMock
+from uuid import UUID, uuid4
 
 from app.models.document import DocumentStatus
 
@@ -491,24 +493,26 @@ class TestReprocessDocument:
 
 
 class TestDownloadDocument:
-    def test_returns_presigned_url(self, client, auth_headers, monkeypatch):
-        from app.storage.storage import storage as app_storage
+    def test_returns_an_api_link_carrying_a_token(self, client, auth_headers, monkeypatch):
 
         _mock_upload_ok(monkeypatch)
         created = _create_document(client, auth_headers)
-
-        monkeypatch.setattr(
-            app_storage,
-            "create_download_url",
-            lambda object_key, expires_in: f"https://storage.example/{object_key}",
-        )
 
         resp = client.get(f"/v1/documents/{created['id']}/download", headers=auth_headers)
 
         assert resp.status_code == 200
         body = resp.json()
         assert body["filename"] == UPLOAD_FILENAME
-        assert body["download_url"].startswith("https://storage.example/")
+        # A path on the API origin, not a storage host (#536). The browser
+        # resolves `/v1` because the frontend proxies it, so nothing here has to
+        # know where the object store is published.
+        assert body["download_url"].startswith(f"/v1/documents/{created['id']}/content?")
+        assert "kind=original" in body["download_url"]
+        # And no storage host appears anywhere in it: a link that named one
+        # would be a guess about the browser's network, and the guess is wrong
+        # in every environment but one.
+        assert "minio" not in body["download_url"]
+        assert "storage.example" not in body["download_url"]
 
     def test_404_for_missing_document(self, client, auth_headers):
         from uuid import uuid4
@@ -519,20 +523,23 @@ class TestDownloadDocument:
         assert resp.json()["error"]["code"] == "not_found"
 
     def test_ownership_isolation(self, client, auth_headers, monkeypatch):
-        from app.storage.storage import storage as app_storage
 
         _mock_upload_ok(monkeypatch)
         created = _create_document(client, auth_headers)
         other_headers = _register_second_user(client)
 
-        monkeypatch.setattr(app_storage, "create_download_url", lambda *a, **k: "https://x")
         resp = client.get(f"/v1/documents/{created['id']}/download", headers=other_headers)
 
         assert resp.status_code == 404
 
 
 class TestDocumentThumbnail:
-    """GET /documents/{id}/thumbnail serves a presigned URL for the PNG."""
+    """GET /documents/{id}/thumbnail serves a link to the rendered PNG.
+
+    The link names the API and carries a token, because an ``<img src>`` cannot
+    send an Authorization header and a storage URL would have to guess which
+    host the browser can reach (#536).
+    """
 
     @staticmethod
     def _mark_has_thumbnail(client, db_session, document_id):
@@ -568,40 +575,366 @@ class TestDocumentThumbnail:
     def test_returns_presigned_url_when_thumbnail_exists(
         self, client, auth_headers, db_session, monkeypatch
     ):
-        from app.storage.storage import storage as app_storage
 
         _mock_upload_ok(monkeypatch)
         created = _create_document(client, auth_headers)
-        doc = self._mark_has_thumbnail(client, db_session, created["id"])
-
-        monkeypatch.setattr(
-            app_storage,
-            "create_download_url",
-            lambda object_key, expires_in: f"https://storage.example/{object_key}",
-        )
+        self._mark_has_thumbnail(client, db_session, created["id"])
 
         resp = client.get(f"/v1/documents/{created['id']}/thumbnail", headers=auth_headers)
 
         assert resp.status_code == 200
         body = resp.json()
         assert body["id"] == created["id"]
-        # The presigned URL points at the thumbnail object next to the original.
-        assert body["thumbnail_url"] == (
-            f"https://storage.example/{doc.object_key.rsplit('/', 1)[0]}/thumbnail.png"
-        )
+        # The link names the API, the asset kind, and a token — never a storage
+        # host (#536). `doc` is still asserted on below for the content test.
+        assert body["thumbnail_url"].startswith(f"/v1/documents/{created['id']}/content?")
+        assert "kind=thumbnail" in body["thumbnail_url"]
+        assert "minio" not in body["thumbnail_url"]
 
     def test_ownership_isolation(self, client, auth_headers, db_session, monkeypatch):
-        from app.storage.storage import storage as app_storage
 
         _mock_upload_ok(monkeypatch)
         created = _create_document(client, auth_headers)
         self._mark_has_thumbnail(client, db_session, created["id"])
         other_headers = _register_second_user(client)
 
-        monkeypatch.setattr(app_storage, "create_download_url", lambda *a, **k: "https://x")
         resp = client.get(f"/v1/documents/{created['id']}/thumbnail", headers=other_headers)
 
         assert resp.status_code == 404
+
+
+class TestDocumentContent:
+    """GET /documents/{id}/content serves the bytes a token points at (#536).
+
+    This is the endpoint the presigned storage URL used to point *at*. The
+    browser can always reach it, because it is on the API origin it already
+    talks to, and the token in the query string carries the authority — the only
+    place an ``<img src>`` can put one.
+    """
+
+    THUMBNAIL_PNG = b"\x89PNG\r\n\x1a\nthumbnail-bytes"
+
+    @staticmethod
+    def _fake_storage(monkeypatch, payload: bytes):
+        """Point `open_object` at bytes instead of a bucket."""
+        from app.storage.storage import storage as app_storage
+
+        opened = []
+
+        class _Body:
+            def __init__(self, data):
+                self._data = data
+
+            def __iter__(self):
+                return iter([self._data])
+
+            def close(self):
+                pass
+
+        def open_object(object_key):
+            opened.append(object_key)
+            return _Body(payload), len(payload)
+
+        monkeypatch.setattr(app_storage, "open_object", open_object)
+        return opened
+
+    def _create_with_thumbnail(self, client, auth_headers, db_session):
+        from app.models.document import DocumentDB
+
+        created = _create_document(client, auth_headers)
+        row = (
+            db_session.query(DocumentDB)
+            .filter(DocumentDB.id == UUID(created["id"]))
+            .one()
+        )
+        row.has_thumbnail = True
+        db_session.commit()
+        return created
+
+    def test_thumbnail_is_served_as_png_bytes(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
+        from app.services.media_tokens import issue_token
+
+        created = self._create_with_thumbnail(client, auth_headers, db_session)
+        self._fake_storage(monkeypatch, self.THUMBNAIL_PNG)
+        token = issue_token(UUID(created["id"]), "thumbnail")
+
+        resp = client.get(
+            f"/v1/documents/{created['id']}/content",
+            params={"kind": "thumbnail", "token": token},
+        )
+
+        assert resp.status_code == 200
+        assert resp.content == self.THUMBNAIL_PNG
+        # A thumbnail is displayed, not downloaded, and it is per-user.
+        assert resp.headers["content-type"] == "image/png"
+        assert resp.headers["content-disposition"].startswith("inline")
+        assert resp.headers["cache-control"].startswith("private")
+        assert int(resp.headers["content-length"]) == len(self.THUMBNAIL_PNG)
+
+    def test_original_is_an_attachment_named_after_the_file(
+        self, client, auth_headers, monkeypatch
+    ):
+        from app.services.media_tokens import issue_token
+
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        self._fake_storage(monkeypatch, b"hello world")
+        token = issue_token(UUID(created["id"]), "original")
+
+        resp = client.get(
+            f"/v1/documents/{created['id']}/content",
+            params={"kind": "original", "token": token},
+        )
+
+        assert resp.status_code == 200
+        assert resp.content == b"hello world"
+        disposition = resp.headers["content-disposition"]
+        assert disposition.startswith("attachment")
+        assert UPLOAD_FILENAME in disposition
+
+    def test_thumbnail_and_original_are_different_objects(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
+        """The point of `kind` being inside the signed message.
+
+        Without it, a token obtained by any user for a preview would fetch the
+        original file — which for a user with read access is harmless and for
+        anyone who can read a link is not.
+        """
+        from app.services.media_tokens import issue_token
+
+        created = self._create_with_thumbnail(client, auth_headers, db_session)
+        opened = self._fake_storage(monkeypatch, b"x")
+
+        client.get(
+            f"/v1/documents/{created['id']}/content",
+            params={
+                "kind": "thumbnail",
+                "token": issue_token(UUID(created["id"]), "thumbnail"),
+            },
+        )
+        client.get(
+            f"/v1/documents/{created['id']}/content",
+            params={
+                "kind": "original",
+                "token": issue_token(UUID(created["id"]), "original"),
+            },
+        )
+
+        assert len(opened) == 2
+        assert opened[0].endswith("/thumbnail.png")
+        assert not opened[1].endswith("thumbnail.png")
+
+    def test_a_token_for_another_document_is_refused(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
+        from app.services.media_tokens import issue_token
+
+        created = self._create_with_thumbnail(client, auth_headers, db_session)
+        opened = self._fake_storage(monkeypatch, b"x")
+        other = uuid4()
+
+        resp = client.get(
+            f"/v1/documents/{other}/content",
+            params={
+                "kind": "thumbnail",
+                "token": issue_token(UUID(created["id"]), "thumbnail"),
+            },
+        )
+
+        # 403, not 404: the link is not valid *for this path*. And the database
+        # is never consulted, so a forged link cannot probe for existence.
+        assert resp.status_code == 403
+        assert opened == []
+
+    def test_a_token_cannot_be_edited_into_another(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
+        from app.services.media_tokens import issue_token
+
+        created = self._create_with_thumbnail(client, auth_headers, db_session)
+        opened = self._fake_storage(monkeypatch, b"x")
+        token = issue_token(UUID(created["id"]), "thumbnail")
+
+        resp = client.get(
+            f"/v1/documents/{created['id']}/content",
+            params={
+                "kind": "thumbnail",
+                "token": token[:-1] + ("0" if token[-1] != "0" else "1"),
+            },
+        )
+
+        assert resp.status_code == 403
+        assert opened == []
+
+    def test_an_expired_token_is_refused(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
+        from app.services.media_tokens import issue_token
+
+        created = self._create_with_thumbnail(client, auth_headers, db_session)
+        opened = self._fake_storage(monkeypatch, b"x")
+        # Issued an hour ago with a one-minute life: expired without sleeping.
+        stale = issue_token(
+            UUID(created["id"]),
+            "thumbnail",
+            ttl_seconds=60,
+            now=time.time() - 3600,
+        )
+
+        resp = client.get(
+            f"/v1/documents/{created['id']}/content",
+            params={"kind": "thumbnail", "token": stale},
+        )
+
+        assert resp.status_code == 403
+        assert opened == []
+
+    def test_missing_or_malformed_token_is_refused(self, client, auth_headers, db_session):
+        created = self._create_with_thumbnail(client, auth_headers, db_session)
+
+        for token in ("", "garbage", "123", "123.abc", "."):
+            resp = client.get(
+                f"/v1/documents/{created['id']}/content",
+                params={"kind": "thumbnail", "token": token},
+            )
+            assert resp.status_code == 403, token
+
+        # Absent entirely: FastAPI's own validation, 422 rather than 403.
+        resp = client.get(f"/v1/documents/{created['id']}/content", params={"kind": "thumbnail"})
+        assert resp.status_code == 422
+
+    def test_a_thumbnail_that_does_not_exist_is_404_not_403(
+        self, client, auth_headers, monkeypatch
+    ):
+        """The distinction a browser acts on.
+
+        A valid link to a document with no preview must let the card fall back
+        to its type chip, which is what 404 achieves. 403 would look like a
+        broken page instead, and would also be a lie: the link is fine.
+        """
+        from app.services.media_tokens import issue_token
+
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)  # has_thumbnail is False
+        self._fake_storage(monkeypatch, b"x")
+
+        resp = client.get(
+            f"/v1/documents/{created['id']}/content",
+            params={
+                "kind": "thumbnail",
+                "token": issue_token(UUID(created["id"]), "thumbnail"),
+            },
+        )
+
+        assert resp.status_code == 404
+
+    def test_a_storage_failure_is_404_and_never_a_500(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
+        """A missing object in the bucket is a missing asset, not a server error.
+
+        This is the shape of the bug that started all of it: the card must show
+        its chip, and the audit must see a 404 it can attribute to storage
+        rather than a 500 it has to investigate.
+        """
+        from app.services.media_tokens import issue_token
+        from app.storage.storage import storage as app_storage
+
+        created = self._create_with_thumbnail(client, auth_headers, db_session)
+
+        def boom(object_key):
+            raise RuntimeError("NoSuchKey")
+
+        monkeypatch.setattr(app_storage, "open_object", boom)
+
+        resp = client.get(
+            f"/v1/documents/{created['id']}/content",
+            params={
+                "kind": "thumbnail",
+                "token": issue_token(UUID(created["id"]), "thumbnail"),
+            },
+        )
+
+        assert resp.status_code == 404
+
+    def test_a_hostile_filename_cannot_break_out_of_the_header(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
+        """`filename` is whatever the user uploaded, and it lands in a header.
+
+        A quote or a CRLF in there would end the header early and let a caller
+        invent headers of its own — so the sanitised fallback carries only
+        characters that cannot, and the RFC 6266 form is percent-encoded.
+        """
+        from app.services.media_tokens import issue_token
+
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        self._fake_storage(monkeypatch, b"x")
+        # Rewrite the stored name to the classic header-injection payload.
+        from app.models.document import DocumentDB
+
+        row = (
+            db_session.query(DocumentDB)
+            .filter(DocumentDB.id == UUID(created["id"]))
+            .one()
+        )
+        row.filename = 'evil"; x=1\r\nX-Injected: yes'
+        db_session.commit()
+
+        resp = client.get(
+            f"/v1/documents/{created['id']}/content",
+            params={
+                "kind": "original",
+                "token": issue_token(UUID(created["id"]), "original"),
+            },
+        )
+
+        assert resp.status_code == 200
+        header = resp.headers["content-disposition"]
+        assert "\r" not in header and "\n" not in header
+        assert "X-Injected" not in resp.headers
+
+    def test_a_path_separator_in_the_filename_is_encoded_not_passed_through(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
+        """``quote`` leaves "/" alone by default, and that is visible here.
+
+        The ASCII fallback hides it — a sanitiser turns "../../etc/passwd" into
+        ".._.._etc_passwd", so checking only the fallback proves nothing about
+        the encoded parameter the browser actually prefers. "/" is not an
+        ext-value character (RFC 5987), so leaving it raw hands the browser a
+        suggested filename containing a directory.
+        """
+        from app.models.document import DocumentDB
+        from app.services.media_tokens import issue_token
+
+        _mock_upload_ok(monkeypatch)
+        created = _create_document(client, auth_headers)
+        self._fake_storage(monkeypatch, b"x")
+        row = (
+            db_session.query(DocumentDB)
+            .filter(DocumentDB.id == UUID(created["id"]))
+            .one()
+        )
+        row.filename = "../../etc/passwd"
+        db_session.commit()
+
+        resp = client.get(
+            f"/v1/documents/{created['id']}/content",
+            params={
+                "kind": "original",
+                "token": issue_token(UUID(created["id"]), "original"),
+            },
+        )
+
+        assert resp.status_code == 200
+        header = resp.headers["content-disposition"]
+        assert "filename*=UTF-8''..%2F..%2Fetc%2Fpasswd" in header
+        assert "filename*=UTF-8''../../" not in header
 
 
 class TestPreviewDocument:

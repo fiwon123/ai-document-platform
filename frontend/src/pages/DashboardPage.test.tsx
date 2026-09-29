@@ -49,7 +49,7 @@ describe("DashboardPage", () => {
     mockedGetDownloadUrl.mockResolvedValue({
       id: "doc-1",
       filename: "guide.pdf",
-      download_url: "http://localhost:9000/guide.pdf",
+      download_url: "/v1/documents/doc-1/content?kind=original&token=abc",
     });
     mockedReprocess.mockResolvedValue({
       message: "Document reprocessing started",

@@ -30,11 +30,6 @@ MINIO_ENDPOINT = os.getenv(
     "localhost:9000",
 )
 
-MINIO_PUBLIC_ENDPOINT = os.getenv(
-    "MINIO_PUBLIC_ENDPOINT",
-    MINIO_ENDPOINT,
-)
-
 MINIO_ACCESS_KEY = os.getenv(
     "MINIO_ACCESS_KEY",
     "minioadmin",
@@ -65,7 +60,6 @@ class MinioStorage:
     def __init__(
         self,
         endpoint: str,
-        public_endpoint: str,
         access_key: str,
         secret_key: str,
         bucket: str,
@@ -76,14 +70,6 @@ class MinioStorage:
 
         self.client = self._create_client(
             endpoint=endpoint,
-            access_key=access_key,
-            secret_key=secret_key,
-            secure=secure,
-            region=region,
-        )
-
-        self.public_client = self._create_client(
-            endpoint=public_endpoint,
             access_key=access_key,
             secret_key=secret_key,
             secure=secure,
@@ -159,30 +145,35 @@ class MinioStorage:
 
         return response["Body"]
 
+    def open_object(self, object_key: str):
+        """Return ``(body, content_length)`` for reading an object's bytes.
+
+        The body is boto3's streaming object rather than a bytes blob, so serving
+        a 40 MB upload through the API does not buffer 40 MB per request. The
+        caller is responsible for closing it, which ``StreamingResponse`` does
+        when the response is finished.
+
+        Deliberately not a presigned URL: a URL would have to name an endpoint
+        the *browser* can reach, and that host is a configuration guess
+        (#536). This route knows only its own origin, which the browser
+        demonstrably can reach.
+        """
+        response = self.client.get_object(
+            Bucket=self.bucket,
+            Key=object_key,
+        )
+
+        return response["Body"], int(response.get("ContentLength") or 0)
+
     def delete(self, object_key: str) -> None:
         self.client.delete_object(
             Bucket=self.bucket,
             Key=object_key,
         )
 
-    def create_download_url(
-        self,
-        object_key: str,
-        expires_in: int = 3600,
-    ) -> str:
-        return self.public_client.generate_presigned_url(
-            ClientMethod="get_object",
-            Params={
-                "Bucket": self.bucket,
-                "Key": object_key,
-            },
-            ExpiresIn=expires_in,
-        )
-
 
 storage = MinioStorage(
     endpoint=MINIO_ENDPOINT,
-    public_endpoint=MINIO_PUBLIC_ENDPOINT,
     access_key=MINIO_ACCESS_KEY,
     secret_key=MINIO_SECRET_KEY,
     bucket=MINIO_BUCKET,

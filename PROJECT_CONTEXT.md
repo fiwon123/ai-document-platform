@@ -346,8 +346,14 @@ the unconstrained local column safe to search.
 - `GET /v1/documents/{id}` - Get document details
 - `GET /v1/documents/{id}/status` - Get processing status (also reports `has_thumbnail`)
 - `GET /v1/documents/{id}/preview` - Get extracted text preview
-- `GET /v1/documents/{id}/download` - Get presigned download URL
-- `GET /v1/documents/{id}/thumbnail` - Get presigned thumbnail URL (404 when none)
+- `GET /v1/documents/{id}/download` - Get a time-limited signed URL for the
+  original file (JWT required, like every other document route)
+- `GET /v1/documents/{id}/thumbnail` - Get a time-limited signed URL for the
+  first-page preview (404 when none)
+- `GET /v1/documents/{id}/content?kind=original|thumbnail&token=...` - Stream
+  the bytes themselves. **No JWT header**: the `token` *is* the credential, and
+  it is scoped to one document and one `kind`, which is why a preview link
+  cannot be edited into a download of the file
 - `DELETE /v1/documents/{id}` - Delete document
 
 ### Search
@@ -454,7 +460,6 @@ Navigation rules:
 - `REDIS_PASSWORD`: Redis password (default: none)
 - `REDIS_MAX_CONNECTIONS`: Redis connection pool size (default: 20)
 - `MINIO_ENDPOINT`: MinIO endpoint (default: localhost:9000)
-- `MINIO_PUBLIC_ENDPOINT`: Public MinIO endpoint for presigned URLs (default: same as `MINIO_ENDPOINT`)
 - `MINIO_ACCESS_KEY`: MinIO access key (default: minioadmin)
 - `MINIO_SECRET_KEY`: MinIO secret key (default: minioadmin)
 - `MINIO_BUCKET`: Bucket name (default: documents)
@@ -668,6 +673,13 @@ when done; `make check` before every push; only `dev-up` requires opencode
   per-user cache versions, so document changes invalidate stale cache entries
 - **PDF thumbnails**: First-page previews rendered with PyMuPDF in the background
   worker (best-effort; `has_thumbnail` flag on the document)
+- **Document bytes are served by the API, not the object store**: a browser
+  fetching `http://minio:9000/...` — or a presigned URL built for it — works in
+  exactly one topology and silently degrades to a type chip everywhere else
+  (#536). The API streams the bytes behind a short-lived HMAC token bound to
+  one document and one asset kind, so the URL a browser receives is always
+  relative to the API it is already talking to. `MINIO_PUBLIC_ENDPOINT` is gone
+  because there is no longer a browser-facing address to configure
 - **Free-first model resolution**: `resolve_default_model` takes the first *free*
   registry entry whose provider is configured, so a paid model is never the
   default while a free one is available. Groq precedes local, because a hosted
