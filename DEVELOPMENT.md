@@ -537,9 +537,38 @@ entry point degrades instead of throwing: a run must not die over a derived
 convenience artifact. A missing half costs the GIF, and the PNGs stand.
 
 Defaults were measured on a real 5.04s / 25fps / 1440x900 recording, not guessed:
-16 frames at 640px and 64 colours is ~370 KB and ~1.2s to encode. A 640px GIF is
-a **motion summary** — it is not where fine text is read, which is exactly why
-the full-resolution PNGs are kept rather than replaced.
+16 frames at 640px is ~1.2s to encode. A 640px GIF is a **motion summary** — it
+is not where fine text is read, which is exactly why the full-resolution PNGs
+are kept rather than replaced.
+
+**One palette per visual state, and why that is the only policy that works.** A
+256-colour GIF is lossy, so *which* colours it loses is a decision, and all three
+obvious decisions were rendered and looked at rather than reasoned about. Against
+the live render, worst stat-tile fill error on frames of the *same settled page*:
+
+| Policy | Worst dE | What it does to a reviewer |
+|---|---|---|
+| Palette per frame (64) | 100 | tile hue swings ~40° between identical frames — reads as the UI changing colour |
+| One palette per clip (64) | 100 | vivid blue `(37,99,235)` renders as steel `(55,87,167)` |
+| One palette per clip (256) | 111 | vivid blue renders as grey slate `(103,119,148)` |
+| **Palette per visual state (256)** | **6.7** | correct |
+
+Per-frame has room for the page's saturated colours but lets a constant colour
+render differently per frame — the one false finding a motion artifact must never
+manufacture. One palette for the clip is stable and *starved*: a recording holding
+both a light and a dark page spends its 256 entries on the two backgrounds, and
+median-cut allocates by area, so the accents never get in. Reserving entries for
+"flat" colours does not rescue it either, because the WebM is lossy — a flat tile
+arrives as ~1000 near-identical colours, so 1351 gradient candidates outrank the
+accents by area.
+
+So the palette belongs to a *visual state*: consecutive frames showing the same
+thing share one palette (compared on an 8×8 luminance signature), and each state
+spends the whole budget on the colours that state actually contains. Dithering is
+on; without it the dark hero broke into hard staircase patches. The cost is size
+— 955 KB against 497 KB for a 3.84s clip, because each state carries its own
+table. Verified by rendering: max dE 2.8 anywhere, tile hue span ≤1.5° within a
+state, no visible seam where the palette changes at the crossfade.
 
 Flags: `--base=`, `--out=`, `--only=`, `--keep-runs=`, `--budget-mb=`,
 `--video-themes=light,dark`, `--gate[=signals]`, `--baseline=`,
