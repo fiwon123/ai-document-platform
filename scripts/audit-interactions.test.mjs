@@ -490,3 +490,111 @@ test("a plan sized for a taller page still ends at the real bottom", () => {
   assert.equal(settled.offsets.at(-1), 2438 - 900);
   assert.equal(settled.truncated, false);
 });
+
+// ── content assertions (#559) ────────────────────────────────────────────────
+//
+// The `qa/answer` scenario was green on a photograph of a provider error, twice,
+// because `require` only asks "is this element attached". These pin the
+// replacement: an assertion that checks the *substance* of a state.
+//
+// The assertion body itself runs in the page, so it cannot be imported here. It is
+// re-implemented against a DOM-free stand-in, and the fixtures are the real
+// strings from the capture that fooled the gate — a test that used invented
+// strings would not have caught it.
+
+/** The in-page ASSERT body, driven against a text fixture instead of a document. */
+function applyAssertion(spec, text) {
+  if (spec.matches && !spec.matches.every((n) => text.includes(n))) {
+    return { ok: false, found: text.slice(0, 160) };
+  }
+  // `noneOf` first, matching the in-page ASSERT: an error is the more
+  // informative reason to give and must not be reported as a word count.
+  for (const n of spec.noneOf ?? []) {
+    if (text.toLowerCase().includes(n.toLowerCase())) {
+      return { ok: false, found: `contains forbidden text: ${n}` };
+    }
+  }
+  if (spec.minLength != null && text.length < spec.minLength) {
+    return { ok: false, found: `${text.length} chars, needed ${spec.minLength}` };
+  }
+  if (spec.minWords != null) {
+    const words = text.split(" ").filter(Boolean).length;
+    if (words < spec.minWords) return { ok: false, found: `${words} words, needed ${spec.minWords}` };
+  }
+  return { ok: true };
+}
+
+/** The spec the `qa/answer` scenario now carries. */
+const QA_ANSWER_ASSERT = {
+  label: "rendered answer, not an error",
+  minWords: 12,
+  // Mirrors the scenario's list, most specific first — the first match is the one
+  // reported, so list order is part of the diagnostic.
+  noneOf: [
+    "could not generate",
+    "ai service is not configured",
+    "rate limit",
+    "please try again",
+  ],
+};
+
+// Verbatim from frontend/visual-audit/20260929-131231/app-qa/*-answer.png, which
+// is the capture that was reviewed, found to be an error, and passed anyway.
+const PROVIDER_ERROR =
+  "Could not generate an answer with the AI provider. Please try again.";
+
+test("a provider error does not satisfy the QA answer assertion", () => {
+  // The whole point. This string was photographed and reported as a green
+  // `answer` capture, with `skipped: 0`.
+  assert.equal(applyAssertion(QA_ANSWER_ASSERT, PROVIDER_ERROR).ok, false);
+});
+
+test("a real answer satisfies the QA answer assertion", () => {
+  const real =
+    "Revenue grew across every region this quarter, led by APAC at 42%. " +
+    "The ingestion pipeline processed 1,284 documents with a 99.2% success rate, " +
+    "and search latency stayed under 200ms at p95.";
+  assert.equal(applyAssertion(QA_ANSWER_ASSERT, real).ok, true);
+});
+
+test("an unconfigured provider is rejected, not treated as an answer", () => {
+  assert.deepEqual(
+    applyAssertion(QA_ANSWER_ASSERT, "AI service is not configured. Add an API key to ask questions."),
+    { ok: false, found: "contains forbidden text: ai service is not configured" },
+  );
+});
+
+test("a rate-limited answer is rejected", () => {
+  // "rate limit" outranks the vaguer "please try again" in the list, so the skip
+  // names the quota instead of a courtesy phrase.
+  assert.deepEqual(
+    applyAssertion(QA_ANSWER_ASSERT, "Rate limit reached for the provider. Please try again shortly."),
+    { ok: false, found: "contains forbidden text: rate limit" },
+  );
+});
+
+test("a short no-results message is rejected, and a short real answer with no error text is not", () => {
+  // "Not in your documents" is a legitimate answer shape but too short to be a
+  // real one; the floor exists so the state is not satisfied by a stub.
+  assert.equal(applyAssertion(QA_ANSWER_ASSERT, "No relevant documents found.").ok, false);
+  // ...while an answer that clears the floor and contains no failure string
+  // passes, so the assertion is not merely a length proxy: the two must both hold.
+  assert.deepEqual(
+    applyAssertion(
+      QA_ANSWER_ASSERT,
+      "Revenue rose 12% this quarter to 4.1M, led by APAC at 42% growth.",
+    ),
+    { ok: true },
+  );
+});
+
+test("the assertion is case-insensitive on forbidden text", () => {
+  assert.deepEqual(
+    applyAssertion(QA_ANSWER_ASSERT, "COULD NOT GENERATE an answer with the AI provider."),
+    { ok: false, found: "contains forbidden text: could not generate" },
+  );
+});
+
+test("an empty answer is rejected", () => {
+  assert.equal(applyAssertion(QA_ANSWER_ASSERT, "").ok, false);
+});

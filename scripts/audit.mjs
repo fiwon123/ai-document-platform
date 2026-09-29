@@ -417,6 +417,51 @@ function timestampSlug(date = new Date()) {
 //   checkbox whose <label> is itself a 16px target, will be excused when a human
 //   auditor would not. So the count stays visible and the excuse travels with it.
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * In-page content assertion, run after a scenario's `require` and before the
+ * shutter.
+ *
+ * Serialised as a spec rather than a closure because `page.evaluate` can only
+ * take one argument, and because a spec is something a test can assert on — the
+ * point of the whole mechanism is that the *definition* of "this state is real"
+ * lives in one reviewable place instead of being implied by a selector.
+ *
+ * `noneOf` is not cosmetic. It is what makes an error legible as an error: the
+ * absent-error check is the positive case. A scenario that only asserts
+ * "something is on screen" passes on an error page, which is precisely the bug.
+ */
+const ASSERT = (spec) => {
+  const scope = spec.selector ? document.querySelector(spec.selector) : document;
+  if (!scope) return { ok: false, error: `selector not found: ${spec.selector}` };
+
+  const text = (scope.textContent || "").replace(/\s+/g, " ").trim();
+
+  if (spec.matches && !spec.matches.every((needle) => text.includes(needle))) {
+    return { ok: false, found: text.slice(0, 160) };
+  }
+
+  // `noneOf` is checked *before* the length floors, and the ordering is
+  // deliberate. Both reject the same text, but they say different things about
+  // it, and the skip reason is the only thing an operator has: a provider error
+  // reported as "9 words, needed 12" sends someone to look at the word count
+  // instead of at the provider. An error is the more informative reason, so it
+  // short-circuits.
+  for (const needle of spec.noneOf ?? []) {
+    if (text.toLowerCase().includes(needle.toLowerCase())) {
+      return { ok: false, found: `contains forbidden text: ${needle}` };
+    }
+  }
+
+  if (spec.minLength != null && text.length < spec.minLength) {
+    return { ok: false, found: `${text.length} chars, needed ${spec.minLength}` };
+  }
+  if (spec.minWords != null) {
+    const words = text.split(" ").filter(Boolean).length;
+    if (words < spec.minWords) return { ok: false, found: `${words} words, needed ${spec.minWords}` };
+  }
+  return { ok: true };
+};
+
 const PROBE = () => {
   const visible = (el) => {
     const rect = el.getBoundingClientRect();
@@ -922,7 +967,7 @@ class Audit {
    * screenshot of a page that silently lost its content (rate-limit redirect,
    * slow render, renamed selector) being filed as evidence of a healthy state.
    */
-  async shot(page, { route, viewport, theme, state, dir, require: requireSelector, requireMs = null, fullPage = false, clipSelector = null, probe = true, action = null, note = null, throttledBefore = null }) {
+  async shot(page, { route, viewport, theme, state, dir, require: requireSelector, requireMs = null, fullPage = false, clipSelector = null, probe = true, action = null, note = null, throttledBefore = null, assert: assertSpec = null }) {
     const slug = routeSlug(route);
     const target = path.join(this.runDir, dir ?? slug);
     await fsp.mkdir(target, { recursive: true });
@@ -983,6 +1028,42 @@ class Audit {
         note,
       });
       return false;
+    }
+
+    // `require` answers "is this element in the DOM". It does not answer "is this
+    // the state I meant to photograph", and the difference is a plausible wrong
+    // image, which is worse than a missing one.
+    //
+    // `assert` is the second half. It runs in the page and checks the *content* of
+    // a state, so a scenario can demand the substance rather than a container.
+    // The `qa/answer` case is the reason (#559): requiring the copy button passed
+    // on a provider *error*, because the button renders for every assistant
+    // message with no success check, and because it is `opacity: 0` until hover —
+    // so `state: "attached"` is satisfied by an invisible element. A DOM presence
+    // check could not tell those apart, twice over.
+    if (assertSpec) {
+      let verdict = null;
+      try {
+        verdict = await page.evaluate(ASSERT, assertSpec);
+      } catch (err) {
+        warn(`assert threw on ${route} ${state}: ${err.message}`);
+      }
+      if (!verdict?.ok) {
+        const detail = verdict?.found
+          ? `found ${JSON.stringify(verdict.found)}`
+          : (verdict?.error ?? "assertion did not run");
+        const reason = this.#skipReason(
+          `content assertion failed (${assertSpec.label ?? "unnamed"}): ${detail}`,
+          throttledBefore,
+        );
+        warn(`SKIP ${route} [${viewport}/${theme}] ${state}: ${reason}`);
+        this.addEntry({
+          route, viewport, theme, state, type: "screenshot", file: null,
+          skipped: reason,
+          note,
+        });
+        return false;
+      }
     }
 
     const probeStarted = Date.now();
@@ -1517,20 +1598,47 @@ GROUPS.qa = [
   { route: "/app/qa", state: "suggestions", require: ".suggestion-chip", expect: "main", auth: true, hover: ".suggestion-chip" },
   {
     // A completed Q&A turn, which nothing captured before #548: the three states
-    // above all stop before the answer. Without this, a regression in the single
-    // most important render on the page is invisible to every signal the gate has.
+    // above all stop before the answer.
     route: "/app/qa", state: "answer", expect: "main", auth: true,
-    // The discriminator is the **copy button**, not `.message-content`. The
-    // loading placeholder is `<div class="chat-message assistant"><div
-    // class="message-content">` — byte-identical structure to a real answer, so
-    // requiring `.message-content` matches the "Thinking…" spinner and the gate
-    // passes on a photograph of a pending request. Only a rendered answer carries
-    // the copy button, so requiring it is what makes this scenario honest.
+    // `require` here is a *liveness* check — the assistant turn exists at all,
+    // which is what rules out the "Thinking…" placeholder. It is deliberately not
+    // treated as proof of an answer.
     //
-    // Found by looking at the first capture of this state, which came back as a
-    // spinner: the require had passed and the gate was green, and neither the DOM
-    // nor the summary said the answer was not there.
-    require: ".chat-message.assistant .copy-answer-btn", requireMs: 120_000,
+    // The previous version claimed requiring `.copy-answer-btn` "is what makes
+    // this scenario honest". It was not, and the claim was wrong twice over:
+    //
+    //   1. `QAPage.tsx` renders the copy button for *every* assistant message with
+    //      no success check, and #558 makes a provider failure a `200 OK` whose
+    //      `answer` field holds a sentence — so an error message carries the
+    //      button too.
+    //   2. The button is `opacity: 0` until hover, and `require` waits on
+    //      `state: "attached"`, which a transparent element satisfies.
+    //
+    // So the run was green on a photograph of "Could not generate an answer with
+    // the AI provider", and `skipped: 0` said so. This is the *second* time this
+    // scenario has passed on a false positive; the first was the spinner.
+    //
+    // `assert` checks the substance instead: real prose, and none of the failure
+    // strings. When the provider is unreachable — as it is in the sandbox, where
+    // Groq answers 403 — the correct outcome is an honest **skip**, not a green
+    // capture of an error, and `skips` being a gate signal means the run says so.
+    require: ".chat-message.assistant", requireMs: 30_000,
+    assert: {
+      label: "rendered answer, not an error",
+      selector: ".chat-message.assistant .message-content",
+      // A one-line "I couldn't find that in your documents" is a real answer
+      // shape, so the floor is set below full prose length but above a stub.
+      minWords: 12,
+      // Most specific cause first: the *first* forbidden match is the one
+      // reported, so "rate limit" ahead of "please try again" is what makes the
+      // skip reason name the quota rather than a courtesy phrase.
+      noneOf: [
+        "could not generate",
+        "ai service is not configured",
+        "rate limit",
+        "please try again",
+      ],
+    },
     note: "completed Q&A turn: rendered answer with sources",
     fill: { "#qa-question": "What was the revenue trend?" },
     // Q&A has no debounced auto-submit, so the turn needs an explicit Send click.
@@ -2303,6 +2411,7 @@ async function runRouteGroup(audit, group, route, viewport, theme) {
       state: scenario.state,
       dir: routeSlug(scenario.route),
       require: scenario.require,
+      assert: scenario.assert ?? null,
       fullPage: scenario.fullPage ?? false,
       requireMs: scenario.requireMs ?? null,
       action: acts.length ? acts : null,
