@@ -5480,7 +5480,13 @@ nav.footer-col a:hover {
 /* Query-term highlight inside search result snippets. */
 .result-highlight {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
-  color: inherit;
+  /* Not `color: inherit`. Inside a muted container the inherited colour fails:
+     a QA answer's source preview is --muted (#5f6f85, 0.8rem), which measures
+     3.75:1 on this background and needs 4.5:1. --ink is the theme's primary text
+     colour, so it is correct on the highlight in both themes and unchanged for
+     search results, whose text was already --ink. Found by the QA answer capture
+     (#548) — the only state that puts a highlight inside muted text. */
+  color: var(--ink);
   border-radius: 3px;
   padding: 0 1px;
   font-weight: 600;
@@ -5617,12 +5623,17 @@ nav.footer-col a:hover {
 }
 
 .chat-message.user .message-avatar {
-  background: var(--green);
+  /* Not var(--green): white on green-600 (#16a34a) is 3.3:1, and the "U" is
+     13.6px bold — under the 18.66px that counts as large text — so it needs
+     4.5:1. green-700 is 5.02:1 and stays in the same ramp. Found by the QA
+     answer capture (#548): the avatar only ever appears once a turn is
+     *rendered*, so no earlier state could have shown it. */
+  background: #15803d;
   color: white;
 }
 
 :root[data-theme="dark"] .chat-message.user .message-avatar {
-  background: #16a34a;
+  background: #15803d;
 }
 
 .message-content {

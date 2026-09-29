@@ -22,12 +22,15 @@
  *   docker compose exec dev node scripts/audit.mjs --only=landing,documents
  *   docker compose exec dev node scripts/audit.mjs --budget-mb=200 --keep-runs=1
  *
- * Output lands in `/tmp/opencode/visual-audit/<YYYYMMDD-HHMMSS>/` (override with
- * --out=). Runs are timestamped and pruned to the newest --keep-runs (default 2),
- * because a single pass measured 37 MB (170 PNGs, 25.9 MB of them, the rest WebM
- * screencasts) and an unpruned output directory is how a visual audit quietly
- * eats a disk. Note /tmp is not a mounted volume: a container restart wipes the
- * output, which is another reason to keep only a shortlist.
+ * Output lands in `frontend/visual-audit/<YYYYMMDD-HHMMSS>/` (override with
+ * --out=), inside the bind-mounted workspace and gitignored, so a human can open
+ * the PNGs and WebMs straight from the host — no `docker compose cp`, and a
+ * container restart no longer takes the pictures with it. Runs are timestamped
+ * and pruned to the newest --keep-runs (default 3), because a single pass
+ * measured 37 MB (174 PNGs, 26 MB of them, the rest WebM screencasts) and an
+ * unpruned output directory is how a visual audit quietly eats a disk. Three is
+ * kept so a run can be compared against the one before it without keeping a
+ * shortlist somebody has to prune by hand.
  *
  * ── Three rules this file follows, each learned the hard way ───────────────
  *
@@ -86,6 +89,7 @@ import {
   describeSkip,
   orderedStepKeys,
   unreachableStepKeys,
+  undeclaredStepKeys,
 } from "./audit-interactions.mjs";
 import { Pacer, rateLimitFindings } from "./audit-pacer.mjs";
 
@@ -124,7 +128,6 @@ const VIEWPORTS = {
 };
 
 const DEFAULT_BASE_URL = "http://localhost:5173";
-const DEFAULT_OUT_ROOT = "/tmp/opencode/visual-audit";
 const FFMPEG = "/opt/ms-playwright/ffmpeg-1011/ffmpeg-linux";
 
 /**
@@ -133,6 +136,24 @@ const FFMPEG = "/opt/ms-playwright/ffmpeg-1011/ffmpeg-linux";
  */
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_BASELINE_FILE = path.join(SCRIPT_DIR, "audit-baseline.json");
+
+/**
+ * Captures land inside the repo, under `frontend/visual-audit/<timestamp>/`, and
+ * are gitignored.
+ *
+ * They used to go to `/tmp/opencode/visual-audit`, which has two problems. /tmp is
+ * not a mounted volume, so a container restart wiped every run and the one thing
+ * a reviewer wants — the pictures — is the thing that disappears; and a host path
+ * is a path you have to `docker compose cp` before you can open it. The whole
+ * point of this tool is that a human looks at the images, so they should land
+ * where the host already sees them: in the bind-mounted workspace.
+ *
+ * `frontend/` rather than the repo root because these are renders *of* the
+ * frontend, next to the code that produced them, and because a nested `.gitignore`
+ * keeps a 26 MB diff from ever reaching the index even if someone runs `git add -A`
+ * with the root ignore removed.
+ */
+const DEFAULT_OUT_ROOT = path.join(SCRIPT_DIR, "..", "frontend", "visual-audit");
 
 /**
  * Does the container's ffmpeg have a GIF muxer?
@@ -176,7 +197,7 @@ function parseArgs(argv) {
   const opts = {
     baseUrl: DEFAULT_BASE_URL,
     outRoot: DEFAULT_OUT_ROOT,
-    keepRuns: 2,
+    keepRuns: 3,
     budgetMb: 500,
     only: null,
     videoThemes: null,
@@ -275,7 +296,7 @@ Interactive visual audit (see scripts/audit.mjs for the full rationale).
   --base=URL         Frontend origin         (default ${DEFAULT_BASE_URL})
   --out=DIR          Output root             (default ${DEFAULT_OUT_ROOT})
   --only=a,b         Only these groups       (see GROUPS below)
-  --keep-runs=N      Run directories to keep (default 2)
+  --keep-runs=N      Run directories to keep (default 3)
   --budget-mb=N      Stop capturing past this many MB (default 500)
   --video-themes=L,D Themes to record animations in (default light)
   --gate[=a,b,c]  Fail (exit 1) on findings not in the baseline.
@@ -1455,12 +1476,49 @@ GROUPS.search = [
     route: "/app/search", state: "query-filled", require: "#search-query", expect: "main", auth: true,
     fill: { "#search-query": "revenue" },
   },
+  {
+    // A *completed* search, which nothing captured before #548: `query-filled` is
+    // pre-submit, so the results list, the count, the highlighted snippet and the
+    // export actions were never photographed even though they are the feature.
+    route: "/app/search", state: "results", expect: "main", auth: true,
+    // Declared, not optional: if the search returns nothing this is a SKIP, and
+    // `skips` is a gate signal. An empty result set therefore cannot pass the gate
+    // while looking like coverage — which is the whole point of the scenario.
+    require: ".search-result-card", requireMs: 25_000,
+    note: "completed search: result cards, total count, highlighted snippet, export actions",
+    // `fill` is enough and is not a shortcut: the page debounces 300ms and then
+    // drives the query from the URL, so the results state is genuinely reachable
+    // by typing alone. It is also the realistic interaction.
+    fill: { "#search-query": "revenue" },
+  },
 ];
 
 GROUPS.qa = [
   { route: "/app/qa", state: "empty", require: ".qa-model-select", expect: "main", auth: true },
   { route: "/app/qa", state: "model-open", require: ".qa-model-select", expect: "main", auth: true, click: ".qa-model-select" },
   { route: "/app/qa", state: "suggestions", require: ".suggestion-chip", expect: "main", auth: true, hover: ".suggestion-chip" },
+  {
+    // A completed Q&A turn, which nothing captured before #548: the three states
+    // above all stop before the answer. Without this, a regression in the single
+    // most important render on the page is invisible to every signal the gate has.
+    route: "/app/qa", state: "answer", expect: "main", auth: true,
+    // The discriminator is the **copy button**, not `.message-content`. The
+    // loading placeholder is `<div class="chat-message assistant"><div
+    // class="message-content">` — byte-identical structure to a real answer, so
+    // requiring `.message-content` matches the "Thinking…" spinner and the gate
+    // passes on a photograph of a pending request. Only a rendered answer carries
+    // the copy button, so requiring it is what makes this scenario honest.
+    //
+    // Found by looking at the first capture of this state, which came back as a
+    // spinner: the require had passed and the gate was green, and neither the DOM
+    // nor the summary said the answer was not there.
+    require: ".chat-message.assistant .copy-answer-btn", requireMs: 120_000,
+    note: "completed Q&A turn: rendered answer with sources",
+    fill: { "#qa-question": "What was the revenue trend?" },
+    // Q&A has no debounced auto-submit, so the turn needs an explicit Send click.
+    // The button is enabled by the filled input, which `fill` has just done.
+    click: '.chat-input-form button[type="submit"]',
+  },
 ];
 
 GROUPS.settings = [
@@ -1953,6 +2011,20 @@ async function applyInteraction(page, scenario) {
     throw new Error(
       `applyInteraction implements step(s) that can never run: ${unreachable.join(", ")} ` +
         "— add them to ORDER_AFTER_ACT in audit-interactions.mjs",
+    );
+  }
+
+  // The inverse, and the one that bites: a scenario asking for a step nothing
+  // implements. `run` is the trap — the video path honours it, so it looks like a
+  // supported key, and a still using it is photographed as though the interaction
+  // happened. Fail before the browser opens rather than after.
+  const undeclared = undeclaredStepKeys(scenario);
+  if (undeclared.length) {
+    throw new Error(
+      `scenario "${scenario.state ?? ""}" on ${scenario.route ?? "?"} asks for step(s) ` +
+        `no step implements: ${undeclared.join(", ")} — a still must express its ` +
+        "interaction as steps (see STEP_ORDER in audit-interactions.mjs). `run` works " +
+        "only for video scenarios in GROUPS.videos; on a still it is silently ignored.",
     );
   }
 

@@ -137,7 +137,6 @@ export const ALWAYS_ON = ["settle"];
 export function orderedStepKeys(scenario) {
   return STEP_ORDER.filter((key) => ALWAYS_ON.includes(key) || scenario[key]);
 }
-
 /**
  * Steps `applyInteraction` implements but `orderedStepKeys` can never return.
  *
@@ -149,4 +148,65 @@ export function orderedStepKeys(scenario) {
  */
 export function unreachableStepKeys(implemented) {
   return implemented.filter((key) => !STEP_ORDER.includes(key));
+}
+
+/**
+ * Scenario keys that describe the scenario rather than an interaction to perform.
+ *
+ * Everything else a scenario may declare has to name a step that `applyInteraction`
+ * actually implements. `route`, `state` and `require` are consumed by the capture
+ * itself; the rest are documentation or capture options.
+ */
+export const SCENARIO_METADATA_KEYS = [
+  // What to capture
+  "route",
+  "state",
+  "dir",
+  "viewport",
+  "theme",
+  "auth",
+  "expect",
+  "require",
+  "requireMs",
+  "fullPage",
+  "clipSelector",
+  "probe",
+  "throttledBefore",
+  // Documentation, carried into the manifest
+  "note",
+  "description",
+  "interaction",
+  "action",
+];
+
+/**
+ * Options *of* a step rather than steps in their own right.
+ *
+ * `clickAgain` is a second click inside the `click` step and `assertMs` is a
+ * timeout inside the `assertAttr` step, so neither is orderable and neither needs
+ * an implementation of its own. They still have to be named here: they are read
+ * off the scenario, and a key that is read but unlisted is exactly the silent
+ * no-op `undeclaredStepKeys` exists to catch.
+ */
+export const STEP_OPTION_KEYS = ["clickAgain", "assertMs"];
+
+/**
+ * Steps a scenario asks for that no step implements, so they can never run.
+ *
+ * The mirror of `unreachableStepKeys`, and the mistake this module most needs to
+ * catch: a scenario declaring `run: async (page) => …` on a still is *silently*
+ * dropped, because the video path honours `run` and the still path does not. The
+ * capture is then photographed as though the interaction had happened — the
+ * plausible-but-wrong image that is the reason any of this exists. It was found
+ * the hard way: two scenarios written with `run` produced four skips and a green
+ * run, because nothing said the interaction had been dropped.
+ *
+ * `run` is deliberately **not** in `SCENARIO_METADATA_KEYS`. The video path
+ * consumes it, which makes it look like metadata, but honouring it on a still
+ * would mean the guard has to know which path it is on. Instead it is reported
+ * here, and the message says what to do instead.
+ */
+export function undeclaredStepKeys(scenario) {
+  const allowed = new Set([...STEP_ORDER, ...STEP_OPTION_KEYS, ...SCENARIO_METADATA_KEYS]);
+  return Object.keys(scenario).filter((key) => !allowed.has(key));
 }

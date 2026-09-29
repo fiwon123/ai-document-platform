@@ -21,6 +21,9 @@ import {
   describeSkip,
   orderedStepKeys,
   unreachableStepKeys,
+  undeclaredStepKeys,
+  SCENARIO_METADATA_KEYS,
+  STEP_OPTION_KEYS,
   STEP_ORDER,
 } from "./audit-interactions.mjs";
 
@@ -186,4 +189,69 @@ test("a step implemented but never orderable is reported by name", () => {
   // The inverse of the carousel bug: a step nobody can reach runs never, and
   // the capture is photographed as if it had.
   assert.deepEqual(unreachableStepKeys([...STEP_ORDER, "dragTo"]), ["dragTo"]);
+});
+
+// ── undeclaredStepKeys ──────────────────────────────────────────────────────
+// The guard on a scenario asking for a step nothing implements. Found the hard
+// way: two scenarios written with `run` produced four skips and a green run,
+// because the video path honours `run` and the still path drops it silently.
+
+test("a still declaring `run` is reported, not silently ignored", () => {
+  // The regression this exists for. If this ever passes, the guard is gone and a
+  // still can again be photographed as though an interaction happened.
+  assert.deepEqual(undeclaredStepKeys({ route: "/x", state: "s", run: async () => {} }), ["run"]);
+});
+
+test("a scenario using only steps and metadata is clean", () => {
+  assert.deepEqual(
+    undeclaredStepKeys({
+      route: "/app/search",
+      state: "results",
+      require: ".card",
+      requireMs: 1000,
+      note: "n",
+      fill: { "#q": "revenue" },
+      click: ".btn",
+    }),
+    [],
+  );
+});
+
+test("an unknown interaction key is reported by name", () => {
+  assert.deepEqual(undeclaredStepKeys({ route: "/x", state: "s", doubleClick: ".btn" }), ["doubleClick"]);
+});
+
+test("no metadata or option key collides with a step key", () => {
+  // Otherwise a step could be added to STEP_ORDER and be silently exempted from
+  // the guard by the metadata/option list, which would be a guard with a hole.
+  const named = [...SCENARIO_METADATA_KEYS, ...STEP_OPTION_KEYS];
+  assert.deepEqual(named.filter((key) => STEP_ORDER.includes(key)), []);
+});
+
+test("every listed key is actually used by some scenario shape", () => {
+  // Not strictly necessary, but a stale entry in SCENARIO_METADATA_KEYS widens
+  // the guard's blind spot: anything named there is exempt forever.
+  const sample = {
+    route: 1, state: 1, dir: 1, viewport: 1, theme: 1, auth: 1, expect: 1, require: 1,
+    requireMs: 1, fullPage: 1, clipSelector: 1, probe: 1, throttledBefore: 1,
+    note: 1, description: 1, interaction: 1, action: 1,
+  };
+  for (const key of SCENARIO_METADATA_KEYS) {
+    assert.ok(key in sample, `${key} is listed as metadata but not accounted for in this test`);
+  }
+});
+
+test("the two step options the audit reads are listed", () => {
+  // `clickAgain` (a second click inside `click`) and `assertMs` (a timeout inside
+  // `assertAttr`) are read off the scenario by the still path. If either is
+  // renamed without being relisted, the guard would reject every scenario using
+  // it — which is the point, but the rename should be deliberate.
+  assert.deepEqual(STEP_OPTION_KEYS, ["clickAgain", "assertMs"]);
+});
+
+test("`run` is not a permitted still key, however it is spelled", () => {
+  // Guards the guard: adding `run` to the metadata list to silence a failure
+  // would restore the exact silent-drop this exists to prevent.
+  const named = [...SCENARIO_METADATA_KEYS, ...STEP_OPTION_KEYS];
+  assert.ok(!named.includes("run"), "`run` must stay reportable on a still");
 });

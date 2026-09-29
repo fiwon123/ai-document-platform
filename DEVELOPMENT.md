@@ -480,16 +480,25 @@ in `scripts/audit-playwright.mjs`.
 It registers its own throwaway user, seeds four documents (ready, ready, ready,
 and a deliberately corrupt PDF so the failure card is real), waits for the
 worker, then walks the route groups. Output lands in
-`/tmp/opencode/visual-audit/<timestamp>/` with a `summary.json` and an
-`audit-manifest.json` that has one entry per capture. Copy the run out to look
-at it:
+`frontend/visual-audit/<timestamp>/` with a `summary.json` and an
+`audit-manifest.json` that has one entry per capture.
+
+**Open it straight from the host.** The captures land inside the bind-mounted
+workspace, so `frontend/visual-audit/<timestamp>/` in your editor or file manager
+*is* the run — screenshots and WebMs both. It used to be written to
+`/tmp/opencode/visual-audit`, which meant a `docker compose cp` before you could
+look at anything and lost every run on a container restart. The directory is
+gitignored (37 MB per pass is not a diff anyone wants), and the tool keeps the
+newest 3 runs, so it does not grow without bound.
 
 ```bash
-docker compose cp dev:/tmp/opencode/visual-audit/<timestamp> ./audit-run
+# what's in the newest run
+ls frontend/visual-audit/                        # three timestamped runs
+xdg-open "frontend/visual-audit/$(ls -1 frontend/visual-audit | tail -1)/"
 ```
 
 Budget and retention: 500 MB per run (a hard stop, with GIF conversion checked
-before it can overshoot), the newest 2 runs kept, and Playwright's raw
+before it can overshoot), the newest 3 runs kept, and Playwright's raw
 `.video-tmp` scratch directory removed at the end. Manifest and summary bytes
 count against the budget too, since they are what a reviewer opens first — and
 the figure inside `summary.json` is rewritten to include them, so the number in
@@ -567,8 +576,8 @@ Names are `--pixel-*` on purpose: `--baseline` and `--update-baseline` already
 mean the *signal* baseline (a JSON file), and one tool meaning "baseline" for
 both a JSON file and a directory of PNGs is a trap.
 
-- **The baseline is local and is never committed.** A full pass is 170 PNGs /
-  25.9 MB of images, and they are only meaningful on the machine that captured
+- **The baseline is local and is never committed.** A full pass is 174 PNGs /
+  26 MB of images, and they are only meaningful on the machine that captured
   them. `--update-pixel-baseline` refuses to run without an explicit
   `--pixel-baseline=DIR` so it cannot drop 26 MB into a diff.
 - **It is not a CI gate, and never exits 1.** A baseline is only comparable
@@ -665,6 +674,19 @@ Four behaviours worth knowing before you trust a run:
 - **Animations are WebM, not GIF.** The container's ffmpeg is Playwright's
   screencast build (webm/image2 muxers, libvpx only — no GIF muxer), so the run
   checks once and says so instead of failing a conversion per video.
+- **The QA `answer` scenario needs a real provider, and is a SKIP without one.**
+  `qa/answer` submits a question and waits up to 120 s for
+  `.chat-message.assistant .copy-answer-btn`. That is the *only* selector that
+  means "a finished answer": the loading placeholder is
+  `<div class="chat-message assistant"><div class="message-content">` —
+  byte-identical to a real answer — so requiring `.message-content` matches the
+  "Thinking…" spinner, and the gate passes on a photograph of a pending request.
+  A sandbox with no `GROQ_API_KEY`, no `OPENAI_API_KEY` and no
+  `LOCAL_LLM_ENABLED` cannot answer, so the scenario records a skip — and
+  **`skips` is a gate signal**, so `--gate` fails. That is deliberate: a run that
+  quietly dropped the one capture of the app's primary render would report
+  "0 skipped" and read as full coverage. Configure a provider before running a
+  gated pass; `--only=qa` is fine for a quick look, but it cannot be gated at all.
 - **Small-target counts are split by WCAG 2.5.8's own excuses.** Inline prose
   links, checkboxes (the `<label>` is the target) and off-screen elements are
   counted separately, so the headline list is real leads rather than 200 links
@@ -675,7 +697,8 @@ Four behaviours worth knowing before you trust a run:
 
 Known limitations are listed by `--help`: `/app/admin` is captured as the
 access-denied branch because the fixture user is a customer and no public
-endpoint can promote it. Thumbnails *do* load since #536 — the document bytes
+endpoint can promote it. The QA `answer` state needs a configured provider — see
+the behaviour list above. Thumbnails *do* load since #536 — the document bytes
 are streamed by the API under a signed token instead of by the object store, so
 there is no browser-facing storage address left to be wrong.
 
