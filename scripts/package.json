@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Dependencies for the visual audit in this directory. Kept here rather than in a repo-root package.json so the audit's manifest and its only consumer (audit.mjs, which Node resolves imports for by walking up from scripts/) travel together, and so the repo root stays free of a node_modules that a monorepo with frontend/package.json would make ambiguous.",
   "scripts": {
-    "test": "node --test audit-baseline.test.mjs audit-pixels.test.mjs audit-interactions.test.mjs audit-playwright.test.mjs"
+    "test": "node --test audit-baseline.test.mjs audit-pixels.test.mjs audit-interactions.test.mjs audit-playwright.test.mjs audit-fonts.test.mjs"
   },
   "dependencies": {
     "pixelmatch": "5.3.0",

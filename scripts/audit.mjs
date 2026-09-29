@@ -79,6 +79,7 @@ import {
   launchFailure,
   resolvePlaywright,
 } from "./audit-playwright.mjs";
+import { waitForFonts } from "./audit-fonts.mjs";
 import {
   buildAttrWaitArgs,
   checkClassExpectation,
@@ -944,6 +945,33 @@ class Audit {
       }
     }
 
+    // The last gate before the shutter, and the one #537 was missing: a capture
+    // in a fallback typeface is a photograph of a page the user never sees, and
+    // it is *worse* than a missing capture — a fallback face shifts every glyph
+    // box, so it differs from the next capture of the same page by far more
+    // than any real regression would. Measured on the H1 of that capture: 103px
+    // in the fallback against 120px in Manrope, seconds apart, with
+    // `pageErrors: 0, consoleErrors: 0, overflowPx: 0` recorded for it.
+    //
+    // `settleVisuals()` already awaits `document.fonts.ready`, which cannot see
+    // this: the page's faces arrive through a CSS `@import`, so at the moment
+    // that wait resolves there is nothing pending and the faces are not
+    // registered yet. See `audit-fonts.mjs` for the whole argument.
+    //
+    // Skipping rather than photographing is the same rule the selector check
+    // above follows, and it is bounded (3s), so a run cannot be held up by a
+    // page whose fonts never arrive.
+    const fonts = await waitForFonts(page);
+    if (!fonts.ready) {
+      warn(`SKIP ${route} [${viewport}/${theme}] ${state}: ${fonts.reason}`);
+      this.addEntry({
+        route, viewport, theme, state, type: "screenshot", file: null,
+        skipped: fonts.reason,
+        note,
+      });
+      return false;
+    }
+
     const probeStarted = Date.now();
     let probeData = null;
     if (probe) {
@@ -1212,6 +1240,11 @@ class Audit {
  * change a screenshot after first paint, so those are what we wait for.
  */
 async function settleVisuals(page, cap = 3000) {
+  // Not sufficient on its own, and deliberately left in place anyway: it drains
+  // the font loads that *are* already pending (a real win for the video path,
+  // which records rather than photographs), but it resolves before the CSS
+  // `@import`'s faces are registered, so it cannot see the #537 race. The gate
+  // that can is `waitForFonts` in `shot()`.
   await page.evaluate(() => document.fonts.ready).catch(() => {});
   await page
     .waitForFunction(() => [...document.images].every((img) => img.complete), null, { timeout: cap })
