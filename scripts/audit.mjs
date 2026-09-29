@@ -1160,7 +1160,13 @@ class Audit {
         warn(`GIF for ${base} is ${(packed.bytes / 1e6).toFixed(1)} MB and would exceed the budget — keeping the WebM only`);
         await fsp.rm(gifTmp, { force: true }).catch(() => {});
       } else {
-        await fsp.move(gifTmp, gifPath);
+        // `rename`, not `move`: `fs/promises` has no `move` in this Node build
+        // (`typeof fsp.move === "undefined"`), so `move` would throw a TypeError
+        // here. It never did before, because the branch it sat in was
+        // unreachable — the GIF probe was permanently false. A latent crash in
+        // dead code is still a crash the moment the code becomes live. Same
+        // filesystem either way: videoTempDir lives inside the run dir.
+        await fsp.rename(gifTmp, gifPath);
         this.budget.charge(packed.bytes);
         gifBytes = packed.bytes;
       }
