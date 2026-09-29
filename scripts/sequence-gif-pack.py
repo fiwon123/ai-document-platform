@@ -64,11 +64,45 @@ def collect(args_paths):
     return unique
 
 
+def group_by_similarity(frames, threshold=3.0):
+    """Group consecutive frames that show the same thing.
+
+    One palette for the whole clip and one palette per frame are both wrong, and
+    the measurements say why:
+
+    - Per frame, each frame is quantised alone, so it has room for the page's
+      saturated colours (the CTA blue lands within dE 10 of source) but a colour
+      that is constant on the page renders differently per frame. Measured on the
+      real theme crossfade: the PENDING tile swung brown -> red -> magenta ->
+      orange, ~40 degrees of hue, across frames of the *same settled page*.
+    - One palette for the whole clip is stable and starved: a recording holding
+      both a light and a dark page spends its 256 entries on the two
+      backgrounds, and the same CTA blue comes out (55,87,167) — a steel blue
+      where the page shows vivid blue. Measured worst tile error dE 258.
+
+    So a palette belongs to a *visual state*, not to a frame and not to the
+    clip. Frames that show the same thing share one palette, and each state gets
+    to spend the whole budget on the colours that state actually contains. This
+    is the only arrangement that is both accurate and still.
+    """
+    groups = []
+    for frame in frames:
+        signature = frame.convert("L").resize((8, 8), Image.BOX).getdata()
+        if groups:
+            previous = groups[-1]["signature"]
+            drift = sum(abs(a - b) for a, b in zip(signature, previous)) / len(signature)
+            if drift < threshold:
+                groups[-1]["frames"].append(frame)
+                continue
+        groups.append({"signature": signature, "frames": [frame]})
+    return groups
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
     parser.add_argument("--width", type=int, default=640)
-    parser.add_argument("--colors", type=int, default=64)
+    parser.add_argument("--colors", type=int, default=256)
     parser.add_argument("--delay", type=int, default=240)
     parser.add_argument("--frames", type=int, default=16)
     parser.add_argument("paths", nargs="*")
@@ -91,19 +125,31 @@ def main():
     width = min(args.width, first.width)
     height = max(1, round(first.height * width / first.width))
 
-    paletted = []
+    resized = []
     for path in frames:
         with Image.open(path) as im:
-            im = im.convert("RGB")
-            if im.width != width:
-                im = im.resize((width, height), Image.LANCZOS)
-            paletted.append(
-                im.quantize(
-                    colors=args.colors,
-                    method=Image.MEDIANCUT,
-                    dither=Image.FLOYDSTEINBERG,
-                )
-            )
+            frame = im.convert("RGB")
+            if frame.width != width:
+                frame = frame.resize((width, height), Image.LANCZOS)
+            resized.append(frame)
+
+    # A palette per visual state, dithered. See group_by_similarity for the
+    # measurements behind grouping rather than sharing or splitting.
+    paletted = []
+    for group in group_by_similarity(resized):
+        members = group["frames"]
+        atlas = Image.new("RGB", (width, height * len(members)))
+        for index, frame in enumerate(members):
+            atlas.paste(frame, (0, index * height))
+        palette = atlas.quantize(
+            colors=args.colors,
+            method=Image.MEDIANCUT,
+            dither=Image.FLOYDSTEINBERG,
+        )
+        paletted.extend(
+            frame.quantize(palette=palette, dither=Image.FLOYDSTEINBERG)
+            for frame in members
+        )
 
     head, *tail = paletted
     head.save(

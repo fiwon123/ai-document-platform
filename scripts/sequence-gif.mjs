@@ -81,7 +81,7 @@ export const PACKER = path.join(HERE, "sequence-gif-pack.py");
 export const GIF_DEFAULTS = Object.freeze({
   frames: 16,
   width: 640,
-  colors: 64,
+  colors: 256,
   /** Per-frame delay in ms. 240ms ≈ 4fps: enough to read as motion, not flicker. */
   frameDelayMs: 240,
 });

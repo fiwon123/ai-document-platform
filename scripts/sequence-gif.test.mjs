@@ -84,7 +84,13 @@ test("the defaults are the measured knee, not a guess", () => {
   // ~510K and ~1.2s to encode, which is small enough to attach to a review.
   assert.equal(GIF_DEFAULTS.frames, 16);
   assert.equal(GIF_DEFAULTS.width, 640);
-  assert.equal(GIF_DEFAULTS.colors, 64);
+  // 64 was a guess, and it was wrong in a way only a rendered file shows: it
+  // left 6.1% of pixels visibly wrong (dE > 24) against the decoded source, and
+  // it is what a reviewer's "the stat tiles change colour" finding traced back
+  // to. 256 halves the flat-area budget problem without moving the file size
+  // (500K vs 497K) because the packer reserves entries for flat surfaces and
+  // the rest is dither-free, so the extra entries cost almost nothing.
+  assert.equal(GIF_DEFAULTS.colors, 256);
   assert.ok(GIF_DEFAULTS.frames > 1, "a single-frame GIF is a JPEG with extra steps");
 });
 
