@@ -480,16 +480,25 @@ in `scripts/audit-playwright.mjs`.
 It registers its own throwaway user, seeds four documents (ready, ready, ready,
 and a deliberately corrupt PDF so the failure card is real), waits for the
 worker, then walks the route groups. Output lands in
-`/tmp/opencode/visual-audit/<timestamp>/` with a `summary.json` and an
-`audit-manifest.json` that has one entry per capture. Copy the run out to look
-at it:
+`frontend/visual-audit/<timestamp>/` with a `summary.json` and an
+`audit-manifest.json` that has one entry per capture.
+
+**Open it straight from the host.** The captures land inside the bind-mounted
+workspace, so `frontend/visual-audit/<timestamp>/` in your editor or file manager
+*is* the run — screenshots and WebMs both. It used to be written to
+`/tmp/opencode/visual-audit`, which meant a `docker compose cp` before you could
+look at anything and lost every run on a container restart. The directory is
+gitignored (37 MB per pass is not a diff anyone wants), and the tool keeps the
+newest 3 runs, so it does not grow without bound.
 
 ```bash
-docker compose cp dev:/tmp/opencode/visual-audit/<timestamp> ./audit-run
+# what's in the newest run
+ls frontend/visual-audit/                        # three timestamped runs
+xdg-open "frontend/visual-audit/$(ls -1 frontend/visual-audit | tail -1)/"
 ```
 
 Budget and retention: 500 MB per run (a hard stop, with GIF conversion checked
-before it can overshoot), the newest 2 runs kept, and Playwright's raw
+before it can overshoot), the newest 3 runs kept, and Playwright's raw
 `.video-tmp` scratch directory removed at the end. Manifest and summary bytes
 count against the budget too, since they are what a reviewer opens first — and
 the figure inside `summary.json` is rewritten to include them, so the number in
@@ -567,8 +576,8 @@ Names are `--pixel-*` on purpose: `--baseline` and `--update-baseline` already
 mean the *signal* baseline (a JSON file), and one tool meaning "baseline" for
 both a JSON file and a directory of PNGs is a trap.
 
-- **The baseline is local and is never committed.** A full pass is 170 PNGs /
-  25.9 MB of images, and they are only meaningful on the machine that captured
+- **The baseline is local and is never committed.** A full pass is 174 PNGs /
+  26 MB of images, and they are only meaningful on the machine that captured
   them. `--update-pixel-baseline` refuses to run without an explicit
   `--pixel-baseline=DIR` so it cannot drop 26 MB into a diff.
 - **It is not a CI gate, and never exits 1.** A baseline is only comparable
@@ -665,6 +674,19 @@ Four behaviours worth knowing before you trust a run:
 - **Animations are WebM, not GIF.** The container's ffmpeg is Playwright's
   screencast build (webm/image2 muxers, libvpx only — no GIF muxer), so the run
   checks once and says so instead of failing a conversion per video.
+- **The QA `answer` scenario needs a real provider, and is a SKIP without one.**
+  `qa/answer` submits a question and waits up to 120 s for
+  `.chat-message.assistant .copy-answer-btn`. That is the *only* selector that
+  means "a finished answer": the loading placeholder is
+  `<div class="chat-message assistant"><div class="message-content">` —
+  byte-identical to a real answer — so requiring `.message-content` matches the
+  "Thinking…" spinner, and the gate passes on a photograph of a pending request.
+  A sandbox with no `GROQ_API_KEY`, no `OPENAI_API_KEY` and no
+  `LOCAL_LLM_ENABLED` cannot answer, so the scenario records a skip — and
+  **`skips` is a gate signal**, so `--gate` fails. That is deliberate: a run that
+  quietly dropped the one capture of the app's primary render would report
+  "0 skipped" and read as full coverage. Configure a provider before running a
+  gated pass; `--only=qa` is fine for a quick look, but it cannot be gated at all.
 - **Small-target counts are split by WCAG 2.5.8's own excuses.** Inline prose
   links, checkboxes (the `<label>` is the target) and off-screen elements are
   counted separately, so the headline list is real leads rather than 200 links
@@ -675,9 +697,70 @@ Four behaviours worth knowing before you trust a run:
 
 Known limitations are listed by `--help`: `/app/admin` is captured as the
 access-denied branch because the fixture user is a customer and no public
-endpoint can promote it. Thumbnails *do* load since #536 — the document bytes
+endpoint can promote it. The QA `answer` state needs a configured provider — see
+the behaviour list above. Thumbnails *do* load since #536 — the document bytes
 are streamed by the API under a signed token instead of by the object store, so
 there is no browser-facing storage address left to be wrong.
+
+### Marketing pages are captured in steps (#552)
+
+Every route in `GROUPS.public` is walked from the top down and captured one
+viewport-sized screenful at a time — `top`, `page-2`, `page-3`, … — instead of one
+image of the first fold.
+
+That used to be a single `top` screenshot, which is 900px of a page running
+several thousand. The audit reported `horizontalOverflow: []` and zero findings
+for content it had never rendered, and three reviewers of the 2026-09-29 run said
+so independently and unprompted: below-the-fold content was out of frame, and
+`how-it-works` stages 2–6 appeared in **no image at all**.
+
+**Why not `fullPage: true`,** which the legal group uses:
+
+- `page.screenshot({ fullPage })` **does not scroll** — it resizes the capture
+  surface. A reveal below the fold can still be at `opacity: 0` when the buffer is
+  taken, which is exactly the blank-band failure the extra coverage is meant to
+  catch.
+- It produces one image 5–6× a viewport tall, which every viewer downscales until
+  the detail that made it worth capturing is gone.
+
+Stepping gets both right: every capture is a real scroll, so every reveal gets the
+scroll it was waiting for, and each image is one readable screenful. Measured:
+`/how-it-works` goes from 4 captures to 7 on desktop and from 4 to 11 on mobile.
+
+**The legal group is deliberately not stepped.** Those pages are one long uniform
+column of body text with no scroll-triggered reveals and no interactive states, so
+`fullPage` is both correct and cheaper there — nothing is hiding below the fold.
+
+Four things worth knowing:
+
+- **Steps overlap by 120px** (`DEFAULT_STEP_OVERLAP_PX`). A step boundary lands
+  wherever the arithmetic lands, and a section starting 40px above the cut is then
+  split across two images with the seam invisible in either — so a broken heading
+  gets read as fine twice. The overlap puts the seam inside the previous frame, so
+  whatever is near it appears whole in at least one image.
+- **The walk stops when the page says it is at the bottom**, not when the plan runs
+  out. The page settles to a *shorter* height than it measured at while planning
+  (fonts and images resolve after first paint), so the final planned offset can
+  clamp onto the screenful before it. Measured on `/contact`: 2528px at plan time,
+  2438px settled, last two offsets landing on the same pixel. Photographing that
+  twice files two names for one image **and** fails the gate, because `skips` is a
+  signal — a correct walk failing on a plan that was right for the page as first
+  painted.
+- **Reaching the bottom can cost a duplicate frame, and replacing instead can cost
+  a *gap*.** These pull in opposite directions. When the remainder after the
+  stride walk is small, appending a final step yields a frame 91% identical to the
+  one before it (measured on `/how-it-works`: 81px of advance). Moving the last
+  step forward instead is worse — 1200px of advance on a 900px viewport leaves the
+  tail of the previous frame unphotographed, and a gap is invisible where a
+  duplicate is merely wasteful. So replacement is only used when the remainder
+  fits inside the overlap that was already going to be re-shot.
+- **A page taller than `MAX_PAGE_STEPS` is reported, not silently trimmed.** The
+  bottom of such a page is not covered, and a run that reported the partial walk
+  as a success would be worse than one that says so.
+
+`planPageSteps` is pure and lives in `scripts/audit-interactions.mjs`, so the
+arithmetic is unit-tested across a range of heights without a browser. `stepMoved`
+is the runtime duplicate check.
 
 A full pass currently takes about 13 minutes, of which 2–4 are spent holding the
 rate-limit reserve back. Individual groups take 1–2 minutes.

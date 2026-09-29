@@ -227,6 +227,12 @@ result-*
 # host-native `npm install` run from the repository root stays ignored too.
 node_modules/
 
+# Visual audit captures (scripts/audit.mjs). A full pass is ~37 MB of PNGs and
+# WebM screencasts, they are only meaningful on the machine that produced them,
+# and they are written inside the repo so a reviewer can open them from the host
+# without a `docker compose cp`. Kept at 3 runs by the tool's own --keep-runs.
+frontend/visual-audit/
+
 # OpenCode
 .opencode/node_modules/
 # OpenCode memory (agent session memory — local only, never committed)

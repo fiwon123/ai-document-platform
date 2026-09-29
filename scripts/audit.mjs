@@ -22,12 +22,15 @@
  *   docker compose exec dev node scripts/audit.mjs --only=landing,documents
  *   docker compose exec dev node scripts/audit.mjs --budget-mb=200 --keep-runs=1
  *
- * Output lands in `/tmp/opencode/visual-audit/<YYYYMMDD-HHMMSS>/` (override with
- * --out=). Runs are timestamped and pruned to the newest --keep-runs (default 2),
- * because a single pass measured 37 MB (170 PNGs, 25.9 MB of them, the rest WebM
- * screencasts) and an unpruned output directory is how a visual audit quietly
- * eats a disk. Note /tmp is not a mounted volume: a container restart wipes the
- * output, which is another reason to keep only a shortlist.
+ * Output lands in `frontend/visual-audit/<YYYYMMDD-HHMMSS>/` (override with
+ * --out=), inside the bind-mounted workspace and gitignored, so a human can open
+ * the PNGs and WebMs straight from the host — no `docker compose cp`, and a
+ * container restart no longer takes the pictures with it. Runs are timestamped
+ * and pruned to the newest --keep-runs (default 3), because a single pass
+ * measured 37 MB (174 PNGs, 26 MB of them, the rest WebM screencasts) and an
+ * unpruned output directory is how a visual audit quietly eats a disk. Three is
+ * kept so a run can be compared against the one before it without keeping a
+ * shortlist somebody has to prune by hand.
  *
  * ── Three rules this file follows, each learned the hard way ───────────────
  *
@@ -85,7 +88,10 @@ import {
   checkClassExpectation,
   describeSkip,
   orderedStepKeys,
+  planPageSteps,
+  stepMoved,
   unreachableStepKeys,
+  undeclaredStepKeys,
 } from "./audit-interactions.mjs";
 import { Pacer, rateLimitFindings } from "./audit-pacer.mjs";
 
@@ -124,7 +130,6 @@ const VIEWPORTS = {
 };
 
 const DEFAULT_BASE_URL = "http://localhost:5173";
-const DEFAULT_OUT_ROOT = "/tmp/opencode/visual-audit";
 const FFMPEG = "/opt/ms-playwright/ffmpeg-1011/ffmpeg-linux";
 
 /**
@@ -133,6 +138,24 @@ const FFMPEG = "/opt/ms-playwright/ffmpeg-1011/ffmpeg-linux";
  */
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_BASELINE_FILE = path.join(SCRIPT_DIR, "audit-baseline.json");
+
+/**
+ * Captures land inside the repo, under `frontend/visual-audit/<timestamp>/`, and
+ * are gitignored.
+ *
+ * They used to go to `/tmp/opencode/visual-audit`, which has two problems. /tmp is
+ * not a mounted volume, so a container restart wiped every run and the one thing
+ * a reviewer wants — the pictures — is the thing that disappears; and a host path
+ * is a path you have to `docker compose cp` before you can open it. The whole
+ * point of this tool is that a human looks at the images, so they should land
+ * where the host already sees them: in the bind-mounted workspace.
+ *
+ * `frontend/` rather than the repo root because these are renders *of* the
+ * frontend, next to the code that produced them, and because a nested `.gitignore`
+ * keeps a 26 MB diff from ever reaching the index even if someone runs `git add -A`
+ * with the root ignore removed.
+ */
+const DEFAULT_OUT_ROOT = path.join(SCRIPT_DIR, "..", "frontend", "visual-audit");
 
 /**
  * Does the container's ffmpeg have a GIF muxer?
@@ -176,7 +199,7 @@ function parseArgs(argv) {
   const opts = {
     baseUrl: DEFAULT_BASE_URL,
     outRoot: DEFAULT_OUT_ROOT,
-    keepRuns: 2,
+    keepRuns: 3,
     budgetMb: 500,
     only: null,
     videoThemes: null,
@@ -275,7 +298,7 @@ Interactive visual audit (see scripts/audit.mjs for the full rationale).
   --base=URL         Frontend origin         (default ${DEFAULT_BASE_URL})
   --out=DIR          Output root             (default ${DEFAULT_OUT_ROOT})
   --only=a,b         Only these groups       (see GROUPS below)
-  --keep-runs=N      Run directories to keep (default 2)
+  --keep-runs=N      Run directories to keep (default 3)
   --budget-mb=N      Stop capturing past this many MB (default 500)
   --video-themes=L,D Themes to record animations in (default light)
   --gate[=a,b,c]  Fail (exit 1) on findings not in the baseline.
@@ -1341,22 +1364,38 @@ let currentPacer = null;
 //
 // Grouped so `--only=` can select a subset, and written as data where possible so
 // adding a route is a one-line change rather than a new copy-pasted block.
-// ─────────────────────────────────────────────────────────────────────────────
+//
+// `stepped: true` walks the page from the top down, capturing one
+// viewport-sized screenful at a time, instead of photographing only the first
+// fold (#552). Every route here used to be a single `top` image of a page running
+// several thousand pixels tall, so the audit reported "0 findings" for content it
+// had never rendered — and three reviewers of the 2026-09-29 run independently
+// reported exactly that gap, with `how-it-works` stages 2–6 visible in no image at
+// all.
+//
+// The legal group is deliberately NOT stepped: it already uses `fullPage: true`,
+// it is one long uniform column of body text with no interactive states, and a
+// 1440×~4000 PNG of paragraphs downscaled to fit a screen is not more readable
+// than four screenfuls of it — it is less. `fullPage` is correct there because
+// nothing on those pages is behind a scroll-triggered reveal.
 const GROUPS = {};
 
 GROUPS.public = [
-  { route: "/demo", state: "hero", require: ".demo-page, main", expect: "main" },
-  { route: "/product", state: "hub", require: "main", expect: "main" },
-  { route: "/features", state: "top", require: "main", expect: "main" },
-  { route: "/how-it-works", state: "top", require: "main", expect: "main" },
-  { route: "/company", state: "hub", require: "main", expect: "main" },
-  { route: "/about", state: "top", require: "main", expect: "main" },
-  { route: "/blog", state: "empty", require: "main", expect: "main" },
-  { route: "/careers", state: "top", require: "main", expect: "main" },
-  { route: "/contact", state: "top", require: "main", expect: "main" },
+  { route: "/demo", state: "hero", require: ".demo-page, main", expect: "main", stepped: true },
+  { route: "/product", state: "hub", require: "main", expect: "main", stepped: true },
+  { route: "/features", state: "top", require: "main", expect: "main", stepped: true },
+  { route: "/how-it-works", state: "top", require: "main", expect: "main", stepped: true },
+  { route: "/company", state: "hub", require: "main", expect: "main", stepped: true },
+  { route: "/about", state: "top", require: "main", expect: "main", stepped: true },
+  { route: "/blog", state: "empty", require: "main", expect: "main", stepped: true },
+  { route: "/careers", state: "top", require: "main", expect: "main", stepped: true },
+  { route: "/contact", state: "top", require: "main", expect: "main", stepped: true },
 ];
 
 GROUPS.legal = [
+  // Not `stepped` — see the note above GROUPS.public. These are single columns
+  // of body text with no scroll-triggered reveals, so the whole document as one
+  // tall image is both cheap and complete.
   { route: "/privacy", state: "top", require: "main", expect: "main", fullPage: true },
   { route: "/terms", state: "top", require: "main", expect: "main", fullPage: true },
   { route: "/security", state: "top", require: "main", expect: "main", fullPage: true },
@@ -1455,12 +1494,49 @@ GROUPS.search = [
     route: "/app/search", state: "query-filled", require: "#search-query", expect: "main", auth: true,
     fill: { "#search-query": "revenue" },
   },
+  {
+    // A *completed* search, which nothing captured before #548: `query-filled` is
+    // pre-submit, so the results list, the count, the highlighted snippet and the
+    // export actions were never photographed even though they are the feature.
+    route: "/app/search", state: "results", expect: "main", auth: true,
+    // Declared, not optional: if the search returns nothing this is a SKIP, and
+    // `skips` is a gate signal. An empty result set therefore cannot pass the gate
+    // while looking like coverage — which is the whole point of the scenario.
+    require: ".search-result-card", requireMs: 25_000,
+    note: "completed search: result cards, total count, highlighted snippet, export actions",
+    // `fill` is enough and is not a shortcut: the page debounces 300ms and then
+    // drives the query from the URL, so the results state is genuinely reachable
+    // by typing alone. It is also the realistic interaction.
+    fill: { "#search-query": "revenue" },
+  },
 ];
 
 GROUPS.qa = [
   { route: "/app/qa", state: "empty", require: ".qa-model-select", expect: "main", auth: true },
   { route: "/app/qa", state: "model-open", require: ".qa-model-select", expect: "main", auth: true, click: ".qa-model-select" },
   { route: "/app/qa", state: "suggestions", require: ".suggestion-chip", expect: "main", auth: true, hover: ".suggestion-chip" },
+  {
+    // A completed Q&A turn, which nothing captured before #548: the three states
+    // above all stop before the answer. Without this, a regression in the single
+    // most important render on the page is invisible to every signal the gate has.
+    route: "/app/qa", state: "answer", expect: "main", auth: true,
+    // The discriminator is the **copy button**, not `.message-content`. The
+    // loading placeholder is `<div class="chat-message assistant"><div
+    // class="message-content">` — byte-identical structure to a real answer, so
+    // requiring `.message-content` matches the "Thinking…" spinner and the gate
+    // passes on a photograph of a pending request. Only a rendered answer carries
+    // the copy button, so requiring it is what makes this scenario honest.
+    //
+    // Found by looking at the first capture of this state, which came back as a
+    // spinner: the require had passed and the gate was green, and neither the DOM
+    // nor the summary said the answer was not there.
+    require: ".chat-message.assistant .copy-answer-btn", requireMs: 120_000,
+    note: "completed Q&A turn: rendered answer with sources",
+    fill: { "#qa-question": "What was the revenue trend?" },
+    // Q&A has no debounced auto-submit, so the turn needs an explicit Send click.
+    // The button is enabled by the filled input, which `fill` has just done.
+    click: '.chat-input-form button[type="submit"]',
+  },
 ];
 
 GROUPS.settings = [
@@ -1747,6 +1823,128 @@ async function applyScroll(page, scenario, acts) {
 }
 
 /**
+ * Photograph a page from the top down, one viewport-sized screenful at a time.
+ *
+ * The marketing routes used to capture a single `top` image, which is 900px of a
+ * page that runs several thousand — so the audit reported `horizontalOverflow: []`
+ * and zero findings for content it had never rendered. The reviewers of the
+ * 2026-09-29 run said so three times, unprompted: below-the-fold content was out
+ * of frame, and `how-it-works` stages 2–6 appeared in no image at all.
+ *
+ * `fullPage: true` is the one-word fix and it is still wrong for these routes.
+ * `page.screenshot({ fullPage })` does not scroll, it resizes the capture surface,
+ * so a reveal below the fold can still be at `opacity: 0` when the buffer is taken
+ * — the exact blank-band failure this coverage exists to catch. It also yields one
+ * image 5–6× a viewport tall, which every viewer downscales until the detail that
+ * made it worth capturing is gone.
+ *
+ * Stepping gets both properties right: each capture is a real scroll, so each
+ * reveal gets the scroll it was waiting for, and each image is one readable
+ * screenful.
+ *
+ * `stepped` also runs the interaction (`click`, `fill`, …) **before** the first
+ * capture, so a route whose below-the-fold content only exists after an
+ * interaction is still photographed in that state, and the state persists across
+ * every step of that scenario.
+ */
+async function capturePageSteps(page, audit, scenario, { route, viewport, theme, throttledBefore, acts }) {
+  const measured = await page.evaluate(() => ({
+    scrollHeight: Math.max(
+      document.body.scrollHeight,
+      document.documentElement.scrollHeight,
+      document.documentElement.offsetHeight,
+    ),
+    innerHeight: window.innerHeight,
+  }));
+
+  const plan = planPageSteps(measured.scrollHeight, measured.innerHeight, {
+    stepOverlapPx: scenario.stepOverlapPx,
+  });
+
+  if (plan.truncated) {
+    warn(
+      `${route}: page is ${plan.totalHeight}px, needing more than the ${plan.steps} stepped ` +
+        "captures allowed — the bottom is not covered. Raise MAX_PAGE_STEPS or narrow the route.",
+    );
+  }
+  if (plan.steps <= 1) {
+    log(`  ${route} [${viewport}/${theme}] ${scenario.state} — 1 step (page fits the viewport)`);
+  }
+
+  let previousOffset = null;
+  let captured = 0;
+  let reachedBottom = false;
+
+  for (let i = 0; i < plan.offsets.length; i += 1) {
+    const offset = plan.offsets[i];
+    const state = plan.states[i];
+
+    if (i > 0) {
+      // Measured after settling, not taken from the plan: the page can change
+      // height between measuring and scrolling (a late font swap, an image
+      // without dimensions), so the plan can be stale by the time it runs.
+      await page.evaluate((y) => window.scrollTo(0, y), offset);
+      await settleVisuals(page);
+      const actual = await page.evaluate(() => Math.round(window.scrollY));
+      if (!stepMoved(previousOffset, actual)) {
+        warn(
+          `SKIP ${route} [${viewport}/${theme}] ${state}: the page did not move ` +
+            `(still at ${actual}px) — it would repeat the previous capture`,
+        );
+        audit.addEntry({
+          route,
+          viewport,
+          theme,
+          state,
+          type: "screenshot",
+          file: null,
+          skipped: "page did not scroll — duplicate of the previous step",
+        });
+        break;
+      }
+      previousOffset = actual;
+      // At the bottom, the walk is over. Checked here rather than inferred from
+      // the plan because the plan's final offset is the one most likely to be
+      // wrong: the page settles to a *shorter* height than it measured at (fonts
+      // and images resolve after first paint), so the last offset clamps onto the
+      // screenful before it. Photographing that second time would file two names
+      // for one image and — because `skips` is a gate signal — fail the run on a
+      // plan that was correct for the page as first painted.
+      reachedBottom = await page.evaluate(
+        () => window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 1,
+      );
+    }
+
+    const ok = await audit.shot(page, {
+      throttledBefore,
+      route,
+      viewport,
+      theme,
+      state,
+      dir: routeSlug(route),
+      require: scenario.require,
+      requireMs: scenario.requireMs ?? null,
+      action: acts.length ? [...acts, { action: "scrollTo", to: `${i === 0 ? 0 : previousOffset}px`, step: i + 1, of: plan.steps }] : null,
+    });
+    if (ok) captured += 1;
+    log(`  ${route} [${viewport}/${theme}] ${state}${plan.steps > 1 ? ` (${i + 1}/${plan.steps})` : ""}`);
+
+    // Only once the bottom has actually been reached can this be true, which is
+    // what makes it a safety net for `plan.truncated` rather than a way to stop
+    // short: a plan that ran out of steps still reaches the end, and reporting
+    // that is the point of the truncation warning.
+    if (reachedBottom) {
+      if (i < plan.offsets.length - 1) {
+        log(`  ${route} [${viewport}/${theme}] — bottom reached at step ${i + 1}/${plan.steps}`);
+      }
+      break;
+    }
+  }
+
+  return captured;
+}
+
+/**
  * Click an element without letting Playwright choose where to scroll.
  *
  * `locator.click()` is the obvious way to do this and it is wrong for a
@@ -1956,6 +2154,20 @@ async function applyInteraction(page, scenario) {
     );
   }
 
+  // The inverse, and the one that bites: a scenario asking for a step nothing
+  // implements. `run` is the trap — the video path honours it, so it looks like a
+  // supported key, and a still using it is photographed as though the interaction
+  // happened. Fail before the browser opens rather than after.
+  const undeclared = undeclaredStepKeys(scenario);
+  if (undeclared.length) {
+    throw new Error(
+      `scenario "${scenario.state ?? ""}" on ${scenario.route ?? "?"} asks for step(s) ` +
+        `no step implements: ${undeclared.join(", ")} — a still must express its ` +
+        "interaction as steps (see STEP_ORDER in audit-interactions.mjs). `run` works " +
+        "only for video scenarios in GROUPS.videos; on a still it is silently ignored.",
+    );
+  }
+
   for (const key of orderedStepKeys(scenario)) {
     const skip = await steps[key]();
     if (skip) return { acts, skip };
@@ -2067,6 +2279,19 @@ async function runRouteGroup(audit, group, route, viewport, theme) {
         type: "screenshot",
         file: null,
         skipped: skip,
+      });
+      continue;
+    }
+    if (scenario.stepped) {
+      // The whole point of this branch is that `require` is satisfied by the
+      // *first* screenful and every later step inherits it, so the plan is made
+      // from a page that has already passed its presence check.
+      await capturePageSteps(page, audit, scenario, {
+        route: scenario.route,
+        viewport,
+        theme,
+        throttledBefore,
+        acts,
       });
       continue;
     }
