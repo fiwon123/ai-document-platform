@@ -621,6 +621,34 @@ Two scenarios are still flaky and are tracked separately (#474):
 Stable captures, for contrast: `landing-*-hero` and
 `desktop-light-pricing-annual` hashed identically across 3 consecutive runs.
 
+#### Stills are captured with reduced motion (#485)
+
+`animations: "disabled"` cancels an infinite animation to its *initial* state,
+but the compositor still rasterises that cancelled state at a sub-pixel offset
+that depends on frame timing. That left `carousel-hover` (all four viewport/theme
+combinations) and `desktop-light-hero` varying by up to 0.55% of pixels between
+identical runs, with a byte-identical DOM — noise sitting right at the edge of
+the diff threshold, so a real regression there would have been unrecognisable.
+
+Forcing the media feature is stronger than cancelling animations, so the stills
+context sets `reducedMotion: "reduce"`. The stylesheet's own
+`@media (prefers-reduced-motion: reduce)` rules apply: decorative drifts stop at
+their resting transform, and JS that checks `matchMedia` (`CountUp`,
+`ScreenshotCarousel`) takes its reduced-motion branch too. The page is
+photographed in its settled state, which is both the correct thing to capture and
+a deterministic one.
+
+**The video context deliberately does not set it.** Recording motion is that
+path's whole purpose, and reduced motion would leave eight WebM clips of a
+still page. Animation is verified by the videos instead.
+
+**The trade-off, and what covers it.** With stills captured under reduced motion,
+the audit can no longer see the animated state — so deleting an
+`@media (prefers-reduced-motion: reduce)` block would leave every diff green.
+`frontend/src/reducedMotion.test.ts` pins that instead, asserting the decorative
+selectors keep their opt-out. Read the two together: the audit proves the page
+is right when still, the test proves it still honours the preference.
+
 Four behaviours worth knowing before you trust a run:
 
 - **Presence is asserted before every capture, and the route is asserted after
