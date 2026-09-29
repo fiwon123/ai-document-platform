@@ -89,6 +89,7 @@ import {
   checkClassExpectation,
   describeSkip,
   orderedStepKeys,
+  planGroupPasses,
   planPageSteps,
   stepMoved,
   unreachableStepKeys,
@@ -2796,9 +2797,13 @@ async function main() {
       }
     }
 
-    const groups = opts.only ?? Object.keys(GROUPS).filter((g) => g !== "videos");
-    for (const group of groups) {
-      if (!GROUPS[group]) throw new Error(`unknown group "${group}". Known: ${Object.keys(GROUPS).join(", ")}`);
+    // The video group is a different kind of work — its scenarios record a clip,
+    // not a still — so the split happens here rather than by each dispatcher
+    // refusing what it cannot do. See planGroupPasses: the filter this replaces
+    // was on the `??` fallback only, so `--only=videos` handed the video group
+    // to the still dispatcher and threw before `runVideos()` was ever reached.
+    const passes = planGroupPasses(opts.only, Object.keys(GROUPS));
+    for (const group of passes.stills) {
       const routes = [...new Set(GROUPS[group].map((s) => s.route))];
       const viewports = TIER[GROUP_TIERS[group] ?? "desktop"];
       for (const viewport of viewports) {
@@ -2811,7 +2816,7 @@ async function main() {
       }
     }
 
-    if (!opts.only || opts.only.includes("videos")) {
+    if (passes.videos) {
       log("videos — desktop/mobile, both themes");
       await runVideos(audit);
     }

@@ -20,6 +20,7 @@ import {
   buildAttrWaitArgs,
   describeSkip,
   orderedStepKeys,
+  planGroupPasses,
   planPageSteps,
   stepMoved,
   unreachableStepKeys,
@@ -597,4 +598,60 @@ test("the assertion is case-insensitive on forbidden text", () => {
 
 test("an empty answer is rejected", () => {
   assert.equal(applyAssertion(QA_ANSWER_ASSERT, "").ok, false);
+});
+
+// ── group dispatch (#565) ───────────────────────────────────────────────────
+
+const GROUP_NAMES = ["public", "legal", "landing", "auth", "app", "documents", "videos"];
+
+test("the video group never reaches the still dispatcher, however it is asked for", () => {
+  // The bug this covers was a filter on the `??` fallback only:
+  //
+  //   const groups = opts.only ?? Object.keys(GROUPS).filter((g) => g !== "videos");
+  //
+  // so `--only=videos` skipped the filter and handed the video group to the
+  // still dispatcher, which threw on its `run` step before `runVideos()` was
+  // ever reached. Every targeted animation capture was impossible and a full
+  // 13-minute run was the only way to get one.
+  for (const only of [undefined, ["videos"], ["landing", "videos"], ["public", "legal", "videos"]]) {
+    const passes = planGroupPasses(only, GROUP_NAMES);
+    assert.ok(
+      !passes.stills.includes("videos"),
+      `videos must not be a still group, got ${JSON.stringify(passes.stills)} for ${JSON.stringify(only)}`,
+    );
+  }
+});
+
+test("--only=videos runs the video pass and no stills", () => {
+  assert.deepEqual(planGroupPasses(["videos"], GROUP_NAMES), { stills: [], videos: true });
+});
+
+test("--only=<routes>,videos runs both passes", () => {
+  // The combination the old code could not do at all, and the one that makes a
+  // targeted run worth running: this route's stills plus the animations.
+  assert.deepEqual(planGroupPasses(["landing", "videos"], GROUP_NAMES), {
+    stills: ["landing"],
+    videos: true,
+  });
+});
+
+test("a still-only --only does not run the video pass", () => {
+  assert.deepEqual(planGroupPasses(["landing"], GROUP_NAMES), { stills: ["landing"], videos: false });
+});
+
+test("no --only runs every still group and the video pass", () => {
+  const passes = planGroupPasses(undefined, GROUP_NAMES);
+  assert.equal(passes.videos, true);
+  assert.deepEqual(passes.stills, GROUP_NAMES.filter((name) => name !== "videos"));
+});
+
+test("an unknown group is rejected by name, and videos is not treated as one", () => {
+  // The check has to survive the split: dropping the video group out of the
+  // still loop must not also drop the "is this a real group" validation, or a
+  // typo would silently capture nothing instead of failing.
+  assert.throws(
+    () => planGroupPasses(["bogus"], GROUP_NAMES),
+    /unknown group "bogus"\. Known: .*videos/,
+  );
+  assert.throws(() => planGroupPasses(["videos", "bogus"], GROUP_NAMES), /unknown group "bogus"/);
 });

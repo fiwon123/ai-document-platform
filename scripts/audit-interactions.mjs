@@ -124,6 +124,55 @@ export const STEP_ORDER = [
 export const ALWAYS_ON = ["settle"];
 
 /**
+ * The group whose scenarios record a *clip* rather than a still.
+ *
+ * It is the one group `runRouteGroup` cannot serve, because its scenarios carry
+ * a `run` step that drives the page over time and has no meaning for a single
+ * frame. So the two dispatchers are genuinely different work, and the split has
+ * to be decided before either runs.
+ */
+export const VIDEO_GROUP = "videos";
+
+/**
+ * Split the requested groups into the still pass and the video pass.
+ *
+ * `videos` is not a still group and must never reach the still dispatcher: the
+ * dispatch there is a lookup, so a `run` step on a still throws, and the error
+ * names `GROUPS.videos` as the place `run` is legal — which is true, while the
+ * command printing it can never arrive there. That made every `--only=videos`
+ * (and every `--only=<routes>,videos`) fail, leaving a full ~13-minute run as
+ * the only way to refresh an animation.
+ *
+ * The mistake it replaces was filtering the video group out on the *fallback*
+ * branch only:
+ *
+ * ```js
+ * const groups = opts.only ?? Object.keys(GROUPS).filter((g) => g !== "videos");
+ * ```
+ *
+ * `opts.only ?? …` means an explicit `--only=videos` skips the filter entirely,
+ * so the group it names as the thing to run is the one thing that dispatcher
+ * cannot run. A filter on one branch of a `??` is a filter that only applies when
+ * the user does not ask for the thing.
+ *
+ * Pure and separate from the loop so the split is testable without a browser —
+ * the bug produced a clean-looking command line and an artifact that was simply
+ * never produced, which is the class of failure no capture can catch.
+ */
+export function planGroupPasses(only, groupNames) {
+  const known = new Set(groupNames);
+  const requested = only ?? [...known];
+  const unknown = requested.filter((name) => !known.has(name));
+  if (unknown.length) {
+    throw new Error(`unknown group "${unknown[0]}". Known: ${[...known].join(", ")}`);
+  }
+  return {
+    stills: requested.filter((name) => name !== VIDEO_GROUP),
+    videos: requested.includes(VIDEO_GROUP),
+  };
+}
+
+/**
  * The steps a scenario actually asks for, in the order they must run.
  *
  * Pure, so the ordering is testable without a browser — it is the reason the
