@@ -2001,6 +2001,26 @@ async function runRouteGroup(audit, group, route, viewport, theme) {
     isMobile: vp.isMobile,
     hasTouch: vp.isMobile,
     deviceScaleFactor: 1,
+    // #485: stills are photographed with reduced motion requested.
+    //
+    // `animations: "disabled"` in shot() cancels an infinite animation to its
+    // *initial* state, but the compositor still rasterises that cancelled state
+    // at a sub-pixel offset that depends on frame timing — a 0.55% band across
+    // the element, with a byte-identical DOM. That made `carousel-hover` and
+    // `desktop-light-hero` flaky at 0.55%, which is right at the edge of the
+    // diff threshold, so the audit could not tell a real regression from noise.
+    //
+    // Forcing the media feature is stronger than cancelling animations: the
+    // stylesheet's own `@media (prefers-reduced-motion: reduce)` rules apply,
+    // so decorative drifts stop at their resting transform and JS that checks
+    // `matchMedia` (CountUp, ScreenshotCarousel) takes its reduced-motion
+    // branch too. The page lands on its settled state, which is both the
+    // correct thing to photograph and a deterministic one.
+    //
+    // The video capture context above deliberately does NOT set this: recording
+    // motion is that path's entire purpose, and reduced motion would leave it a
+    // clip of a still page. Animation is verified by that WebM instead.
+    reducedMotion: "reduce",
   });
   if (audit.auth) await injectAuth(context, audit.auth.token, theme);
 
