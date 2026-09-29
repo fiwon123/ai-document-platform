@@ -223,7 +223,8 @@ host ports (`127.0.0.1:18001` backend, `127.0.0.1:18080` frontend).
 ./infra/scripts/smoke-test.sh
 ```
 
-The Infra CI workflow runs this job (`smoke`) on every dev push. Note: with
+The Infra CI workflow runs this job (`smoke`) only on a `ci`-labelled `dev`→`main`
+PR or a manual dispatch — not on a push to `dev`. Note: with
 neither `OPENAI_API_KEY` nor a local embedding provider (`LOCAL_LLM_ENABLED` plus
 a pulled embedding model), document processing ends in `failed` (no embeddings)
 — the smoke test asserts the API surface (upload/status/search respond
@@ -254,11 +255,19 @@ Both Applications use the default `automated` sync with `prune: true` +
 git with no manual `kubectl apply` of the overlays.
 
 **CD flow with CI**: the Infra CI workflow builds and pushes
-`ghcr.io/fiwon123/ai-platform/{backend,worker,frontend}` (SHA + `latest`) on
-every dev merge. The production overlay's images are `latest`-pinned, so a
-merged manifest change triggers an automatic ArgoCD sync. For **controlled
-rollouts**, pin a SHA tag in the overlay (`kustomize edit set image
-ai-platform/backend=ghcr.io/fiwon123/ai-platform/backend:<sha>`); **rollback**
+`ghcr.io/fiwon123/ai-platform/{backend,worker,frontend}` (SHA + `latest`) on a
+`ci`-labelled `dev`→`main` PR or a manual dispatch — **not** on a merge to `dev`
+(see *CI triggers* in `AGENTS.md`). The production overlay's images are
+`latest`-pinned, and ArgoCD syncs the manifest automatically when the tracked
+branch moves, so the two halves have different freshness:
+
+| Branch merged | ArgoCD syncs | New `latest` image? |
+|---|---|---|
+| `dev` | the dev app | no — dev re-pulls the previous `latest`, so the dev cluster trails `dev` HEAD by one release |
+| `main` (release PR) | staging + production | yes — that PR's own Infra CI run built and published `latest` from its merge ref |
+
+For **controlled rollouts**, pin a SHA tag in the overlay (`kustomize edit set
+image ai-platform/backend=ghcr.io/fiwon123/ai-platform/backend:<sha>`); **rollback**
 is then a git revert of the pinned commit (or `argocd app rollback
 ai-platform-production`).
 

@@ -651,8 +651,99 @@ endpoint can promote it. Thumbnails *do* load since #536 — the document bytes
 are streamed by the API under a signed token instead of by the object store, so
 there is no browser-facing storage address left to be wrong.
 
-A full pass currently takes about 11 minutes, of which roughly 5 are spent
-sleeping out the rate limiter. Individual groups take 1–2 minutes.
+A full pass currently takes about 13 minutes, of which 2–4 are spent holding the
+rate-limit reserve back. Individual groups take 1–2 minutes.
+
+## Validating infra locally
+
+`infra.yml` runs on a `ci`-labelled `dev`→`main` PR or a manual dispatch — **not
+on a push to `dev`** (see *CI triggers* in `AGENTS.md`). So a change to
+`infra/**` gets no `kustomize build`, `helm lint` or `kubeconform` anywhere on
+its way to `dev`, and a manifest typo is discovered by the release PR. Run the
+same validation before opening the PR.
+
+The tools are not project dependencies. `mise.toml` pins `kustomize` and `helm`,
+but **not** `kubeconform`, so it needs a separate install:
+
+```bash
+mise install                                    # kustomize + helm
+#   kubeconform v0.6.7 (no mise entry):
+#     brew install yannh/kubeconform/kubeconform
+#   or: curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar -xz -C /usr/local/bin
+
+kustomize build infra/k8s/overlays/dev       > /tmp/dev-rendered.yaml
+kustomize build infra/k8s/overlays/staging   > /tmp/staging-rendered.yaml
+kustomize build infra/k8s/overlays/production > /tmp/prod-rendered.yaml
+helm lint infra/helm/ai-platform
+helm template ai-platform infra/helm/ai-platform > /tmp/helm-rendered.yaml
+
+for f in dev staging prod helm; do
+  kubeconform -strict -ignore-missing-schemas -summary /tmp/$f-rendered.yaml
+done
+for manifest in infra/argo/*.yaml; do
+  kubeconform -strict -ignore-missing-schemas -summary "$manifest"
+done
+```
+
+`-ignore-missing-schemas` is what makes the CRD-carrying resources (cert-manager,
+External Secrets, Prometheus, ArgoCD) report as *Skipped* instead of failing; a
+non-zero `Invalid` or `Errors` is a real failure.
+
+CI pins kustomize v5.5.0 and helm v3.16.4, while `mise.toml` tracks `latest` for
+both — so a local pass is a good signal, not a guarantee. A render difference
+between your machine and CI is usually a tool version, and a genuine schema
+failure reproduces on both.
+
+Images are built by `infra/scripts/build-images.sh [registry] [tag]`, which
+reuses the `./backend` source tree as the worker image's build context. That one
+only needs Docker:
+
+```bash
+./infra/scripts/build-images.sh            # ai-platform/*:latest, no registry
+```
+
+**Why this is a manual step rather than a push trigger.** Splitting the concern
+is the point: validation is cheap and should cover every change, while
+publishing to ghcr.io on every `dev` push is neither wanted nor free. Bundling
+them meant the only automated check for a dev merge was a *publish*, so a
+manifest error surfaced at release time and the newest green checks on `dev` all
+predate the current trigger config.
+
+### Running the workflow itself (and why not from a feature branch)
+
+`workflow_dispatch` is the other escape hatch, and unlike a push it also builds
+images and runs the Kind smoke test. It runs against whichever **ref you pick**,
+so the first question is which ref — because a feature branch is not safe here.
+
+```bash
+# Only for main / a ref you intend to ship. Not a feature branch.
+gh workflow run infra.yml --ref main
+gh run watch --exit-status      # then: gh run list --workflow=infra.yml --limit 1
+```
+
+**Dispatching from a feature branch publishes it as `latest`.** The
+`build-images` and `scan-images` jobs are guarded by
+`if: github.event_name == 'workflow_dispatch' || ...`, so a dispatch runs them
+*unconditionally* — and the push step tags whatever ref was dispatched as both a
+SHA tag and the floating `latest`:
+
+```bash
+docker tag "${image}:${TAG}" "${image}:latest"   # ...and the production overlay is latest-pinned
+```
+
+Since `GITHUB_SHA` is the head of the ref you picked, dispatching `infra.yml`
+from a feature branch builds that branch and overwrites the `latest` tag that the
+staging and production overlays follow. ArgoCD's self-heal will then roll those
+environments onto **unmerged, unreviewed code**. For validating a feature branch,
+use the local commands above — they cover the manifests without touching the
+registry. Reserve dispatch for `main`, or for a branch you intend to ship.
+
+A second, milder surprise: the validation steps are gated on
+`steps.changes.outputs.infra == 'true'` from `dorny/paths-filter`, which
+resolves a `workflow_dispatch` ref against a base rather than the PR diff. A
+dispatch of a branch whose changes do not touch `infra/**` can therefore skip the
+validation body entirely. If a run reports skipped validation, the "Detect infra
+changes" step log says which filter missed.
 
 ## Tools
 

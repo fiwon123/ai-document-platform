@@ -168,8 +168,9 @@ Deployed by ArgoCD (`ai-platform-staging`) like production — see
 `infra/scripts/smoke-test.sh` boots the whole stack on a local Kind cluster
 (reusing `setup-kind.sh` + `kind-load-images.sh`), applies the dev overlay and
 asserts backend health (200), frontend reachability (200) and an API
-round-trip (register → login → upload → status → search). Runs on every dev
-push in the Infra CI (`smoke` job).
+round-trip (register → login → upload → status → search). Runs on a `ci`-labelled
+`dev`→`main` PR or a manual dispatch in the Infra CI (`smoke` job) — not on a
+push to `dev`.
 
 ```bash
 ./infra/scripts/smoke-test.sh
