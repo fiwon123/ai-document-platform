@@ -230,3 +230,73 @@ def test_no_service_maps_host_docker_internal_to_a_hardcoded_ip(compose):
                     f"{service} pins host.docker.internal to {target!r}; use "
                     "'host-gateway' so this works on any host."
                 )
+
+
+# --------------------------------------------------------------------------
+# #536: the object store has no "public" address any more.
+# --------------------------------------------------------------------------
+
+
+def test_no_service_configures_a_public_object_store_endpoint(compose):
+    """A browser-facing storage URL needs a host the browser can resolve.
+
+    There is no such host that is correct everywhere: the published port for a
+    browser on the host, the service name inside the container network, an
+    ingress name outside a cluster. The wrong guess does not fail loudly — the
+    image request dies as ``ERR_CONNECTION_REFUSED`` and the card falls back to
+    a type chip, which reads as a missing feature (#536).
+
+    So the application serves document bytes itself now, under a signed token,
+    and the endpoint is no longer a thing anyone has to configure. This test
+    fails if a knob comes back.
+    """
+    for service, config in compose["services"].items():
+        env = {k: str(v) for k, v in (config.get("environment") or {}).items()}
+        offenders = [k for k in env if "PUBLIC_ENDPOINT" in k.upper()]
+        assert not offenders, (
+            f"the {service} service configures {offenders}, which means something "
+            "hands out a browser-facing object-store URL again"
+        )
+
+
+def test_no_deployment_manifest_configures_a_public_object_store_endpoint():
+    """The same trap, in the manifests an operator actually deploys.
+
+    Kustomize and Helm are where a staging cluster would have grown a
+    ``MINIO_PUBLIC_ENDPOINT`` pointing at an address only the cluster can see.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    manifests = [
+        repo / "infra/k8s/base/configmap.yaml",
+        repo / "infra/helm/ai-platform/templates/configmap.yaml",
+        repo / "infra/helm/ai-platform/values.yaml",
+    ]
+    for path in manifests:
+        text = path.read_text()
+        assert "PUBLIC_ENDPOINT" not in text, (
+            f"{path.name} still configures a public object-store endpoint"
+        )
+
+
+def test_the_storage_client_cannot_hand_out_a_presigned_url():
+    """The capability itself, not just the configuration.
+
+    Every way this regresses — a new endpoint, a new service method, a revived
+    constant — has to pass *some* check, and the cheapest one is that the
+    storage client has exactly one client and no URL signer.
+    """
+    from app.storage.storage import MinioStorage, storage
+
+    public_attrs = [
+        name
+        for name in dir(MinioStorage)
+        if "presign" in name.lower() or "public" in name.lower()
+    ]
+    assert public_attrs == [], (
+        f"MinioStorage grew {public_attrs}; the app serves document bytes itself "
+        "and must not mint browser-facing storage URLs (#536)"
+    )
+    assert not hasattr(storage, "public_client"), (
+        "the storage singleton has a second client again; a browser-facing "
+        "endpoint is exactly the configuration #536 removed"
+    )

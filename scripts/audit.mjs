@@ -312,18 +312,14 @@ KNOWN LIMITATIONS
   * GIF output needs an ffmpeg with a GIF muxer. The container ships
     Playwright's screencast build (webm/image2 only), so animations are
     recorded as WebM and the run says so once. See ffmpegSupportsGif().
-  * The browser runs inside the container, where MinIO answers on minio:9000
-    but presigned URLs are signed for localhost:9000 (correct for a browser on
-    the host). Document thumbnails and download links therefore fail to load in
-    these captures; every other image and style does.
   * The /app/admin capture is the access-denied branch: the fixture user is a
     customer and nothing in the public API can promote it to admin.
   * --gate cannot be combined with --only. The baseline describes a full pass,
     so a partial run would report every group it skipped as "resolved" and a
     reviewer could accept the truncated list by accident.
-  * Console and network errors are report-only and never gate. MinIO's
-    presigned URLs (above) make them permanently noisy from inside the
-    container; they describe the environment, not the UI.
+  * Console and network errors are report-only and never gate. Third-party font
+    CDNs are frequently unreachable from inside the container, so a failed
+    asset request often describes the environment rather than the UI.
   * The gate compares *signals*, not pixels. Pixels are only comparable against
     the machine that produced them, so a CI-runner diff would be antialiasing
     noise. See issue #470 for the local pixel-diff tool.
@@ -1305,7 +1301,7 @@ function wirePage(page, consoleErrors, pageErrors, networkFailures = []) {
     }
   });
   // A connection refused never produces a response, so it needs its own hook —
-  // this is how an unreachable presigned-storage host shows up at all.
+  // this is how an unreachable asset host shows up at all.
   page.on("requestfailed", (req) => {
     networkFailures.push(`FAILED ${req.method()} ${req.url()} (${req.failure()?.errorText ?? "unknown"})`);
   });

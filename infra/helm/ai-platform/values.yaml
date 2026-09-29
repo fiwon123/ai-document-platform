@@ -127,7 +127,6 @@ config:
   minio:
     # -- Leave empty to auto-derive from the release name
     endpoint: ""
-    publicEndpoint: ""
     bucket: documents
   logging:
     # -- Log output format: "json" (Loki/Promtail-friendly) or "plain"

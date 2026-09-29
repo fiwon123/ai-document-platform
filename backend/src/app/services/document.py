@@ -16,6 +16,11 @@ from app.schemas.document import (
     DocumentStatusResponse,
     FileResponse,
 )
+from app.services.media_tokens import (
+    KIND_ORIGINAL,
+    KIND_THUMBNAIL,
+    issue_token,
+)
 from app.services.search import invalidate_user_search_cache
 from app.services.text_extraction import TextExtractionService
 from app.services.thumbnail import thumbnail_object_key
@@ -386,7 +391,27 @@ class DocumentService:
     def list(self, owner_id: UUID, skip: int = 0, limit: int = 20):
         return self.repository.get_by_owner(owner_id=owner_id, skip=skip, limit=limit)
 
+    @staticmethod
+    def _asset_url(document_id: UUID, kind: str) -> str:
+        """An API path the browser can always reach, carrying its own authority.
+
+        Deliberately relative: the frontend proxies ``/v1`` to the backend, so a
+        path is correct from the dev server, from a production bundle served by
+        the same nginx, and from the audit's in-container browser — with no
+        knowledge of where the API is hosted. A presigned storage URL had to
+        encode an absolute host, which is a guess about the browser's network
+        and is wrong in every environment but one (#536).
+        """
+        token = issue_token(document_id, kind)
+        return f"/v1/documents/{document_id}/content?kind={kind}&token={token}"
+
     def get_download_url(self, document_id: UUID, owner_id: UUID):
+        """A link to the original file, authorised by a token in the URL.
+
+        ``<img src>`` and a plain download link cannot carry an Authorization
+        header, so the authority travels in the query string instead. The token
+        is short-lived and scoped to this one document.
+        """
         document = self.get(document_id=document_id, owner_id=owner_id)
         if document is None:
             return None
@@ -394,14 +419,11 @@ class DocumentService:
         return {
             "id": document.id,
             "filename": document.filename,
-            "download_url": self.storage.create_download_url(
-                document.object_key,
-                expires_in=3600,
-            ),
+            "download_url": self._asset_url(document.id, KIND_ORIGINAL),
         }
 
     def get_thumbnail_url(self, document_id: UUID, owner_id: UUID):
-        """Return a fresh presigned URL for the document's thumbnail.
+        """Return a fresh link to the document's rendered thumbnail.
 
         None when the document is not found or has no thumbnail (still
         pending, a non-PDF, or rendering failed).
@@ -412,11 +434,41 @@ class DocumentService:
 
         return {
             "id": document.id,
-            "thumbnail_url": self.storage.create_download_url(
-                thumbnail_object_key(document.object_key),
-                expires_in=3600,
-            ),
+            "thumbnail_url": self._asset_url(document.id, KIND_THUMBNAIL),
         }
+
+    def open_asset(self, document_id: UUID, kind: str):
+        """Open a document's bytes for a token-authorised request.
+
+        Returns ``(document, body, content_length)``. ``None`` when the token
+        does not authorise this document and kind, or the document is gone, or
+        the asset was never written — the caller answers 403 for the first and
+        404 for the rest, because "your token is not good for this" and "there
+        is nothing here" are different facts for a browser to act on.
+        """
+        document = self.repository.get_by_id(document_id)
+        if document is None:
+            return None
+
+        if kind == KIND_THUMBNAIL:
+            if not document.has_thumbnail:
+                return None
+            object_key = thumbnail_object_key(document.object_key)
+        else:
+            object_key = document.object_key
+
+        try:
+            body, length = self.storage.open_object(object_key)
+        except Exception:  # noqa: BLE001 - a missing object must not 500
+            logger.warning(
+                "Document asset %s (%s) could not be read from storage",
+                document_id,
+                kind,
+                exc_info=True,
+            )
+            return None
+
+        return document, body, length
 
     def preview(self, document_id: UUID, owner_id: UUID):
         """Return a truncated text preview of the stored document.

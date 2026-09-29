@@ -24,12 +24,15 @@
  *
  * ## Why the default signal list excludes console and network errors
  *
- * The dev container reaches MinIO over `localhost:9000`, but the audit's
- * headless Chromium runs *inside* that container, where presigned URLs signed
- * for the host's loopback are not resolvable. Every thumbnail and download
- * therefore logs a connection error that no user ever sees. Gating on console
- * or network errors would fail on a known environment artifact, so they stay
- * report-only. `consoleErrors`/`networkFailures` are still in the summary.
+ * The audit's headless Chromium runs *inside* the dev container, and third-party
+ * font CDNs are frequently unreachable from there. Every marketing page
+ * therefore logs a request error that no user on the host ever sees. Gating on
+ * console or network errors would fail on a known environment artifact, so they
+ * stay report-only. `consoleErrors`/`networkFailures` are still in the summary.
+ *
+ * Document thumbnails used to be a second such artifact (#536): the object store
+ * was addressed by a browser-facing URL that only resolved in one topology.
+ * The API streams those bytes itself now, so this is the only known one.
  */
 
 export const BASELINE_VERSION = 1;
