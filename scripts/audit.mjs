@@ -88,6 +88,8 @@ import {
   checkClassExpectation,
   describeSkip,
   orderedStepKeys,
+  planPageSteps,
+  stepMoved,
   unreachableStepKeys,
   undeclaredStepKeys,
 } from "./audit-interactions.mjs";
@@ -1362,22 +1364,38 @@ let currentPacer = null;
 //
 // Grouped so `--only=` can select a subset, and written as data where possible so
 // adding a route is a one-line change rather than a new copy-pasted block.
-// ─────────────────────────────────────────────────────────────────────────────
+//
+// `stepped: true` walks the page from the top down, capturing one
+// viewport-sized screenful at a time, instead of photographing only the first
+// fold (#552). Every route here used to be a single `top` image of a page running
+// several thousand pixels tall, so the audit reported "0 findings" for content it
+// had never rendered — and three reviewers of the 2026-09-29 run independently
+// reported exactly that gap, with `how-it-works` stages 2–6 visible in no image at
+// all.
+//
+// The legal group is deliberately NOT stepped: it already uses `fullPage: true`,
+// it is one long uniform column of body text with no interactive states, and a
+// 1440×~4000 PNG of paragraphs downscaled to fit a screen is not more readable
+// than four screenfuls of it — it is less. `fullPage` is correct there because
+// nothing on those pages is behind a scroll-triggered reveal.
 const GROUPS = {};
 
 GROUPS.public = [
-  { route: "/demo", state: "hero", require: ".demo-page, main", expect: "main" },
-  { route: "/product", state: "hub", require: "main", expect: "main" },
-  { route: "/features", state: "top", require: "main", expect: "main" },
-  { route: "/how-it-works", state: "top", require: "main", expect: "main" },
-  { route: "/company", state: "hub", require: "main", expect: "main" },
-  { route: "/about", state: "top", require: "main", expect: "main" },
-  { route: "/blog", state: "empty", require: "main", expect: "main" },
-  { route: "/careers", state: "top", require: "main", expect: "main" },
-  { route: "/contact", state: "top", require: "main", expect: "main" },
+  { route: "/demo", state: "hero", require: ".demo-page, main", expect: "main", stepped: true },
+  { route: "/product", state: "hub", require: "main", expect: "main", stepped: true },
+  { route: "/features", state: "top", require: "main", expect: "main", stepped: true },
+  { route: "/how-it-works", state: "top", require: "main", expect: "main", stepped: true },
+  { route: "/company", state: "hub", require: "main", expect: "main", stepped: true },
+  { route: "/about", state: "top", require: "main", expect: "main", stepped: true },
+  { route: "/blog", state: "empty", require: "main", expect: "main", stepped: true },
+  { route: "/careers", state: "top", require: "main", expect: "main", stepped: true },
+  { route: "/contact", state: "top", require: "main", expect: "main", stepped: true },
 ];
 
 GROUPS.legal = [
+  // Not `stepped` — see the note above GROUPS.public. These are single columns
+  // of body text with no scroll-triggered reveals, so the whole document as one
+  // tall image is both cheap and complete.
   { route: "/privacy", state: "top", require: "main", expect: "main", fullPage: true },
   { route: "/terms", state: "top", require: "main", expect: "main", fullPage: true },
   { route: "/security", state: "top", require: "main", expect: "main", fullPage: true },
@@ -1805,6 +1823,128 @@ async function applyScroll(page, scenario, acts) {
 }
 
 /**
+ * Photograph a page from the top down, one viewport-sized screenful at a time.
+ *
+ * The marketing routes used to capture a single `top` image, which is 900px of a
+ * page that runs several thousand — so the audit reported `horizontalOverflow: []`
+ * and zero findings for content it had never rendered. The reviewers of the
+ * 2026-09-29 run said so three times, unprompted: below-the-fold content was out
+ * of frame, and `how-it-works` stages 2–6 appeared in no image at all.
+ *
+ * `fullPage: true` is the one-word fix and it is still wrong for these routes.
+ * `page.screenshot({ fullPage })` does not scroll, it resizes the capture surface,
+ * so a reveal below the fold can still be at `opacity: 0` when the buffer is taken
+ * — the exact blank-band failure this coverage exists to catch. It also yields one
+ * image 5–6× a viewport tall, which every viewer downscales until the detail that
+ * made it worth capturing is gone.
+ *
+ * Stepping gets both properties right: each capture is a real scroll, so each
+ * reveal gets the scroll it was waiting for, and each image is one readable
+ * screenful.
+ *
+ * `stepped` also runs the interaction (`click`, `fill`, …) **before** the first
+ * capture, so a route whose below-the-fold content only exists after an
+ * interaction is still photographed in that state, and the state persists across
+ * every step of that scenario.
+ */
+async function capturePageSteps(page, audit, scenario, { route, viewport, theme, throttledBefore, acts }) {
+  const measured = await page.evaluate(() => ({
+    scrollHeight: Math.max(
+      document.body.scrollHeight,
+      document.documentElement.scrollHeight,
+      document.documentElement.offsetHeight,
+    ),
+    innerHeight: window.innerHeight,
+  }));
+
+  const plan = planPageSteps(measured.scrollHeight, measured.innerHeight, {
+    stepOverlapPx: scenario.stepOverlapPx,
+  });
+
+  if (plan.truncated) {
+    warn(
+      `${route}: page is ${plan.totalHeight}px, needing more than the ${plan.steps} stepped ` +
+        "captures allowed — the bottom is not covered. Raise MAX_PAGE_STEPS or narrow the route.",
+    );
+  }
+  if (plan.steps <= 1) {
+    log(`  ${route} [${viewport}/${theme}] ${scenario.state} — 1 step (page fits the viewport)`);
+  }
+
+  let previousOffset = null;
+  let captured = 0;
+  let reachedBottom = false;
+
+  for (let i = 0; i < plan.offsets.length; i += 1) {
+    const offset = plan.offsets[i];
+    const state = plan.states[i];
+
+    if (i > 0) {
+      // Measured after settling, not taken from the plan: the page can change
+      // height between measuring and scrolling (a late font swap, an image
+      // without dimensions), so the plan can be stale by the time it runs.
+      await page.evaluate((y) => window.scrollTo(0, y), offset);
+      await settleVisuals(page);
+      const actual = await page.evaluate(() => Math.round(window.scrollY));
+      if (!stepMoved(previousOffset, actual)) {
+        warn(
+          `SKIP ${route} [${viewport}/${theme}] ${state}: the page did not move ` +
+            `(still at ${actual}px) — it would repeat the previous capture`,
+        );
+        audit.addEntry({
+          route,
+          viewport,
+          theme,
+          state,
+          type: "screenshot",
+          file: null,
+          skipped: "page did not scroll — duplicate of the previous step",
+        });
+        break;
+      }
+      previousOffset = actual;
+      // At the bottom, the walk is over. Checked here rather than inferred from
+      // the plan because the plan's final offset is the one most likely to be
+      // wrong: the page settles to a *shorter* height than it measured at (fonts
+      // and images resolve after first paint), so the last offset clamps onto the
+      // screenful before it. Photographing that second time would file two names
+      // for one image and — because `skips` is a gate signal — fail the run on a
+      // plan that was correct for the page as first painted.
+      reachedBottom = await page.evaluate(
+        () => window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 1,
+      );
+    }
+
+    const ok = await audit.shot(page, {
+      throttledBefore,
+      route,
+      viewport,
+      theme,
+      state,
+      dir: routeSlug(route),
+      require: scenario.require,
+      requireMs: scenario.requireMs ?? null,
+      action: acts.length ? [...acts, { action: "scrollTo", to: `${i === 0 ? 0 : previousOffset}px`, step: i + 1, of: plan.steps }] : null,
+    });
+    if (ok) captured += 1;
+    log(`  ${route} [${viewport}/${theme}] ${state}${plan.steps > 1 ? ` (${i + 1}/${plan.steps})` : ""}`);
+
+    // Only once the bottom has actually been reached can this be true, which is
+    // what makes it a safety net for `plan.truncated` rather than a way to stop
+    // short: a plan that ran out of steps still reaches the end, and reporting
+    // that is the point of the truncation warning.
+    if (reachedBottom) {
+      if (i < plan.offsets.length - 1) {
+        log(`  ${route} [${viewport}/${theme}] — bottom reached at step ${i + 1}/${plan.steps}`);
+      }
+      break;
+    }
+  }
+
+  return captured;
+}
+
+/**
  * Click an element without letting Playwright choose where to scroll.
  *
  * `locator.click()` is the obvious way to do this and it is wrong for a
@@ -2139,6 +2279,19 @@ async function runRouteGroup(audit, group, route, viewport, theme) {
         type: "screenshot",
         file: null,
         skipped: skip,
+      });
+      continue;
+    }
+    if (scenario.stepped) {
+      // The whole point of this branch is that `require` is satisfied by the
+      // *first* screenful and every later step inherits it, so the plan is made
+      // from a page that has already passed its presence check.
+      await capturePageSteps(page, audit, scenario, {
+        route: scenario.route,
+        viewport,
+        theme,
+        throttledBefore,
+        acts,
       });
       continue;
     }

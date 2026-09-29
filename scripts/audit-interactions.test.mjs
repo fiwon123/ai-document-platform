@@ -20,8 +20,11 @@ import {
   buildAttrWaitArgs,
   describeSkip,
   orderedStepKeys,
+  planPageSteps,
+  stepMoved,
   unreachableStepKeys,
   undeclaredStepKeys,
+  MAX_PAGE_STEPS,
   SCENARIO_METADATA_KEYS,
   STEP_OPTION_KEYS,
   STEP_ORDER,
@@ -234,6 +237,7 @@ test("every listed key is actually used by some scenario shape", () => {
   const sample = {
     route: 1, state: 1, dir: 1, viewport: 1, theme: 1, auth: 1, expect: 1, require: 1,
     requireMs: 1, fullPage: 1, clipSelector: 1, probe: 1, throttledBefore: 1,
+    stepped: 1, stepOverlapPx: 1,
     note: 1, description: 1, interaction: 1, action: 1,
   };
   for (const key of SCENARIO_METADATA_KEYS) {
@@ -254,4 +258,235 @@ test("`run` is not a permitted still key, however it is spelled", () => {
   // would restore the exact silent-drop this exists to prevent.
   const named = [...SCENARIO_METADATA_KEYS, ...STEP_OPTION_KEYS];
   assert.ok(!named.includes("run"), "`run` must stay reportable on a still");
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stepped whole-page capture (#552)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("a page that fits the viewport is one step at the top, not zero steps", () => {
+  // The regression this pins: `scrollHeight - viewportHeight` is 0 here, and a
+  // naive plan returns an empty offset list — which photographs nothing while
+  // still reporting the scenario as covered. Every mobile route is this shape.
+  const plan = planPageSteps(812, 812);
+  assert.equal(plan.steps, 1);
+  assert.deepEqual(plan.offsets, [0]);
+  assert.deepEqual(plan.states, ["top"]);
+  assert.equal(plan.truncated, false);
+});
+
+test("a page shorter than the viewport is still one step", () => {
+  const plan = planPageSteps(400, 812);
+  assert.equal(plan.steps, 1);
+  assert.deepEqual(plan.offsets, [0]);
+});
+
+test("offsets never exceed the scrollable distance", () => {
+  // The last planned offset past the end of the page is the duplicate this
+  // guards: the browser clamps it to the bottom, so it re-photographs the
+  // previous step under a second name.
+  const plan = planPageSteps(4000, 900);
+  const scrollable = 4000 - 900;
+  for (const offset of plan.offsets) {
+    assert.ok(offset >= 0 && offset <= scrollable, `offset ${offset} outside 0..${scrollable}`);
+  }
+  assert.equal(plan.offsets.at(-1), scrollable, "the final step should reach the end of the page");
+});
+
+test("consecutive steps overlap by at least the requested amount", () => {
+  // Zero overlap puts the cut wherever the arithmetic lands, so a heading split
+  // across two images looks fine in both. This is what DEFAULT_STEP_OVERLAP_PX
+  // is for.
+  const plan = planPageSteps(6000, 900);
+  for (let i = 1; i < plan.offsets.length; i += 1) {
+    const gap = plan.offsets[i] - plan.offsets[i - 1];
+    assert.ok(gap <= 900 - 120, `step ${i} advanced ${gap}px, leaving no overlap`);
+    assert.ok(gap > 0, `step ${i} did not advance`);
+  }
+});
+
+test("no two planned offsets are equal, whatever the page height", () => {
+  // Probed across a range rather than one number: the clamp-and-dedupe path only
+  // misfires for particular height/stride ratios, so a single case would pass
+  // while the bug sat one line away.
+  for (let height = 700; height <= 9000; height += 37) {
+    for (const view of [812, 900]) {
+      const plan = planPageSteps(height, view);
+      const unique = new Set(plan.offsets);
+      assert.equal(
+        unique.size,
+        plan.offsets.length,
+        `duplicate offsets for ${height}px page in a ${view}px viewport: ${plan.offsets.join(",")}`,
+      );
+      assert.deepEqual(plan.states, [...new Set(plan.states)]);
+    }
+  }
+});
+
+test("a page too tall for the cap is truncated and says so", () => {
+  // Silence here would be the worst outcome: the bottom of the page is not
+  // covered, and the run reports every step it did take as a success.
+  const plan = planPageSteps(400_000, 900);
+  assert.equal(plan.truncated, true);
+  assert.equal(plan.steps, MAX_PAGE_STEPS);
+});
+
+test("the cap is not applied to a page that needs fewer steps than the cap", () => {
+  const plan = planPageSteps(3000, 900);
+  assert.equal(plan.truncated, false);
+  assert.ok(plan.steps < MAX_PAGE_STEPS);
+});
+
+test("states are `top` then `page-N`, and there is exactly one `top`", () => {
+  const plan = planPageSteps(5000, 900);
+  assert.equal(plan.states[0], "top");
+  assert.deepEqual(plan.states.slice(1), plan.states.slice(1).map((_, i) => `page-${i + 2}`));
+  assert.equal(plan.states.filter((s) => s === "top").length, 1);
+  assert.equal(plan.states.length, plan.offsets.length);
+});
+
+test("a custom overlap changes the stride and therefore the step count", () => {
+  // Otherwise `stepOverlapPx` would be accepted, stored, and never read — which is
+  // the same silent-drop class as an unimplemented step key.
+  //
+  // The direction is worth stating because it looks wrong at a glance: MORE
+  // overlap needs MORE steps, not fewer. Overlap is bought by shrinking the
+  // stride — each capture re-photographs `stepOverlapPx` of the previous one —
+  // so a higher value walks the same page in shorter hops. Tiling at 0 is the
+  // cheapest and the least safe.
+  const tiled = planPageSteps(5000, 900, { stepOverlapPx: 0 });
+  const overlapped = planPageSteps(5000, 900, { stepOverlapPx: 400 });
+  assert.equal(tiled.stride, 900);
+  assert.equal(overlapped.stride, 900 - 400);
+  assert.ok(
+    overlapped.steps > tiled.steps,
+    `overlap should cost extra captures, got ${overlapped.steps} vs ${tiled.steps}`,
+  );
+  // Both must still reach the bottom — the extra steps are repetition, not depth.
+  for (const plan of [tiled, overlapped]) {
+    assert.equal(plan.offsets.at(-1), 5000 - 900, "last step must reach the end of the page");
+    assert.equal(plan.truncated, false);
+  }
+});
+
+test("degenerate measurements cannot produce a zero step or a NaN offset", () => {
+  // A page can report 0 height while it is still laying out; the planner is the
+  // thing standing between that and a capture named `NaNpx`.
+  for (const [h, v] of [[0, 900], [900, 0], [-100, 900], [900, -100], [NaN, 900], [4000, NaN]]) {
+    const plan = planPageSteps(h, v);
+    assert.ok(plan.steps >= 1, `no steps for ${h}/${v}`);
+    for (const offset of plan.offsets) {
+      assert.ok(Number.isFinite(offset) && offset >= 0, `bad offset ${offset} for ${h}/${v}`);
+    }
+  }
+});
+
+test("no step advances by less than half a stride, except the one that reaches the bottom", () => {
+  // The measured waste this pins: /how-it-works at 1440×900 ends 81px past its
+  // last stride, so finishing by *appending* produced a final frame 91% identical
+  // to the one before it — a whole image to reveal the © footer line. The last
+  // step must instead replace the previous one, so every frame advances a real
+  // distance.
+  //
+  // The last step is exempt, and necessarily so. A page barely taller than the
+  // viewport has only the remainder to cover — a 965px page in an 812px viewport
+  // advances 153px, which is most of the viewport height and all that is left of
+  // the page. Suppressing that frame would mean never photographing its bottom,
+  // which is the original bug. The invariant that is actually safe to assert: no
+  // step *before* the last is a near-duplicate.
+  for (let height = 700; height <= 12000; height += 53) {
+    for (const view of [812, 900]) {
+      const plan = planPageSteps(height, view);
+      for (let i = 1; i < plan.offsets.length - 1; i += 1) {
+        const advance = plan.offsets[i] - plan.offsets[i - 1];
+        assert.ok(
+          advance >= plan.stride / 2,
+          `${height}px page in a ${view}px viewport: step ${i} advanced only ${advance}px ` +
+            `(stride ${plan.stride}) — a near-duplicate frame`,
+        );
+      }
+      // And every frame except the last must land within a stride of the next,
+      // so the two always overlap rather than leaving unphotographed content.
+      for (let i = 0; i < plan.offsets.length - 1; i += 1) {
+        const gap = plan.offsets[i + 1] - plan.offsets[i];
+        assert.ok(
+          gap <= view,
+          `${height}px page in a ${view}px viewport: steps ${i}→${i + 1} advance ${gap}px, ` +
+            "leaving unphotographed content between them",
+        );
+      }
+    }
+  }
+});
+
+test("the final step reaches the real bottom, unless it says it was cut short", () => {
+  // The inverse of the test above, and the bug it replaced: never reaching the end
+  // is worse than one redundant frame, because the bottom of the page is then
+  // never photographed at all.
+  //
+  // The `truncated` escape is real and not a loophole — at 12 steps the cap stops
+  // the walk on a very tall page (measured: 9127px in an 812px viewport ends at
+  // 7612 of 8315). What must never happen is stopping short *without saying so*,
+  // because that reports a partial page as a complete one.
+  for (let height = 700; height <= 12000; height += 53) {
+    for (const view of [812, 900]) {
+      const plan = planPageSteps(height, view);
+      const scrollable = Math.max(0, height - view);
+      if (plan.truncated) {
+        assert.ok(
+          plan.offsets.at(-1) < scrollable,
+          `${height}px page claims to be truncated but ends at the bottom`,
+        );
+        continue;
+      }
+      assert.equal(
+        plan.offsets.at(-1),
+        scrollable,
+        `${height}px page in a ${view}px viewport ended at ${plan.offsets.at(-1)} of ${scrollable} ` +
+          "without reporting truncation",
+      );
+    }
+  }
+});
+
+test("reaching the bottom never exceeds the step cap", () => {
+  // The cap and "always reach the end" are in tension by construction. When they
+  // collide, the cap wins and `truncated` has to say so — silently truncating
+  // would report a partial page as a complete one.
+  const plan = planPageSteps(400_000, 900, { maxSteps: 5 });
+  assert.ok(plan.steps <= 5);
+  assert.equal(plan.truncated, true);
+  assert.ok(plan.offsets.at(-1) < 400_000 - 900);
+});
+
+test("stepMoved accepts a one-pixel move and rejects a repeat", () => {
+  // One pixel is still new content. Demanding exactness would report honest
+  // captures as failures; accepting a repeat would restore the duplicate.
+  assert.equal(stepMoved(0, 1), true);
+  assert.equal(stepMoved(900, 1800), true);
+  assert.equal(stepMoved(0, 0), false);
+  assert.equal(stepMoved(1200, 1200), false);
+});
+
+test("a plan sized for a taller page still ends at the real bottom", () => {
+  // The live bug this pins, measured on /contact at 1440×900 on 2026-09-29: the
+  // page measured 2528px while planning and settled at 2438px once fonts and
+  // images resolved, so the plan's final offset (2338) and the one before it
+  // (2338 after clamping) landed on the same pixel. The run reported a SKIP — and
+  // `skips` is a gate signal, so a correct walk failed the gate on the plan being
+  // right for the page as first painted.
+  //
+  // The planner alone cannot fix this: it is handed a height, and the height it is
+  // given is the wrong one. The repair is in `capturePageSteps`, which stops when
+  // the page reports it is at the bottom rather than trusting the plan's length.
+  // What is assertable here is that the plan is at least *reaching* the bottom it
+  // was told about, so a regression in the arithmetic is still caught here.
+  const planned = planPageSteps(2528, 900);
+  assert.equal(planned.offsets.at(-1), 2528 - 900);
+
+  // And the plan for the settled height must not end short of it either, which is
+  // the other half: ending at 1538 of 1538, not at 780 of 1538.
+  const settled = planPageSteps(2438, 900);
+  assert.equal(settled.offsets.at(-1), 2438 - 900);
+  assert.equal(settled.truncated, false);
 });

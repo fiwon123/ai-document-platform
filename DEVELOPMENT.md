@@ -702,6 +702,66 @@ the behaviour list above. Thumbnails *do* load since #536 — the document bytes
 are streamed by the API under a signed token instead of by the object store, so
 there is no browser-facing storage address left to be wrong.
 
+### Marketing pages are captured in steps (#552)
+
+Every route in `GROUPS.public` is walked from the top down and captured one
+viewport-sized screenful at a time — `top`, `page-2`, `page-3`, … — instead of one
+image of the first fold.
+
+That used to be a single `top` screenshot, which is 900px of a page running
+several thousand. The audit reported `horizontalOverflow: []` and zero findings
+for content it had never rendered, and three reviewers of the 2026-09-29 run said
+so independently and unprompted: below-the-fold content was out of frame, and
+`how-it-works` stages 2–6 appeared in **no image at all**.
+
+**Why not `fullPage: true`,** which the legal group uses:
+
+- `page.screenshot({ fullPage })` **does not scroll** — it resizes the capture
+  surface. A reveal below the fold can still be at `opacity: 0` when the buffer is
+  taken, which is exactly the blank-band failure the extra coverage is meant to
+  catch.
+- It produces one image 5–6× a viewport tall, which every viewer downscales until
+  the detail that made it worth capturing is gone.
+
+Stepping gets both right: every capture is a real scroll, so every reveal gets the
+scroll it was waiting for, and each image is one readable screenful. Measured:
+`/how-it-works` goes from 4 captures to 7 on desktop and from 4 to 11 on mobile.
+
+**The legal group is deliberately not stepped.** Those pages are one long uniform
+column of body text with no scroll-triggered reveals and no interactive states, so
+`fullPage` is both correct and cheaper there — nothing is hiding below the fold.
+
+Four things worth knowing:
+
+- **Steps overlap by 120px** (`DEFAULT_STEP_OVERLAP_PX`). A step boundary lands
+  wherever the arithmetic lands, and a section starting 40px above the cut is then
+  split across two images with the seam invisible in either — so a broken heading
+  gets read as fine twice. The overlap puts the seam inside the previous frame, so
+  whatever is near it appears whole in at least one image.
+- **The walk stops when the page says it is at the bottom**, not when the plan runs
+  out. The page settles to a *shorter* height than it measured at while planning
+  (fonts and images resolve after first paint), so the final planned offset can
+  clamp onto the screenful before it. Measured on `/contact`: 2528px at plan time,
+  2438px settled, last two offsets landing on the same pixel. Photographing that
+  twice files two names for one image **and** fails the gate, because `skips` is a
+  signal — a correct walk failing on a plan that was right for the page as first
+  painted.
+- **Reaching the bottom can cost a duplicate frame, and replacing instead can cost
+  a *gap*.** These pull in opposite directions. When the remainder after the
+  stride walk is small, appending a final step yields a frame 91% identical to the
+  one before it (measured on `/how-it-works`: 81px of advance). Moving the last
+  step forward instead is worse — 1200px of advance on a 900px viewport leaves the
+  tail of the previous frame unphotographed, and a gap is invisible where a
+  duplicate is merely wasteful. So replacement is only used when the remainder
+  fits inside the overlap that was already going to be re-shot.
+- **A page taller than `MAX_PAGE_STEPS` is reported, not silently trimmed.** The
+  bottom of such a page is not covered, and a run that reported the partial walk
+  as a success would be worse than one that says so.
+
+`planPageSteps` is pure and lives in `scripts/audit-interactions.mjs`, so the
+arithmetic is unit-tested across a range of heights without a browser. `stepMoved`
+is the runtime duplicate check.
+
 A full pass currently takes about 13 minutes, of which 2–4 are spent holding the
 rate-limit reserve back. Individual groups take 1–2 minutes.
 
