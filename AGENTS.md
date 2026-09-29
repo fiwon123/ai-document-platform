@@ -312,7 +312,8 @@ uv run alembic current  # View current revision
 - Python package manager: **uv** (not pip/poetry)
 - Linting: **oxlint** (frontend), no backend linter configured
 - Test suite not yet written — see `.opencode/instructions/testing.md` for the plan
-- GitHub Actions CI runs lint + build on PRs (`.github/workflows/ci.yml`)
+- GitHub Actions CI runs lint + build on `dev` → `main` PRs (`.github/workflows/ci.yml`),
+  label-gated and **not on any other trigger** — see *CI triggers* below
 - Dependabot groups dependency updates (`.github/dependabot.yml`)
 - Auth is fully implemented with JWT (register, login, me) — `backend/src/app/routes/auth.py`
 - Database uses UUID primary keys for all models
@@ -374,10 +375,29 @@ If the user explicitly permits reading environment configuration:
 - Branch types: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/`, `ci/`
 - Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `ci:`
 - All testing is local for feature branches — CI only runs on `dev` → `main` PRs
+  (or a manual dispatch), never on a push to `dev`
 - Do NOT merge pull requests unless explicitly instructed
 - Do NOT automatically create release PRs or merge to main — user must explicitly request
 - Always return to `dev` branch after completing any merge
 - Every change is tracked on GitHub: **issue → branch → PR → merge**
+
+### CI triggers (read this before claiming a change is verified)
+
+Both workflows are **label-gated `dev`→`main` PRs plus manual dispatch**. A push
+to `dev` triggers neither, and a `dev` push is not a CI event at all:
+
+| Workflow | Runs on |
+|---|---|
+| `ci.yml` — backend tests + ruff, frontend lint/build/tests | `ci`-labelled PR to `main`, or `workflow_dispatch` |
+| `infra.yml` — kustomize/helm/kubeconform, image builds → ghcr.io, Kind smoke test | `ci`-labelled PR to `main`, or `workflow_dispatch` |
+
+So a feature branch is **unverified** until the release PR is opened and
+labelled, or someone dispatches the workflow. A change touching `infra/**`
+receives no `kustomize build`, `helm lint` or `kubeconform` anywhere on its way
+to `dev` — validate it locally first (`DEVELOPMENT.md` → *Validating infra
+locally*). Publishing images to ghcr.io on every dev push is deliberately
+avoided; the validation that *should* have covered it is a separate concern from
+the release publish, and conflating them is what let the gap go unnoticed.
 
 ### Branch Strategy
 

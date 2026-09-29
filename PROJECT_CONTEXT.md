@@ -769,14 +769,35 @@ when done; `make check` before every push; only `dev-up` requires opencode
 - [x] CI/CD pipeline (GitHub Actions: backend tests + ruff lint; frontend lint + build + tests)
 - [x] Production Docker images (backend, worker, frontend with nginx)
 - [x] Kubernetes deployment (Kustomize base + dev/production overlays, standalone Helm chart, Kind cluster scripts)
-- [x] Infra CI: kustomize/helm/kubeconform validation + production image builds pushed to ghcr.io on dev merges
+- [x] Infra CI: kustomize/helm/kubeconform validation + production image builds pushed to ghcr.io — on a `ci`-labelled `dev`→`main` PR or a manual dispatch, **never on a `dev` push** (see *CI triggers* below)
 - [x] Production TLS: cert-manager ClusterIssuers (Let's Encrypt staging/prod + self-signed) with automatic ingress issuance
 - [x] Production secrets: External Secrets Operator (ExternalSecret + ClusterSecretStore) replacing the dev placeholder Secret
 - [x] Production monitoring: Prometheus + Grafana (kube-prometheus-stack) with a backend /metrics endpoint, ServiceMonitor, alert rules, AlertmanagerConfig email routing, and a Grafana dashboard; metrics-server support for HPAs
 - [x] Production logging: Loki (single-binary, filesystem storage, retention) + Promtail DaemonSet collecting pod logs from all namespaces, with a Grafana Loki datasource
 - [x] GitOps deployment: ArgoCD app-of-apps (ApplicationSet per environment tracking the dev/production Kustomize overlays, automated sync + self-heal + prune) validated in the Infra CI
 - [x] Staging overlay: production-like pre-production environment (ghcr.io images, cert-manager staging TLS, moderate replicas, smaller limits) managed by ArgoCD
-- [x] Kind E2E smoke tests: infra/scripts/smoke-test.sh bootstraps the dev stack on a Kind cluster and asserts backend health, frontend reachability and an API round-trip (register → login → upload → status → search); runs on every dev push in the Infra CI
+- [x] Kind E2E smoke tests: infra/scripts/smoke-test.sh bootstraps the dev stack on a Kind cluster and asserts backend health, frontend reachability and an API round-trip (register → login → upload → status → search); part of the same Infra CI, so it runs under the same triggers
+
+### CI triggers (what actually runs, and when)
+
+Both workflows are **label-gated `dev`→`main` PRs plus manual dispatch**. Neither
+runs on a push to `dev`:
+
+| Workflow | Runs on |
+|---|---|
+| `ci.yml` (backend tests + ruff, frontend lint/build/tests) | `ci`-labelled PR to `main`, or `workflow_dispatch` |
+| `infra.yml` (kustomize/helm/kubeconform, image builds → ghcr.io, Kind smoke test) | `ci`-labelled PR to `main`, or `workflow_dispatch` |
+
+**What this means for a feature branch: nothing runs automatically.** A branch
+that changes `infra/**`, `backend/**` or `frontend/**` is unverified until
+either the release PR is opened and labelled, or someone dispatches the
+workflow. `infra/**` in particular gets no `kustomize build`, `helm lint` or
+`kubeconform` at all on the way to `dev`.
+
+That is deliberate for the *image build* — publishing to ghcr.io on every dev
+push is neither wanted nor free — but it leaves validation uncovered, so run it
+locally before opening the PR. The exact commands, with the versions the
+workflow pins, are in `DEVELOPMENT.md` → *Validating infra locally*.
 
 ### Backlog (not yet started)
 
