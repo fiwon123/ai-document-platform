@@ -133,6 +133,31 @@ def isolate_qa_model_env(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolate_secret_key_acknowledgement(monkeypatch):
+    """Stop the signing-key guard tests from inheriting the dev sandbox's opt-in.
+
+    ``ensure_secret_key_acceptable`` refuses every key this repository
+    publishes, and the tests that assert it must therefore run with the
+    bypass *off* -- otherwise they are not testing the guard, they are testing
+    the environment. ``docker-compose.yaml`` sets
+    ``ALLOW_PLACEHOLDER_SECRET_KEY=1`` on the dev and worker services on
+    purpose (that sandbox is knowingly running with the published key), so
+    inside the container five guard tests were red: green on a developer
+    machine, red where the work actually happens (#534).
+
+    Blank to "" -- *set*, not deleted, for the same reason as
+    ``isolate_qa_model_env``: ``load_dotenv()`` (override=False) leaves an
+    existing variable alone and would re-supply it from
+    ``backend/src/app/.env``. An empty value is a real configuration here, not
+    a missing one -- the guard documents that anything which is not truthy is
+    treated as "not acknowledged". A test that needs the opt-in sets it with
+    ``monkeypatch.setenv`` in its own body, which runs after this fixture, so
+    the test always has the last word.
+    """
+    monkeypatch.setenv("ALLOW_PLACEHOLDER_SECRET_KEY", "")
+
+
+@pytest.fixture(autouse=True)
 def flush_test_redis():
     """Wipe the dedicated test Redis database before every test.
 
