@@ -83,6 +83,7 @@ import {
   resolvePlaywright,
 } from "./audit-playwright.mjs";
 import { waitForFonts } from "./audit-fonts.mjs";
+import { gifSupport, packFrames, packWebm, sequenceGifName } from "./sequence-gif.mjs";
 import {
   buildAttrWaitArgs,
   checkClassExpectation,
@@ -130,7 +131,9 @@ const VIEWPORTS = {
 };
 
 const DEFAULT_BASE_URL = "http://localhost:5173";
-const FFMPEG = "/opt/ms-playwright/ffmpeg-1011/ffmpeg-linux";
+// The ffmpeg path lives with the GIF pipeline that uses it (FFMPEG in
+// sequence-gif.mjs). It used to be duplicated here for the conversion this file
+// no longer performs itself.
 
 /**
  * The gate's baseline, resolved relative to this file so that `--gate` behaves
@@ -156,29 +159,6 @@ const DEFAULT_BASELINE_FILE = path.join(SCRIPT_DIR, "audit-baseline.json");
  * with the root ignore removed.
  */
 const DEFAULT_OUT_ROOT = path.join(SCRIPT_DIR, "..", "frontend", "visual-audit");
-
-/**
- * Does the container's ffmpeg have a GIF muxer?
- *
- * Playwright's bundled ffmpeg is a minimal screencast build: it muxes
- * image2/matroska-webm and encodes libvpx, and has no GIF muxer at all. Trying
- * anyway produces one scary "Error opening output file" per video and zero
- * GIFs, so the capability is checked once up front and reported honestly.
- */
-let gifSupport = null;
-function ffmpegSupportsGif() {
-  if (gifSupport !== null) return gifSupport;
-  try {
-    const formats = execFileSync(FFMPEG, ["-hide_banner", "-muxers"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    gifSupport = /^\s*E\s+.*\bgif\b/m.test(formats);
-  } catch {
-    gifSupport = false;
-  }
-  return gifSupport;
-}
 
 /** Viewport tiers per route group, so a full pass stays inside the time budget. */
 const TIER = {
@@ -333,9 +313,12 @@ PIXEL DIFFING (--pixel-baseline, --update-pixel-baseline)
   baseline above, which is the environment-independent half. See issue #470.
 
 KNOWN LIMITATIONS
-  * GIF output needs an ffmpeg with a GIF muxer. The container ships
-    Playwright's screencast build (webm/image2 only), so animations are
-    recorded as WebM and the run says so once. See ffmpegSupportsGif().
+  * GIF output needs Pillow in the **system** python as well as Playwright's
+    ffmpeg, because that ffmpeg is a screencast build (webm/image2, no gif muxer)
+    and cannot encode a GIF. scripts/sequence-gif.mjs decodes with ffmpeg and
+    encodes with Pillow, and a missing half costs the GIF while leaving the PNGs
+    and the WebM — the run reports which artifact is present, never an assumed
+    one.
   * The /app/admin capture is the access-denied branch: the fixture user is a
     customer and nothing in the public API can promote it to admin.
   * --gate cannot be combined with --only. The baseline describes a full pass,
@@ -1152,33 +1135,34 @@ class Audit {
     this.budget.charge(webmSize);
 
     // GIF for quick review (viewable without a player); WebM kept alongside for
-    // frame-accurate review. GIF is the single largest cost in a run, so a size
-    // check before converting is not paranoia.
+    // frame-accurate review. This used to be a `-f gif` ffmpeg conversion behind
+    // a capability probe, and the probe was permanently false here: the
+    // container's ffmpeg is Playwright's screencast build, which muxes webm and
+    // image2 and nothing else. So the probe was not a safety check, it was a
+    // branch that could never be taken, and every video silently produced no
+    // GIF — and no GIF is a WebM, which is exactly the artifact `read` cannot
+    // render. Decoding with ffmpeg and encoding with Pillow works on this
+    // machine, so the conversion now happens in `sequence-gif.mjs`.
     const gifPath = path.join(target, `${base}.gif`);
     let gifBytes = 0;
-    if (!this.budget.exhausted && ffmpegSupportsGif()) {
+    if (!this.budget.exhausted) {
       // Convert to a scratch file first. Measuring a GIF only after writing it
       // lets a single conversion overshoot a *hard* budget, and the run dir is
       // already over the limit by the time we find out.
       const gifTmp = path.join(this.videoTempDir, `${base}.gif`);
-      try {
-        execFileSync(
-          FFMPEG,
-          ["-y", "-loglevel", "error", "-i", webmPath, "-vf", "fps=10,scale=640:-1:flags=lanczos", "-loop", "0", gifTmp],
-          { stdio: "pipe" },
-        );
-        gifBytes = (await fsp.stat(gifTmp)).size;
-        if (this.budget.wouldExceed(gifBytes)) {
-          warn(`GIF for ${base} is ${(gifBytes / 1e6).toFixed(1)} MB and would exceed the budget — keeping the WebM only`);
-          await fsp.rm(gifTmp, { force: true });
-          gifBytes = 0;
-        } else {
-          await fsp.move(gifTmp, gifPath);
-          this.budget.charge(gifBytes);
-        }
-      } catch (err) {
-        warn(`ffmpeg conversion failed for ${base}: ${err.message}`);
+      const packed = await packWebm(webmPath, gifTmp);
+      if (!packed.ok) {
+        // Not fatal, and not silent: the WebM is already written and the entry
+        // records which artifact exists. A missing Pillow costs review
+        // convenience, not the capture.
+        warn(`no GIF for ${base} (${packed.reason}) — keeping the WebM only`);
+      } else if (this.budget.wouldExceed(packed.bytes)) {
+        warn(`GIF for ${base} is ${(packed.bytes / 1e6).toFixed(1)} MB and would exceed the budget — keeping the WebM only`);
         await fsp.rm(gifTmp, { force: true }).catch(() => {});
+      } else {
+        await fsp.move(gifTmp, gifPath);
+        this.budget.charge(packed.bytes);
+        gifBytes = packed.bytes;
       }
     }
 
@@ -1873,6 +1857,12 @@ async function capturePageSteps(page, audit, scenario, { route, viewport, theme,
 
   let previousOffset = null;
   let captured = 0;
+  // The manifest is the record of what was actually written, so the sequence is
+  // assembled from it rather than from the plan: a step that was skipped (the
+  // page did not scroll, the font gate refused it, the budget ran out) must not
+  // appear in the GIF, because a frame of the wrong page is the one artifact a
+  // reviewer cannot cross-check against the PNG beside it.
+  const manifestFrom = audit.manifest.length;
   let reachedBottom = false;
 
   for (let i = 0; i < plan.offsets.length; i += 1) {
@@ -1941,7 +1931,75 @@ async function capturePageSteps(page, audit, scenario, { route, viewport, theme,
     }
   }
 
+  await packSequence(audit, { route, viewport, theme, manifestFrom });
+
   return captured;
+}
+
+/**
+ * Pack one stepped capture into a single animated GIF.
+ *
+ * `/how-it-works` on mobile is eleven captures of one page, and a reviewer who
+ * opens them as separate attachments pays eleven of the review budget for one
+ * finding — which is how the 2026-09-29 fifteen-way review came back rate
+ * limited with parts cancelled. One file is one attachment.
+ *
+ * Three properties this must not lose:
+ *
+ * - **Only frames that exist.** The list comes from the manifest entries this
+ *   sequence actually wrote, in capture order, so a skipped step is absent
+ *   rather than a duplicated neighbour.
+ * - **Order is the caller's.** A sequence packed backwards is a page scrolling
+ *   up, which reads as a rendering bug that does not exist.
+ * - **The PNGs stay.** The GIF is 640px and 64-colour, so it is a motion summary
+ *   and not where text is read. It is additive; it replaces nothing.
+ *
+ * A missing Pillow or ffmpeg costs the GIF and nothing else, so every path here
+ * warns and returns rather than throwing: the run must not die over a derived
+ * convenience artifact.
+ */
+async function packSequence(audit, { route, viewport, theme, manifestFrom }) {
+  const frames = audit.manifest
+    .slice(manifestFrom)
+    .filter((e) => e.type === "screenshot" && e.file && e.route === route && e.viewport === viewport && e.theme === theme)
+    .map((e) => path.join(audit.runDir, e.file));
+
+  if (frames.length < 2) return;
+  if (audit.budget.exhausted) {
+    warn(`budget reached before packing the ${route} sequence — the PNGs are the artifact`);
+    return;
+  }
+
+  const target = path.join(audit.runDir, routeSlug(route));
+  const base = `${viewport}-${theme}`;
+  const out = path.join(target, sequenceGifName(base, "scroll"));
+
+  const packed = await packFrames(frames, out);
+  if (!packed.ok) {
+    warn(`no sequence GIF for ${route} [${viewport}/${theme}] (${packed.reason}) — the ${frames.length} PNGs are still there`);
+    return;
+  }
+  // The same pre-write discipline as the video path: a conversion that overshoots
+  // a hard budget has already spent the disk, and finding out afterwards is how
+  // a run quietly exceeds the limit it was given.
+  if (audit.budget.wouldExceed(packed.bytes)) {
+    warn(`sequence GIF for ${route} is ${(packed.bytes / 1e6).toFixed(1)} MB and would exceed the budget — dropping it, the PNGs stand`);
+    await fsp.rm(out, { force: true });
+    return;
+  }
+
+  audit.budget.charge(packed.bytes);
+  audit.addEntry({
+    route,
+    viewport,
+    theme,
+    state: "scroll-sequence",
+    type: "sequence-gif",
+    file: path.relative(audit.runDir, out),
+    format: "gif",
+    frames: packed.frames,
+    bytes: packed.bytes,
+  });
 }
 
 /**
@@ -2348,6 +2406,7 @@ async function summarise(audit, { pruned, runDir, opts, elapsedMs }) {
   const entries = audit.manifest;
   const screenshots = entries.filter((e) => e.type === "screenshot");
   const videos = entries.filter((e) => e.type === "video");
+  const sequences = entries.filter((e) => e.type === "sequence-gif");
   const skipped = entries.filter((e) => e.skipped);
 
   // Worst contrast and the smallest target, as numbers, since a human cannot
@@ -2411,6 +2470,7 @@ async function summarise(audit, { pruned, runDir, opts, elapsedMs }) {
       screenshots: screenshots.filter((e) => e.file).length,
       videos: videos.filter((e) => e.file).length,
       gifs: videos.filter((e) => e.format === "gif").length,
+      sequences: sequences.length,
       skipped: skipped.length,
     },
     consoleErrors: audit.consoleErrors.length,
@@ -2459,6 +2519,7 @@ function printSummary(summary) {
   log(
     `captures         ${summary.counts.screenshots} screenshots, ` +
       `${summary.counts.videos} videos (${summary.counts.gifs} gifs), ` +
+      `${summary.counts.sequences} sequence gifs, ` +
       `${summary.counts.skipped} skipped`,
   );
   log(
@@ -2547,11 +2608,18 @@ async function main() {
 
   log(`output           ${runDir}`);
   log(`budget           ${opts.budgetMb} MB, keeping ${opts.keepRuns} run(s)`);
-  if (!ffmpegSupportsGif()) {
-    // Said once, here, instead of one scary ffmpeg error per video.
-    log(`gif              unsupported — the container's ffmpeg is Playwright's screencast build`);
-    log(`                 (webm/image2 only, no gif muxer). WebM is kept for every`);
-    log(`                 animation; see scripts/audit.mjs ffmpegSupportsGif().`);
+  // Said once, here, rather than one warning per video. The probe now asks about
+  // the pipeline that is actually used — ffmpeg can decode a PNG sequence, and
+  // Pillow can encode a GIF — because the old question ("does this ffmpeg have a
+  // gif muxer?") was permanently false here and only ever reported the absence
+  // of the artifact the run was supposed to produce.
+  const gif = await gifSupport();
+  if (gif.ok) {
+    log(`gif              available (${gif.reason}) — one GIF per animation and per stepped sequence`);
+  } else {
+    log(`gif              unavailable — ${gif.reason}`);
+    log(`                 WebM is kept for every animation and the PNGs for every`);
+    log(`                 sequence; see scripts/sequence-gif.mjs.`);
   }
 
   // Backend availability decides whether authenticated routes exist at all.
