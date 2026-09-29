@@ -86,7 +86,53 @@ stylesheet can be correct, a test can be green, and the rendered page can still 
 visually broken — clipped text, an overflowing container, a contrast failure, a
 dark theme that only works in light.
 
-The agent is a **multimodal** model, so captures are looked at, not just counted.
+Looking is a real step, but it is done by the **`visual` subagent**
+(`opencode/mimo-v2.6-flash-free`), not by the main agent. The main agent has no
+image input at all — `read` on a PNG returns "this model does not support image
+input". So the rule is: **the main agent captures, the `visual` subagent looks,
+the main agent acts on the findings.** Never report a visual conclusion the
+`visual` subagent has not actually returned; if a review fails or is
+rate-limited, say the state is unverified and retry in a smaller batch rather
+than carrying the claim forward. (#548 shipped a PR body claiming a state had
+been visually reviewed when the one review that could have caught it had failed
+with `Rate limit exceeded`.)
+
+### Cadence: targeted while you work, full once at the end
+
+Do **not** run the full audit for every change. It is ~13 minutes and 300+
+captures, and nearly all of them are routes the change did not touch. Verifying
+one button does not require photographing the whole site.
+
+| When | What |
+|---|---|
+| **While you work** | Targeted: the affected route(s) only, at the viewport that matters, in **both themes**. This is the iteration loop. |
+| **Before the PR** | The full `node scripts/audit.mjs --gate`, once, as the regression net. |
+
+The expensive thing runs once per feature, not once per edit. If a targeted
+capture shows a problem, fix it and re-capture **the same targeted set** — do not
+escalate to the full audit to check one button.
+
+### Which artifact the change needs
+
+Not every change needs every artifact. Choose by what the change *is*:
+
+| The change is… | Take | Why |
+|---|---|---|
+| Layout, colour, copy, spacing, typography, a static state | **screenshot** | A still shows it completely. |
+| Anything temporal — transition, hover reveal, dropdown/menu open, toast, streaming response, scroll behaviour | **screenshot + video** | A still genuinely *cannot* show motion. This is the one case where a screenshot is insufficient rather than merely less convenient. |
+| A long page, or a sequence that would otherwise be many frames | **screenshot + GIF** | One file instead of N. `/how-it-works` on mobile is 11 step captures; as a GIF it is one attachment. |
+| Motion, reviewed for smoothness or timing | **video** (GIF if a summary will do) | Video is the precise artifact, the GIF the cheap one. |
+
+**Why the GIF is not a nicety.** `read` renders images, GIFs and PDFs — it does
+**not** render WebM. An animation recorded as `.webm` is therefore unreviewable,
+and motion can only be reviewed as a pile of separate stills. That pile is what
+caused the 2026-09-29 review fan-out to come back `Rate limit exceeded`, with
+several cancellations: `/how-it-works` on mobile is 11 attachments for one page.
+**One GIF is one attachment**, and that is the difference between a review that
+completes and one that gets cancelled.
+
+Use the GIF *to review*; keep the PNGs *to read fine text*. A 640px GIF is a
+motion summary, not a replacement for a full-resolution capture.
 
 ### Capture
 
@@ -118,8 +164,9 @@ screencast build and has no GIF muxer. For motion, write a short script using
 Write captures under `/tmp/opencode/` **inside the dev container** — which is
 where the agent runs, so the path is readable as-is, with no `docker compose cp`.
 
-`read` renders images, GIFs and PDFs. Delegate to the `visual` subagent
-(`opencode/mimo-v2.6-flash-free`, marked yellow) and act on its findings.
+`read` renders images, GIFs and PDFs — **not** WebM. Delegate to the `visual`
+subagent and act on its findings. A `.webm` handed to it is a file nobody can
+look at, which is why motion is packed into a GIF before review.
 
 ### Why two layers
 
