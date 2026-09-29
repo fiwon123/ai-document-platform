@@ -128,8 +128,13 @@ Post these comments automatically — no user prompting required:
 
 Tests and numbers do not catch a page that renders wrong. For any change to a
 page, component, style, colour, copy or responsive behaviour, capture the real
-rendering and **look at it** before opening the PR. This is a multimodal agent
-(`visual`, `opencode/mimo-v2.6-flash-free`), so looking is a real step.
+rendering and **look at it** before opening the PR.
+
+**Cadence: targeted while you work, the full audit once before the PR.** Do not
+run the whole audit per change — it is ~13 minutes and 300+ captures, nearly all
+on routes the change did not touch. See `.opencode/instructions/testing.md` →
+"Visual checks" for the per-change loop and for which artifact (screenshot /
+video / GIF) the change actually needs.
 
 ```bash
 playwright screenshot --full-page <url> /tmp/opencode/shot.png
@@ -142,8 +147,12 @@ playwright screenshot --viewport-size=390,844 --full-page <url> /tmp/opencode/mo
 - `scripts/audit.mjs` (the multi-route audit) is the objective layer: `--gate` to
   fail on a new contrast/overflow/unlabelled/landmark/page-error finding. Its
   first log line names the Playwright and chromium revision it resolved (#529).
-- Animation captures are **WebM, not GIF** — the image's ffmpeg has no GIF muxer.
-- Delegate the looking to the `visual` subagent, and act on what it reports.
+- **The main agent cannot look at anything** — it has no image input. It captures;
+  the `visual` subagent looks; the main agent acts on the findings. Do not report
+  a visual conclusion that came back from anywhere else, and treat a rate-limited
+  or failed review as *unverified* rather than carrying the claim forward (#548).
+- `read` does not render WebM, so a recorded animation is unreviewable as-is.
+  Pack motion into a GIF before handing it over — one file, one attachment.
 - **Check both themes.** A change verified only in light mode is unverified.
 - Re-capture after a fix. Do not report a visual fix on the strength of the edit.
 - A pixel-diff mismatch is a reason to look, not proof of a bug: captures vary by
