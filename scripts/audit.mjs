@@ -452,12 +452,18 @@ const ASSERT = (spec) => {
     }
   }
 
+  // The text is included in the length failures, not just the count. "1 words,
+  // needed 12" says the assertion worked and stops there; the *reason* the text
+  // is one word long is the finding, and it is usually an error string the
+  // forbidden list did not anticipate.
   if (spec.minLength != null && text.length < spec.minLength) {
-    return { ok: false, found: `${text.length} chars, needed ${spec.minLength}` };
+    return { ok: false, found: `${text.length} chars, needed ${spec.minLength} — ${JSON.stringify(text.slice(0, 160))}` };
   }
   if (spec.minWords != null) {
     const words = text.split(" ").filter(Boolean).length;
-    if (words < spec.minWords) return { ok: false, found: `${words} words, needed ${spec.minWords}` };
+    if (words < spec.minWords) {
+      return { ok: false, found: `${words} words, needed ${spec.minWords} — ${JSON.stringify(text.slice(0, 160))}` };
+    }
   }
   return { ok: true };
 };
@@ -967,7 +973,7 @@ class Audit {
    * screenshot of a page that silently lost its content (rate-limit redirect,
    * slow render, renamed selector) being filed as evidence of a healthy state.
    */
-  async shot(page, { route, viewport, theme, state, dir, require: requireSelector, requireMs = null, fullPage = false, clipSelector = null, probe = true, action = null, note = null, throttledBefore = null, assert: assertSpec = null }) {
+  async shot(page, { route, viewport, theme, state, dir, require: requireSelector, requireMs = null, fullPage = false, clipSelector = null, probe = true, action = null, note = null, throttledBefore = null, assert: assertSpec = null, assertMs = null }) {
     const slug = routeSlug(route);
     const target = path.join(this.runDir, dir ?? slug);
     await fsp.mkdir(target, { recursive: true });
@@ -1034,26 +1040,42 @@ class Audit {
     // the state I meant to photograph", and the difference is a plausible wrong
     // image, which is worse than a missing one.
     //
-    // `assert` is the second half. It runs in the page and checks the *content* of
-    // a state, so a scenario can demand the substance rather than a container.
-    // The `qa/answer` case is the reason (#559): requiring the copy button passed
-    // on a provider *error*, because the button renders for every assistant
-    // message with no success check, and because it is `opacity: 0` until hover —
-    // so `state: "attached"` is satisfied by an invisible element. A DOM presence
+    // `assert` is the second half. It checks the *content* of a state, so a
+    // scenario can demand the substance rather than a container.
+    //
+    // It **polls** rather than checking once, and that is not a refinement — it is
+    // what makes the check mean anything. `require` is satisfied the instant a
+    // container appears, so on a chat page that is the "Thinking…" placeholder.
+    // A single check therefore judged the placeholder, not the answer, and
+    // reported the loading state as the content of the `answer` state. Waiting
+    // for the state to *settle* is the whole difference between checking the
+    // answer and checking that something arrived.
+    //
+    // The `qa/answer` case is why (#559): requiring the copy button passed on a
+    // provider *error*, because the button renders for every assistant message
+    // with no success check, and because it is `opacity: 0` until hover — so
+    // `state: "attached"` is satisfied by an invisible element. A DOM presence
     // check could not tell those apart, twice over.
     if (assertSpec) {
+      const budget = assertMs ?? 60_000;
+      const deadline = Date.now() + budget;
       let verdict = null;
-      try {
-        verdict = await page.evaluate(ASSERT, assertSpec);
-      } catch (err) {
-        warn(`assert threw on ${route} ${state}: ${err.message}`);
+      for (;;) {
+        try {
+          verdict = await page.evaluate(ASSERT, assertSpec);
+        } catch (err) {
+          warn(`assert threw on ${route} ${state}: ${err.message}`);
+          verdict = null;
+        }
+        if (verdict?.ok || Date.now() >= deadline) break;
+        await new Promise((r) => setTimeout(r, 400));
       }
       if (!verdict?.ok) {
         const detail = verdict?.found
           ? `found ${JSON.stringify(verdict.found)}`
           : (verdict?.error ?? "assertion did not run");
         const reason = this.#skipReason(
-          `content assertion failed (${assertSpec.label ?? "unnamed"}): ${detail}`,
+          `content assertion failed after ${Math.round(budget / 1000)}s (${assertSpec.label ?? "unnamed"}): ${detail}`,
           throttledBefore,
         );
         warn(`SKIP ${route} [${viewport}/${theme}] ${state}: ${reason}`);
@@ -1623,6 +1645,10 @@ GROUPS.qa = [
     // Groq answers 403 — the correct outcome is an honest **skip**, not a green
     // capture of an error, and `skips` being a gate signal means the run says so.
     require: ".chat-message.assistant", requireMs: 30_000,
+    // The provider 403s in this sandbox, and the request takes a while to fail,
+    // so the settle budget has to outlast the failure — otherwise the assertion
+    // judges the "Thinking…" placeholder and reports a loading state as content.
+    assertMs: 90_000,
     assert: {
       label: "rendered answer, not an error",
       selector: ".chat-message.assistant .message-content",
@@ -2412,6 +2438,7 @@ async function runRouteGroup(audit, group, route, viewport, theme) {
       dir: routeSlug(scenario.route),
       require: scenario.require,
       assert: scenario.assert ?? null,
+      assertMs: scenario.assertMs ?? null,
       fullPage: scenario.fullPage ?? false,
       requireMs: scenario.requireMs ?? null,
       action: acts.length ? acts : null,

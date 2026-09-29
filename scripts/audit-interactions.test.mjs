@@ -236,7 +236,7 @@ test("every listed key is actually used by some scenario shape", () => {
   // the guard's blind spot: anything named there is exempt forever.
   const sample = {
     route: 1, state: 1, dir: 1, viewport: 1, theme: 1, auth: 1, expect: 1, require: 1,
-    requireMs: 1, fullPage: 1, clipSelector: 1, probe: 1, throttledBefore: 1,
+    requireMs: 1, assert: 1, assertMs: 1, fullPage: 1, clipSelector: 1, probe: 1, throttledBefore: 1,
     stepped: 1, stepOverlapPx: 1,
     note: 1, description: 1, interaction: 1, action: 1,
   };

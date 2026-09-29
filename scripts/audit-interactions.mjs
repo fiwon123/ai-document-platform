@@ -168,6 +168,13 @@ export const SCENARIO_METADATA_KEYS = [
   "expect",
   "require",
   "requireMs",
+  // Content assertion. Metadata rather than a step: it constrains what the
+  // capture is allowed to *contain*, and runs after the interactions. The
+  // distinction is load-bearing — `require` and `assert` answer different
+  // questions, and #559 exists because a presence check was being used for
+  // both.
+  "assert",
+  "assertMs",
   "fullPage",
   "clipSelector",
   "probe",
