@@ -737,34 +737,50 @@ them meant the only automated check for a dev merge was a *publish*, so a
 manifest error surfaced at release time and the newest green checks on `dev` all
 predate the current trigger config.
 
-### Running the workflow itself (and why not from a feature branch)
+### Running the workflow itself (including from a feature branch)
 
-`workflow_dispatch` is the other escape hatch, and unlike a push it also builds
-images and runs the Kind smoke test. It runs against whichever **ref you pick**,
-so the first question is which ref — because a feature branch is not safe here.
+`workflow_dispatch` is the other escape hatch, and it runs against whichever **ref you
+pick** in the dropdown. The two publishing jobs are ref-restricted, so what a dispatch
+does depends on the ref:
+
+| Dispatch ref | `validate` | `build-images` + `scan-images` | `smoke` |
+|---|---|---|---|
+| `main` | runs | **publishes** | runs |
+| a feature branch | runs | **refused (skipped)** | runs |
+| a tag | runs | **refused (skipped)** | runs |
 
 ```bash
-# Only for main / a ref you intend to ship. Not a feature branch.
-gh workflow run infra.yml --ref main
+# Any ref is safe now. A feature branch gets the real checks in CI:
+gh workflow run infra.yml --ref feat/544-guard-latest-publish-on-dispatch
 gh run watch --exit-status      # then: gh run list --workflow=infra.yml --limit 1
+
+# From main, publishing happens as well:
+gh workflow run infra.yml --ref main
 ```
 
-**Dispatching from a feature branch publishes it as `latest`.** The
-`build-images` and `scan-images` jobs are guarded by
-`if: github.event_name == 'workflow_dispatch' || ...`, so a dispatch runs them
-*unconditionally* — and the push step tags whatever ref was dispatched as both a
-SHA tag and the floating `latest`:
+**Why the restriction exists.** `build-images` tags whatever it pushes as both a SHA tag
+and the floating `latest`, and the staging and production overlays are `latest`-pinned
+with ArgoCD self-heal watching them — so moving `latest` *is* a production action. The
+guard used to be `github.event_name == 'workflow_dispatch' || ...`, which admits a
+dispatch of **any** ref, so `gh workflow run infra.yml --ref <feature-branch>` published
+unmerged code as `latest` and rolled both environments onto it. The safe action and the
+dangerous one were the same command (#544).
 
-```bash
-docker tag "${image}:${TAG}" "${image}:latest"   # ...and the production overlay is latest-pinned
+The condition is now:
+
+```yaml
+if: >-
+  (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+  (github.event_name == 'pull_request' && contains(...labels, 'ci') && ...)
 ```
 
-Since `GITHUB_SHA` is the head of the ref you picked, dispatching `infra.yml`
-from a feature branch builds that branch and overwrites the `latest` tag that the
-staging and production overlays follow. ArgoCD's self-heal will then roll those
-environments onto **unmerged, unreviewed code**. For validating a feature branch,
-use the local commands above — they cover the manifests without touching the
-registry. Reserve dispatch for `main`, or for a branch you intend to ship.
+`validate` and `smoke` are deliberately left runnable from any ref: they never write to
+the registry and never resolve `latest`, so they are exactly what a feature branch wants.
+`packages: write` is likewise scoped to the single pushing job rather than the whole
+workflow, so a read-only job cannot write to the registry even if its condition is later
+widened by mistake. Both properties are pinned by
+`backend/tests/test_infra_workflow_publish_guard.py`, which *evaluates* the conditions
+over a table of event contexts rather than string-matching them.
 
 A second, milder surprise: the validation steps are gated on
 `steps.changes.outputs.infra == 'true'` from `dorny/paths-filter`, which

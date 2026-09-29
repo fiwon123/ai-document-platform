@@ -23,9 +23,14 @@ concurrency:
 # the `ci` label is on a PR. No Actions run on pushes to `dev` — infra checks
 # and image builds happen only on dev→main PRs (label-gated) or manual
 # dispatch, so merged dev work is never re-verified or published on dev.
+#
+# `packages: write` is deliberately NOT granted workflow-wide (#544). It is
+# scoped to the single job that pushes, so a job that merely validates cannot
+# write to the registry even if its own `if:` were widened by mistake. The
+# floating `latest` tag is what staging and production follow, so the ability to
+# move it is the thing worth protecting — not the ability to read manifests.
 permissions:
   contents: read
-  packages: write
   pull-requests: read
 
 jobs:
@@ -94,11 +99,29 @@ jobs:
 
   build-images:
     name: Build and push production images (ghcr.io)
-    # Only dev→main PRs (label-gated) and manual dispatch. Every release
-    # merge produces fresh SHA-tagged images (plus a floating `latest`) so
-    # the cluster can always deploy dev HEAD.
-    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
+    # Publishing is allowed from two places only: a `ci`-labelled dev→main PR, or
+    # a manual dispatch of `main` itself. A dispatch of any other ref is refused.
+    #
+    # `workflow_dispatch` runs on whichever ref is picked in the dropdown, and the
+    # push step below re-tags whatever it built as the floating `latest`. Since
+    # `infra/k8s/overlays/staging` and `.../production` are `latest`-pinned and
+    # ArgoCD syncs them automatically, an unguarded dispatch meant that
+    # `gh workflow run infra.yml --ref <feature-branch>` — the obvious way to
+    # "just check my infra change" — published unmerged code as `latest` and
+    # rolled those environments onto it. The safe action and the dangerous one
+    # were the same command. See #544.
+    #
+    # Validate and the Kind smoke test deliberately stay runnable from any ref:
+    # neither writes to the registry, and they are what a feature branch wants.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'ci') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     outputs:
       tag: ${{ steps.tag.outputs.sha }}
     steps:
@@ -120,6 +143,10 @@ jobs:
         run: ./infra/scripts/build-images.sh ghcr.io/fiwon123/ai-platform "${{ steps.tag.outputs.sha }}"
 
       - name: Push images (SHA + latest tags)
+        # The `latest` re-tag is safe only because of this job's `if:` — the
+        # staging and production overlays resolve `latest` and ArgoCD syncs them
+        # automatically, so moving this tag is a production action. Do not widen
+        # the guard above without re-reading this (#544).
         run: |
           set -euo pipefail
           TAG="${{ steps.tag.outputs.sha }}"
@@ -132,14 +159,24 @@ jobs:
 
   scan-images:
     name: Scan images (Trivy)
-    # Runs on the same label-gated events as build-images, always after the
-    # images are pushed. Fails the release PR when HIGH/CRITICAL
-    # vulnerabilities WITH a known fix are found (`ignore-unfixed`), so
-    # actionable findings block the merge until the base images are bumped.
-    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
+    # Runs on the same events as build-images, always after the images are
+    # pushed. Fails the release PR when HIGH/CRITICAL vulnerabilities WITH a
+    # known fix are found (`ignore-unfixed`), so actionable findings block the
+    # merge until the base images are bumped.
+    #
+    # Same ref restriction as build-images (#544): it pulls the SHA-tagged images
+    # that job published, and it carries no `packages: write`.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'ci') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     needs: build-images
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3

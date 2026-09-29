@@ -278,8 +278,12 @@ git with no manual `kubectl apply` of the overlays.
 
 **CD flow with CI**: the Infra CI workflow builds and pushes
 `ghcr.io/fiwon123/ai-platform/{backend,worker,frontend}` (SHA + `latest`) on a
-`ci`-labelled `dev`→`main` PR or a manual dispatch — **not** on a merge to `dev`
-(see *CI triggers* in `AGENTS.md`). The production overlay's images are
+`ci`-labelled `dev`→`main` PR or a manual dispatch **of `main`** — **not** on a
+merge to `dev` (see *CI triggers* in `AGENTS.md`). A dispatch of any other ref
+runs `validate` and the Kind smoke test but **skips the build/push**: the push
+re-tags the floating `latest` that both environments follow, so a feature-branch
+dispatch would roll staging and production onto unmerged code (#544). The
+production overlay's images are
 `latest`-pinned, and ArgoCD syncs the manifest automatically when the tracked
 branch moves, so the two halves have different freshness:
 
