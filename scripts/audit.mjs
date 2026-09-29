@@ -87,6 +87,7 @@ import {
   orderedStepKeys,
   unreachableStepKeys,
 } from "./audit-interactions.mjs";
+import { Pacer, rateLimitFindings } from "./audit-pacer.mjs";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Playwright resolution
@@ -320,6 +321,12 @@ KNOWN LIMITATIONS
   * Console and network errors are report-only and never gate. Third-party font
     CDNs are frequently unreachable from inside the container, so a failed
     asset request often describes the environment rather than the UI.
+  * 429s *do* gate, under their own \`rate-limited\` signal, because they indict
+    the audit rather than the UI (#535). The pacer keeps a reserve of 12
+    requests in the tail of each 60 s window so it should never provoke one; a
+    finding here means the reserve was not enough (or the limiter got tighter),
+    and it is reported as a pacing failure instead of being filed as a missing
+    element.
   * The gate compares *signals*, not pixels. Pixels are only comparable against
     the machine that produced them, so a CI-runner diff would be antialiasing
     noise. See issue #470 for the local pixel-diff tool.
@@ -641,44 +648,9 @@ async function pruneOldRuns(outRoot, keep) {
   return { removed: doomed, bytes };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Rate-limit-aware pacing
-//
-// The limiter is per client IP, 100 requests per 60 s, and every response
-// carries X-RateLimit-Remaining. Rather than hammer into a 429 (which makes
-// /app/* silently redirect to /login, and an absent element then looks like a
-// passing check), pace off the header and sleep out the window when it empties.
-// ─────────────────────────────────────────────────────────────────────────────
-class Pacer {
-  constructor(windowSeconds = 60) {
-    this.windowMs = windowSeconds * 1000;
-    this.remaining = null;
-    this.exhaustedAt = null;
-    this.sleptMs = 0;
-  }
-
-  observe(headers) {
-    const raw = headers["x-ratelimit-remaining"];
-    if (raw === undefined) return;
-    const value = Number(raw);
-    if (!Number.isFinite(value)) return;
-    this.remaining = value;
-    if (value > 0) this.exhaustedAt = null;
-  }
-
-  async beforeRequest() {
-    if (this.remaining === null || this.remaining > 0) return;
-    if (this.exhaustedAt === null) this.exhaustedAt = Date.now();
-    const elapsed = Date.now() - this.exhaustedAt;
-    const wait = Math.max(0, this.windowMs - elapsed) + 500;
-    if (wait > 1000) {
-      warn(`rate limit reached — sleeping ${Math.round(wait / 1000)}s for the window`);
-      this.sleptMs += wait;
-      await sleep(wait);
-    }
-    this.remaining = null;
-  }
-}
+// Rate-limit-aware pacing lives in ./audit-pacer.mjs so its decisions are
+// unit-testable without a browser, a network, or a 60-second sleep. The audit
+// owns the I/O and the warning line.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PDF fixture
@@ -890,10 +862,30 @@ class Audit {
     this.browser = null;
     this.consoleErrors = [];
     this.networkFailures = [];
+    // 429s are separated out because they indict the audit, not the UI (#535).
+    this.rateLimited = [];
     this.pageErrors = [];
   }
 
   // ── capture bookkeeping ────────────────────────────────────────────────
+
+  /**
+   * Attribute a skip that happened while the limiter was throttling us.
+   *
+   * A missing selector is a UI finding. A missing selector *after* a 429 on a
+   * request the page depends on is the audit misfiring: the app redirects to
+   * /login when /auth/me is refused and drops its model list when /qa/models is,
+   * and both present as "the element is gone". Recording the reason with the
+   * 429 attached means the two cannot be confused, whatever a reviewer goes on
+   * to read.
+   */
+  #skipReason(reason, throttledBefore) {
+    if (throttledBefore === null) return reason;
+    const landed = this.rateLimited.length - throttledBefore;
+    if (landed <= 0) return reason;
+    return `rate limited (${landed}× 429 during this capture) — audit-induced, not a UI finding: ${reason}`;
+  }
+
   addEntry(entry) {
     const record = { timestamp: new Date().toISOString(), ...entry };
     this.manifest.push(record);
@@ -907,7 +899,7 @@ class Audit {
    * screenshot of a page that silently lost its content (rate-limit redirect,
    * slow render, renamed selector) being filed as evidence of a healthy state.
    */
-  async shot(page, { route, viewport, theme, state, dir, require: requireSelector, requireMs = null, fullPage = false, clipSelector = null, probe = true, action = null, note = null }) {
+  async shot(page, { route, viewport, theme, state, dir, require: requireSelector, requireMs = null, fullPage = false, clipSelector = null, probe = true, action = null, note = null, throttledBefore = null }) {
     const slug = routeSlug(route);
     const target = path.join(this.runDir, dir ?? slug);
     await fsp.mkdir(target, { recursive: true });
@@ -931,10 +923,11 @@ class Audit {
         found = false;
       }
       if (!found) {
-        warn(`SKIP ${route} [${viewport}/${theme}] ${state}: "${requireSelector}" not present`);
+        const reason = this.#skipReason(`selector not present: ${requireSelector}`, throttledBefore);
+        warn(`SKIP ${route} [${viewport}/${theme}] ${state}: ${reason}`);
         this.addEntry({
           route, viewport, theme, state, type: "screenshot", file: null,
-          skipped: `selector not present: ${requireSelector}`,
+          skipped: reason,
           note,
         });
         return false;
@@ -959,10 +952,11 @@ class Audit {
     // page whose fonts never arrive.
     const fonts = await waitForFonts(page);
     if (!fonts.ready) {
-      warn(`SKIP ${route} [${viewport}/${theme}] ${state}: ${fonts.reason}`);
+      const reason = this.#skipReason(fonts.reason, throttledBefore);
+      warn(`SKIP ${route} [${viewport}/${theme}] ${state}: ${reason}`);
       this.addEntry({
         route, viewport, theme, state, type: "screenshot", file: null,
-        skipped: fonts.reason,
+        skipped: reason,
         note,
       });
       return false;
@@ -1066,6 +1060,12 @@ class Audit {
     });
     const consoleErrors = [];
     const pageErrors = [];
+    // A 429 during *this* capture, so a selector that failed to appear can be
+    // attributed to the limiter instead of being filed as a missing element.
+    // #535: a starved /qa/models leaves the settings page with no options, and
+    // a starved /auth/me redirects to /login — both look exactly like a UI
+    // regression and neither is one.
+    const throttledHere = [];
 
     // The auth token has to be in place before the app's first script runs.
     if (this.auth) await injectAuth(context, this.auth.token, theme);
@@ -1074,7 +1074,7 @@ class Audit {
     const started = Date.now();
     try {
       page = await context.newPage();
-      wirePage(page, consoleErrors, pageErrors, this.networkFailures);
+      wirePage(page, consoleErrors, pageErrors, this.networkFailures, this.rateLimited, throttledHere);
       // Navigate before the scenario runs. This was missing entirely, so every
       // video recorded about:blank — a 4 KB WebM of nothing that looked like a
       // successful capture in the manifest.
@@ -1178,7 +1178,7 @@ class Audit {
    */
   async open(context, route, { theme, expect: expectSelector, requireAuth = false }) {
     const page = await context.newPage();
-    wirePage(page, this.consoleErrors, this.pageErrors, this.networkFailures);
+    wirePage(page, this.consoleErrors, this.pageErrors, this.networkFailures, this.rateLimited);
     if (this.auth) await injectAuth(context, this.auth.token, theme);
 
     // Sleep out the rate-limit window *before* navigating, not after hitting a
@@ -1285,7 +1285,7 @@ async function settleVisuals(page, cap = 3000) {
   await page.waitForTimeout(120);
 }
 
-function wirePage(page, consoleErrors, pageErrors, networkFailures = []) {
+function wirePage(page, consoleErrors, pageErrors, networkFailures = [], rateLimited = [], throttledHere = null) {
   page.on("console", (msg) => {
     if (msg.type() === "error") consoleErrors.push(msg.text().slice(0, 300));
   });
@@ -1294,6 +1294,13 @@ function wirePage(page, consoleErrors, pageErrors, networkFailures = []) {
     // One hook for the pacer so every route's traffic counts, including XHR.
     if (res.headers()["x-ratelimit-remaining"] !== undefined) {
       currentPacer?.observe(res.headers());
+    }
+    // A 429 is the audit's own fault, never a UI regression, so it gets its own
+    // list and its own gate signal rather than hiding in networkFailures (#535).
+    if (res.status() === 429) {
+      const what = `${res.status()} ${res.request().method()} ${res.url()}`;
+      rateLimited.push(what);
+      throttledHere?.push(what);
     }
     // "28 console errors" is unactionable; the URL and status are the finding.
     if (res.status() >= 400) {
@@ -2010,6 +2017,11 @@ async function runRouteGroup(audit, group, route, viewport, theme) {
     // Each state starts from a clean load: a leftover open modal or scrolled
     // position from the previous state would make the next capture a lie.
     if (page) await page.close().catch(() => {});
+    // Sampled BEFORE the navigation, not at shot() time: the 429 that starves a
+    // page (a refused /auth/me, a refused /qa/models) lands during the load, so
+    // counting from here is the only point at which the capture can tell "the
+    // element is missing" from "the limiter took it away mid-load" (#535).
+    const throttledBefore = audit.rateLimited.length;
     page = await audit.open(context, scenario.route, {
       theme,
       expect: scenario.expect,
@@ -2039,6 +2051,7 @@ async function runRouteGroup(audit, group, route, viewport, theme) {
       continue;
     }
     await audit.shot(page, {
+      throttledBefore,
       route: scenario.route,
       viewport,
       theme,
@@ -2142,7 +2155,12 @@ async function summarise(audit, { pruned, runDir, opts, elapsedMs }) {
       exhausted: audit.budget.exhausted,
     },
     retention: { kept: opts.keepRuns, pruned: pruned.removed, reclaimedMb: Number((pruned.bytes / 1e6).toFixed(1)) },
-    rateLimit: { sleptMs: audit.pacer.sleptMs },
+    rateLimit: {
+      sleptMs: audit.pacer.sleptMs,
+      sleptWindows: audit.pacer.sleptWindows,
+      reserve: audit.pacer.reserve,
+      throttled: rateLimitFindings(audit.rateLimited),
+    },
     auth: audit.auth ? { username: audit.auth.username } : { username: null },
     counts: {
       screenshots: screenshots.filter((e) => e.file).length,
@@ -2276,7 +2294,7 @@ async function main() {
   const runDir = path.join(opts.outRoot, timestampSlug());
   await fsp.mkdir(runDir, { recursive: true });
   const budget = new Budget(opts.budgetMb * 1e6);
-  const pacer = new Pacer(60);
+  const pacer = new Pacer();
   currentPacer = pacer;
 
   const audit = new Audit(opts, { chromium, runDir, budget, pacer });
