@@ -786,7 +786,7 @@ runs on a push to `dev`:
 | Workflow | Runs on |
 |---|---|
 | `ci.yml` (backend tests + ruff, frontend lint/build/tests) | `ci`-labelled PR to `main`, or `workflow_dispatch` |
-| `infra.yml` (kustomize/helm/kubeconform, image builds → ghcr.io, Kind smoke test) | `ci`-labelled PR to `main`, or `workflow_dispatch` |
+| `infra.yml` (kustomize/helm/kubeconform, image builds → ghcr.io, Kind smoke test) | `ci`-labelled PR to `main`, or `workflow_dispatch`. **Dispatch publishes only from `main`** — any other ref runs validation and the Kind smoke test but skips the image build/push, since that would re-tag the `latest` staging and production follow (#544) |
 
 **What this means for a feature branch: nothing runs automatically.** A branch
 that changes `infra/**`, `backend/**` or `frontend/**` is unverified until

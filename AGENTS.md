@@ -389,7 +389,7 @@ to `dev` triggers neither, and a `dev` push is not a CI event at all:
 | Workflow | Runs on |
 |---|---|
 | `ci.yml` — backend tests + ruff, frontend lint/build/tests | `ci`-labelled PR to `main`, or `workflow_dispatch` |
-| `infra.yml` — kustomize/helm/kubeconform, image builds → ghcr.io, Kind smoke test | `ci`-labelled PR to `main`, or `workflow_dispatch` |
+| `infra.yml` — kustomize/helm/kubeconform, image builds → ghcr.io, Kind smoke test | `ci`-labelled PR to `main`, or `workflow_dispatch`. **Dispatch publishes only from `main`**: a dispatch of any other ref runs `validate` and the Kind smoke test but **skips the image build/push**, because those re-tag the floating `latest` that staging and production follow (#544) |
 
 So a feature branch is **unverified** until the release PR is opened and
 labelled, or someone dispatches the workflow. A change touching `infra/**`
