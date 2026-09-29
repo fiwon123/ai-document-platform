@@ -45,6 +45,7 @@ export const KNOWN_SIGNALS = [
   "overflow",
   "unlabelled",
   "landmarks",
+  "rate-limited",
 ];
 
 /**
@@ -54,7 +55,14 @@ export const KNOWN_SIGNALS = [
  * structural regression, but it is a different class of problem from the
  * rendering signals above and was not part of the issue's stated default.
  */
-export const DEFAULT_GATE_SIGNALS = ["contrast", "page-errors", "skips", "overflow", "unlabelled"];
+export const DEFAULT_GATE_SIGNALS = [
+  "contrast",
+  "page-errors",
+  "skips",
+  "overflow",
+  "unlabelled",
+  "rate-limited",
+];
 
 /** `where` string for an entry, matching the format the summary already prints. */
 export function whereOf(entry) {
@@ -162,6 +170,16 @@ export function collectFindings(summary, signals = DEFAULT_GATE_SIGNALS) {
   if (want.has("skips")) {
     for (const item of summary.skips ?? []) {
       push("skips", item.where, String(item.reason ?? ""), "", {});
+    }
+  }
+
+  if (want.has("rate-limited")) {
+    // A 429 is the tool starving itself, never a UI regression. It gets its own
+    // signal so it can never be filed under `skips` as a missing element, which
+    // is exactly the misdiagnosis #535 was opened for. Keyed on method+path so
+    // three 429s on one endpoint is one finding with a count of 3.
+    for (const item of summary.rateLimit?.throttled ?? []) {
+      push("rate-limited", "page", item.what, String(item.count), { count: item.count });
     }
   }
 

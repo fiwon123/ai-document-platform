@@ -528,9 +528,16 @@ How to read it:
   exits 0, which is why the baseline diff belongs in the PR: that review, not the
   command, is what makes accepting a finding safe.
 - **It gates on signals, not pixels.** `contrast`, `page-errors`, `skips`,
-  `overflow`, `unlabelled` (plus opt-in `landmarks`) are text and compare
-  reliably anywhere. Console and network errors are report-only, because
-  MinIO's presigned URLs make them permanently noisy from inside the container.
+  `overflow`, `unlabelled`, `rate-limited` (plus opt-in `landmarks`) are text
+  and compare reliably anywhere. Console and network errors are report-only:
+  third-party font CDNs are frequently unreachable from inside the container,
+  so a failed asset request usually describes the environment, not the UI.
+- **A 429 gates, under its own signal.** It is the one request failure that
+  indicts the *tool* — the app treats a refused `/auth/me` as "no session" and
+  a refused `/qa/models` as "no models", and both look exactly like a missing
+  element (#535). The pacer keeps a **reserve of 12** requests in the tail of
+  each 60 s window, so it stops before it can be refused rather than reacting
+  after; a `rate-limited` finding means that reserve was not enough.
 - **It cannot be combined with `--only`.** The baseline describes a full pass; a
   partial run would report every group it skipped as "resolved" and a reviewer
   could accept the truncated list by accident.
@@ -620,9 +627,13 @@ Four behaviours worth knowing before you trust a run:
   every navigation.** A rate-limited `/app/*` load lands on `/login`, which
   renders perfectly; a presence check on `main` alone would photograph the
   login page and file it as a successful capture of the dashboard.
-- **Requests are paced off `X-RateLimit-Remaining`.** A full pass makes far
-  more than the 100 requests/minute the limiter allows, so the run sleeps out
-  the window instead of bouncing off 429s.
+- **Requests are paced off `X-RateLimit-Remaining`, with a reserve.** A full
+  pass makes far more than the 100 requests/minute the limiter allows. The
+  pacer stops while 12 requests of each window are still in hand and sleeps out
+  the rest, so it never spends the window to zero; the previous design reacted
+  at zero, by which time the request that noticed had already been refused
+  (#535). A pass therefore reports zero 429s, and any that appear surface as a
+  `rate-limited` gate finding.
 - **Animations are WebM, not GIF.** The container's ffmpeg is Playwright's
   screencast build (webm/image2 muxers, libvpx only — no GIF muxer), so the run
   checks once and says so instead of failing a conversion per video.
