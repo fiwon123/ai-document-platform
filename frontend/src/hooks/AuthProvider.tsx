@@ -1,13 +1,41 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AuthContext } from "../context/authContext";
-import { auth, clearPersistedSession } from "../services/api";
+import { ApiError, auth, clearPersistedSession } from "../services/api";
 import type { User } from "../types";
 
 /** Refresh the access token shortly BEFORE it expires so requests never 401. */
 const REFRESH_BEFORE_EXPIRY_MS = 60_000;
 /** Lower bound so an (unlikely) 0/negative expires_in never spins a loop. */
 const MIN_REFRESH_DELAY_MS = 5_000;
+
+/**
+ * Backoff between retries when `GET /auth/me` fails for a reason that says
+ * nothing about the session — a 429 is not a sign-out (#579).
+ *
+ * Short first retry so a single dropped request is invisible, growing to a
+ * ceiling so a backend that is genuinely down is polled at a rate a human
+ * would, rather than in a tight loop.
+ */
+const ME_RETRY_BASE_MS = 1_000;
+const ME_RETRY_MAX_MS = 30_000;
+
+/**
+ * Whether a failed `GET /auth/me` means the session is actually over.
+ *
+ * Only a `401` does. Everything else — `429` (rate limited), any `5xx`, and a
+ * dropped connection — means the server could not answer, not that the token is
+ * bad, and signing the user out for it is a lie they can see: they are
+ * redirected to the login page without ever having logged out.
+ *
+ * This is what the check used to get wrong, and it cost real users their
+ * session on a transient blip (#579). Read the status rather than catching
+ * blindly: a blanket `.catch()` cannot tell "you are not signed in" from
+ * "I could not ask".
+ */
+function isAuthFailure(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
 
 /** Read the remaining lifetime (seconds) of a JWT from its unverified
  *  payload. Only the `exp` claim is read — the server still validates the
@@ -78,9 +106,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!token) return;
-    auth
-      .getMe()
-      .then((me) => {
+    // Guards against a stale attempt resolving after the token changed (a login
+    // or a sign-out while a retry was pending) and writing the wrong user, or
+    // clearing a token that is no longer the one that failed.
+    let cancelled = false;
+    let retryTimer: number | null = null;
+    let attempt = 0;
+
+    const verify = async () => {
+      try {
+        const me = await auth.getMe();
+        if (cancelled) return;
         setUser(me);
         // After a page reload with a still-valid token, re-arm the
         // proactive refresh so the session keeps pre-emptively re-arming
@@ -89,12 +125,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (remaining !== null) {
           scheduleProactiveRefresh(remaining);
         }
-      })
-      .catch(() => {
-        localStorage.removeItem("token");
-        setToken(null);
-      })
-      .finally(() => setIsLoading(false));
+      } catch (error) {
+        if (cancelled) return;
+
+        // The server answered, and it said this token is not valid. Only now is
+        // it honest to drop it and send the user back to the login page.
+        if (isAuthFailure(error)) {
+          localStorage.removeItem("token");
+          setToken(null);
+          setIsLoading(false);
+          return;
+        }
+
+        // It could not answer: rate limited, 5xx, or the connection dropped.
+        // The token is untouched — we simply do not know who the user is yet —
+        // so keep the loading state and try again shortly. Retrying forever is
+        // deliberate: the outage is transient by nature, and signing someone out
+        // over it destroys a session for no reason (#579). The backoff is
+        // capped, so an unreachable backend is polled about twice a minute.
+        attempt += 1;
+        const delayMs = Math.min(
+          ME_RETRY_BASE_MS * 2 ** (attempt - 1),
+          ME_RETRY_MAX_MS,
+        );
+        retryTimer = window.setTimeout(() => void verify(), delayMs);
+        return;
+      }
+      setIsLoading(false);
+    };
+
+    void verify();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
   }, [token, scheduleProactiveRefresh]);
 
   useEffect(() => clearRefreshTimer, [clearRefreshTimer]);

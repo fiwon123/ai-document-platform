@@ -14,10 +14,32 @@ import {
 
 describe("api client request paths", () => {
   const mockFetch = vi.fn();
+  /**
+   * Where the client tried to navigate, if it did.
+   *
+   * `window.location.href = "/login"` is the sign-out path, and jsdom refuses
+   * real navigation — so it is stubbed and recorded here instead. Two of the
+   * tests below assert on it, because "did we navigate to /login" is the
+   * user-visible difference between signing out and staying signed in.
+   */
+  let redirectTo: string | null = null;
 
   beforeEach(() => {
     vi.stubGlobal("fetch", mockFetch);
     localStorage.clear();
+    redirectTo = null;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: {
+        get href() {
+          return "http://localhost/";
+        },
+        set href(next: string) {
+          redirectTo = next;
+        },
+      },
+    });
   });
 
   afterEach(() => {
@@ -307,6 +329,83 @@ describe("api client request paths", () => {
     expect(retriedOptions.headers).toMatchObject({
       Authorization: "Bearer fresh-token",
     });
+  });
+
+  it("should keep the session when the refresh call is rate limited (#579)", async () => {
+    localStorage.setItem("token", "expired-token");
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: "Token expired" }), { status: 401 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: "Too many requests" }), {
+          status: 429,
+          headers: { "Retry-After": "30" },
+        }),
+      );
+
+    // A 429 says the server was busy, not that the refresh cookie is dead.
+    // The old code read both as "session over" and signed the user out.
+    await expect(documents.list()).rejects.toMatchObject({
+      name: "ApiError",
+      status: 429,
+      code: "rate_limit_exceeded",
+    });
+
+    // The decisive assertion: the token survives, and we did not navigate away.
+    expect(localStorage.getItem("token")).toBe("expired-token");
+    expect(redirectTo).toBeNull();
+  });
+
+  it("should keep the session when the refresh call fails with a 5xx (#579)", async () => {
+    localStorage.setItem("token", "expired-token");
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: "Token expired" }), { status: 401 }),
+      )
+      .mockResolvedValueOnce(new Response("upstream unavailable", { status: 503 }));
+
+    await expect(documents.list()).rejects.toMatchObject({ status: 503 });
+    expect(localStorage.getItem("token")).toBe("expired-token");
+    expect(redirectTo).toBeNull();
+  });
+
+  it("should sign the user out when the refresh cookie itself is refused", async () => {
+    localStorage.setItem("token", "expired-token");
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: "Token expired" }), { status: 401 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: "No refresh session" }), { status: 401 }),
+      );
+
+    await expect(documents.list()).rejects.toMatchObject({ status: 401 });
+    // A refused cookie is a real end to the session — this one must still sign out.
+    expect(localStorage.getItem("token")).toBeNull();
+    expect(redirectTo).toBe("/login");
+  });
+
+  it("should report a rate-limited refresh as transient, not as an expiry", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Too many requests" }), {
+        status: 429,
+        headers: { "Retry-After": "12" },
+      }),
+    );
+
+    await expect(auth.refresh()).rejects.toMatchObject({
+      status: 429,
+      retryAfterSeconds: 12,
+    });
+  });
+
+  it("should still report a refused refresh cookie as a 401 expiry", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ detail: "No refresh session" }), { status: 401 }),
+    );
+
+    await expect(auth.refresh()).rejects.toMatchObject({ status: 401 });
   });
 
   it("should send auth.register to /v1/auth/register with JSON body", async () => {
