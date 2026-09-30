@@ -5926,7 +5926,8 @@ nav.footer-col a:hover {
 /* Placeholders inherit no color-scheme styling — give them the muted token. */
 .form-group input::placeholder,
 .search-input::placeholder,
-.chat-input::placeholder {
+.chat-input::placeholder,
+.newsletter-form input::placeholder {
   color: var(--muted);
   opacity: 1;
 }
