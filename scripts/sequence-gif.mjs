@@ -188,6 +188,48 @@ export function sampleFrameIndices(total, wanted) {
 }
 
 /**
+ * Which frames to keep when the caller knows when the page was *settled*.
+ *
+ * Uniform sampling (`sampleFrameIndices`) assumes the clip is worth sampling
+ * evenly, which is true of a recording that is mostly at rest and false of one
+ * that is mostly waiting. #566 made that false: a stepped scroll has to pause
+ * after each step for reveals to finish and count-ups to land, and measured on
+ * the landing page that turned ~10s of clip into ~9s of pause. Sampling that
+ * evenly lands most frames *inside* a pause — 11 of 16 at 0–7% ink, i.e. text
+ * caught at partial opacity, which reads as a page with empty sections. The fix
+ * is not to wait less but to sample where the waiting ended.
+ *
+ * `fractions` are positions through the clip in 0–1, in order. Each becomes one
+ * frame; duplicates collapse (a pause long enough to be sampled twice, or two
+ * marks that round to the same frame). The first and last marks are kept even if
+ * they collide with a neighbour, so the clip's own start and end are never lost
+ * to a rounding collision.
+ *
+ * Returns `null` — not a fallback index list — when there is nothing to go on, so
+ * the caller can tell "sampled where it was settled" from "sampled evenly", and
+ * record which happened. Silently falling back would make the two
+ * indistinguishable in the manifest, which is how a bad frame gets attributed to
+ * the page.
+ */
+export function settledFrameIndices(total, fractions) {
+  if (total <= 0) return null;
+  if (!Array.isArray(fractions) || !fractions.length) return null;
+
+  const last = total - 1;
+  const picked = fractions
+    .filter((f) => Number.isFinite(f))
+    .map((f) => Math.min(last, Math.max(0, Math.round(f * last))))
+    .sort((a, b) => a - b);
+
+  const unique = [...new Set(picked)];
+  if (unique.length) return unique;
+
+  // Every mark was out of range — a clip that never settled, or marks measured
+  // against a different timeline. Nothing usable, so say so rather than guessing.
+  return null;
+}
+
+/**
  * Name for a packed sequence.
  *
  * Deliberately *not* the first frame's name with the extension swapped: for a
@@ -249,6 +291,26 @@ export async function packFrames(frames, outPath, options = {}) {
 }
 
 /**
+ * The ffmpeg argv that decodes a WebM into numbered PNGs, optionally from an offset.
+ *
+ * Pure, because the one thing worth asserting about it is *where* `-ss` sits, and
+ * a positional detail buried in a template literal can only be checked by running
+ * ffmpeg. Placement is the whole point:
+ *
+ * - **Before `-i`** — an input-side seek, which does not decode the frames being
+ *   dropped. After `-i` it is an output seek, which decodes the entire clip and
+ *   throws the head away: on a 10s recording that is ~1.2s of navigation decoded
+ *   to be discarded, every run, for nothing. There is also no filter-graph form
+ *   available as a fallback, since this build's parser fails on `-vf` outright.
+ * - **Omitted entirely at zero** — `-ss 0` is not merely redundant, it changes
+ *   nothing useful while making the command harder to read back at a glance.
+ */
+export function webmDecodeArgs(webmPath, pattern, startSeconds = 0) {
+  const seek = startSeconds > 0 ? ["-ss", String(startSeconds)] : [];
+  return ["-hide_banner", "-loglevel", "error", ...seek, "-i", webmPath, "-f", "image2", pattern];
+}
+
+/**
  * Pack a recorded WebM into one animated GIF.
  *
  * Decoding and sampling are both done here rather than pushed into ffmpeg's
@@ -257,9 +319,22 @@ export async function packFrames(frames, outPath, options = {}) {
  * and discarding most of them costs disk in the temp dir for a few seconds; that
  * is a fair price for a filter graph that works, and the alternative is a
  * pipeline that silently produces nothing.
+ *
+ * `startSeconds` trims the clip's head for the GIF only. The WebM beside it stays
+ * the full-fidelity capture including the load — this is about what a reviewer
+ * looks at, not about what was recorded.
  */
 export async function packWebm(webmPath, outPath, options = {}) {
-  const { python = "python3", ffmpeg = FFMPEG, frames: wanted, width, colors, frameDelayMs } = {
+  const {
+    python = "python3",
+    ffmpeg = FFMPEG,
+    frames: wanted,
+    width,
+    colors,
+    frameDelayMs,
+    startSeconds = 0,
+    settledFractions,
+  } = {
     ...GIF_DEFAULTS,
     ...options,
   };
@@ -270,11 +345,9 @@ export async function packWebm(webmPath, outPath, options = {}) {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "audit-gif-"));
   const pattern = path.join(tmp, "f-%05d.png");
   try {
-    await execFileAsync(
-      ffmpeg,
-      ["-hide_banner", "-loglevel", "error", "-i", webmPath, "-f", "image2", pattern],
-      { timeout: 120_000 },
-    );
+    await execFileAsync(ffmpeg, webmDecodeArgs(webmPath, pattern, startSeconds), {
+      timeout: 120_000,
+    });
 
     const decoded = (await fs.readdir(tmp)).filter((f) => f.endsWith(".png")).sort();
     if (!decoded.length) {
@@ -290,7 +363,22 @@ export async function packWebm(webmPath, outPath, options = {}) {
       .sort((a, b) => a.n - b.n)
       .map(({ f }) => path.join(tmp, f));
 
-    return await packFrames(ordered, outPath, { python, frames: wanted, width, colors, frameDelayMs });
+    // Sample where the page had settled, when the caller recorded it. Reported
+    // back either way, because "evenly" and "where it settled" produce visibly
+    // different GIFs and only one of them is trustworthy — so the manifest has to
+    // be able to say which ran.
+    const settled = settledFrameIndices(ordered.length, settledFractions);
+    const pickedFrames = settled ?? sampleFrameIndices(ordered.length, wanted);
+
+    return {
+      ...(await packFrames(
+        pickedFrames.map((i) => ordered[i]),
+        outPath,
+        { python, frames: wanted, width, colors, frameDelayMs },
+      )),
+      sampling: settled ? "settled" : "even",
+      frameCount: ordered.length,
+    };
   } catch (err) {
     return { ok: false, reason: err.stderr?.toString().trim() || err.message };
   } finally {

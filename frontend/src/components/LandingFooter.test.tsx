@@ -342,24 +342,40 @@ describe("LandingFooter subscribe form", () => {
     expect(form?.querySelector("button"), "button inside the row").not.toBeNull();
   });
 
-  it("keeps the form's own row, never a breakpoint override", () => {
-    // The <=820px block used to force `flex-direction: column` on `.newsletter`
-    // and re-declare the form's width and the input's. All three are now the
-    // default, so the overrides were removed; if any comes back it means the
-    // base rule and the breakpoint disagree about the same property, which is
-    // how the two controls lost their shared line in the first place.
-    const directions = valuesOf(
-      allDeclarationsFor(".newsletter-form"),
-      "flex-direction",
-    );
-    expect(directions).not.toContain("column");
+  it("keeps the row above the stacking breakpoint and scopes the stack to phones", () => {
+    // The base rule carries the single-row form: no `flex-direction` means
+    // `row`, which is what lines the input up with the button so their heights
+    // match (the 2px intrinsic difference is absorbed by the row's stretch).
+    // "Never a breakpoint override" used to be the whole invariant, because
+    // base-vs-breakpoint disagreement on the same property was how the two
+    // controls lost their shared line. It is now "the override exists, it is
+    // scoped to the narrow phones that need it, and it leaves the base rule
+    // alone": below ~410px the row cannot hold the placeholder at all — at
+    // 375px the input is squeezed to a 113px content box and `you@company.com`
+    // renders as `you@company.c` (#573, found in the 2026-09-30 audit).
+    const base = declarationsFor(".newsletter-form");
+    expect(
+      valuesOf(base, "flex-direction"),
+      "base form must not declare a direction — row is the default it needs",
+    ).toEqual([]);
+    expect(valuesOf(base, "width"), "base form width").toEqual(["80%"]);
 
-    // Exactly one width declaration. A breakpoint re-declaring the width is
-    // precisely the base-vs-breakpoint disagreement this test exists to
-    // prevent, and counting declarations catches it without pinning the value
-    // itself, which is a free design choice.
-    const formWidths = valuesOf(allDeclarationsFor(".newsletter-form"), "width");
-    expect(formWidths.length, "a width is declared exactly once").toBe(1);
+    const narrow = css.match(
+      /@media[^{]*max-width:\s*430px[^{]*\{([\s\S]*?)\n\}/,
+    )?.[1];
+    expect(narrow, "no @media (max-width: 430px) block in App.css").toBeDefined();
+    const formRule = narrow!.match(/\.newsletter-form\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(formRule, "the narrow form must stack: a row cannot fit the placeholder").toMatch(
+      /flex-direction\s*:\s*column/,
+    );
+    expect(formRule, "the stacked form must take the whole column, not 80%").toMatch(
+      /width\s*:\s*100%/,
+    );
+
+    // And the stack must not leak above the breakpoint: the base rule declares
+    // the width exactly once and no direction, which is all the row needs.
+    const widths = valuesOf(base, "width");
+    expect(widths.length, "one width declaration, not a base/breakpoint saga").toBe(1);
   });
 });
 

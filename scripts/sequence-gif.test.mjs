@@ -33,6 +33,8 @@ import {
   packWebm,
   sampleFrameIndices,
   sequenceGifName,
+  settledFrameIndices,
+  webmDecodeArgs,
 } from "./sequence-gif.mjs";
 
 // ── frame sampling ─────────────────────────────────────────────────────────
@@ -154,4 +156,67 @@ test("the packer is invoked as a script in this directory", () => {
   // a separate file rather than an inline `python -c`. A path that drifts out
   // of scripts/ would fail only at run time, in a capture.
   assert.match(PACKER, /scripts\/sequence-gif-pack\.py$/);
+});
+
+// ── trimming the head off a recording (#566) ───────────────────────────────
+
+test("the seek is an input-side one, so the dropped frames are never decoded", () => {
+  // The distinction is invisible in the output GIF — both forms produce a GIF
+  // that starts at the right frame — and the difference is ~1.2s of navigation
+  // decoded and discarded on every single run. It can only be checked by
+  // reading the argv, which is why it is built by a pure function.
+  const args = webmDecodeArgs("/tmp/clip.webm", "/tmp/f-%05d.png", 1.5);
+  assert.ok(args.indexOf("-ss") < args.indexOf("-i"), `-ss must precede -i: ${args.join(" ")}`);
+  assert.equal(args[args.indexOf("-ss") + 1], "1.5");
+});
+
+test("no offset means no -ss at all", () => {
+  // `-ss 0` changes nothing and makes the command harder to read back; more to
+  // the point, a seek that is present-but-zero is a seek whose *default* is
+  // being relied on, and the default is not the same as no seek.
+  for (const start of [0, undefined]) {
+    const args = webmDecodeArgs("/tmp/clip.webm", "/tmp/f-%05d.png", start);
+    assert.ok(!args.includes("-ss"), `-ss must be absent for start=${start}`);
+  }
+});
+
+test("a negative offset is not passed through to ffmpeg", () => {
+  // `-ss -0.2` seeks *from the end* of the clip and decodes nothing, so the run
+  // would report "no GIF" for a reason that reads like a broken encoder. The
+  // clamp belongs to the caller (`gifStartSeconds`); this asserts the packer is
+  // not the thing that has to be trusted to apply it.
+  const args = webmDecodeArgs("/tmp/clip.webm", "/tmp/f-%05d.png", -0.2);
+  assert.ok(!args.includes("-ss"), `a non-positive offset must not become a seek: ${args.join(" ")}`);
+});
+
+// ── sampling where the page had settled (#566) ─────────────────────────────
+
+test("a settled mark becomes a frame, and the clip's ends are still reachable", () => {
+  assert.deepEqual(settledFrameIndices(100, [0, 0.5, 1]), [0, 50, 99]);
+});
+
+test("settled marks win over even sampling, and duplicates collapse", () => {
+  // A pause long enough to be sampled twice, or two marks that round onto the
+  // same frame, must not produce a repeated image — a GIF that holds one frame
+  // twice reads as a stutter in the capture.
+  assert.deepEqual(settledFrameIndices(100, [0.2, 0.204, 0.5]), [20, 50]);
+  assert.deepEqual(settledFrameIndices(100, [0.5, 0.2]), [20, 50], "order follows the clip, not the caller");
+});
+
+test("a mark outside the clip is clamped rather than dropped", () => {
+  // Fractions are computed from wall-clock times and a rounding difference can
+  // put one a hair past the end. Losing the last settled frame to that would be
+  // the one frame most worth keeping.
+  assert.deepEqual(settledFrameIndices(10, [1.4]), [9]);
+  assert.deepEqual(settledFrameIndices(10, [-0.2]), [0]);
+});
+
+test("nothing to sample from returns null, so the caller can fall back and say so", () => {
+  // Returning an index list here would be a silent substitution: the manifest
+  // would claim the GIF was sampled where the page settled when it was not, and
+  // a bad frame would be read as a page defect (#566's whole failure mode).
+  for (const fractions of [undefined, [], null, [Number.NaN]]) {
+    assert.equal(settledFrameIndices(100, fractions), null, `for ${JSON.stringify(fractions)}`);
+  }
+  assert.equal(settledFrameIndices(0, [0.5]), null);
 });

@@ -3422,6 +3422,30 @@ nav.footer-col a:hover {
   }
 }
 
+/* The newsletter placeholder is ~137px of text at 14.4px Manrope and needs
+   that much *content* width to render uncut. Below ~410px the single-row form
+   cannot give it: at 375px the input is squeezed to 143px of border-box (a
+   113px content box, padding 14px + 1px border each side), so the placeholder
+   was clipped to `you@company.c` — found in the 2026-09-30 visual audit and
+   reproduced by measuring the input's content box against the placeholder's
+   intrinsic width (#573). At 320px even a full-width row falls short (the
+   Subscribe button is ~111px), so the row has to give up rather than the
+   placeholder.
+
+   Stacking the form — input over button, both stretched — removes the squeeze
+   entirely: the input alone takes the column (~282px at 320px, ~330px at
+   375px), so the placeholder fits at every width below the breakpoint. The
+   height alignment the single-row form existed for (the 2px difference between
+   the input's 42.88px and the button's 40.88px line boxes) is a non-issue in a
+   column: there is no shared line for them to disagree on. */
+@media (max-width: 430px) {
+  .newsletter-form {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+}
+
 /* Narrow viewports: the caption and the dot row cannot share the lower band.
    The caption is left-anchored and the dot row is centred in the slide, and the
    caption's width is set by its text (196.7px measured, right edge at x=210.7),

@@ -115,4 +115,32 @@ describe("marketing reflow", () => {
       expect(rule).toMatch(/opacity\s*:\s*1\s*;/);
     }
   });
+
+  it("stacks the newsletter form on narrow phones so the placeholder is not clipped", () => {
+    // The input's content box is the width that must hold the placeholder
+    // (~137px of text at 14.4px Manrope, measured against
+    // `you@company.com`). The single-row form cannot deliver it below ~410px —
+    // at 375px the input is squeezed to a 113px content box and the placeholder
+    // rendered as `you@company.c`, and at 320px even a full-width row is short
+    // because the Subscribe button cannot wrap. The row has to become a column,
+    // where the input alone takes the whole form width (#573).
+    const narrow = css.match(
+      /@media[^{]*max-width:\s*430px[^{]*\{([\s\S]*?)\n\}/,
+    )?.[1];
+    expect(narrow, "no @media (max-width: 430px) block in App.css").toBeDefined();
+
+    const form = narrow!.match(/\.newsletter-form\s*\{([^}]*)\}/)?.[1];
+    expect(form, "no .newsletter-form rule in the max-width: 430px block").toBeDefined();
+    expect(form, "the narrow form must stack: a row cannot fit the placeholder").toMatch(
+      /flex-direction\s*:\s*column/,
+    );
+    expect(form, "the stacked form must take the whole column the row only took 80% of").toMatch(
+      /width\s*:\s*100%/,
+    );
+
+    // The single-row form must survive above the breakpoint: the base rule is
+    // the one that carries `.btn-primary` next to the input at >=431px.
+    const base = rulesFor(".newsletter-form")[0] ?? "";
+    expect(base, "the base .newsletter-form rule must stay a row").toMatch(/width\s*:\s*80%/);
+  });
 });
