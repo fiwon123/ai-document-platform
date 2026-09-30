@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CountUp } from "./CountUp";
 
@@ -137,5 +137,83 @@ describe("CountUp", () => {
     const el = container.querySelector(".count-up")!;
     expect(el.className).not.toContain("animating");
     expect(el.textContent).toBe("42%");
+  });
+
+  // ── data-count-state (#566) ────────────────────────────────────────────
+  //
+  // The class above cannot answer "has this number finished arriving?", and the
+  // visual audit needs exactly that answer: `.animating` is absent both *while*
+  // counting and *before* counting starts, so a settle written against it finds
+  // nothing to wait for on the first pass and photographs "Search uptime 0%".
+  // These three states have to be distinguishable from outside the component.
+
+  it("reports pending, then animating, then done", async () => {
+    vi.useFakeTimers();
+    const { container } = render(<CountUp value={99} suffix="%" durationMs={1000} />);
+    const state = () => container.querySelector(".count-up")!.getAttribute("data-count-state");
+
+    // The observer mock reports isIntersecting, so this is the settled
+    // "already started" case; the intermediate is asserted by the test below.
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(state()).toBe("done");
+  });
+
+  it("is pending before the count starts, which is not the same as done", () => {
+    // The distinction the whole attribute exists for. A count that has not
+    // intersected yet is showing 0, and "no .animating on the page" is already
+    // true — so a settle keyed on the class returns immediately and captures
+    // the zero. `pending` is what makes the wait actually wait.
+    //
+    // The observer here records the element but never reports it intersecting,
+    // which is what "scrolled past it" looks like from the component's side.
+    let fire: (() => void) | undefined;
+    class SilentObserver {
+      constructor(callback: IntersectionObserverCallback) {
+        fire = () =>
+          callback(
+            [{ isIntersecting: true } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver,
+          );
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      root = null;
+      rootMargin = "";
+      thresholds = [0];
+      takeRecords() {
+        return [];
+      }
+    }
+    vi.stubGlobal("IntersectionObserver", SilentObserver);
+
+    const { container } = render(<CountUp value={99} durationMs={1000} />);
+    expect(container.querySelector(".count-up")!.getAttribute("data-count-state")).toBe("pending");
+    expect(container.querySelector(".count-up")!.className).not.toContain("animating");
+
+    // And it is the state change, not the text, that proves the wait would end:
+    // once the count starts, `pending` resolves to a state that is not `done`,
+    // so a wait on `done` is still holding.
+    act(() => fire?.());
+    expect(container.querySelector(".count-up")!.getAttribute("data-count-state")).not.toBe(
+      "pending",
+    );
+  });
+
+  it("is done immediately for the non-animating fallbacks, never pending", () => {
+    // Reduced motion and a missing IntersectionObserver both render the final
+    // value at once. If those reported `pending`, every capture on a
+    // reduced-motion browser would wait out the full timeout for a count that
+    // will never start, and then photograph anyway.
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    const reduced = render(<CountUp value={512} durationMs={1000} />);
+    expect(reduced.container.querySelector(".count-up")!.getAttribute("data-count-state")).toBe(
+      "done",
+    );
+    reduced.unmount();
+
+    vi.unstubAllGlobals();
+    const none = render(<CountUp value={42} suffix="%" />);
+    expect(none.container.querySelector(".count-up")!.getAttribute("data-count-state")).toBe("done");
   });
 });

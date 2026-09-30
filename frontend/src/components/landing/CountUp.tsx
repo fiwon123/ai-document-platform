@@ -103,8 +103,28 @@ export function CountUp({ value, durationMs = 2000, suffix = "", format }: Count
   // immediately and there is no count in progress to decorate.
   const animating = canAnimate && started && display < value;
 
+  // The count's own state, as an attribute, for anything that has to know
+  // whether a figure has finished arriving.
+  //
+  // The visual audit needs exactly this and cannot get it from the class: `animating`
+  // is false both while counting *and* before counting starts, so "no
+  // `.count-up.animating` on the page" is true while the number is still sitting
+  // at 0 waiting for its observer — a wait written against that class returns
+  // immediately and photographs "Search uptime 0%". The three states have to be
+  // distinguishable, and only the component knows which one it is in.
+  //
+  // Reduced motion and the no-IntersectionObserver fallback render the final
+  // value immediately, so they are `done` and never `pending` — otherwise a
+  // capture on a reduced-motion browser would wait out the full timeout for
+  // something that will never start.
+  const countState = !canAnimate || !started ? (canAnimate ? "pending" : "done") : animating ? "animating" : "done";
+
   return (
-    <span ref={ref} className={animating ? "count-up animating" : "count-up"}>
+    <span
+      ref={ref}
+      className={animating ? "count-up animating" : "count-up"}
+      data-count-state={countState}
+    >
       {shown}
       {suffix}
     </span>

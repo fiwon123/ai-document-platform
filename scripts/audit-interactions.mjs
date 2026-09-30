@@ -395,6 +395,45 @@ export function planPageSteps(scrollHeight, viewportHeight, options = {}) {
 }
 
 /**
+ * How much of the settled page to keep before the animation starts, in the GIF.
+ *
+ * The offset itself is *measured* by the recorder (it times navigation → settle →
+ * run), so it tracks the app's real load cost instead of a constant that goes
+ * stale the moment the app gets slower. This constant is the deliberate part of
+ * it: trimming to the exact frame `run()` was called loses the first frames of the
+ * animation itself, because the interaction begins on the next tick and the
+ * reviewer needs to see where it came from.
+ */
+export const GIF_LEAD_IN_MS = 150;
+
+/**
+ * Where the packaged GIF starts, in seconds from the top of the clip.
+ *
+ * Playwright records from the moment the page is created, so a WebM opens with the
+ * navigation, the loading state and the entrance transition. On `theme-toggle`
+ * that was 4 of 16 packaged frames — a blank page, "Loading page…", or a
+ * half-drawn frame. The WebM is kept whole, because that is the raw capture, but a
+ * GIF whose first quarter is a blank page is not a review artifact: a reviewer
+ * cannot tell a pre-paint frame from a broken one, and files it as the latter.
+ *
+ * Trimmed on the *input* side of the ffmpeg call rather than by re-encoding: the
+ * frames being dropped are exactly the ones the seek skips, and this build's filter
+ * parser is crippled anyway (`-vf` fails), so an input-side seek is the only form
+ * available.
+ *
+ * Rounded to a tenth because that is the resolution the seek actually uses —
+ * carrying full float precision prints `1.6350000000000002` in the manifest, which
+ * reads as a second measurement when it is one number rounded. Clamped at zero: a
+ * scenario that starts animating before the page has settled (a fast `skeleton`,
+ * say) would otherwise ask for a negative seek, which ffmpeg reads as "from the
+ * end" and answers with an empty decode.
+ */
+export function gifStartSeconds(animationStartMs, leadInMs = GIF_LEAD_IN_MS) {
+  const seconds = Math.max(0, (animationStartMs - leadInMs) / 1000);
+  return Math.round(seconds * 10) / 10;
+}
+
+/**
  * Has this stepped capture actually moved the page?
  *
  * The runtime half of the duplicate check `planPageSteps` makes statically. A
@@ -476,4 +515,68 @@ export function scenarioFailureEntry(target, err) {
     error: message,
     skipped: `scenario failed: ${message}`,
   };
+}
+
+/**
+ * The offsets a stepped capture still needs to walk when the page has grown
+ * The offsets a stepped capture still needs to walk when the page has grown
+ * taller since the plan was measured.
+ *
+ * `planPageSteps` is handed a height and builds a walk that ends exactly on the
+ * bottom *of that height* — which is the right answer for the page as measured
+ * and the wrong one for the page as settled. A page that grows between the
+ * measurement and the walk (a late font swap, an image without dimensions)
+ * moves the bottom past the plan's final offset, and `plan.truncated` cannot
+ * see it: it compares the last offset against the *measured* maximum, which the
+ * walk did reach. So the run reports a complete walk over a page it covered
+ * 94% of, silently (#567).
+ *
+ * The walk itself cannot fix this — by the time it is running, the height it
+ * was handed is already stale, and "re-plan the whole walk" would re-photograph
+ * most of the page to correct the last few pixels. So `capturePageSteps` does
+ * the stalled part's job: one measurement after the walk (not one per step —
+ * that is the exact cost the issue rules out), and this function computes what
+ * that measurement means. The result is either offsets to walk to the true
+ * bottom, or `truncated: true` — which is a real statement now, not the plan's
+ * optimistic one.
+ *
+ * @param {ReturnType<typeof planPageSteps>} plan the plan the walk already executed
+ * @param {number} settledHeight the page's height as measured *after* the walk
+ * @param {{ stepOverlapPx?: number, maxSteps?: number, from?: number }} [options]
+ *    `from` is the scroll offset the walk actually ended at. It defaults to the
+ *    plan's final offset, which is where a *completed* walk stops — but a page
+ *    that grew mid-walk clamps `scrollTo` to the live bottom, so the walk can
+ *    already be at the settled bottom when it finishes. Starting the tail from
+ *    the plan's floor in that case would re-photograph the final screenful.
+ * @returns {{ offsets: number[], truncated: boolean }}
+ */
+export function planTailSteps(plan, settledHeight, options = {}) {
+  const { stepOverlapPx = DEFAULT_STEP_OVERLAP_PX, maxSteps = MAX_PAGE_STEPS } = options;
+  // A page that settled at the measured height (or shorter) needs nothing: the
+  // walk already ended at its bottom. `settledHeight <= plan.totalHeight` is
+  // the whole shrink case, handled by the capped walk already.
+  if (settledHeight <= plan.totalHeight) return { offsets: [], truncated: false };
+
+  const view = Math.max(1, Math.floor(plan.viewportHeight) || 0);
+  const scrollable = Math.max(0, Math.floor(settledHeight) - view);
+  const from = options.from ?? plan.offsets.at(-1);
+  if (from === undefined || from >= scrollable) return { offsets: [], truncated: false };
+
+  // Same stride as the original plan — a tail with a different stride would
+  // change what overlaps mean partway down the page.
+  const stride = Math.max(1, view - stepOverlapPx);
+  const budget = Math.max(0, maxSteps - plan.steps);
+
+  const offsets = [];
+  let y = from;
+  while (y < scrollable && offsets.length < budget) {
+    y = Math.min(y + stride, scrollable);
+    if (!stepMoved(from, y)) break;
+    offsets.push(y);
+  }
+
+  // `truncated` now means "the walk did not cover the page" — true only when
+  // the budget ran out before the bottom, not when the plan was complete for
+  // the height it was handed.
+  return { offsets, truncated: offsets.length === 0 || offsets.at(-1) < scrollable };
 }
