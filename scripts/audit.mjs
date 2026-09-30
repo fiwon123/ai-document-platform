@@ -92,6 +92,7 @@ import {
   orderedStepKeys,
   planGroupPasses,
   planPageSteps,
+  planTailSteps,
   stepMoved,
   unreachableStepKeys,
   undeclaredStepKeys,
@@ -2243,6 +2244,107 @@ async function capturePageSteps(page, audit, scenario, { route, viewport, theme,
       }
       break;
     }
+  }
+
+  // The plan was measured against the page as first painted. A page that grows
+  // afterwards (a late font, an image without dimensions, a reveal pushing
+  // content down) moves the bottom below the walk's last offset, and neither
+  // the plan nor the loop notices: the plan's `truncated` compares against the
+  // height it was *handed* (which the walk reached), and the loop's
+  // `reachedBottom` probe is falsified by exactly the growth it exists to catch.
+  // So the walk ends at the old bottom and reports a complete capture of a page
+  // it covered only part of, with the last rendered screenful never
+  // photographed (#567, /how-it-works settling 56px taller than it measured).
+  //
+  // One measurement after the walk — not one per step — decides it, and when
+  // the page has grown, the walk continues from where the plan stopped to the
+  // new bottom, at the same stride the plan used. If the step budget has run
+  // out, that is now reported as truncation: the plan's own flag could not be,
+  // because it never knew the larger height existed.
+  const settled = await page.evaluate(
+    () => Math.max(
+      document.body.scrollHeight,
+      document.documentElement.scrollHeight,
+      document.documentElement.offsetHeight,
+    ),
+  );
+  const tail = planTailSteps(plan, settled, {
+    stepOverlapPx: scenario.stepOverlapPx,
+    // The walk's actual last position, not the plan's: a page that grew
+    // mid-walk clamps the final scrollTo to the live bottom, so the run can
+    // finish already at the settled bottom without photographing it twice.
+    from: previousOffset ?? plan.offsets.at(-1),
+  });
+  if (tail.offsets.length) {
+    log(
+      `  ${route} [${viewport}/${theme}] — page grew ${plan.totalHeight}px → ${settled}px after ` +
+        `the plan; continuing ${tail.offsets.length} step(s) to the settled bottom`,
+    );
+  }
+  // Duplicate detection is against the position the *walk* actually ended at —
+  // the same value the tail was planned from — so a tail that is a no-op by
+  // arithmetic cannot turn into a skip by measurement.
+  let tailPrevious = previousOffset ?? plan.offsets.at(-1);
+  for (let k = 0; k < tail.offsets.length; k += 1) {
+    const offset = tail.offsets[k];
+    // The main loop's states run `top, page-2, …, page-<plan.steps>`, so the
+    // tail continues at `page-<plan.steps + 1>` — one name per image, whatever
+    // the plan thought it was signing up for.
+    const step = plan.steps + k + 1;
+    const state = `page-${step}`;
+
+    await page.evaluate((y) => window.scrollTo(0, y), offset);
+    await settleVisuals(page);
+    const actual = await page.evaluate(() => Math.round(window.scrollY));
+    if (!stepMoved(tailPrevious, actual)) {
+      warn(
+        `SKIP ${route} [${viewport}/${theme}] ${state}: the page did not move ` +
+          `(still at ${actual}px) — it would repeat the previous capture`,
+      );
+      audit.addEntry({
+        route,
+        viewport,
+        theme,
+        state,
+        type: "screenshot",
+        file: null,
+        skipped: "page did not scroll — duplicate of the previous step",
+      });
+      break;
+    }
+    tailPrevious = actual;
+
+    const ok = await audit.shot(page, {
+      throttledBefore,
+      route,
+      viewport,
+      theme,
+      state,
+      dir: routeSlug(route),
+      require: scenario.require,
+      requireMs: scenario.requireMs ?? null,
+      action: acts.length
+        ? [
+            ...acts,
+            {
+              action: "scrollTo",
+              to: `${offset}px`,
+              step,
+              of: plan.steps + tail.offsets.length,
+              note: "page grew after the plan — tail step to the settled bottom (#567)",
+            },
+          ]
+        : null,
+    });
+    if (ok) captured += 1;
+    log(`  ${route} [${viewport}/${theme}] ${state} (${step}/${plan.steps + tail.offsets.length})`);
+  }
+  if (tail.truncated) {
+    warn(
+      `${route}: page settled at ${settled}px — taller than ${plan.steps} stepped captures ` +
+        "will cover, and the post-walk tail is still short of the bottom. Raise " +
+        "MAX_PAGE_STEPS or narrow the route.",
+    );
   }
 
   await packSequence(audit, { route, viewport, theme, manifestFrom });

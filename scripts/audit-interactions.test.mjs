@@ -23,6 +23,7 @@ import {
   orderedStepKeys,
   planGroupPasses,
   planPageSteps,
+  planTailSteps,
   stepMoved,
   unreachableStepKeys,
   undeclaredStepKeys,
@@ -491,6 +492,102 @@ test("a plan sized for a taller page still ends at the real bottom", () => {
   const settled = planPageSteps(2438, 900);
   assert.equal(settled.offsets.at(-1), 2438 - 900);
   assert.equal(settled.truncated, false);
+});
+
+// ── post-walk tail for a page that grew (#567) ──────────────────────────────
+//
+// `planPageSteps` is handed the height as first measured, and a page that grows
+// while it settles (fonts, images, reveals) moves the bottom below the plan's
+// final offset. The plan cannot see it — its `truncated` compares against the
+// height it was *given*, which the walk reached — so `capturePageSteps` takes
+// one measurement after the walk and `planTailSteps` decides what it means:
+// continue to the new bottom, or report that even the tail cannot reach it.
+
+test("a page that grows after the plan gets a tail to the settled bottom", () => {
+  // The live numbers from #567, measured on /how-it-works at 390×844: 7122px at
+  // plan time, 7178px settled. The plan walks 10 steps ending on its own bottom
+  // (6310 = 7122 − 812) and reports `truncated: false` — true for the page it
+  // was given, irrelevant for the page that actually rendered. The true bottom
+  // is 6366 = 7178 − 812, so the tail is exactly one step: the frame that
+  // photographs the settled bottom, which is what replanning at 7178 would have
+  // produced (11 steps ending 6366) without re-photographing the first ten.
+  const plan = planPageSteps(7122, 812);
+  assert.equal(plan.steps, 10);
+  assert.equal(plan.offsets.at(-1), 7122 - 812);
+  assert.equal(plan.truncated, false);
+
+  const tail = planTailSteps(plan, 7178);
+  assert.deepEqual(tail.offsets, [7178 - 812]);
+  assert.equal(tail.truncated, false);
+});
+
+test("a page that shrinks or holds its height needs no tail", () => {
+  // The shrink case is already handled by the walk itself: `capturePageSteps`
+  // probes the live bottom and stops early, so the post-walk measurement finding
+  // a *shorter* page must be a no-op, not another set of clamped duplicates. An
+  // unchanged height is the same answer with a different measurement.
+  const plan = planPageSteps(2528, 900);
+  assert.deepEqual(planTailSteps(plan, 2438), { offsets: [], truncated: false });
+  assert.deepEqual(planTailSteps(plan, 2528), { offsets: [], truncated: false });
+});
+
+test("a page that grows past the step budget reports truncation honestly", () => {
+  // The tail is bounded by the same cap the plan obeyed. This plan used all 12
+  // steps reaching 7612 of 7612 — complete, `truncated: false`. The page then
+  // settles taller, so the tail has zero step budget and must say so rather
+  // than silently stop at the old bottom. `truncated` here is a real statement:
+  // the plan's own flag could not make it, because the plan never knew the
+  // taller page existed.
+  const fullPlan = planPageSteps(8424, 812);
+  assert.equal(fullPlan.steps, 12);
+  assert.equal(fullPlan.truncated, false);
+  assert.equal(fullPlan.offsets.at(-1), 8424 - 812);
+
+  const tail = planTailSteps(fullPlan, 10000);
+  assert.deepEqual(tail, { offsets: [], truncated: true });
+});
+
+test("a tail step advances by at least a stride and never overshoots the bottom", () => {
+  // Same invariants `planPageSteps` is pinned on: a frame that advances a
+  // fraction of the stride is a near-duplicate of the one before it, and a gap
+  // larger than the viewport leaves content unphotographed. The final step is
+  // exempt from the first — a page barely taller than the plan leaves only the
+  // remainder to cover — exactly as in the plan itself.
+  for (const viewportHeight of [812, 900]) {
+    const plan = planPageSteps(5000, viewportHeight);
+    const tail = planTailSteps(plan, 7000);
+    assert.ok(tail.offsets.length >= 2, `expected a multi-step tail at ${viewportHeight}px, got ${tail.offsets.length}`);
+    for (let i = 0; i + 1 < tail.offsets.length; i += 1) {
+      const advance = tail.offsets[i + 1] - tail.offsets[i];
+      assert.ok(
+        advance >= plan.stride / 2,
+        `tail step advanced only ${advance}px (stride ${plan.stride}) at ${viewportHeight}px viewport`,
+      );
+      assert.ok(
+        advance <= viewportHeight,
+        `tail step advanced ${advance}px, skipping content, at ${viewportHeight}px viewport`,
+      );
+    }
+    // Never recorded past the bottom, and the walk actually gets there — or
+    // says it did not.
+    for (const offset of tail.offsets) {
+      assert.ok(offset <= 7000 - viewportHeight, `tail overshot the settled bottom: ${offset}px`);
+    }
+    assert.ok(
+      tail.truncated || tail.offsets.at(-1) === 7000 - viewportHeight,
+      "a non-truncated tail must end exactly on the settled bottom",
+    );
+  }
+});
+
+test("a tail starts from where the walk actually ended, not the plan's floor", () => {
+  // A page that grows *mid-walk* clamps the final scrollTo to the live bottom,
+  // so the walk can finish already at the settled bottom. Starting the tail from
+  // the plan's final offset would then re-photograph the last screenful; the
+  // caller passes the measured `scrollY` instead, and the tail is a no-op.
+  const plan = planPageSteps(7122, 812);
+  const tail = planTailSteps(plan, 7178, { from: 7178 - 812 });
+  assert.deepEqual(tail, { offsets: [], truncated: false });
 });
 
 // ── content assertions (#559) ────────────────────────────────────────────────
