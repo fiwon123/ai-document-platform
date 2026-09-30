@@ -192,23 +192,58 @@ export function describeRateLimit(info: RateLimitInfo): string {
 type RequestOptions = RequestInit & { _retried?: boolean };
 
 /** Deduped in-flight refresh call: concurrent 401s share one request. */
-let refreshPromise: Promise<TokenResponse | null> | null = null;
+let refreshPromise: Promise<RefreshOutcome> | null = null;
 
-async function refreshAccessToken(): Promise<TokenResponse | null> {
+/**
+ * Why a refresh attempt did not yield a token.
+ *
+ * `terminal` is the whole point. A `null` return used to mean both "the server
+ * rejected your refresh token, you are signed out" and "the server never
+ * answered", and the caller cleared the access token for either. So a rate
+ * limit or a 502 during refresh signed the user out — the same defect #579
+ * found on the `/auth/me` path, one request later.
+ */
+interface RefreshFailure {
+  ok: false;
+  /**
+   * The server answered and refused the refresh token, so the session really
+   * has ended. `false` means we were never told (429, 5xx, dropped connection)
+   * and the token must be kept.
+   */
+  terminal: boolean;
+  /** The status that came back, when we got one at all. */
+  status?: number;
+  retryAfterSeconds?: number;
+}
+
+type RefreshOutcome = { ok: true; token: TokenResponse } | RefreshFailure;
+
+async function refreshAccessToken(): Promise<RefreshOutcome> {
   try {
     // No Authorization header and no retry: the refresh cookie is the auth.
     const response = await fetch(`${API_BASE}/auth/refresh`, {
       method: "POST",
       credentials: "include",
     });
-    if (!response.ok) return null;
-    return (await response.json()) as TokenResponse;
+    if (response.ok) {
+      return { ok: true, token: (await response.json()) as TokenResponse };
+    }
+    const retryAfterSeconds = parseRetryAfter(response.headers.get("Retry-After"));
+    // 401/403 means the cookie itself is no longer good — that is a real end
+    // to the session. Everything else (429, 5xx) means we were not told.
+    return {
+      ok: false,
+      terminal: response.status === 401 || response.status === 403,
+      status: response.status,
+      // Only meaningful when the server said so; harmless otherwise.
+      retryAfterSeconds,
+    };
   } catch {
-    return null;
+    return { ok: false, terminal: false };
   }
 }
 
-function getRefreshPromise(): Promise<TokenResponse | null> {
+function getRefreshPromise(): Promise<RefreshOutcome> {
   if (!refreshPromise) {
     refreshPromise = refreshAccessToken().finally(() => {
       refreshPromise = null;
@@ -265,9 +300,23 @@ async function fetchWithAuth(
     // the original request once. If refresh fails, the session is gone —
     // clear the token and send the user back to login.
     const refreshed = await getRefreshPromise();
-    if (refreshed) {
-      localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, refreshed.access_token);
+    if (refreshed.ok) {
+      localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, refreshed.token.access_token);
       return fetchWithAuth(path, { ...options, _retried: true });
+    }
+    if (!refreshed.terminal) {
+      // The refresh was rate limited or the server was unreachable. That says
+      // nothing about whether this token is still valid, so the session is
+      // kept and the transient failure is surfaced instead of being turned into
+      // a sign-out (#579).
+      throw new ApiError(
+        refreshed.status ?? 503,
+        "Could not reach the server. Please try again.",
+        {
+          code: refreshed.status === 429 ? "rate_limit_exceeded" : "server_unreachable",
+          retryAfterSeconds: refreshed.retryAfterSeconds,
+        },
+      );
     }
     localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
     window.location.href = "/login";
@@ -390,10 +439,17 @@ export const auth = {
   /** Mint a fresh access token from the httpOnly refresh cookie. */
   async refresh(): Promise<TokenResponse> {
     const refreshed = await getRefreshPromise();
-    if (!refreshed) {
-      throw new ApiError(401, "Session expired. Please log in again.");
-    }
-    return refreshed;
+    if (refreshed.ok) return refreshed.token;
+    // Only a refused cookie is an expired session. A 429 or a dropped
+    // connection is reported as itself, so the caller can tell "sign out" from
+    // "try again in a moment" (#589 shares this path).
+    throw new ApiError(
+      refreshed.terminal ? 401 : refreshed.status ?? 503,
+      refreshed.terminal
+        ? "Session expired. Please log in again."
+        : "Could not reach the server. Please try again.",
+      { retryAfterSeconds: refreshed.retryAfterSeconds },
+    );
   },
 
   /** Ask the server to clear the httpOnly refresh cookie. */

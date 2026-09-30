@@ -561,9 +561,27 @@ body {
 .loading-center {
   flex: 1;
   display: flex;
+  /* Column, so `justify-content` centres vertically and `align-items`
+     horizontally — in a row they would centre the wrong axis and leave the
+     spinner pinned near the top of the page with empty space beneath it. */
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--sp-8) 0;
+  gap: var(--sp-4);
+  /* Fills the viewport when the parent does not constrain it, so the state is
+     centred rather than top-anchored. dvh so a mobile URL bar does not shift it. */
+  min-height: 100dvh;
+  padding: var(--sp-8) var(--sp-6);
+  text-align: center;
+}
+
+/* Visible counterpart to the spinner's screen-reader-only label. A user who is
+   throttled waits on this state with no page content at all, so it has to say
+   what is happening rather than showing an unexplained spinner (#579). */
+.loading-message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
 }
 
 .sr-only {

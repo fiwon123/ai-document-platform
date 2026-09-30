@@ -16,6 +16,25 @@ function getInitialTheme(): Theme {
     : "light";
 }
 
+/**
+ * Put the resolved theme on `<html>` before React renders anything.
+ *
+ * `useTheme` applies it in an effect, but the only component that calls
+ * `useTheme` is `ThemeToggle`, which lives in the app Navbar — and the Navbar
+ * mounts only once the session is verified. Until then `<html>` carries no
+ * `data-theme`, so the page renders in the stylesheet's default (light). That
+ * is a white flash for a dark-mode user on first paint, and on any screen shown
+ * *before* the Navbar exists — including the session-loading state, which a
+ * rate-limited or briefly unreachable backend can hold someone on (#579).
+ *
+ * Setting it here makes the first paint the right colour. `useTheme` still owns
+ * toggling, and re-applies the same value on mount, which is idempotent.
+ */
+export function applyInitialTheme(): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.dataset.theme = getInitialTheme();
+}
+
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const transitionTimerRef = useRef<number | null>(null);
