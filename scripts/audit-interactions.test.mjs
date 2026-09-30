@@ -19,6 +19,7 @@ import {
   checkClassExpectation,
   buildAttrWaitArgs,
   describeSkip,
+  gifStartSeconds,
   orderedStepKeys,
   planGroupPasses,
   planPageSteps,
@@ -654,4 +655,69 @@ test("an unknown group is rejected by name, and videos is not treated as one", (
     /unknown group "bogus"\. Known: .*videos/,
   );
   assert.throws(() => planGroupPasses(["videos", "bogus"], GROUP_NAMES), /unknown group "bogus"/);
+});
+
+// ── where a packaged GIF starts (#566) ─────────────────────────────────────
+
+test("the GIF starts at the animation, less a lead-in", () => {
+  // Measured on `theme-toggle`: navigation + settle took 1.6s, and 4 of the 16
+  // packaged frames were a blank page, "Loading page…", or a half-drawn frame.
+  // The lead-in keeps the first frames of the animation itself, which are the
+  // thing under review — trimming to the exact frame `run()` was called loses
+  // the crossfade's own first frame.
+  assert.equal(gifStartSeconds(1600), 1.5);
+});
+
+test("an animation that starts before the page settles is clamped to zero", () => {
+  // A scenario faster than the lead-in (a `skeleton` that renders in 1.27s) must
+  // not ask for a negative seek: ffmpeg reads that as "from the end" and returns
+  // an empty decode, which surfaces as "no GIF for <name>" and reads like a
+  // broken encoder.
+  assert.equal(gifStartSeconds(100), 0);
+  assert.equal(gifStartSeconds(0), 0);
+});
+
+test("the offset is rounded to the resolution the seek actually uses", () => {
+  // Carrying float precision prints `1.6350000000000002` into the manifest,
+  // where it reads as a second, more accurate measurement than it is.
+  assert.equal(gifStartSeconds(1785), 1.6);
+  assert.equal(gifStartSeconds(1835), 1.7);
+  assert.equal(String(gifStartSeconds(1234)).length <= 3, true);
+});
+
+test("the lead-in is a parameter, so a scenario can ask for none of it", () => {
+  assert.equal(gifStartSeconds(1600, 0), 1.6);
+});
+
+// ── the recording context has to reach the scenario (#566) ─────────────────
+
+test("the video wrapper forwards the recording context instead of dropping it", async () => {
+  // This is a source-text assertion, which is normally the wrong tool. It is the
+  // right one here because the bug it guards has no other observable: the wrapper
+  // in `runVideos` was written `(page) => scenario.run(page, theme)`, which drops
+  // `recordAnimation`'s `markSettled` on the floor. Every scenario then recorded
+  // `marks=0`, the GIFs came back sampled evenly, and the manifest reported
+  // `sampling: even` — a correct report of a capture nobody had asked for. The
+  // run was green and the artifact was wrong, which is the one combination no
+  // assertion on the packer can catch, because the packer did exactly what it was
+  // asked.
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("./audit.mjs", import.meta.url), "utf8");
+  const wrapper = source.slice(source.indexOf("async function runVideos"));
+  assert.match(
+    wrapper,
+    /run:\s*\(page,\s*ctx\)\s*=>\s*scenario\.run\(page,\s*ctx\)/,
+    "the video wrapper must pass the context straight through",
+  );
+  // And no scenario may take a bare second positional parameter, which is what
+  // the old `theme` argument was: a scenario destructuring the context would
+  // silently receive a string and do nothing.
+  for (const m of wrapper.matchAll(/run:\s*async\s*\(([^)]*)\)/g)) {
+    const [, params] = m;
+    assert.doesNotMatch(
+      params,
+      /^page,\s*[a-z]+$/i,
+      `scenario run signature "${params}" takes a positional argument that is not the context`,
+    );
+  }
 });
