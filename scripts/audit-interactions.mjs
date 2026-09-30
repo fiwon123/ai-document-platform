@@ -395,6 +395,45 @@ export function planPageSteps(scrollHeight, viewportHeight, options = {}) {
 }
 
 /**
+ * How much of the settled page to keep before the animation starts, in the GIF.
+ *
+ * The offset itself is *measured* by the recorder (it times navigation → settle →
+ * run), so it tracks the app's real load cost instead of a constant that goes
+ * stale the moment the app gets slower. This constant is the deliberate part of
+ * it: trimming to the exact frame `run()` was called loses the first frames of the
+ * animation itself, because the interaction begins on the next tick and the
+ * reviewer needs to see where it came from.
+ */
+export const GIF_LEAD_IN_MS = 150;
+
+/**
+ * Where the packaged GIF starts, in seconds from the top of the clip.
+ *
+ * Playwright records from the moment the page is created, so a WebM opens with the
+ * navigation, the loading state and the entrance transition. On `theme-toggle`
+ * that was 4 of 16 packaged frames — a blank page, "Loading page…", or a
+ * half-drawn frame. The WebM is kept whole, because that is the raw capture, but a
+ * GIF whose first quarter is a blank page is not a review artifact: a reviewer
+ * cannot tell a pre-paint frame from a broken one, and files it as the latter.
+ *
+ * Trimmed on the *input* side of the ffmpeg call rather than by re-encoding: the
+ * frames being dropped are exactly the ones the seek skips, and this build's filter
+ * parser is crippled anyway (`-vf` fails), so an input-side seek is the only form
+ * available.
+ *
+ * Rounded to a tenth because that is the resolution the seek actually uses —
+ * carrying full float precision prints `1.6350000000000002` in the manifest, which
+ * reads as a second measurement when it is one number rounded. Clamped at zero: a
+ * scenario that starts animating before the page has settled (a fast `skeleton`,
+ * say) would otherwise ask for a negative seek, which ffmpeg reads as "from the
+ * end" and answers with an empty decode.
+ */
+export function gifStartSeconds(animationStartMs, leadInMs = GIF_LEAD_IN_MS) {
+  const seconds = Math.max(0, (animationStartMs - leadInMs) / 1000);
+  return Math.round(seconds * 10) / 10;
+}
+
+/**
  * Has this stepped capture actually moved the page?
  *
  * The runtime half of the duplicate check `planPageSteps` makes statically. A

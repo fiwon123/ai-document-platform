@@ -88,6 +88,7 @@ import {
   buildAttrWaitArgs,
   checkClassExpectation,
   describeSkip,
+  gifStartSeconds,
   orderedStepKeys,
   planGroupPasses,
   planPageSteps,
@@ -1182,6 +1183,13 @@ class Audit {
 
     let page = null;
     const started = Date.now();
+    // Declared out here rather than inside the try: it is read after the block
+    // that measures it, and a `const` scoped to the try would be a
+    // ReferenceError on the very line that packages the GIF.
+    let animationStart = 0;
+    // Same reason, and the same array is filled by `markSettled` below — so it
+    // has to exist before the try, not be created inside it.
+    const settledAt = [];
     try {
       page = await context.newPage();
       wirePage(page, consoleErrors, pageErrors, this.networkFailures, this.rateLimited, throttledHere);
@@ -1200,7 +1208,31 @@ class Audit {
       // Deliberately no reveal-forcing here: the point of these recordings is
       // the real animation, including the pre-reveal state.
       await settleVisuals(page);
-      await run(page);
+      // Playwright records from the moment the page is created, so the WebM
+      // opens with the navigation, the loading state and the entrance
+      // transition — measured on `theme-toggle`, 4 of 16 packaged frames (25%)
+      // were a blank page, "Loading page…", or a half-drawn frame. The WebM is
+      // kept whole, because that is the raw capture, but a GIF whose first
+      // quarter is a blank page is not a review artifact. The offset is
+      // measured rather than declared so it tracks the actual navigation cost
+      // instead of a constant that goes stale the moment the app gets slower.
+      animationStart = Date.now() - started;
+      // A scenario that pauses for the page to settle marks each pause, so the
+      // GIF can be sampled at the settled moments instead of evenly across the
+      // clip. Uniform sampling is only right for a clip that is mostly at rest,
+      // and a scenario that waits for reveals and count-ups is mostly *waiting* —
+      // sampling that evenly lands most frames mid-fade (#566). Scenarios with no
+      // marks are sampled as before; the manifest records which happened.
+      const markSettled = () => settledAt.push(Date.now() - started);
+      await run(page, { markSettled });
+      // Settle once more *after* the interaction. The wait above runs at load,
+      // when the page is at the top and nothing below the fold has been asked to
+      // animate — so a scenario that ends mid-transition (a carousel advancing, a
+      // modal fading out) leaves its last frames half-drawn, and the GIF's final
+      // image is the least trustworthy one in the file. Cheap when there is
+      // nothing to wait for, and it is what makes the last frame the state the
+      // user was actually left in.
+      await settleVisuals(page);
     } catch (err) {
       warn(`video scenario ${base} failed: ${err.message}`);
       this.addEntry({ route, viewport, theme, state, type: "video", file: null, error: err.message });
@@ -1216,6 +1248,16 @@ class Audit {
     const entry = {
       route, viewport, theme, state, type: "video",
       duration_ms: Date.now() - started,
+      // Where the animation actually began, and how much of the clip before it
+      // the GIF drops. Recorded so the trim is auditable from the manifest: a
+      // reviewer who thinks a GIF is missing its start can see that 1.2s of
+      // navigation was cut, rather than wondering whether the capture is wrong.
+      animation_start_ms: animationStart,
+      // One decimal, because that is the resolution the ffmpeg seek actually
+      // uses. Carrying full float precision here would print 1.6350000000000002
+      // in the manifest, which reads as a second measurement when it is one
+      // number rounded.
+      gif_start_s: gifStartSeconds(animationStart),
       interaction: action,
     };
 
@@ -1249,12 +1291,31 @@ class Audit {
     // machine, so the conversion now happens in `sequence-gif.mjs`.
     const gifPath = path.join(target, `${base}.gif`);
     let gifBytes = 0;
+    let gifSampling = null;
     if (!this.budget.exhausted) {
       // Convert to a scratch file first. Measuring a GIF only after writing it
       // lets a single conversion overshoot a *hard* budget, and the run dir is
       // already over the limit by the time we find out.
       const gifTmp = path.join(this.videoTempDir, `${base}.gif`);
-      const packed = await packWebm(webmPath, gifTmp);
+      // `startSeconds` drops the navigation and loading; the animation starts
+      // here. Both are GIF-only concerns — see recordAnimation.
+      //
+      // The marks are expressed as a fraction of the *trimmed* clip, not of the
+      // whole recording, because the trim moves frame 0: a mark measured from the
+      // start of the recording reads as 1.5s earlier than the packer thinks it
+      // is, and across an 8-step scroll that is a whole step of drift. A mark
+      // before the trim is dropped rather than clamped, since it describes a
+      // moment the GIF no longer contains.
+      const trimmed = Math.max(1, gifStartSeconds(animationStart) * 1000);
+      const packed = await packWebm(webmPath, gifTmp, {
+        startSeconds: gifStartSeconds(animationStart),
+        settledFractions: settledAt
+          .filter((ms) => ms >= trimmed)
+          // A clip that never advanced past the trim leaves a zero denominator;
+          // the non-finite fractions are discarded by `settledFrameIndices`,
+          // which then reports no marks and the entry is sampled evenly.
+          .map((ms) => (ms - trimmed) / (Date.now() - started - trimmed)),
+      });
       if (!packed.ok) {
         // Not fatal, and not silent: the WebM is already written and the entry
         // records which artifact exists. A missing Pillow costs review
@@ -1273,6 +1334,7 @@ class Audit {
         await fsp.rename(gifTmp, gifPath);
         this.budget.charge(packed.bytes);
         gifBytes = packed.bytes;
+        gifSampling = packed.sampling;
       }
     }
 
@@ -1281,6 +1343,13 @@ class Audit {
       file: path.relative(this.runDir, gifBytes ? gifPath : webmPath),
       format: gifBytes ? "gif" : "webm",
       source_webm: path.relative(this.runDir, webmPath),
+      // `settled` or `even`, and the marks behind it. Not bookkeeping: a GIF
+      // sampled evenly across a clip that is mostly waiting is a different
+      // artifact from one sampled where the page had settled, and only the
+      // second is safe to read page state off. Without this, a reviewer cannot
+      // tell which file they are looking at.
+      gif_sampling: gifSampling,
+      settled_marks: settledAt.length,
       bytes: webmSize + gifBytes,
     });
   }
@@ -1352,6 +1421,17 @@ class Audit {
  * selector had already made. Fonts and images are the two things that visibly
  * change a screenshot after first paint, so those are what we wait for.
  */
+/**
+ * How long to wait for a count-up to reach its final value.
+ *
+ * The longest `CountUp` on the landing page is `durationMs={2250}` (the stat row
+ * is staggered 1750 / 2000 / 2250 so the figures land left to right), sampled every
+ * 16ms. 4000ms leaves room for the longest run plus the interval tick that
+ * crosses the end, with enough slack that a slower machine does not trip the
+ * warning and capture a half-counted figure.
+ */
+const COUNT_SETTLE_MS = 4000;
+
 async function settleVisuals(page, cap = 3000) {
   // Not sufficient on its own, and deliberately left in place anyway: it drains
   // the font loads that *are* already pending (a real win for the video path,
@@ -1397,6 +1477,37 @@ async function settleVisuals(page, cap = 3000) {
     // against a stable baseline will then flag it, which is the right outcome
     // for a real defect.
     warn("reveal did not settle within 2s — capturing as-is");
+  }
+  // Count-ups are the other transient on the landing page, and they are a longer
+  // one than any reveal: `CountUp` runs 1750–2250ms on a 16ms interval, so the
+  // stat row is still moving long after every reveal has resolved. Nothing above
+  // waits for it, which is how a capture comes to read "Search uptime 0%" where
+  // the settled value is 99% — a reviewer files that as a broken stat, and in a
+  // still it is indistinguishable from one.
+  //
+  // Keyed on `data-count-state` rather than on the `.animating` class, which
+  // looks like the obvious handle and is not one: `animating` is false both
+  // *while* counting and *before* counting starts, so a wait written against it
+  // finds nothing to wait for on the first pass and returns immediately —
+  // photographing the number at 0. Only the component knows which of the three
+  // states it is in, so it is the one that says.
+  //
+  // Scoped to the viewport, like the reveal wait above, and for the same reason: a
+  // count that has not scrolled into view is `pending` and will stay that way
+  // until it does, so requiring the whole document to be `done` would wait out the
+  // full timeout at every step and then capture anyway.
+  const countsSettled = () => {
+    for (const el of document.querySelectorAll("[data-count-state]")) {
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > window.innerHeight) continue;
+      if (el.getAttribute("data-count-state") !== "done") return false;
+    }
+    return true;
+  };
+  try {
+    await page.waitForFunction(countsSettled, null, { timeout: COUNT_SETTLE_MS });
+  } catch {
+    warn(`count-up did not settle within ${COUNT_SETTLE_MS}ms — capturing as-is`);
   }
   // One frame for the compositor to flush the decoded assets.
   await page.waitForTimeout(120);
@@ -1695,61 +1806,123 @@ GROUPS.admin = [
   },
 ];
 
-/** Animated scenarios — one BrowserContext each (see recordAnimation). */
+/**
+ * Animated scenarios — one BrowserContext each (see recordAnimation).
+ *
+ * A scenario's `run(page, { markSettled })` may call `markSettled()` at the
+ * moments worth keeping, and the GIF is then sampled at those instead of evenly.
+ * Which of the two ran is recorded per entry as `gif_sampling`, because the two
+ * produce visibly different files and only one of them is safe to read page
+ * state off.
+ *
+ * Four of the nine mark: `scroll-reveal`, `theme-toggle`, `hover-cards` and
+ * `carousel` — the ones with a boundary between "something happened" and "the
+ * page is at rest", and (for `carousel`) the one where the clip is long enough
+ * that even sampling mostly catches idle. The other four (`hamburger`,
+ * `modal-open`, `skeleton`, `search-debounce`) are short, single-interaction
+ * clips of 3–7s, where even sampling lands inside the interaction often enough
+ * to be useful and marking would reduce them to one or two frames. They still
+ * get the head trim and the post-run settle, which is what guarantees their last
+ * frame is a state the app was actually left in.
+ */
 GROUPS.videos = [
   {
     route: "/", viewport: "desktop", state: "scroll-reveal", expect: ".landing-navbar",
     description: "Continuous scroll from hero to footer, firing every Reveal",
-    run: async (page) => {
-      await page.waitForTimeout(600);
-      const height = await page.evaluate(() => document.body.scrollHeight);
-      const steps = 24;
-      for (let i = 0; i <= steps; i += 1) {
-        await page.evaluate((y) => window.scrollTo({ top: y, behavior: "instant" }), (height / steps) * i);
-        await page.waitForTimeout(120);
+    run: async (page, { markSettled } = {}) => {
+      // The plan, not a hand-rolled loop over 24 equal slices.
+      //
+      // Three things were wrong with that, and all three are the same mistake —
+      // it captured transitions instead of pages. Slicing `scrollHeight / 24`
+      // walks *past* the end (the last two slices clamp to the same
+      // `scrollY = 5704`), so the tail of the clip is the same frame four times;
+      // the fixed `120ms` between slices is far shorter than a reveal (0.4s
+      // transition + up to 0.2s stagger), so most of the recording is blocks at
+      // opacity 0 — the frame the issue read as a landing page with an empty
+      // feature grid, a ghosted pricing card and an FAQ with no questions; and
+      // the fixed `400ms` tail is dead time on top of that.
+      //
+      // So: the planner that already reaches the true bottom (and does not pay
+      // for a near-duplicate final frame doing it), and a real settle after each
+      // step rather than a guessed delay. Settling is what makes a frame honest —
+      // it waits for the reveals in view to finish and for any count-up to reach
+      // its final value, so the page on screen is one a user could actually read.
+      const [height, view] = await page.evaluate(() => [
+        document.body.scrollHeight,
+        window.innerHeight,
+      ]);
+      const plan = planPageSteps(height, view);
+      for (const offset of plan.offsets) {
+        await page.evaluate((y) => window.scrollTo({ top: y, behavior: "instant" }), offset);
+        await settleVisuals(page);
+        // Tell the packer this is a moment worth keeping. Without the mark the
+        // GIF is sampled evenly across the clip, and a clip that pauses for
+        // reveals is mostly *pause* — measured after the fix below, 11 of 16
+        // evenly-sampled frames were text at partial opacity. Marking is what
+        // makes the GIF a walk through settled pages instead of through fades.
+        markSettled?.();
       }
-      await page.waitForTimeout(400);
     },
   },
   {
     route: "/", viewport: "desktop", state: "theme-toggle", expect: ".theme-toggle",
     description: "The theme crossfade: 220ms of every themed property at once",
-    run: async (page) => {
+    run: async (page, { markSettled } = {}) => {
+      // The `500ms`/`700ms` waits are what the crossfade is being judged on, so
+      // they stay as declared delays. What is added is a mark after each one, so
+      // the GIF is sampled at the two settled themes instead of at an arbitrary
+      // frame that may sit mid-crossfade — a frame halfway between two themes is
+      // not a state the app is ever in.
       await page.waitForTimeout(500);
+      markSettled?.();
       await page.locator(".theme-toggle").click();
       await page.waitForTimeout(700);
+      markSettled?.();
       await page.locator(".theme-toggle").click();
       await page.waitForTimeout(700);
+      markSettled?.();
     },
   },
   {
     route: "/", viewport: "desktop", state: "hover-cards", expect: ".landing-navbar",
     description: "Card lift and link colour transitions on hover",
-    run: async (page) => {
+    run: async (page, { markSettled } = {}) => {
       const card = page.locator(".landing-card").first();
       await card.waitFor({ state: "attached", timeout: 5000 }).catch(() => {});
       for (const selector of [".landing-card", ".nav-group-trigger", ".theme-toggle"]) {
         await safeHover(page, selector, 2000);
         await page.waitForTimeout(500);
+        // The mark is what the hover is being judged *at*: the lifted state, not
+        // the moment the pointer arrived. Sampled evenly, this clip's frames
+        // mostly catch the lift in progress.
+        markSettled?.();
       }
     },
   },
   {
     route: "/", viewport: "desktop", state: "carousel", expect: ".screenshot-carousel",
     description: "Carousel auto-advance and dot navigation",
-    run: async (page) => {
+    run: async (page, { markSettled } = {}) => {
+      // This is the group's longest clip by an order of magnitude (measured
+      // 70s, because the auto-advance has to be watched for several cycles), so
+      // it is the one where even sampling is worst: 16 frames over 70s is one
+      // every 4.4s, and the clip is mostly the carousel sitting still. Marking
+      // gives a frame per thing that actually happened instead.
       await page
         .evaluate(() => {
           document.querySelector(".screenshot-carousel")?.scrollIntoView({ block: "center" });
         })
         .catch(() => {});
       await page.waitForTimeout(6000);
+      markSettled?.();
       const dots = page.locator(".carousel-dot");
       if (await dots.count()) {
         await dots.nth(1).click().catch(() => {});
         await page.waitForTimeout(1200);
+        markSettled?.();
         await dots.nth(2).click().catch(() => {});
         await page.waitForTimeout(1200);
+        markSettled?.();
       }
     },
   },
@@ -2535,7 +2708,20 @@ async function runVideos(audit) {
         action: { action: "record", description: scenario.description },
         expect: scenario.expect,
         requireAuth: Boolean(scenario.auth),
-        run: (page) => scenario.run(page, theme),
+        // The recording context, forwarded rather than consumed.
+        //
+        // Two mistakes meet here. The wrapper used to be `(page) => …`, which
+        // drops its second argument — so `recordAnimation`'s `markSettled`
+        // callback never reached the scenario, every entry recorded `marks=0`,
+        // and the GIFs came back sampled evenly with nothing in the manifest to
+        // say that marking had been asked for. And the argument the wrapper *did*
+        // pass on, `theme`, was read by no scenario at all: animations are
+        // recorded once in the light theme by design (see above), so it was a
+        // positional argument in front of the context, where a scenario that
+        // destructured the context got the theme string instead and quietly did
+        // nothing. The context is the second parameter, and the unused one is
+        // gone rather than left to be mistaken for a parameter again.
+        run: (page, ctx) => scenario.run(page, ctx),
       });
       log(`  video ${scenario.route} [${scenario.viewport}/${theme}] ${scenario.state}`);
     }
