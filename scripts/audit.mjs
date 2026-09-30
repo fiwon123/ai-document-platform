@@ -1617,11 +1617,53 @@ GROUPS.legal = [
   { route: "/gdpr", state: "top", require: "main", expect: "main", fullPage: true },
 ];
 
+/**
+ * The landing header renders two `.theme-toggle` elements as of #557: the row's
+ * and the mobile panel's, mutually exclusive by CSS (`.landing-nav-actions
+ * .theme-toggle { display: none }` below 900px, `.landing-nav-panel-actions
+ * { display: none }` above it). A bare `.theme-toggle` locator therefore matches
+ * two nodes and fails strict mode — the desktop theme crossfade stopped being
+ * recorded the moment the second copy landed. Every desktop scenario must name
+ * the row's, which is the only one that can exist at that width.
+ */
+const ROW_THEME_TOGGLE = ".landing-nav-actions .theme-toggle";
+
 GROUPS.landing = [
   { route: "/", state: "hero", require: ".landing-navbar", expect: ".landing-navbar" },
   { route: "/", state: "mid", require: "footer", expect: ".landing-navbar", scrollTo: "middle" },
   { route: "/", state: "footer", require: ".landing-navbar", expect: ".landing-navbar", scrollTo: "bottom" },
-  { route: "/", state: "disclosure-open", require: ".nav-group-trigger", expect: ".landing-navbar", click: ".nav-group-trigger" },
+  {
+    // Desktop only: above 900px the Company disclosure is a row item that opens
+    // on hover, so that is what is asserted. It is deliberately *not* clicked —
+    // the trigger's click handler toggles, and since the pointer move that
+    // precedes any click already opened the menu on hover, the click closes it
+    // again. Clicking it therefore leaves the menu closed on a desktop pointer,
+    // which is a real bug in `NavGroupMenu` (#560), tracked separately rather
+    // than worked around here: the audit's job is to photograph the state that
+    // exists, and the hover-opened state is the one a desktop user reaches.
+    route: "/", viewport: "desktop", state: "disclosure-open", require: ".nav-group-trigger",
+    expect: ".landing-navbar",
+    hover: ".nav-group-trigger",
+    assertAttr: { selector: ".nav-group-trigger", attr: "aria-expanded", value: "true" },
+  },
+  {
+    // Mobile only: the same trigger now lives inside #557's collapsed panel, so
+    // the hamburger has to be opened first or the trigger has no box at all.
+    // `preClick` does that where the hamburger exists and does nothing where it
+    // does not, which is why this is pinned to `mobile` rather than sharing the
+    // desktop scenario's mechanism.
+    //
+    // `assertAttr` is what makes either half safe rather than merely working.
+    // Without it a mobile run that failed to open the panel clicked nothing,
+    // photographed the closed header, and recorded success — a false green that
+    // left the open mobile menu with no screenshot, contrast or label coverage at
+    // all, from an audit reporting zero findings.
+    route: "/", viewport: "mobile", state: "menu-open", require: ".nav-group-trigger",
+    expect: ".landing-navbar",
+    preClick: [".landing-nav-toggle"],
+    click: ".nav-group-trigger",
+    assertAttr: { selector: ".nav-group-trigger", attr: "aria-expanded", value: "true" },
+  },
   {
     // The captured state is the *annual* table, so the post-condition is
     // asserted rather than assumed. The click occasionally lands before React
@@ -1875,7 +1917,7 @@ GROUPS.videos = [
     },
   },
   {
-    route: "/", viewport: "desktop", state: "theme-toggle", expect: ".theme-toggle",
+    route: "/", viewport: "desktop", state: "theme-toggle", expect: ROW_THEME_TOGGLE,
     description: "The theme crossfade: 220ms of every themed property at once",
     run: async (page, { markSettled } = {}) => {
       // The `500ms`/`700ms` waits are what the crossfade is being judged on, so
@@ -1885,10 +1927,10 @@ GROUPS.videos = [
       // not a state the app is ever in.
       await page.waitForTimeout(500);
       markSettled?.();
-      await page.locator(".theme-toggle").click();
+      await page.locator(ROW_THEME_TOGGLE).click();
       await page.waitForTimeout(700);
       markSettled?.();
-      await page.locator(".theme-toggle").click();
+      await page.locator(ROW_THEME_TOGGLE).click();
       await page.waitForTimeout(700);
       markSettled?.();
     },
@@ -1899,7 +1941,7 @@ GROUPS.videos = [
     run: async (page, { markSettled } = {}) => {
       const card = page.locator(".landing-card").first();
       await card.waitFor({ state: "attached", timeout: 5000 }).catch(() => {});
-      for (const selector of [".landing-card", ".nav-group-trigger", ".theme-toggle"]) {
+      for (const selector of [".landing-card", ".nav-group-trigger", ROW_THEME_TOGGLE]) {
         await safeHover(page, selector, 2000);
         await page.waitForTimeout(500);
         // The mark is what the hover is being judged *at*: the lifted state, not
@@ -1937,13 +1979,11 @@ GROUPS.videos = [
     },
   },
   {
-    // Named for what it is, not for a control that does not exist: the landing
-    // header never collapses into a hamburger. At <=900px the nav links wrap to
-    // their own row and the Company disclosure button is the menu. (Renamed from
-    // `hamburger`, which named a control that was never on this page — the kind
-    // of label that sends a reviewer looking for something absent.)
+    // Named for what it is. The comment this replaced said the landing header
+    // "never collapses into a hamburger" — true until #557, which gave it one,
+    // so the sentence had to go rather than be left to mislead the next reader.
     route: "/", viewport: "mobile", state: "disclosure-menu", expect: ".landing-navbar",
-    description: "Mobile disclosure menu opened by tap, held open, then Escape closes and refocuses the trigger",
+    description: "Mobile disclosure panel opened by tap, held open, then Escape closes it and refocuses the trigger",
     run: async (page) => {
       // Assert the control exists instead of clicking a phantom. The old version
       // resolved `.navbar-toggle, .landing-navbar button[aria-expanded]` — the
@@ -1961,15 +2001,33 @@ GROUPS.videos = [
       // disclosure does not open on a pointer move. That is the whole reason the
       // click used to close the menu it had just opened (see `videoContextOptions`).
       await toggle.tap();
-      // Assert the interaction happened. Without this the recording is a page that
-      // looks like it covered a menu tap; with it, a control that never opens the
-      // menu is a gate-visible skip instead of a green GIF of nothing.
-      await page.locator(".nav-group-menu").first().waitFor({ state: "visible", timeout: 3000 });
+      // The post-condition is the panel itself. This used to wait for
+      // `.nav-group-menu`, which was correct when the tap opened the Company
+      // dropdown — but #557 made that dropdown *nested inside* the panel, so a
+      // single tap now opens the panel and the wait timed out: the one motion
+      // capture of the mobile menu was lost with the scenario still green.
+      // The panel is also never unmounted (it toggles a class), so the close has
+      // to be asserted as hidden rather than detached.
+      const panel = page.locator(".landing-nav-links.landing-nav-links-open");
+      await panel.waitFor({ state: "visible", timeout: 3000 });
       await page.waitForTimeout(700);
       await page.keyboard.press("Escape");
       // ...and assert Escape actually dismissed it, so the recording cannot claim
       // a close that did not happen.
-      await page.locator(".nav-group-menu").first().waitFor({ state: "detached", timeout: 3000 });
+      await panel.waitFor({ state: "hidden", timeout: 3000 });
+      // The description promises the trigger is refocused, so check it rather
+      // than let the wording promise something the run never verifies.
+      const refocused = await page
+        .waitForFunction(
+          (sel) => document.activeElement?.classList.contains(sel),
+          "landing-nav-toggle",
+          { timeout: 3000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (!refocused) {
+        throw new Error("Escape closed the panel but did not return focus to the toggle");
+      }
       await page.waitForTimeout(700);
     },
   },
@@ -2546,6 +2604,25 @@ async function applyInteraction(page, scenario) {
       return null;
     },
     click: async () => {
+      // A control that only becomes reachable after another one is clicked —
+      // #557's mobile hamburger is `display: none` above 900px and its panel's
+      // links (including this scenario's own target) are `display: none` below
+      // it, so at a phone width the trigger has no box until the panel opens.
+      // Each `preClick` is attempted in order and *silently* skipped when it is
+      // not visible, because being absent is the legitimate per-viewport case:
+      // the row's disclosure already exists on desktop, the panel's does not.
+      // Skipping must not warn, or the desktop half of a two-viewport scenario
+      // would report a finding for doing the right thing.
+      for (const selector of scenario.preClick ?? []) {
+        const pre = page.locator(selector).first();
+        if (await pre.isVisible().catch(() => false)) {
+          const preRes = await clickAtPoint(page, pre);
+          if (preRes.clicked) {
+            await page.waitForTimeout(450);
+            acts.push({ action: "preClick", selector, ...preRes.point });
+          }
+        }
+      }
       const locator = page.locator(scenario.click).first();
       if (await locator.count()) {
         const res = await clickAtPoint(page, locator);
@@ -2710,7 +2787,17 @@ async function safeHover(page, selector, timeout = 4000) {
  * limiter than reloading per state.
  */
 async function runRouteGroup(audit, group, route, viewport, theme) {
-  const scenarios = GROUPS[group].filter((s) => s.route === route);
+  // A scenario may pin itself to one viewport, the way video scenarios already
+  // do. This is what lets one page carry two states that are *different
+  // interactions* at different widths rather than one interaction that has to
+  // work everywhere: #557's landing disclosure opens on hover on desktop and by
+  // tapping the hamburger first on a phone, so a single `click` cannot photograph
+  // both. Without the pin, the two states would have to share a mechanism, and
+  // the mobile one would have been a false green — the click landing on an
+  // element with no box while the capture was recorded as success.
+  const scenarios = GROUPS[group].filter(
+    (s) => s.route === route && (s.viewport == null || s.viewport === viewport),
+  );
   if (!scenarios.length) return;
 
   const vp = VIEWPORTS[viewport];

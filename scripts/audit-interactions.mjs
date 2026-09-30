@@ -247,7 +247,7 @@ export const SCENARIO_METADATA_KEYS = [
  * off the scenario, and a key that is read but unlisted is exactly the silent
  * no-op `undeclaredStepKeys` exists to catch.
  */
-export const STEP_OPTION_KEYS = ["clickAgain", "assertMs"];
+export const STEP_OPTION_KEYS = ["clickAgain", "assertMs", "preClick"];
 
 /**
  * Steps a scenario asks for that no step implements, so they can never run.

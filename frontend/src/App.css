@@ -1443,6 +1443,82 @@ body {
   }
 }
 
+/* The mobile panel's own controls (demo CTA + theme toggle). Hidden by default
+   because above the collapse width the row already carries a demo CTA and a
+   toggle; showing both would give every marketing page two of each. Same
+   mutually-exclusive arrangement as the workspace navbar's `.navbar-user` /
+   `.navbar-user-mobile` pair. */
+.landing-nav-panel-actions {
+  display: none;
+}
+
+/* The hamburger. Hidden above the collapse width, so the desktop row keeps its
+   exact geometry (see navbarBudget.test.ts). */
+.landing-nav-toggle {
+  display: none;
+}
+
+.landing-nav-toggle-bar {
+  display: block;
+  width: 20px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+/* An open state a sighted user can see. `aria-expanded` alone is invisible to
+   everyone who can look but cannot use a screen reader, so without this the
+   control's only open-state signal was one nobody in the intended audience of
+   this control can perceive. Same bars-to-X transform as `.navbar-toggle`, so
+   the two headers behave identically. */
+.landing-nav-toggle-bar {
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.landing-nav-toggle[aria-expanded="true"] .landing-nav-toggle-bar:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.landing-nav-toggle[aria-expanded="true"] .landing-nav-toggle-bar:nth-child(2) {
+  opacity: 0;
+}
+
+.landing-nav-toggle[aria-expanded="true"] .landing-nav-toggle-bar:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-nav-toggle-bar {
+    transition: none;
+  }
+}
+
+/* The panel's entry, deliberately the same 0.18s as the bars-to-X morph.
+   Without it the two halves of one control are out of step in a way a reviewer
+   sees immediately: the menu snapped in instantly while the icon took 180ms to
+   become a cross, so the first frame of the recording showed an open menu
+   labelled with a hamburger. A `transition` cannot help here — `display: none`
+   to `display: flex` is not a transitionable pair, and the panel has to be
+   `display: none` to stay out of the closed header's height. An `animation`
+   runs on the class change, which is what makes animating a `display` toggle
+   possible at all. */
+@keyframes landing-nav-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-nav-links-open {
+    animation: none;
+  }
+}
+
 /* Current page, marked the same way `.nav-group-menu a.active` marks it, so the
    flat links and the menu's own links read as one navigation. `aria-current` is
    mirrored in the selector so the state is visible even if the class is ever
@@ -1464,12 +1540,12 @@ body {
   color: var(--ink);
 }
 
-/* Below this width the flat list cannot share a row with the brand, the Company
-   menu, the toggle and the primary CTA at any spacing that still reads as a nav,
-   so the links move to their own full-width row and the menu trigger becomes a
-   disclosure (below). Raising this from 768px is what closes the 850-1024px
-   wrapping band: the flat list is on ONE row at every width where it is visible,
-   instead of one row from 1100px up with an orphan link in between.
+/* The links cannot share a row with the brand, the toggle, the hamburger and the
+   primary CTA at any spacing that still reads as a nav, so below the collapse
+   width they become a disclosure panel instead of a wrapped row.
+   Raising this from 768px is what closes the 850-1024px wrapping band: the flat
+   list is on ONE row at every width where it is visible, instead of one row from
+   1100px up with an orphan link in between.
 
    900px, and not the ~873px the arithmetic minimum suggests, because the row has
    to hold the WIDEST state of the primary CTA. It reads "Sign up" logged out
@@ -1478,18 +1554,83 @@ body {
    narrower and invisible in a logged-out test. 900px keeps ~24px of slack in
    both states instead of ~7px, and is a conventional collapse width.
 
+   ## Why the theme toggle moved into the panel (#557)
+
+   The mobile row holds `brand + hamburger + CTA`, and the arithmetic is tight
+   enough that it cannot also hold the toggle. Measured in Chromium at 375px,
+   with the content box at 330px (375 - 2 x 6vw):
+
+     brand            111.3
+     row gap           12
+     hamburger         44   (2.5.5 floor; it is the only way to reach the nav)
+     gap               12
+     CTA "Go to app"  107.6   <- the wide auth state, not "Sign up" at 93.3
+     ---------------------
+                     286.9   fits 330, with 43px of slack
+
+   Adding the theme toggle (44px) plus its gap (12px) makes it 342.9 against a
+   330px box: a 13px overflow at the very width this breakpoint exists to serve,
+   and only for signed-in visitors. So the **secondary** control moves into the
+   panel and the **primary** CTA stays in the row — the reverse of the workspace
+   navbar, where the row has room for both and the panel only catches up on
+   narrow screens.
+
    This must stay in step with the `.nav-group-menu` block further down the file,
    which drops the menu's absolute positioning for the same reason. */
 @media (max-width: 900px) {
   .landing-navbar {
+    /* Wraps, so the panel can take a line of its own when it opens. `nowrap`
+       looks right — the *row* is only brand + hamburger + CTA and does fit on one
+       line — but the panel is a sibling in that same flex row, so without wrap it
+       never reaches its own line: it is shrunk to its min-content width beside
+       the brand and overflows the viewport. The closed header is unaffected
+       either way (the panel is `display: none`, so the row is a single line and
+       measures 81px), which is why this only shows up with the panel open. */
     flex-wrap: wrap;
     gap: 12px;
   }
 
+  /* Closed by default. This is the whole fix: the links are out of the header's
+     height budget unless the visitor asks for them. */
   .landing-nav-links {
+    display: none;
+  }
+
+  .landing-nav-links-open {
+    display: flex;
+    /* Column, so each destination gets the full width on its own row. The
+       desktop row is a horizontal flex, and inheriting that here is what made
+       the old wrapped group read as a squeezed list rather than a menu. */
+    flex-direction: column;
+    align-items: stretch;
     order: 3;
     width: 100%;
-    gap: 20px;
+    gap: 0;
+    /* Full-bleed to the navbar's own gutter. `width: 100%` on a flex item in a
+       wrapping row would be the content width; with the row no longer wrapping,
+       the panel is a sibling that has to claim the width explicitly. */
+    margin-top: 12px;
+    padding-bottom: 12px;
+    border-top: 1px solid var(--line);
+    animation: landing-nav-panel-in 0.18s var(--ease-standard);
+  }
+
+  /* The panel is a column now, so the flat group stacks instead of wrapping.
+     `gap: 0` and per-link padding give an even, full-bleed list; the wrap that
+     produced three ragged lines is exactly what is being removed. */
+  .nav-flat {
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: nowrap;
+    gap: 0;
+  }
+
+  .landing-nav-links .nav-flat a {
+    /* Full-width rows are thumb-sized by construction; padding rather than
+       `min-height` so the label stays vertically centred. */
+    width: 100%;
+    padding: 11px 0;
+    font-size: 0.95rem;
   }
 
   /* Mobile 2.5.5 targets for the header controls — 44x44 rather than merely
@@ -1500,8 +1641,10 @@ body {
      the primary CTA measures 43.2px and only needs 0.8px. Scoped to the mobile
      band and to the header, so the 901px+ row keeps its exact geometry. */
   .landing-nav-actions .theme-toggle {
-    width: 44px;
-    height: 44px;
+    /* Hidden in the row — the panel's copy is the live one at this width. See the
+       width arithmetic above. Both carry this size, so whichever is displayed has
+       the same thumb target. */
+    display: none;
   }
 
   .nav-group-trigger {
@@ -1512,8 +1655,56 @@ body {
     min-height: 44px;
   }
 
+  /* The hamburger. Stacked bars, like the workspace navbar's. */
+  .landing-nav-toggle {
+    display: inline-flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    width: 44px;
+    height: 44px;
+    align-items: center;
+    /* The bars are `currentColor`, so it inherits the header's ink like the other
+       controls rather than needing its own colour. */
+    color: var(--ink);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .landing-nav-toggle:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+  }
+
+  /* The panel's copy of the theme toggle, which the row cannot afford at this
+     width. `justify-content: flex-start`, not `space-between`: the toggle is the
+     only child now (the panel has no demo button — see LandingNavbar.tsx), and
+     space-between against a single child is a no-op that reads as "stretched"
+     only if something is added back. Left-aligned so the control sits on the
+     same edge as the links above it. */
+  .landing-nav-panel-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    /* Deliberately further from the nested Company card (8px above it) than the
+       card sits from its trigger. The card's own bottom border and this divider
+       are the same width, so equal spacing on either side made them read as one
+       rule drawn twice; unequal spacing is what tells them apart. */
+    margin-top: 28px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  .landing-nav-panel-actions .theme-toggle {
+    color: var(--ink);
+  }
+
   /* The nav links themselves get the full 44px in the mobile band, where this
-     row IS the primary navigation — at 24px they clear 2.5.8 but are cramped
+     panel IS the primary navigation — at 24px they clear 2.5.8 but are cramped
      for a thumb. Above 900px they stay at the 24px floor, which is what keeps
      the desktop row's height at exactly 80/82px. */
   .landing-nav-links a,

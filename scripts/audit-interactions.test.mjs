@@ -250,12 +250,15 @@ test("every listed key is actually used by some scenario shape", () => {
   }
 });
 
-test("the two step options the audit reads are listed", () => {
-  // `clickAgain` (a second click inside `click`) and `assertMs` (a timeout inside
-  // `assertAttr`) are read off the scenario by the still path. If either is
-  // renamed without being relisted, the guard would reject every scenario using
-  // it — which is the point, but the rename should be deliberate.
-  assert.deepEqual(STEP_OPTION_KEYS, ["clickAgain", "assertMs"]);
+test("every step option the audit reads is listed", () => {
+  // `clickAgain` (a second click inside `click`), `assertMs` (a timeout inside
+  // `assertAttr`) and `preClick` (clicks that must land before `click`, because
+  // the target has no box until they do) are read off the scenario by the still
+  // path. If any is renamed without being relisted, the guard would reject every
+  // scenario using it — which is the point, but the rename should be deliberate.
+  // The deep-equal is deliberate too: a new option has to be *added here*, where
+  // the cost is a visible edit, rather than slipping in as a third entry.
+  assert.deepEqual(STEP_OPTION_KEYS, ["clickAgain", "assertMs", "preClick"]);
 });
 
 test("`run` is not a permitted still key, however it is spelled", () => {
@@ -899,4 +902,45 @@ test("the video wrapper forwards the recording context instead of dropping it", 
       `scenario run signature "${params}" takes a positional argument that is not the context`,
     );
   }
+});
+
+// ── a control that only exists after another is clicked (#557) ─────────────
+
+test("`preClick` is a declared option, so a scenario using it is not reported as undeclared", () => {
+  // The whole guard this sits behind exists because a scenario key that no step
+  // implements is *silently dropped* and the capture is then photographed as
+  // though the interaction had happened. `preClick` is honoured by the click
+  // step in audit.mjs, so it has to be in the allow-list here — otherwise the
+  // guard would report the very scenario that uses it correctly.
+  assert.ok(STEP_OPTION_KEYS.includes("preClick"));
+  assert.deepEqual(
+    undeclaredStepKeys({ route: "/", state: "s", preClick: [".landing-nav-toggle"], click: ".x" }),
+    [],
+  );
+});
+
+test("a still that opens a menu in two taps declares the first tap as `preClick`", () => {
+  // The regression this pins: #557 moved the landing nav links into a panel that
+  // is `display: none` below 900px, which left `.nav-group-trigger` with no box
+  // on a phone. The scenario clicked it anyway, the click was only *warned*
+  // about, and the "open menu" capture recorded the closed header as success —
+  // a false green, discovered only because a reviewer noticed the screenshot.
+  // Two taps are now the declared requirement, not an accident of the page.
+  const keys = orderedStepKeys({ click: ".nav-group-trigger", preClick: [".landing-nav-toggle"] });
+  assert.ok(keys.includes("click"), "the click still runs");
+  // `preClick` is an option OF `click`, not a step of its own, so it must not
+  // appear in the ordering: a step no handler implements would never fire.
+  assert.ok(!keys.includes("preClick"));
+});
+
+test("a scenario that pre-clicks is still ordered so the assertion sees the result", () => {
+  const keys = orderedStepKeys({
+    click: ".nav-group-trigger",
+    preClick: [".landing-nav-toggle"],
+    assertAttr: { selector: ".nav-group-trigger", attr: "aria-expanded", value: "true" },
+  });
+  assert.ok(
+    keys.indexOf("click") < keys.indexOf("assertAttr"),
+    "the post-condition must run after the interaction it checks",
+  );
 });
