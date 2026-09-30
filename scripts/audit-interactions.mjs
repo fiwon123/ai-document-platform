@@ -409,3 +409,71 @@ export function planPageSteps(scrollHeight, viewportHeight, options = {}) {
 export function stepMoved(previousOffset, offset) {
   return Math.abs(offset - previousOffset) >= 1;
 }
+
+/**
+ * Playwright context options for a recorded animation (#568).
+ *
+ * The video path used to pass only `viewport` and `recordVideo`, while the still
+ * path (`runRouteGroup`) also passed `isMobile`/`hasTouch`. So a "mobile"
+ * recording was a 375px-wide **desktop** context: Chromium reported
+ * `(hover: hover): true` and `(pointer: coarse): false` in it, which no phone
+ * does and which the app's own guard reads as "a mouse is available".
+ *
+ * That is not a cosmetic mismatch, it changed what the recording showed. The
+ * landing disclosure opens on hover for `(hover: hover)` devices only, so in a
+ * fake-mobile context the menu opened on a mouse move, and the scenario's
+ * subsequent click — a toggle, so it *closed* what hover had just opened — left
+ * the page looking static. Measured both ways in the same run:
+ *
+ *   viewport only          hover=true   menu after hover=true   after click=false
+ *   isMobile+hasTouch      hover=false  menu after hover=false  after click=true
+ *
+ * A recording of a phone that behaves like a laptop is a worse artefact than no
+ * recording, because it is reviewed and believed. Deriving the options in one
+ * place keeps the two paths from drifting again: the still path and the video
+ * path then differ only in `reducedMotion`, which is deliberate and documented
+ * there (recording motion is the point of this path).
+ *
+ * @param {{ width: number, height: number, isMobile?: boolean }} vp
+ * @param {string} videoDir  scratch directory for the raw WebM
+ */
+export function videoContextOptions(vp, videoDir) {
+  return {
+    viewport: { width: vp.width, height: vp.height },
+    isMobile: vp.isMobile,
+    hasTouch: vp.isMobile,
+    deviceScaleFactor: 1,
+    recordVideo: { dir: videoDir, size: { width: vp.width, height: vp.height } },
+  };
+}
+
+/**
+ * Manifest entry for a scenario that threw instead of recording (#568).
+ *
+ * A failed recording used to produce an `error` and nothing else. No gate signal
+ * reads `error`, so the run reported its video count as if the capture had
+ * happened — the summary said "7 videos" while the one under test never
+ * recorded, and the green GIF-shaped absence looked like coverage.
+ *
+ * So it is filed as a **skip** as well, which `skips` is a gate signal for. The
+ * deliberate consequence: a scenario that cannot do its job fails the run rather
+ * than passing quietly, which is the whole point of recording the interaction at
+ * all. Both fields are kept — `error` is the machine detail for the run log,
+ * `skipped` is what the gate counts and what the summary prints.
+ *
+ * @param {{ route: string, viewport: string, theme: string, state: string }} target
+ * @param {Error | { message?: string }} err
+ */
+export function scenarioFailureEntry(target, err) {
+  const message = err?.message ?? String(err);
+  return {
+    route: target.route,
+    viewport: target.viewport,
+    theme: target.theme,
+    state: target.state,
+    type: "video",
+    file: null,
+    error: message,
+    skipped: `scenario failed: ${message}`,
+  };
+}

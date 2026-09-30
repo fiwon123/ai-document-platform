@@ -91,9 +91,11 @@ import {
   orderedStepKeys,
   planGroupPasses,
   planPageSteps,
+  scenarioFailureEntry,
   stepMoved,
   unreachableStepKeys,
   undeclaredStepKeys,
+  videoContextOptions,
 } from "./audit-interactions.mjs";
 import { Pacer, rateLimitFindings } from "./audit-pacer.mjs";
 
@@ -1164,10 +1166,12 @@ class Audit {
     const vp = VIEWPORTS[viewport];
     await fsp.mkdir(this.videoTempDir, { recursive: true });
 
-    const context = await this.browser.newContext({
-      viewport: { width: vp.width, height: vp.height },
-      recordVideo: { dir: this.videoTempDir, size: { width: vp.width, height: vp.height } },
-    });
+    // `isMobile`/`hasTouch` are what make this a *mobile* recording rather than a
+    // 375px-wide desktop one — see `videoContextOptions` for the measurement that
+    // shows the difference is not cosmetic. Deliberately still no
+    // `reducedMotion`, unlike the still path: recording motion is this path's
+    // entire purpose.
+    const context = await this.browser.newContext(videoContextOptions(vp, this.videoTempDir));
     const consoleErrors = [];
     const pageErrors = [];
     // A 429 during *this* capture, so a selector that failed to appear can be
@@ -1203,7 +1207,12 @@ class Audit {
       await run(page);
     } catch (err) {
       warn(`video scenario ${base} failed: ${err.message}`);
-      this.addEntry({ route, viewport, theme, state, type: "video", file: null, error: err.message });
+      // Filed as a SKIP, not only an error: `skips` is a gate signal, and a
+      // failed interaction recording is precisely what the gate exists to catch.
+      // Before this, an exception produced a manifest `error` that no gate signal
+      // consumed, so the summary could report "7 videos" while one of them never
+      // happened (#568).
+      this.addEntry(scenarioFailureEntry({ route, viewport, theme, state }, err));
       await context.close().catch(() => {});
       return;
     }
@@ -1754,17 +1763,40 @@ GROUPS.videos = [
     },
   },
   {
-    route: "/", viewport: "mobile", state: "hamburger", expect: ".navbar-toggle, .landing-navbar",
-    description: "Mobile menu open, focus moved into it, Escape and focus back",
+    // Named for what it is, not for a control that does not exist: the landing
+    // header never collapses into a hamburger. At <=900px the nav links wrap to
+    // their own row and the Company disclosure button is the menu. (Renamed from
+    // `hamburger`, which named a control that was never on this page — the kind
+    // of label that sends a reviewer looking for something absent.)
+    route: "/", viewport: "mobile", state: "disclosure-menu", expect: ".landing-navbar",
+    description: "Mobile disclosure menu opened by tap, held open, then Escape closes and refocuses the trigger",
     run: async (page) => {
-      const toggle = page.locator(".navbar-toggle, .landing-navbar button[aria-expanded]").first();
-      await toggle.waitFor({ state: "attached", timeout: 5000 }).catch(() => {});
-      if (await toggle.count()) {
-        await toggle.click();
-        await page.waitForTimeout(700);
-        await page.keyboard.press("Escape");
-        await page.waitForTimeout(700);
+      // Assert the control exists instead of clicking a phantom. The old version
+      // resolved `.navbar-toggle, .landing-navbar button[aria-expanded]` — the
+      // first selector is an app-shell control that is not on the landing page at
+      // all, and the wait was `.catch(() => {})`-swallowed, so when nothing matched
+      // the scenario clicked nothing and recorded 6s of a static page under a name
+      // that claimed it covered a menu (#568).
+      const toggle = page.locator(".landing-navbar button[aria-expanded]").first();
+      await toggle.waitFor({ state: "visible", timeout: 5000 });
+      if (!(await toggle.count())) {
+        throw new Error("no landing-navbar disclosure button at the mobile width");
       }
+      // A tap, and nothing else. No hover: this context now sets `isMobile`, so
+      // Chromium reports `(hover: hover): false` — as on a real phone — and the
+      // disclosure does not open on a pointer move. That is the whole reason the
+      // click used to close the menu it had just opened (see `videoContextOptions`).
+      await toggle.tap();
+      // Assert the interaction happened. Without this the recording is a page that
+      // looks like it covered a menu tap; with it, a control that never opens the
+      // menu is a gate-visible skip instead of a green GIF of nothing.
+      await page.locator(".nav-group-menu").first().waitFor({ state: "visible", timeout: 3000 });
+      await page.waitForTimeout(700);
+      await page.keyboard.press("Escape");
+      // ...and assert Escape actually dismissed it, so the recording cannot claim
+      // a close that did not happen.
+      await page.locator(".nav-group-menu").first().waitFor({ state: "detached", timeout: 3000 });
+      await page.waitForTimeout(700);
     },
   },
   {
