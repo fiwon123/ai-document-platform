@@ -187,8 +187,8 @@ function NavGroupMenu({
   );
 }
 
-/** Section hubs. The Product hub is a flat header link; the Company hub is also
- *  the first item inside its menu. */
+/** Section hubs. The Product hub is a flat list in the desktop row; Company is a
+ *  disclosure, and is a flat list again inside the mobile panel — see below. */
 const PRODUCT_HUB = "/product";
 const COMPANY_HUB = "/company";
 
@@ -207,10 +207,71 @@ const COMPANY_HUB = "/company";
  * Legal pages are deliberately absent: they live in the footer only. Putting
  * eight destinations in the header turns navigation into a wall of links, and
  * nobody reaches a GDPR page from a primary nav.
+ *
+ * ## Mobile (#557)
+ *
+ * Below the collapse width the flat list used to move to its own full-width row
+ * and wrap: at 375px it needed three rendered lines and the header measured
+ * **241px, 30% of an 812px viewport**, before any page content. The links had
+ * nowhere to go — six destinations plus a brand, a toggle and two buttons do
+ * not fit on one 330px line — so they spilled rather than collapsing.
+ *
+ * They now collapse into a disclosure panel, the same pattern the workspace
+ * `Navbar` already uses. Both navbars being hamburger-driven at the same
+ * breakpoint is deliberate: a header that is a wall of links on desktop and a
+ * menu on mobile is a normal, recognisable pattern, and reusing the workspace
+ * navbar's keyboard handling keeps one implementation to reason about.
+ *
+ * The panel carries the thing the row cannot afford at this width: the theme
+ * toggle. The **primary CTA stays in the row**, which is why the toggle is what
+ * moved — see the width arithmetic on the toggle rules in `App.css`.
+ *
+ * The demo CTA is *not* duplicated into the panel. `NAV_PRODUCT` already
+ * contributes a "Live demo" link to `/demo` to the list the panel shows, so a
+ * second control would put the same destination twice in one menu. On desktop
+ * the row's own "Try the demo" button is dropped below 1200px and that link is
+ * what remains — which is this issue's "present or deliberately replaced with an
+ * equivalent", satisfied by an equivalent rather than by a second button.
  */
 export function LandingNavbar() {
   const { user } = useAuth();
   const { pathname } = useLocation();
+  /* Openness is tracked as the path the panel was opened *for*, the same trick
+     NavGroupMenu below uses. A plain boolean needs an effect to close on
+     navigation, and a setState-in-effect is a second render pass for something
+     the render already knows: the panel was opened on one route, the route
+     changed, so it is closed. It also means a browser back/forward cannot
+     leave the panel hanging open over unrelated content. */
+  const [openedFor, setOpenedFor] = useState<string | null>(null);
+  const menuOpen = openedFor === pathname;
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const closeMenu = useCallback(() => setOpenedFor(null), []);
+
+  // Mobile panel key handling (ARIA disclosure, APG "Navigation Menu Button"):
+  // focus moves to the first link on open, Escape closes and returns focus to
+  // the toggle. Tab follows DOM order — a disclosure panel is not a dialog, so
+  // it must NOT trap focus or a keyboard user could never leave it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuRef.current
+      ?.querySelector<HTMLElement>("a[href], button:not([disabled])")
+      ?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      closeMenu();
+      toggleRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [menuOpen, closeMenu]);
+
+  const toggleMenu = useCallback(
+    () => setOpenedFor((current) => (current === pathname ? null : pathname)),
+    [pathname],
+  );
 
   return (
     <nav className="landing-navbar">
@@ -219,34 +280,12 @@ export function LandingNavbar() {
         AskDocs
       </Link>
 
-      <div className="landing-nav-links">
-        {/* The hub is composed here rather than added to NAV_PRODUCT: the footer
-            derives its own Overview link from the column's `hub` field, so
-            putting it in the shared array would render it twice down there. */}
-        <div className="nav-flat">
-          <Link
-            to={PRODUCT_HUB}
-            className={pathname === PRODUCT_HUB ? "active" : undefined}
-            aria-current={pathname === PRODUCT_HUB ? "page" : undefined}
-          >
-            Overview
-          </Link>
-          {NAV_PRODUCT.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={pathname === item.to ? "active" : undefined}
-              aria-current={pathname === item.to ? "page" : undefined}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-
-        <NavGroupMenu label="Company" hub={COMPANY_HUB} items={NAV_COMPANY} />
-      </div>
-
       <div className="landing-nav-actions">
+        {/* Desktop placement. At the collapse width the row cannot hold both
+            this and the CTA (see App.css), so the panel carries a copy — the
+            same mutually-exclusive pair the workspace navbar uses for its
+            `.navbar-user` / `.navbar-user-mobile` cluster. Exactly one is ever
+            displayed, so only one reaches the accessibility tree. */}
         <ThemeToggle />
         <Link to="/demo" className="btn btn-secondary">
           Try the demo
@@ -260,6 +299,59 @@ export function LandingNavbar() {
             Sign up
           </Link>
         )}
+        <button
+          ref={toggleRef}
+          type="button"
+          className="landing-nav-toggle"
+          aria-expanded={menuOpen}
+          aria-controls="landing-nav-links"
+          aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
+          onClick={toggleMenu}
+        >
+          <span className="landing-nav-toggle-bar" />
+          <span className="landing-nav-toggle-bar" />
+          <span className="landing-nav-toggle-bar" />
+        </button>
+      </div>
+
+      <div
+        ref={menuRef}
+        id="landing-nav-links"
+        className={`landing-nav-links${menuOpen ? " landing-nav-links-open" : ""}`}
+      >
+        {/* The hub is composed here rather than added to NAV_PRODUCT: the footer
+            derives its own Overview link from the column's `hub` field, so
+            putting it in the shared array would render it twice down there. */}
+        <div className="nav-flat">
+          <Link
+            to={PRODUCT_HUB}
+            onClick={closeMenu}
+            className={pathname === PRODUCT_HUB ? "active" : undefined}
+            aria-current={pathname === PRODUCT_HUB ? "page" : undefined}
+          >
+            Overview
+          </Link>
+          {NAV_PRODUCT.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              onClick={closeMenu}
+              className={pathname === item.to ? "active" : undefined}
+              aria-current={pathname === item.to ? "page" : undefined}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+
+        <NavGroupMenu label="Company" hub={COMPANY_HUB} items={NAV_COMPANY} />
+
+        {/* Only rendered in the collapsed band, because the row's copy of the
+            theme toggle is hidden here. There is deliberately no "Try the demo"
+            button in the panel — see the note on the component above. */}
+        <div className="landing-nav-panel-actions">
+          <ThemeToggle />
+        </div>
       </div>
     </nav>
   );

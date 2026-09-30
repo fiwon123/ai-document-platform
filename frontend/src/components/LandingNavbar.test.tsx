@@ -251,7 +251,13 @@ describe("LandingNavbar", () => {
     // needed 409px and the row gave it 371px, so the last link wrapped and the
     // navbar grew 82px -> 105px. Gaps alone recover ~100px, so the band also
     // drops the secondary CTA — the one button the footer still links to.
-    const band = maxWidthBlockWhere((body) => body.includes(".nav-flat"));
+    // The compact band is identified by what it *does* — it drops the secondary
+    // CTA to buy its width — rather than by merely mentioning `.nav-flat`, which
+    // the <=900px collapse also does (#557 turned that band into a disclosure
+    // panel, so `.nav-flat` is now a stacked list rather than a tightened row).
+    const band = maxWidthBlockWhere((body) =>
+      body.includes(".landing-nav-actions .btn-secondary"),
+    );
 
     // Relational, not pinned numbers: any tightening counts, so a later design
     // tweak need not edit this test. What must not happen is the band re-widening
@@ -283,12 +289,21 @@ describe("LandingNavbar", () => {
   });
 
   it("collapses the navbar and the Company menu at the same width", () => {
-    // The two breakpoints are one contract: when the nav row wraps to full
-    // width, an absolutely positioned dropdown opens off-screen. Measured: the
-    // menu is `position: static` at <=900px and `absolute` at 901px, fully inside
-    // the viewport either way. Raising one block and not the other reintroduces
-    // an off-screen panel that no DOM test can see, so pin the equality rather
-    // than either width.
+    // The two breakpoints are one contract: at the collapse width the links move
+    // off the row entirely, and an absolutely positioned dropdown opens
+    // off-screen relative to a row that no longer holds it. Measured: the menu is
+    // `position: static` at <=900px and `absolute` at 901px, fully inside the
+    // viewport either way. Raising one block and not the other reintroduces an
+    // off-screen panel that no DOM test can see, so pin the equality rather than
+    // either width.
+    //
+    // The collapse used to be identified by `flex-wrap: wrap` on the navbar, and
+    // still is: wrapping is what lets the panel reach a line of its own. Setting
+    // it to `nowrap` looks harmless — the row itself fits — but the panel is a
+    // sibling in that row, so it is then shrunk to min-content and overflows the
+    // viewport. Asserting `display: none` on the links as well is what makes the
+    // two widths matching mean something: it proves the nav row actually stops
+    // showing the links at this width.
     const collapse = maxWidthBlockWhere(
       (body) => body.includes(".landing-navbar") && /flex-wrap\s*:\s*wrap/.test(body),
     );
@@ -297,8 +312,15 @@ describe("LandingNavbar", () => {
     );
     expect(
       collapse.width,
-      "navbar wrap and dropdown breakpoints must match",
+      "navbar collapse and dropdown breakpoints must match",
     ).toBe(dropdown.width);
+
+    // And the collapse must actually hide the links, or the two widths matching
+    // would prove nothing at all. `valueOf` is numeric, so read the raw
+    // declaration list for a non-numeric value like `none`.
+    expect(declarationsIn(collapse.body, ".landing-nav-links")).toContain(
+      "display: none",
+    );
   });
 
   it("keeps the navbar gutter aligned with the page's own gutter", () => {
@@ -457,9 +479,15 @@ describe("LandingNavbar", () => {
 
   it("links to demo, login, and sign up for anonymous visitors", () => {
     renderNavbar();
-    expect(screen.getByRole("link", { name: "Try the demo" }).getAttribute("href")).toBe(
-      "/demo",
-    );
+    // Exactly one demo CTA in the header, and it points at /demo. The mobile
+    // panel has no "Try the demo" button of its own: `NAV_PRODUCT` already puts a
+    // "Live demo" link to the same place two rows into the panel, so a second
+    // control would be the same destination twice in one 400px menu. `getByRole`
+    // rather than `getAllByRole` is the assertion that holds that — it throws if
+    // a duplicate ever comes back, which `toBeGreaterThan(1)` would have blessed.
+    const demoLinks = screen.getAllByRole("link", { name: "Try the demo" });
+    expect(demoLinks).toHaveLength(1);
+    expect(demoLinks[0]!.getAttribute("href")).toBe("/demo");
     expect(screen.getByRole("link", { name: "Sign up" }).getAttribute("href")).toBe(
       "/login",
     );
@@ -472,9 +500,15 @@ describe("LandingNavbar", () => {
     expect(screen.getByRole("link", { name: "Go to app" }).getAttribute("href")).toBe(
       "/app",
     );
-    expect(screen.getByRole("link", { name: "Try the demo" }).getAttribute("href")).toBe(
-      "/demo",
-    );
+    // Exactly one demo CTA in the header, and it points at /demo. The mobile
+    // panel has no "Try the demo" button of its own: `NAV_PRODUCT` already puts a
+    // "Live demo" link to the same place two rows into the panel, so a second
+    // control would be the same destination twice in one 400px menu. `getByRole`
+    // rather than `getAllByRole` is the assertion that holds that — it throws if
+    // a duplicate ever comes back, which `toBeGreaterThan(1)` would have blessed.
+    const demoLinks = screen.getAllByRole("link", { name: "Try the demo" });
+    expect(demoLinks).toHaveLength(1);
+    expect(demoLinks[0]!.getAttribute("href")).toBe("/demo");
   });
 
   it("closes on Escape and returns focus to the trigger", async () => {
@@ -557,9 +591,15 @@ describe("LandingNavbar", () => {
 
   it("links to demo, login, and sign up for anonymous visitors", () => {
     renderNavbar();
-    expect(screen.getByRole("link", { name: "Try the demo" }).getAttribute("href")).toBe(
-      "/demo",
-    );
+    // Exactly one demo CTA in the header, and it points at /demo. The mobile
+    // panel has no "Try the demo" button of its own: `NAV_PRODUCT` already puts a
+    // "Live demo" link to the same place two rows into the panel, so a second
+    // control would be the same destination twice in one 400px menu. `getByRole`
+    // rather than `getAllByRole` is the assertion that holds that — it throws if
+    // a duplicate ever comes back, which `toBeGreaterThan(1)` would have blessed.
+    const demoLinks = screen.getAllByRole("link", { name: "Try the demo" });
+    expect(demoLinks).toHaveLength(1);
+    expect(demoLinks[0]!.getAttribute("href")).toBe("/demo");
     expect(screen.getByRole("link", { name: "Sign up" }).getAttribute("href")).toBe(
       "/login",
     );
@@ -572,8 +612,194 @@ describe("LandingNavbar", () => {
     expect(screen.getByRole("link", { name: "Go to app" }).getAttribute("href")).toBe(
       "/app",
     );
-    expect(screen.getByRole("link", { name: "Try the demo" }).getAttribute("href")).toBe(
-      "/demo",
+    // Exactly one demo CTA in the header, and it points at /demo. The mobile
+    // panel has no "Try the demo" button of its own: `NAV_PRODUCT` already puts a
+    // "Live demo" link to the same place two rows into the panel, so a second
+    // control would be the same destination twice in one 400px menu. `getByRole`
+    // rather than `getAllByRole` is the assertion that holds that — it throws if
+    // a duplicate ever comes back, which `toBeGreaterThan(1)` would have blessed.
+    const demoLinks = screen.getAllByRole("link", { name: "Try the demo" });
+    expect(demoLinks).toHaveLength(1);
+    expect(demoLinks[0]!.getAttribute("href")).toBe("/demo");
+  });
+
+});
+
+/* ── #557: the mobile disclosure panel ─────────────────────────────────────
+   The header used to move its links to their own full-width row and let them
+   wrap: at 375px that was three rendered lines and 241px of an 812px viewport —
+   30% of the screen, before any content. The nav had nowhere to go, so it
+   spilled instead of collapsing.
+
+   These pin the collapse itself. The width arithmetic that decides *what* fits
+   in the row is verified in a browser (see the block comment in App.css); what
+   is testable here is that a control exists, that it is a real disclosure, and
+   that the panel's contents are out of the way until it is opened. */
+describe("LandingNavbar mobile panel (#557)", () => {
+  const toggle = () =>
+    screen.getByRole("button", { name: /navigation menu/i });
+
+  it("exposes the nav links behind a labelled disclosure button", () => {
+    renderNavbar();
+    const button = toggle();
+    // APG "Navigation Menu Button": a real button, wired to the panel it
+    // reveals, and reporting its state. A bare hamburger icon with no
+    // aria-expanded is the failure mode this assertion exists to catch.
+    expect(button.tagName).toBe("BUTTON");
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(button.getAttribute("aria-controls")).toBe("landing-nav-links");
+    expect(document.getElementById("landing-nav-links")).not.toBeNull();
+  });
+
+  it("toggles aria-expanded and the panel class", async () => {
+    renderNavbar();
+    await userEvent.click(toggle());
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(
+      document.getElementById("landing-nav-links")?.className,
+    ).toContain("landing-nav-links-open");
+
+    await userEvent.click(toggle());
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+    expect(
+      document.getElementById("landing-nav-links")?.className,
+    ).not.toContain("landing-nav-links-open");
+  });
+
+  it("moves focus to the first panel link and returns it on Escape", async () => {
+    renderNavbar();
+    const button = toggle();
+    await userEvent.click(button);
+    // Focus moves *into* the panel, so a keyboard user is not left tabbing
+    // through the page behind an open menu.
+    const panel = document.getElementById("landing-nav-links")!;
+    expect(panel.contains(document.activeElement)).toBe(true);
+
+    await userEvent.keyboard("{Escape}");
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(button);
+  });
+
+  it("closes on navigation, so a route change cannot leave it hanging open", async () => {
+    renderNavbar("/pricing");
+    await userEvent.click(toggle());
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+
+    // Openness is keyed to the path it was opened for, so following a panel
+    // link closes it without a setState-in-effect.
+    await userEvent.click(screen.getAllByRole("link", { name: "Features" })[0]!);
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("keeps every destination reachable from the panel", async () => {
+    renderNavbar();
+    await userEvent.click(toggle());
+    const panel = document.getElementById("landing-nav-links")!;
+    const hrefs = [...panel.querySelectorAll("a[href]")].map((a) =>
+      a.getAttribute("href"),
     );
+
+    // The acceptance criterion is reachability, so assert the set of
+    // destinations rather than that some links exist.
+    for (const to of ["/product", "/demo"]) {
+      expect(hrefs, `panel must reach ${to}`).toContain(to);
+    }
+    for (const item of NAV_PRODUCT) {
+      expect(hrefs, `panel must reach ${item.to}`).toContain(item.to);
+    }
+  });
+
+  it("carries the theme toggle the row cannot afford, and no duplicate demo CTA", async () => {
+    renderNavbar();
+    await userEvent.click(toggle());
+    const panel = document.getElementById("landing-nav-links")!;
+    const actions = panel.querySelector(".landing-nav-panel-actions");
+    expect(actions?.querySelector(".theme-toggle")).not.toBeNull();
+    // The demo is reachable from the header below 1200px — via `NAV_PRODUCT`'s
+    // "Live demo" link, which the panel already renders. What must NOT be here is
+    // a second control for that same destination: one acceptance criterion is
+    // that the demo CTA stays present or is deliberately replaced by an
+    // equivalent, and a duplicate is neither of those things.
+    expect(actions?.querySelector('a[href="/demo"]')).toBeNull();
+    expect(
+      [...panel.querySelectorAll(".nav-flat a[href='/demo']")].length,
+      "one 'Live demo' link in the panel",
+    ).toBe(1);
+  });
+
+  it("gives the hamburger a visible open state, not just aria-expanded", () => {
+    renderNavbar();
+    // `aria-expanded` is invisible to everyone who can see but cannot use a
+    // screen reader — which is most people, on the one control whose entire job
+    // is to say whether the panel is open. Pin the transform that draws the X,
+    // matching `.navbar-toggle`, so the signal cannot silently disappear.
+    for (const child of [1, 2, 3]) {
+      const selector = `.landing-nav-toggle[aria-expanded="true"] .landing-nav-toggle-bar:nth-child(${child})`;
+      expect(
+        declarationsFor(selector).join(";"),
+        `open-state bar ${child}`,
+      ).not.toBe("");
+    }
+    // The middle bar vanishes and the outer two cross: that pair is the X.
+    const top = declarationsFor(
+      '.landing-nav-toggle[aria-expanded="true"] .landing-nav-toggle-bar:nth-child(1)',
+    ).join(";");
+    expect(top).toContain("rotate(45deg)");
+    expect(top).toContain("translateY(6px)");
+    expect(
+      declarationsFor(
+        '.landing-nav-toggle[aria-expanded="true"] .landing-nav-toggle-bar:nth-child(2)',
+      ),
+    ).toContain("opacity: 0");
+    expect(
+      declarationsFor(
+        '.landing-nav-toggle[aria-expanded="true"] .landing-nav-toggle-bar:nth-child(3)',
+      ).join(";"),
+    ).toContain("rotate(-45deg)");
+    // And the toggled label, which is what a screen reader does get.
+    expect(screen.getByRole("button", { name: "Open navigation menu" })).not.toBeNull();
+  });
+
+  it("hides the panel's own controls and the hamburger above the collapse width", () => {
+    // The collapse must be additive. If either the toggle or the panel's extra
+    // controls were visible by default, the desktop row would show a hamburger
+    // and a second theme toggle at every width — and #424 budgeted that row to
+    // an exact 80.2/82.2px height that a 44px toggle would grow.
+    expect(
+      declarationsFor(".landing-nav-toggle"),
+      ".landing-nav-toggle display",
+    ).toContain("display: none");
+    expect(
+      declarationsFor(".landing-nav-panel-actions"),
+      ".landing-nav-panel-actions display",
+    ).toContain("display: none");
+  });
+
+  it("shows the hamburger inside the 900px collapse and nowhere else", () => {
+    const blocks = maxWidthBlocks().filter((b) =>
+      b.body.includes(".landing-nav-toggle"),
+    );
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]!.width).toBe(900);
+    expect(blocks[0]!.body).toMatch(
+      /\.landing-nav-toggle\s*\{[^}]*display:\s*inline-flex/,
+    );
+  });
+
+  it("moves the row's theme toggle into the panel, because the row cannot hold both", () => {
+    // The arithmetic (App.css, measured in Chromium at 375px): the row is
+    // brand + hamburger + CTA = 286.9px against a 330px content box, which
+    // leaves 43px. Adding the 44px toggle and its 12px gap makes it 342.9 —
+    // a 13px overflow at the width this breakpoint exists to serve, and only for
+    // signed-in visitors. So the secondary control moves and the primary CTA
+    // stays. Pin the direction of that trade so it is not silently reversed.
+    const collapse = maxWidthBlockWhere((body) =>
+      body.includes(".landing-nav-panel-actions"),
+    );
+    expect(collapse.width).toBe(900);
+    expect(
+      declarationsIn(collapse.body, ".landing-nav-actions .theme-toggle"),
+      "row theme toggle inside the collapse",
+    ).toContain("display: none");
   });
 });
