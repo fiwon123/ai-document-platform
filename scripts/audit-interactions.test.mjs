@@ -24,9 +24,11 @@ import {
   planGroupPasses,
   planPageSteps,
   planTailSteps,
+  scenarioFailureEntry,
   stepMoved,
   unreachableStepKeys,
   undeclaredStepKeys,
+  videoContextOptions,
   MAX_PAGE_STEPS,
   SCENARIO_METADATA_KEYS,
   STEP_OPTION_KEYS,
@@ -754,6 +756,86 @@ test("an unknown group is rejected by name, and videos is not treated as one", (
   assert.throws(() => planGroupPasses(["videos", "bogus"], GROUP_NAMES), /unknown group "bogus"/);
 });
 
+// ── the video context is a mobile context (#568) ────────────────────────────
+
+test("a mobile video context sets isMobile and hasTouch, not just a narrow viewport", () => {
+  // The regression in one assertion: `viewport` alone produces a 375px *desktop*
+  // context, in which Chromium answers `(hover: hover): true`. The app gates its
+  // hover behaviour on exactly that query, so the recording exercised a code path
+  // no phone takes.
+  const opts = videoContextOptions({ width: 375, height: 812, isMobile: true }, "/tmp/vid");
+  assert.equal(opts.isMobile, true, "isMobile must be set, or the context reports a hover-capable pointer");
+  assert.equal(opts.hasTouch, true, "a touch-only context is what makes `tap()` a real tap");
+  assert.deepEqual(opts.viewport, { width: 375, height: 812 });
+});
+
+test("the video context's viewport and the recording size agree", () => {
+  // They are two different consumers of the same numbers: the page lays out at
+  // `viewport`, and `recordVideo.size` is what gets encoded. If they drift the
+  // artefact is scaled or letterboxed relative to what the page rendered.
+  const opts = videoContextOptions({ width: 375, height: 812, isMobile: true }, "/tmp/vid");
+  assert.deepEqual(opts.recordVideo, { dir: "/tmp/vid", size: { width: 375, height: 812 } });
+});
+
+test("a desktop video context is not made mobile", () => {
+  // The mirror must be driven by the viewport's own flag, not applied
+  // unconditionally — otherwise every desktop recording would claim touch
+  // support it does not have.
+  const opts = videoContextOptions({ width: 1440, height: 900, isMobile: false }, "/tmp/vid");
+  assert.equal(opts.isMobile, false);
+  assert.equal(opts.hasTouch, false);
+});
+
+test("a viewport with no isMobile flag is treated as a pointer device", () => {
+  // `undefined` must not become truthy, and must not become the string
+  // "undefined" either: the still path passes the same flag through, and a
+  // context whose touch support depends on which caller asked is not a mirror.
+  const opts = videoContextOptions({ width: 768, height: 1024 }, "/tmp/vid");
+  assert.equal(opts.isMobile, undefined);
+  assert.equal(opts.hasTouch, undefined);
+});
+
+// ── a failed recording is a skip, not a silent error (#568) ─────────────────
+
+test("a failed video scenario is filed as a skip, so the gate counts it", () => {
+  const entry = scenarioFailureEntry(
+    { route: "/", viewport: "mobile", theme: "light", state: "disclosure-menu" },
+    new Error("no landing-navbar disclosure button at the mobile width"),
+  );
+  // The whole point: `skips` is what the gate reads, so a scenario that never
+  // recorded fails the run instead of being counted as coverage.
+  assert.match(entry.skipped, /^scenario failed: /);
+  assert.equal(entry.file, null, "a failed recording has no artefact to point at");
+  assert.equal(entry.type, "video");
+  assert.equal(entry.route, "/");
+  assert.equal(entry.state, "disclosure-menu");
+});
+
+test("a failed scenario keeps the machine detail in `error` as well as `skipped`", () => {
+  // Both fields, on purpose: `skipped` is counted and printed, `error` is what a
+  // reader debugging the run actually wants. Collapsing them to one would lose
+  // the distinction between a reason and a detail.
+  const entry = scenarioFailureEntry(
+    { route: "/app/search", viewport: "desktop", theme: "dark", state: "results" },
+    new Error("locator.waitFor: Timeout 3000ms exceeded"),
+  );
+  assert.equal(entry.error, "locator.waitFor: Timeout 3000ms exceeded");
+  assert.equal(entry.skipped, "scenario failed: locator.waitFor: Timeout 3000ms exceeded");
+  assert.equal(entry.theme, "dark");
+});
+
+test("a failure with no message still produces a usable reason", () => {
+  // A throw carrying no `.message` used to render the skip as "scenario failed:
+  // undefined", which reads as a bug in the audit rather than the scenario.
+  const entry = scenarioFailureEntry(
+    { route: "/", viewport: "mobile", theme: "light", state: "disclosure-menu" },
+    { message: "" },
+  );
+  assert.equal(entry.error, "");
+  assert.doesNotMatch(entry.skipped, /undefined/);
+});
+
+// ── where a packaged GIF starts (#566) ─────────────────────────────────────
 // ── where a packaged GIF starts (#566) ─────────────────────────────────────
 
 test("the GIF starts at the animation, less a lead-in", () => {
