@@ -7609,6 +7609,193 @@ nav.footer-col a:hover {
   text-decoration: underline;
 }
 
+/* "How the pieces fit together" on /features.
+
+   Two columns on desktop: prose at its 52ch measure on the left, the
+   architecture diagram filling the space that was empty beside it (#581). The
+   prose keeps its measure rather than stretching — a 1,000px-wide paragraph is
+   the problem, not the fix — so the diagram does the work of using the width.
+
+   Collapses to a single column at 900px, where two columns would leave ~180px
+   per side and the prose measure would break anyway. */
+.feature-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  /* Centred, not `start`. The right column is the diagram plus its text
+     equivalent and runs ~380px taller than the two paragraphs of prose, so
+     pinning both to the top left that much empty space under the prose — the
+     same "left-heavy" complaint #554 raised about the old single-column
+     version, just relocated. Centring splits the difference and the section
+     reads as a composition rather than a column with a footnote. */
+  align-items: center;
+  gap: 40px;
+}
+
+.feature-split-prose p:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .feature-split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+}
+
+/* The architecture figure.
+
+   The diagram and its text equivalent are a single component that stacks at
+   every width, rather than a two-column inset: the SVG has a fixed aspect ratio
+   (480×350), so side-by-side with prose it would need to be half the section's
+   width to stay legible, and its labels are 11px. Below the diagram the text
+   equivalent is the better read anyway — the SVG is `aria-hidden`, so a
+   sighted visitor and a screen-reader visitor get the same information in
+   different forms, not the same form twice. */
+.architecture {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* The drawing never scales below its natural width.
+
+   SVG text is sized in *user units* and scales with the viewBox, so a
+   `width: 100%` diagram shrinks its own labels: at a 375px viewport the figure
+   is 330px wide, a scale of 0.6875, which put `.arch-sub` at 7.6 real pixels
+   and `.arch-label` at 8.6 — below any reading floor, and the box subtitles
+   ("answer + sources", "upload · search · ask") were the strained ones.
+
+   Scaling the figure would also grow it *taller* as the page narrows, since
+   the aspect ratio is fixed: full-width in the stacked column it was 676×493
+   at a 768px viewport. So below 480px the figure keeps its natural size and
+   the wrapper scrolls instead. A scroll container rather than a page-level
+   overflow, so the document itself never scrolls sideways. */
+.architecture-scroll {
+  /* The clip. `min-width: 0` matters in a flex column: without it the scroller
+     is sized by its content and the *page* scrolls sideways instead, which is
+     what an earlier revision of this rule did — `min-width` on the scroller,
+     where it forced the scroller itself to 480px. */
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.architecture-diagram {
+  display: block;
+  /* Fixed at its natural width rather than `100%`, so the figure renders 1:1
+     and the 11px sub-labels stay 11px at every viewport. Below 480px of column
+     the wrapper scrolls; above it, nothing moves. */
+  width: 480px;
+  height: auto;
+  margin: 0 auto;
+  /* `--ink`, not `--muted`: this is the inherited colour for the CONNECTORS
+     only, and they have to clear 3:1 against the page — see `.arch-link`. */
+  color: var(--ink);
+}
+
+/* Shown only where the figure actually scrolls, so the affordance is never a
+   lie. The threshold is the column width falling under the figure's 480px, not
+   the viewport: the page measure is `min(1180px, 100% - 2 * gutter)`, so the
+   column crosses 480px a little above a 560px viewport. */
+.architecture-hint {
+  display: none;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .architecture-hint {
+    display: block;
+  }
+}
+
+/* Every box is drawn in ONE colour, and it has to be the *foreground* step of
+   its accent, not the step the rest of the card system uses for borders.
+
+   `--card-accent` is the 600 level in light theme, and against the page — or
+   against the box's own 8–10% fill — amber-600 measures 3.19:1 and the others
+   3.0–4.5:1. That is below AA for the 12.5px labels and the 11px subtitles, and
+   the audit gate fails every light-theme /features capture on it. Dark theme
+   restates `--card-accent` to the 400 level precisely because the 600 is too
+   dark there, so the two themes genuinely need different steps and the token
+   has to be picked per theme rather than hard-coded.
+
+   `--card-accent-solid` is the same hue at 700 — the step documented as the
+   fill *under white text*, which is exactly this job. It measures 4.9–7.3:1 on
+   white. The dark blocks deliberately never restate it, so it is used only in
+   light and dark keeps the already-corrected `--card-accent`. */
+.architecture-diagram [data-accent] {
+  color: var(--card-accent-solid);
+}
+
+:root[data-theme="dark"] .architecture-diagram [data-accent] {
+  color: var(--card-accent);
+}
+
+/* Connectors. One class so the weight and opacity are stated once. The review
+   measured these at 1.93–2.02:1 (light) and 2.44–2.61:1 (dark) against the page
+when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
+     anything carrying meaning, and these do: a connector *is* the argument the
+     diagram makes.
+
+     `--ink` at 0.54 measures 3.86:1 (light) and 4.98:1 (dark) against the page,
+     which clears 3:1 with margin in both themes while still reading as a
+     secondary line rather than competing with the boxes. It is a measured value,
+     not a taste one: `--muted` at 0.72 came out at 1.9–2.6:1, and plain
+     `--ink` at 0.72 at 7.1–7.9:1, which drew the eye to the connectors instead
+     of the boxes. */
+.arch-link {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  opacity: 0.54;
+}
+
+/* Diagram text. `currentColor` throughout so it tracks the accent of its group
+   and the dark theme, with no rule of its own per theme.
+
+   `.arch-sub` has NO opacity, and that is deliberate: at 0.7 five of the seven
+   box subtitles measured 2.84–4.23:1 against their own box fill, below AA for
+   small text. Hierarchy is carried by size and weight instead, which costs
+   nothing and cannot fail a contrast check. */
+.arch-label {
+  fill: currentColor;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.arch-sub {
+  fill: currentColor;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.architecture-text h3 {
+  margin: 0 0 12px;
+  font-size: 1.02rem;
+  letter-spacing: -0.01em;
+}
+
+.architecture-text ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.architecture-text li {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+
+.architecture-text strong {
+  color: var(--ink);
+}
+
 /* Page-card grids: the shared grid box, then one rule per card count.
 
    The column count is NOT `auto-fit`. `auto-fit` derives it from the available

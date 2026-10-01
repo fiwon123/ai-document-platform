@@ -6,6 +6,7 @@ import {
   PageSection,
 } from "../components/PageLayout";
 import { FeatureIcon } from "../components/landing/FeatureIcon";
+import { ArchitectureDiagram } from "../components/landing/ArchitectureDiagram";
 import { balancedGridClass } from "../utils/gridCols";
 import { CORE_FEATURES, SECONDARY_FEATURES } from "../content/marketing";
 
@@ -58,20 +59,29 @@ export function FeaturesPage() {
       </PageSection>
 
       <PageSection title="How the pieces fit together">
+        {/* Two columns on desktop: prose left, the diagram right. The prose was
+            in a 52ch column with the right half of the page empty (#581) — this
+            is the section that explains the architecture, so it gets to show the
+            shape rather than only describe it. */}
+        <div className="feature-split">
+          <div className="feature-split-prose">
+            <p>
+              The features above are not independent add-ons — they are stages of one
+              pipeline. Uploading starts an asynchronous job; extraction and chunking
+              run in a background worker; embeddings are written to{" "}
+              <code>pgvector</code>; search and Q&amp;A both read from that index.
+              Nothing in the request path waits on a model call, which is what keeps
+              the workspace responsive while a large upload is still being processed.
+            </p>
         <p>
-          The features above are not independent add-ons — they are stages of one
-          pipeline. Uploading starts an asynchronous job; extraction and chunking
-          run in a background worker; embeddings are written to{" "}
-          <code>pgvector</code>; search and Q&amp;A both read from that index.
-          Nothing in the request path waits on a model call, which is what keeps
-          the workspace responsive while a large upload is still being processed.
-        </p>
-        <p>
-          The <Link to="/how-it-works">How it works</Link> page walks through
-          each stage with the detail. If you are evaluating rather than
-          learning, <Link to="/pricing">Pricing</Link> is usually the faster
-          read.
-        </p>
+              The <Link to="/how-it-works">How it works</Link> page walks through
+              each stage with the detail. If you are evaluating rather than
+              learning, <Link to="/pricing">Pricing</Link> is usually the faster
+              read.
+            </p>
+          </div>
+          <ArchitectureDiagram />
+        </div>
       </PageSection>
 
       <PageCta
