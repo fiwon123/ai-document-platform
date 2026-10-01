@@ -135,6 +135,61 @@ describe("marketing measure (#440)", () => {
     expect(list).toBe(paragraph);
   });
 
+  it("lets the pipeline opt out of the list measure without loosening it", () => {
+    // #582: `.page-body ol { max-width: 52ch }` is a PROSE rule, and this page
+    // renders the pipeline as `<ol className="pipeline">`, so the pipeline
+    // inherited it and came out 497px wide inside a 1200px container — one
+    // unbroken ~500px column for ~3450px of scroll, with the right lane empty
+    // the whole way down (the measurement in #554).
+    //
+    // The override must stay SCOPED to `.pipeline`. The invariant two tests
+    // above is correct for every prose list on the site, and loosening it to fix
+    // one card stack would silently un-cap all the others.
+    expect(css).toMatch(/\.page-body ol\.pipeline\s*\{/);
+    const override = ruleBody("\\.page-body ol\\.pipeline").match(
+      /max-width\s*:\s*([^;]+);/,
+    )?.[1]?.trim();
+    expect(override, "the pipeline override must set max-width").toBeDefined();
+
+    // ...and it must not have quietly changed the shared prose rules it sits
+    // beside. A rewrite that "fixed" the pipeline by editing `.page-body ul`
+    // or `.page-body p` would pass every other test in this file.
+    const proseList = groupedRuleBody(".page-body ul").match(
+      /max-width\s*:\s*([^;]+);/,
+    )?.[1]?.trim();
+    expect(proseList).toBe(declaration(".page-body p", "max-width"));
+  });
+
+  it("caps the pipeline cards at one measure, so the border has no dead interior", () => {
+    // The reason the list-width override above is safe. Widening the cards alone
+    // recreates the defect #554 measured on /careers: a bordered box much wider
+    // than the prose inside it. An earlier attempt answered that with a
+    // two-column grid, which does not work on this page — `.page-body p` and
+    // `.page-body ul` cap at 52ch, so measured inside a 927px card content box
+    // the detail resolves to 468px, the outcome to 468px and the chips to 520px.
+    // A 927px row holds exactly one column of prose and then ~400px of nothing,
+    // so every two-lane arrangement starved one lane (the lead column measured
+    // 79% empty; moving the chips into it made them wrap to three rows and left
+    // 147px blank under the detail instead).
+    //
+    // So the invariant is the card's own cap: one measure wide, no more.
+    expect(declaration(".pipeline-stage", "max-width")).toBeDefined();
+
+    // And the widest child must actually fit inside it, or the chips wrap and
+    // the card grows a ragged third row. 600px - 28px - 26px padding - 2px
+    // border = 544px of content against a 520px chip row.
+    const card = declaration(".pipeline-stage", "max-width")!.replace(/px$/, "");
+    const content = Number(card) - 28 - 26 - 2;
+    expect(content).toBeGreaterThanOrEqual(520);
+
+    // No grid columns anywhere in the pipeline: a second lane is exactly the
+    // thing that cannot be filled, so its absence is the invariant now.
+    expect(ruleBody("\\.pipeline-stage-inner")).toMatch(/display\s*:\s*grid/);
+    expect(css).not.toMatch(
+      /@media\s*\(min-width:\s*900px\)[\s\S]*?\.pipeline-stage-inner\s*\{[\s\S]*?grid-template-columns/,
+    );
+  });
+
   it("caps the legal body on its container, so headings stay flush with their text", () => {
     // Capping the <p>s would leave every .legal-section h2 spanning the full
     // container while its own paragraph stopped short. Measured in Chromium:

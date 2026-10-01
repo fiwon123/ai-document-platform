@@ -161,6 +161,8 @@ export const PIPELINE_STAGES = [
     detail:
       "An upload is validated, written to object storage under a path scoped to your user ID, and queued for background processing. The API never waits for extraction, so a 25 MB PDF returns the same way a 2 KB text file does — with the document in the pending state and a job in the queue.",
     facts: ["Up to 25 MB per file", "PDF, TXT, JSON, CSV", "Bulk upload supported"],
+    outcome:
+      "An instant confirmation and a document in the list — not a spinner you have to watch.",
   },
   {
     title: "2. Extract",
@@ -170,6 +172,8 @@ export const PIPELINE_STAGES = [
     detail:
       "The worker reads the object back, extracts text according to the format (PDF text layers, plain text, structured JSON), and renders a first-page thumbnail for PDFs. A document that cannot be parsed is marked failed with the reason attached rather than retried silently forever.",
     facts: ["Asynchronous arq worker", "Failed documents surface the error", "PDF thumbnails rendered"],
+    outcome:
+      "Real text you can read back, plus a first-page preview so you can check the file landed correctly.",
   },
   {
     title: "3. Chunk",
@@ -179,6 +183,8 @@ export const PIPELINE_STAGES = [
     detail:
       "Long documents are split into overlapping chunks with their position and page metadata preserved. Chunking is what makes retrieval useful: a search result can point at a specific passage instead of a whole file, and an answer can quote the exact lines it came from.",
     facts: ["Overlapping windows", "Page + position metadata kept", "Chunk count visible per document"],
+    outcome:
+      "Answers that quote a specific passage and page, instead of paraphrasing a whole file.",
   },
   {
     title: "4. Embed",
@@ -188,6 +194,8 @@ export const PIPELINE_STAGES = [
     detail:
       "Every chunk is converted to an embedding and written to PostgreSQL through pgvector. This is the expensive step, which is exactly why it happens in the background: the API stays responsive while the vector index is built, and the document flips to ready only once its vectors are actually queryable.",
     facts: ["pgvector storage", "Batch embedding calls", "Document flips to ready when complete"],
+    outcome:
+      "A document marked ready, which is the honest signal that its text is genuinely searchable.",
   },
   {
     title: "5. Search",
@@ -197,6 +205,8 @@ export const PIPELINE_STAGES = [
     detail:
       "A search embeds the query and ranks chunks by vector distance, so 'how do I get a refund' finds a passage about returning an invoice even without shared keywords. Results are paginated and can be filtered to specific documents, and each result carries the source file it came from.",
     facts: ["Meaning-based ranking", "top_k + offset pagination", "Filter by document"],
+    outcome:
+      "The right passage, ranked by meaning — found by description, not by guessing keywords.",
   },
   {
     title: "6. Ask",
@@ -206,6 +216,8 @@ export const PIPELINE_STAGES = [
     detail:
       "For a question, the top chunks are retrieved first and passed to the model as grounding context, so answers are drawn from your documents rather than from memory. You choose the model, and on paid plans you can bring your own OpenAI or Groq key so the request never touches our credentials.",
     facts: ["Grounded in retrieved chunks", "OpenAI or Groq", "Bring your own key on Pro"],
+    outcome:
+      "A grounded answer with its sources attached, on the model you chose, using your key if you brought one.",
   },
 ];
 

@@ -4,8 +4,8 @@ import {
   PageLayout,
   PageSection,
 } from "../components/PageLayout";
-import { FeatureIcon } from "../components/landing/FeatureIcon";
-import { PIPELINE_STAGES, STEPS } from "../content/marketing";
+import { PipelineTrack } from "../components/howItWorks/PipelineTrack";
+import { STEPS } from "../content/marketing";
 
 /**
  * Detailed pipeline walkthrough.
@@ -42,34 +42,7 @@ export function HowItWorksPage() {
       </PageSection>
 
       <PageSection title="Stage by stage">
-        <ol className="pipeline">
-          {PIPELINE_STAGES.map((stage, index) => (
-            <li key={stage.title} className="pipeline-stage" data-accent={stage.accent}>
-              <div className="pipeline-stage-head">
-                <span className="pipeline-stage-icon">
-                  <FeatureIcon path={stage.icon} />
-                </span>
-                <div>
-                  <h3>
-                    {/* The ordinal is decoration — the list already conveys
-                        order to assistive tech, and this only labels it. */}
-                    <span className="pipeline-stage-number" aria-hidden="true">
-                      {index + 1}
-                    </span>
-                    {stage.title}
-                  </h3>
-                  <p className="pipeline-summary">{stage.summary}</p>
-                </div>
-              </div>
-              <p className="pipeline-detail">{stage.detail}</p>
-              <ul className="pipeline-facts">
-                {stage.facts.map((fact) => (
-                  <li key={fact}>{fact}</li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ol>
+        <PipelineTrack />
       </PageSection>
 
       <PageSection title="Why processing is asynchronous">
