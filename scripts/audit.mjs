@@ -1633,15 +1633,31 @@ GROUPS.landing = [
   { route: "/", state: "mid", require: "footer", expect: ".landing-navbar", scrollTo: "middle" },
   { route: "/", state: "footer", require: ".landing-navbar", expect: ".landing-navbar", scrollTo: "bottom" },
   {
-    // Desktop only: above 900px the Company disclosure is a row item that opens
-    // on hover, so that is what is asserted. It is deliberately *not* clicked —
-    // the trigger's click handler toggles, and since the pointer move that
-    // precedes any click already opened the menu on hover, the click closes it
-    // again. Clicking it therefore leaves the menu closed on a desktop pointer,
-    // which is a real bug in `NavGroupMenu` (#560), tracked separately rather
-    // than worked around here: the audit's job is to photograph the state that
-    // exists, and the hover-opened state is the one a desktop user reaches.
+    // Desktop only: above 900px the Company disclosure is a row item.
+    //
+    // This was a `hover` scenario until #591. It could not be a click scenario:
+    // every pointer interaction begins with a move onto the element, so the
+    // hover opened the menu and the click that followed closed it again — the
+    // trigger looked broken to a mouse while Enter worked. The scenario
+    // photographed the hover-opened state, correctly, but the state it
+    // photographed was not one the click path could reach.
+    //
+    // `clickAtPoint` moves the pointer there and clicks at that point, so this is
+    // the real mouse sequence, and `assertAttr` is what proves the click landed
+    // on an open menu rather than on a closed one — the exact ambiguity that let
+    // the bug hide behind a green gate.
     route: "/", viewport: "desktop", state: "disclosure-open", require: ".nav-group-trigger",
+    expect: ".landing-navbar",
+    click: ".nav-group-trigger",
+    assertAttr: { selector: ".nav-group-trigger", attr: "aria-expanded", value: "true" },
+  },
+  {
+    // The hover-opened state is kept rather than traded away for the click one.
+    // It is a separate state a desktop pointer reaches constantly — hover in,
+    // read, hover out — and switching the scenario to `click` would have left it
+    // photographed by nothing, which is the same gap this audit exists to close.
+    // No `click` here: that is what the scenario above asserts.
+    route: "/", viewport: "desktop", state: "disclosure-hover", require: ".nav-group-trigger",
     expect: ".landing-navbar",
     hover: ".nav-group-trigger",
     assertAttr: { selector: ".nav-group-trigger", attr: "aria-expanded", value: "true" },

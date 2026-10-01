@@ -467,7 +467,128 @@ describe("LandingNavbar", () => {
       await userEvent.click(screen.getByRole("button", { name: section }));
       expect(screen.queryByRole("link", { name: child })).not.toBeNull();
     });
+
+    /* ── #591: a click must never be a no-op ──────────────────────────────────
+       Every pointer interaction begins with a move onto the element, so for a
+       mouse the click always arrives *after* hover has already opened the menu.
+       A plain toggle therefore closed what the pointer had just opened, and the
+       click did nothing observable. These cover the mouse path specifically: the
+       pre-existing `aria-expanded` test stubs hover *off*, so it never produced
+       the sequence that was broken and could not have caught it. */
+    it(`stays open when a click follows the hover that opened it (${section.source})`, async () => {
+      stubHoverPointer(true);
+      renderNavbar();
+      const trigger = screen.getByRole("button", { name: section });
+
+      await userEvent.hover(trigger);
+      expect(screen.queryByRole("link", { name: child })).not.toBeNull();
+
+      // `userEvent.click` moves the pointer onto the element first, which is the
+      // real sequence: the click's own mouseenter is a no-op here, so what is
+      // under test is the click handler's response to an already-hover-opened menu.
+      await userEvent.click(trigger);
+      expect(screen.queryByRole("link", { name: child })).not.toBeNull();
+      expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    });
+
+    it(`keeps a click-opened menu open when the pointer leaves (${section.source})`, async () => {
+      stubHoverPointer(true);
+      renderNavbar();
+      const trigger = screen.getByRole("button", { name: section });
+      await userEvent.click(trigger);
+      expect(screen.queryByRole("link", { name: child })).not.toBeNull();
+
+      await userEvent.unhover(trigger);
+      await act(async () => {
+        vi.advanceTimersByTime(200);
+      });
+      // Hover dismissal is for a menu the pointer borrowed. A click pins it, and
+      // pinning is what makes the click mean something — without this, the click
+      // would open a menu that the next pointer move silently closed again.
+      expect(screen.queryByRole("link", { name: child })).not.toBeNull();
+    });
+
+    it(`closes a click-opened menu on the next click (${section.source})`, async () => {
+      stubHoverPointer(true);
+      renderNavbar();
+      const trigger = screen.getByRole("button", { name: section });
+
+      await userEvent.click(trigger);
+      expect(screen.queryByRole("link", { name: child })).not.toBeNull();
+      await userEvent.click(trigger);
+      expect(screen.queryByRole("link", { name: child })).toBeNull();
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it(`opens from closed on the first click after the pointer arrives (${section.source})`, async () => {
+      stubHoverPointer(true);
+      renderNavbar();
+      const trigger = screen.getByRole("button", { name: section });
+      expect(screen.queryByRole("link", { name: child })).toBeNull();
+
+      // The sequence that was inverted: arrive, then click. It closed before.
+      await userEvent.click(trigger);
+      expect(screen.queryByRole("link", { name: child })).not.toBeNull();
+    });
+
+    it(`still dismisses a click-opened menu with Escape and an outside click (${section.source})`, async () => {
+      stubHoverPointer(true);
+      renderNavbar();
+      const trigger = screen.getByRole("button", { name: section });
+
+      await userEvent.click(trigger);
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("link", { name: child })).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+
+      await userEvent.click(trigger);
+      await userEvent.click(screen.getByText("AskDocs"));
+      expect(screen.queryByRole("link", { name: child })).toBeNull();
+    });
+
+    // Pinning is per route: arriving on a different path must clear it, or
+    // hover dismissal stops working on every page of a section after one click.
+    it(`does not carry a click-opened menu across navigation (${section.source})`, async () => {
+      stubHoverPointer(true);
+      renderNavbar();
+      const trigger = screen.getByRole("button", { name: section });
+
+      await userEvent.click(trigger);
+      expect(screen.queryByRole("link", { name: child })).not.toBeNull();
+
+      // Navigate from inside the menu. The menu closes, because it was opened
+      // for the path we left — and the pin goes with it.
+      await userEvent.click(screen.getByRole("link", { name: child }));
+      expect(screen.queryByRole("link", { name: child })).toBeNull();
+      await userEvent.unhover(trigger);
+      await act(async () => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(screen.queryByRole("link", { name: child })).toBeNull();
+    });
   }
+
+  /* Keyboard. No pointer, so no hover — the one path that already worked, and
+     the one that makes the mouse failure a defect rather than a preference:
+     the control had a working route and a dead one, differing only in input
+     modality. Held here so a change to the click path cannot quietly break the
+     keyboard one. */
+  it("toggles from the keyboard, with no hover involved", async () => {
+    stubHoverPointer(true);
+    renderNavbar();
+    const trigger = screen.getByRole("button", { name: /Company/ });
+    trigger.focus();
+
+    // Enter fires the button's click handler, so it takes the same pin path as a
+    // mouse. It must not depend on a hover that never happened.
+    await userEvent.keyboard("{Enter}");
+    expect(screen.queryByRole("link", { name: "Careers" })).not.toBeNull();
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
+    await userEvent.keyboard("{Enter}");
+    expect(screen.queryByRole("link", { name: "Careers" })).toBeNull();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
 
   it("keeps legal pages out of the header", async () => {
     renderNavbar();
