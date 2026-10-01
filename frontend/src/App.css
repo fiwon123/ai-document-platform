@@ -2529,7 +2529,20 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
-/* Feature cards. */
+/* Feature cards.
+
+   The column count is capped with an explicit max, because `auto-fit` alone
+   picks the count from the *available width* alone and knows nothing about how
+   many cards it is laying out. With 5 secondary cards and a min track of
+   250px, that produced 4 columns at 1440px — a full row of 4 and then one lone
+   card on a second row with 76% of it empty (#580). `auto-fit` cannot be asked
+   to balance a partial row, so the count is bounded to divisors of the item
+   count: 5 cards get at most 5 columns, and below that 1.
+
+   Cards are direct grid children and stretch by default, so a row's cards are
+   always the same height. Do NOT re-wrap these in a `Reveal`, whose inline-flex
+   child would collapse each card back to its own content height and leave the
+   row's bottom edge stepping by the difference. */
 .landing-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -2539,9 +2552,17 @@ body {
 }
 
 /* Core capabilities: three wide cards with a blue accent edge. */
+/* Three core capabilities: 3 → 1, for the same reason as `.landing-steps`.
+   Two columns would always leave one card stranded on its own row. */
 .landing-grid-core {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 0;
+}
+
+@media (max-width: 900px) {
+  .landing-grid-core {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .landing-card-core {
@@ -2553,9 +2574,30 @@ body {
   border-left-color: #60a5fa;
 }
 
-/* Secondary features: more compact cards under their own heading. */
+/* Secondary features: more compact cards under their own heading.
+
+   Six cards, so the grid steps 3 → 2 → 1 and every row is full at every
+   breakpoint. That is the whole reason the count is six: with five, no column
+   count in 2/3 gives a full row (3+2, 2+2+1), and the only clean options were
+   one row of five — 235px cards, under the 250px track minimum these were sized
+   for — or a single column at every width. Six divides by 3, 2 and 1, so the
+   cards can stay readable and the row stays balanced as the viewport narrows
+   (#580). */
 .landing-grid-secondary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 12px;
+}
+
+@media (max-width: 1000px) {
+  .landing-grid-secondary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .landing-grid-secondary {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .feature-category {
@@ -2698,6 +2740,40 @@ body {
   position: relative;
 }
 
+/* Reveal applied to the card itself instead of to a wrapper around it.
+
+   Used by the secondary feature grid, where a wrapper element would break the
+   equal-height row: a `Reveal` div is inline-flex, so the card inside it sizes
+   to its own content and the row's bottom edge steps by the height difference
+   (24px, measured). On the card there is no intermediate box, the card stays a
+   grid item that stretches with its row, and the transform still applies.
+
+   `will-change` is deliberately omitted: unlike a short-lived reveal wrapper,
+   these cards are the page's main content and stay rendered for the whole
+   session, so promoting each one to its own layer costs memory for nothing. */
+.reveal-card {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity var(--duration-slow) var(--ease-decelerate),
+    transform var(--duration-slow) var(--ease-decelerate);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+.reveal-card.is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/* Same reduced-motion guarantee as `.reveal`: never leave content hidden. */
+@media (prefers-reduced-motion: reduce) {
+  .reveal-card {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 :root[data-theme="dark"] .landing-card,
 :root[data-theme="dark"] .landing-step {
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
@@ -2736,12 +2812,71 @@ body {
 }
 
 /* How it works. */
+/* The upload → search → ask figure above the step cards.
+
+   Sits at the section's own measure rather than edge-to-edge: at 520px wide it
+   is legible without becoming the thing the eye lands on first, and it keeps the
+   step cards as the content. `currentColor` throughout, so the three stages pick
+   up their own `data-accent` and the dark theme needs no rule — the strokes are
+   `currentColor` at low opacity precisely so they never rely on a hard-coded
+   tone that would fail contrast in one theme (#580). */
+.flow-illustration {
+  display: block;
+  width: 100%;
+  max-width: 520px;
+  margin: 36px auto 8px;
+  /* Default stage colour; the per-stage rules below override it. */
+  color: var(--card-accent);
+}
+
+/* Per-stage colour from `--card-accent`, not from a token named for the hue:
+   the `[data-accent]` blocks already restate that variable per accent *and*
+   per theme, which is what keeps the figure legible in both. Inventing a
+   `--violet` here would be a second source of truth for the same hue, and one
+   that no dark-theme block overrides.
+
+   Every accent used in the figure needs a rule here, not just the variable:
+   `[data-accent="blue"]` only *declares* `--card-accent`, it never assigns it
+   to `color`. Without the blue rule the document and the answer line fell back
+   to the inherited page ink, so stage 1 rendered at 17.9:1 against the page
+   while stages 2 and 3 sat at 3–5:1 — one heavy neutral box beside two tinted
+   ones, and no hint anywhere in the markup that blue was intended. */
+.flow-illustration [data-accent="blue"] {
+  color: var(--card-accent);
+}
+
+.flow-illustration [data-accent="violet"] {
+  color: var(--card-accent);
+}
+
+.flow-illustration [data-accent="green"] {
+  color: var(--card-accent);
+}
+
+/* Stacked above the step cards rather than beside them: the cards are full-width
+   at every width below 860px, so a side-by-side figure would either squeeze the
+   cards or need its own breakpoint for no gain. */
+@media (max-width: 860px) {
+  .flow-illustration {
+    margin-top: 28px;
+  }
+}
+
+/* Three steps: 3 → 2 → 1, skipping any count that would strand the third step
+   alone on a second row. `auto-fit` picked 2 columns at 768px for exactly that
+   reason — the width was available, the item count was not consulted (#580). */
 .landing-steps {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
   margin-top: 36px;
   text-align: left;
+}
+
+@media (max-width: 860px) {
+  .landing-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* Steps carry the same per-card accent as feature cards. The tinted top
@@ -2959,12 +3094,22 @@ body {
   transform: translateX(20px);
 }
 
+/* Three plans, same 3 → 1 reasoning as `.landing-steps`: at 768px `auto-fit`
+   chose 2 columns and left the third plan alone on a second row (#580). The
+   "Most popular" plan sits in the middle, so it keeps a full row of its own
+   rather than being paired arbitrarily at an intermediate width. */
 .landing-plans {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
   max-width: 960px;
   margin: 0 auto 52px;
+}
+
+@media (max-width: 860px) {
+  .landing-plans {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .landing-plan {
@@ -7464,14 +7609,71 @@ nav.footer-col a:hover {
   text-decoration: underline;
 }
 
+/* Page-card grids: the shared grid box, then one rule per card count.
+
+   The column count is NOT `auto-fit`. `auto-fit` derives it from the available
+   width and knows nothing about how many cards it is laying out, so it chose 3
+   columns for the four "Where to go next" cards on /product and /company —
+   a full row of three, then one card alone on a second row (#580). Every row
+   here is full at every breakpoint instead; see `.page-grid--n*` below. */
 .page-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 18px;
 }
 
-.page-grid-secondary {
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+.page-grid--n2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.page-grid--n3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.page-grid--n4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Six: the only count that needs the middle step, since 6 divides by both 3
+   and 2. Three across leaves each card ~370px, which suits the longer
+   descriptions; two across below that reads better than three narrow ones. */
+.page-grid--n6 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 1000px) {
+  .page-grid--n6 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  /* 3 → 1, deliberately skipping 2: a three-card grid at two columns always
+     leaves one card stranded on its own row. */
+  .page-grid--n3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .page-grid--n2,
+  .page-grid--n4 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .page-grid--n6 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* `.page-grid-secondary` used to override the column count. It no longer does:
+   the count now comes from `.page-grid--n*`, which is derived from how many
+   cards there actually are, so a "secondary" grid of 4 and a primary grid of 4
+   are laid out identically rather than one of them stranding a card. The class
+   is kept as a hook for the smaller card padding on these grids. */
+.page-grid-secondary .page-card-static {
+  padding: 22px;
 }
 
 .page-card,

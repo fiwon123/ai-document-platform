@@ -6,6 +6,7 @@ import {
   PageSection,
 } from "../components/PageLayout";
 import { FeatureIcon } from "../components/landing/FeatureIcon";
+import { balancedGridClass } from "../utils/gridCols";
 import { CORE_FEATURES, SECONDARY_FEATURES } from "../content/marketing";
 
 /**
@@ -29,7 +30,7 @@ export function FeaturesPage() {
       subtitle="Upload, search, and ask — one private workspace per user. This page is the long version of the feature grid on the home page."
     >
       <PageSection title="Core capabilities">
-        <div className="page-grid">
+        <div className={`${balancedGridClass(CORE_FEATURES.length)}`}>
           {CORE_FEATURES.map((feature) => (
             <article key={feature.title} className="page-card-static" data-accent={feature.accent}>
               <PageCardIcon>
@@ -43,7 +44,7 @@ export function FeaturesPage() {
       </PageSection>
 
       <PageSection title="More to explore">
-        <div className="page-grid page-grid-secondary">
+        <div className={`${balancedGridClass(SECONDARY_FEATURES.length)} page-grid-secondary`}>
           {SECONDARY_FEATURES.map((feature) => (
             <article key={feature.title} className="page-card-static" data-accent={feature.accent}>
               <PageCardIcon>

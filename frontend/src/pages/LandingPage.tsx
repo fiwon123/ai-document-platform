@@ -7,6 +7,8 @@ import { ScreenshotCarousel } from "../components/landing/ScreenshotCarousel";
 import { CountUp } from "../components/landing/CountUp";
 import { FaqAccordion } from "../components/landing/FaqAccordion";
 import { PlanComparison } from "../components/landing/PlanComparison";
+import { FlowIllustration } from "../components/landing/FlowIllustration";
+import { RevealCard } from "../components/landing/RevealCard";
 import { CheckIcon, FeatureIcon } from "../components/landing/FeatureIcon";
 import { useAuth } from "../hooks/useAuth";
 import {
@@ -219,16 +221,16 @@ export function LandingPage() {
           </Reveal>
           <div className="landing-grid landing-grid-core">
             {CORE_FEATURES.map((feature, i) => (
-              <Reveal key={feature.title} variant="up" delay={Math.min(i * 60, 120)}>
-                <article
-                  className="landing-card landing-card-core card-hover"
-                  data-accent={feature.accent}
-                >
-                  <FeatureIcon path={feature.icon} />
-                  <h3>{feature.title}</h3>
-                  <p>{feature.body}</p>
-                </article>
-              </Reveal>
+              <RevealCard
+                key={feature.title}
+                className="landing-card landing-card-core card-hover"
+                accent={feature.accent}
+                delay={Math.min(i * 60, 120)}
+              >
+                <FeatureIcon path={feature.icon} />
+                <h3>{feature.title}</h3>
+                <p>{feature.body}</p>
+              </RevealCard>
             ))}
           </div>
           <Reveal variant="up" delay={60}>
@@ -236,15 +238,21 @@ export function LandingPage() {
               More to explore
             </h3>
           </Reveal>
+          {/* RevealCard rather than Reveal: a Reveal wrapper box would collapse each
+              card back to its own content height and leave the row's bottom edge
+              stepping by the difference (24px, measured). See RevealCard. */}
           <div className="landing-grid landing-grid-secondary">
             {SECONDARY_FEATURES.map((feature, i) => (
-              <Reveal key={feature.title} variant="up" delay={Math.min(i * 50, 200)}>
-                <article className="landing-card card-hover" data-accent={feature.accent}>
-                  <FeatureIcon path={feature.icon} />
-                  <h3>{feature.title}</h3>
-                  <p>{feature.body}</p>
-                </article>
-              </Reveal>
+              <RevealCard
+                key={feature.title}
+                className="landing-card card-hover"
+                accent={feature.accent}
+                delay={Math.min(i * 50, 200)}
+              >
+                <FeatureIcon path={feature.icon} />
+                <h3>{feature.title}</h3>
+                <p>{feature.body}</p>
+              </RevealCard>
             ))}
           </div>
         </section>
@@ -253,6 +261,13 @@ export function LandingPage() {
           <Reveal variant="up">
             <h2>How it works</h2>
             <p className="landing-section-sub">Three steps from upload to answers.</p>
+          </Reveal>
+          {/* The section's one illustration. It shows what the three step cards
+              below describe: a document, sliced into embedded chunks, answered
+              from. Inline SVG, aria-hidden, themed from currentColor — see
+              FlowIllustration. */}
+          <Reveal variant="up">
+            <FlowIllustration />
           </Reveal>
           <div className="landing-steps">
             {STEPS.map((item, i) => (

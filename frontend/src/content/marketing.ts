@@ -122,6 +122,12 @@ export const SECONDARY_FEATURES: Feature[] = [
     icon: ICONS.webhook,
     accent: "rose",
   },
+  {
+    title: "Refresh-token rotation",
+    body: "Sessions rotate on every refresh and revoke on sign-out, with server-side state so a stolen token cannot be replayed.",
+    icon: ICONS.key,
+    accent: "blue",
+  },
 ];
 
 /* ------------------------------------------------------------------- steps */
