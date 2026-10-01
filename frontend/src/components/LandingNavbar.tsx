@@ -29,15 +29,23 @@ function NavGroupMenu({
      stored as a boolean. A plain boolean needs an effect to close on
      navigation, and a setState-in-effect is a second render pass for something
      the render already knows: if the menu was opened for a different path, the
-     user has moved on, so it is closed. */
-  const [openedFor, setOpenedFor] = useState<string | null>(null);
+     user has moved on, so it is closed.
+
+     Alongside the path it records *how* the menu was opened, because hover and
+     click mean opposite things here (#591). One object rather than two pieces of
+     state, so the two cannot disagree: `pinned` is only ever read together with
+     the path it was pinned for. */
+  const [state, setState] = useState<{ path: string; pinned: boolean } | null>(
+    null,
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuId = useId();
   const { pathname } = useLocation();
 
-  const open = openedFor === pathname;
+  const open = state?.path === pathname;
+  const pinned = open && state?.pinned === true;
 
   const cancelClose = useCallback(() => {
     if (closeTimer.current) {
@@ -48,14 +56,39 @@ function NavGroupMenu({
 
   const close = useCallback(() => {
     cancelClose();
-    setOpenedFor(null);
+    setState(null);
   }, [cancelClose]);
 
-  const openNow = useCallback(() => setOpenedFor(pathname), [pathname]);
+  /* Hover opens it *unpinned*: the menu is on loan to the pointer and is
+     dismissed when the pointer leaves. It never clears an existing pin, so
+     arriving at a pinned menu does not un-pin it. */
+  const openNow = useCallback(
+    () =>
+      setState((current) =>
+        current?.path === pathname && current.pinned
+          ? current
+          : { path: pathname, pinned: false },
+      ),
+    [pathname],
+  );
 
+  /* Click is not the negation of hover (#591). Every pointer interaction begins
+     with a move onto the element, so for a mouse the click always arrives after
+     hover has already opened the menu — a plain toggle therefore closed what the
+     pointer had just opened and the click did nothing observable at all. Worse,
+     it inverted: the first click closed, and only the second one opened.
+
+     So a click *pins*: hovering in, clicking keeps it open; clicking a pinned
+     menu closes it. A click is never a no-op, and never means the opposite of
+     what the previous one did. On touch, where `hoverable` is false and nothing
+     ever opens by hover, this is an ordinary toggle. */
   const toggle = useCallback(
     () =>
-      setOpenedFor((current) => (current === pathname ? null : pathname)),
+      setState((current) =>
+        current?.path === pathname && current.pinned
+          ? null
+          : { path: pathname, pinned: true },
+      ),
     [pathname],
   );
 
@@ -101,6 +134,9 @@ function NavGroupMenu({
    *
    * Only `(hover: hover)` devices opt in. A touch device has no hover, and
    * `mouseleave` there would fire on tap, making the menu undismissable.
+   *
+   * Hover is also *transitional*: the menu is on loan to the pointer, and only a
+   * click pins it so the pointer can leave it open (#591). See `toggle`.
    */
   const hoverable =
     typeof window !== "undefined" &&
@@ -108,7 +144,10 @@ function NavGroupMenu({
     window.matchMedia("(hover: hover)").matches;
 
   const scheduleClose = () => {
-    if (!hoverable) return;
+    // `pinned` first: a menu the user opened by clicking stays open when the
+    // pointer leaves. Escape, an outside click and navigation all still dismiss
+    // it, so pinning is not a trap — it is what makes the click meaningful.
+    if (!hoverable || pinned) return;
     cancelClose();
     closeTimer.current = setTimeout(close, 140);
   };
