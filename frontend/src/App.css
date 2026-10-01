@@ -7384,6 +7384,20 @@ nav.footer-col a:hover {
   letter-spacing: -0.02em;
 }
 
+/* The pipeline is a card stack, not a prose list, so it opts out of the list
+   measure above — SCOPED, because `pageMeasure.test.ts` pins lists to the
+   paragraph measure and that invariant is correct for every other list on the
+   site. See the pipeline block further down for why the width is then earned
+   rather than simply allowed. */
+.page-body ol.pipeline {
+  max-width: none;
+  /* `padding-left` as well as `max-width`. The prose list rule sets a 22px
+     indent to hang bullets under their text; on a list with `list-style: none`
+     it left the whole sequence sitting 22px right of the rail it belongs to,
+     which is exactly the jog #554's review measured under each heading. */
+  padding-left: 0;
+}
+
 .page-body p {
   margin: 0 0 16px;
   color: var(--muted);
@@ -7595,6 +7609,11 @@ nav.footer-col a:hover {
    where one stage ends and the next begins, which a bare top border does not. */
 .pipeline-stage {
   position: relative;
+  /* One measure wide — see the block comment above. 600px - 28px - 26px padding
+     - 2px border = 544px of content, which clears the 520px the fact chips need
+     at 0.8rem. The rail lives in the track's own gutter, outside this box, so
+     the sequence is connected without the card being wide. */
+  max-width: 600px;
   margin-bottom: 14px;
   padding: 24px 26px 24px 28px;
   border: 1px solid var(--line);
@@ -7606,19 +7625,27 @@ nav.footer-col a:hover {
     border-color var(--duration-base) var(--ease-standard);
 }
 
-/* Vertical accent rail on the leading edge. */
-.pipeline-stage::before {
-  content: "";
-  position: absolute;
-  top: 16px;
-  bottom: 16px;
-  left: 0;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--card-accent, var(--blue));
-  opacity: 0.55;
-  transition: opacity var(--duration-base) var(--ease-standard);
-}
+/* The leading-edge accent rail that used to live here as `.pipeline-stage::before`
+   is GONE, and deliberately.
+
+   It predates #582 and was correct on its own: with no connector, each card's
+   3px bar in its own accent was the only accent line on the left edge. #582
+   added a second one — the track's continuous rail — at the same 3px and the
+   same x, because the two were meant to be the same line. What actually happened
+   is that the card bar (its own accent, opacity 0.55) painted over the gradient
+   inside each card, while the 8px gap between cards showed the gradient alone.
+   Measured in light theme the line therefore changed colour at all five
+   boundaries: blue in card 1, then (31,123,174) in the gap, then violet in card
+   2, then (24,153,99) in the next gap, then amber — and the review measured the
+   same in dark. Five two-tone seams on a line whose whole job is to be one
+   connection.
+
+   The gradient rail is the one that should win, and this file already says why:
+   "one gradient across all six stages rather than six per-stage colours: the
+   rail is a single connection, and a rainbow would imply the stages are six
+   separate things." Two implementations of that sentence disagreed. Now there is
+   one. Each stage is still marked by its node, its number badge, its tinted
+   illustration and its tinted outcome box. */
 
 .pipeline-stage:hover {
   transform: translateY(-2px);
@@ -7626,42 +7653,18 @@ nav.footer-col a:hover {
   box-shadow: 0 10px 28px var(--card-accent-ring, rgb(15 23 42 / 0.1));
 }
 
-.pipeline-stage:hover::before {
-  opacity: 1;
-}
-
 .pipeline-stage:last-child {
   margin-bottom: 0;
 }
 
+/* A block, not the flex row it was when this held the icon beside the title.
+   The illustration moved out to `.pipeline-stage-lead`, which is the flex row
+   now; leaving `display: flex` here put the summary *beside* the heading
+   instead of under it, which overflowed the card by 7px at 375px. Spacing is
+   the grid gap's job. */
 .pipeline-stage-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-
-.pipeline-stage-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 52px;
-  height: 52px;
-  padding: 12px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--card-accent, var(--blue)) 12%, var(--surface));
-  color: var(--card-accent, var(--blue));
-  transition: transform var(--duration-base) var(--ease-standard);
-}
-
-.pipeline-stage-icon svg {
-  width: 100%;
-  height: 100%;
-}
-
-.pipeline-stage:hover .pipeline-stage-icon {
-  transform: scale(1.08);
+  display: block;
+  min-width: 0;
 }
 
 .pipeline-stage h3 {
@@ -7682,7 +7685,7 @@ nav.footer-col a:hover {
   height: 26px;
   border-radius: 50%;
   /* The solid-fill token, not --card-accent: this circle holds white text. The
-     accent rail above (.pipeline-stage::before) keeps the foreground step, since
+     rail above (the track's own) keeps the foreground step, since
      it carries no text. */
   background: var(--card-accent-solid, #1d4ed8);
   color: #fff;
@@ -7691,15 +7694,22 @@ nav.footer-col a:hover {
   font-variant-numeric: tabular-nums;
 }
 
-.pipeline-summary {
+/* Scoped under `.page-body` on purpose. `.page-body p` is (0,1,1) and sets
+   color, font-size and margin on every paragraph in the page body; a bare
+   `.pipeline-summary` is (0,1,0) and LOSES to it. That is not theoretical — it
+   rendered this summary as muted 1rem/400 instead of ink 0.95rem/600, and did
+   the same to `.pipeline-outcome`, which made the outcome line indistinguishable
+   from the stage detail beside it. Same trap as `.page-cta-band-sub`. */
+.page-body .pipeline-summary {
   margin: 0;
   color: var(--ink);
   font-size: 0.95rem;
   font-weight: 600;
+  line-height: 1.6;
 }
 
 .pipeline-detail {
-  margin: 0 0 12px;
+  margin: 0;
 }
 
 .pipeline-facts {
@@ -7721,13 +7731,426 @@ nav.footer-col a:hover {
   font-weight: 600;
 }
 
-.pipeline-facts li {
-  padding: 4px 11px;
-  border: 1px solid var(--line);
+/* ── Pipeline: one connected sequence (#582) ─────────────────────────────────
+   Before #582 the six stages were six independent bordered cards stacked in a
+   vertical list. The page said "six stages" and showed six things, with nothing
+   tying one stage's output to the next stage's input.
+
+   The structural fix, and the one that matters most:
+
+   `.page-body ol { max-width: 52ch }` (above) is a PROSE rule — it exists so a
+   bulleted list wraps at a readable measure. But this page renders the pipeline
+   as `<ol className="pipeline">`, so the pipeline inherited it and came out
+   497px wide inside a 1200px container: one unbroken ~500px column for ~3450px
+   of scroll, with the right lane empty the whole way down (#554's measurement).
+
+   The override is scoped to `.pipeline` on purpose. `pageMeasure.test.ts` pins
+   "lists are capped on the same measure as paragraphs", and that invariant is
+   right for prose lists — so it stays, and the pipeline opts out explicitly
+   rather than by loosening the rule for everything.
+
+   Widening alone would just move the problem: a wide bordered box holding 52ch
+   text is exactly the 53%-empty-box defect measured on /careers (#585).
+
+   The first attempt at this tried to earn the width with a two-column grid —
+   lead column left, detail right — and that cannot work here, for a reason worth
+   recording because it is not obvious from the CSS:
+
+   `.page-body p` and `.page-body ul` cap at 52ch. Measured inside a 927px card
+   content box, the detail paragraph resolves to 468px, the outcome to 468px and
+   the fact chips to 520px. So a 927px row holds EXACTLY ONE column of prose and
+   then ~400px of nothing. Every arrangement of two lanes starved one of them:
+   detail beside the lead left the lead 79% empty (245-296px of blank), and
+   moving the chips into the lead lane made them wrap to three rows, which made
+   the lead the TALLER column and left the detail floating over 147px of blank
+   instead.
+
+   The fix is not a better two-lane arrangement. The card is one measure wide:
+   `.pipeline-stage` is capped at 600px and holds a single column, so its widest
+   child (the 520px chips) fills it and nothing is starved. That is also what
+   every other page here does — prose sits at 52ch inside the 1200px `.page-body`
+   — so the pipeline stops being the one page with an unusually wide card.
+
+   What makes the sequence read as ONE process was never the width: it is the
+   continuous rail and its nodes in the gutter OUTSIDE the cards, the numbered
+   order, and the illustrations. The connection is drawn beside the cards. */
+
+.pipeline-track {
+  position: relative;
+  /* Gutter for the rail and its nodes, so the connector sits outside the cards
+     rather than eating their padding. */
+  padding-left: 44px;
+}
+
+/* The connector. Two stacked spans so the drawn portion is a solid gradient and
+   the remainder reads as track — i.e. progress, not decoration.
+
+   `transform-origin: top` plus `scaleY()` is the whole animation: it composites
+   on the GPU and, unlike animating `height`, it cannot force layout on every
+   frame of a scroll. `--track-progress` defaults to 1, so the no-JS and
+   reduced-motion renders are the FINISHED rail — see useScrollProgress. */
+.pipeline-rail {
+  position: absolute;
+  /* x = 41..44 — in the track's 44px gutter, LEFT of the cards.
+
+     Three positions were tried and the reasoning behind two was wrong in the
+     same direction: both assumed "same line as the card's edge" meant "same
+     pixels as the card's edge". It does not, because `.pipeline-stage` is opaque
+     (`background: var(--paper)`) and paints AFTER the track's absolutely
+     positioned children — so a rail placed on the card's own edge is simply
+     HIDDEN for the whole height of every card.
+
+     That is what `left: 45px` did, and it is the version that shipped for one
+     review round: measured at 1440px, CSS x=45 rendered as the card's white
+     interior, the gradient appeared only in the five 8px inter-card gaps and the
+     foot below stage 6, and ~95% of the left edge was a plain 1px border. The
+     one thing this whole exercise exists to prevent. `left: 42` was wrong for
+     the same reason, and additionally overlapped the card's border, giving the
+     line a 1px jog at each of the five boundaries.
+
+     So the rail lives in the gutter: 41..44, wholly clear of the card's border
+     at 44..45, never overpainted, visible across every card and every gap. It
+     ends flush against that border with no gap, which is deliberate — this is
+     meant to be one line, not a line standing beside a rule. `.pipeline-node` is
+     centred on it; see there for that arithmetic. */
+  left: 41px;
+  /* Top inset 34px ≈ the centre of the first node (node `top: 28px` plus half
+     its 15px dot = 35.5; 34 measured 1.5px high, which is inside the dot's own
+     paper ring and so invisible, and the mobile override tightens it to fit its
+     13px dot). It
+     runs to `bottom: 0` — the foot of the last stage — and so continues past
+     the final node into that stage's own body. That is deliberate: stopping at
+     node 6 would need the last card's height, which is content-dependent and
+     not expressible in CSS, and a rail that stops mid-gutter looks like a bug.
+     `top` is a constant and `bottom: 0` is not, so this one is honest about
+     the trade it makes. */
+  top: 34px;
+  bottom: 0;
+  width: 3px;
+}
+
+.pipeline-rail-track,
+.pipeline-rail-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+}
+
+.pipeline-rail-track {
+  background: var(--line);
+}
+
+.pipeline-rail-fill {
+  /* One gradient across all six stages rather than six per-stage colours: the
+     rail is a single connection, and a rainbow would imply the stages are six
+     separate things — the opposite of what this change is for.
+
+     `--blue` and `--green` only, because those are the two accents declared at
+     `:root` *and* restated by the dark-theme block (App.css:97 / :188), so the
+     rail is correct in both themes with no rule of its own. There is no global
+     `--violet`: violet exists only as `--card-accent` scoped to
+     `[data-accent="violet"]`, so naming it here would resolve to nothing and
+     drop the middle stop silently. */
+  background: linear-gradient(180deg, var(--blue), var(--green));
+  transform-origin: top center;
+  transform: scaleY(var(--track-progress, 1));
+  transition: transform 140ms linear;
+}
+
+/* The stage's position in the sequence, drawn on the rail. */
+.pipeline-node {
+  position: absolute;
+  /* Centred on the RAIL, which lives in the track gutter left of this card.
+
+     This has been wrong twice, and both times the mistake was treating `left` as
+     though a 15px dot's CENTRE lands on it. -2.5px put the dot's left edge on
+     the rail's centre, leaving its centre 7.5px to the right — measured at
+     7.5px off at 900/1440 and 6.5px at 390/600, i.e. the dot hangs off the line
+     at every breakpoint, and the rail's paper-ring hole opens to the LEFT of the
+     dot so the line resumes out of register.
+
+     The arithmetic: the absolute containing block is the card's PADDING box at
+     track x = 45 (44px gutter + 1px border). The rail spans 41..44, centre 42.5.
+     For a 15px dot to be centred there its left edge must sit at 42.5 - 7.5 =
+     35, which is `left: -10px`.
+
+     The paper ring is what makes this read as a node rather than a bulge — it
+     knocks the line out around the disc so the rail passes *behind* the node —
+     and with the dot centred on the line that hole is symmetric. */
+  left: -10px;
+  top: 28px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--card-accent, var(--blue));
+  box-shadow:
+    0 0 0 3px var(--paper),
+    0 0 0 4px var(--line);
+  transition:
+    transform var(--duration-base) var(--ease-standard),
+    box-shadow var(--duration-base) var(--ease-standard);
+}
+
+.pipeline-stage:hover .pipeline-node {
+  transform: scale(1.18);
+  box-shadow:
+    0 0 0 3px var(--paper),
+    0 0 0 5px color-mix(in srgb, var(--card-accent, var(--blue)) 40%, var(--line));
+}
+
+/* ── The stage itself ──────────────────────────────────────────────────────
+   The card keeps its border and accent rail (both are pinned by
+   tintedContrast.test.ts); what changes is the interior. `.pipeline-stage`
+   keeps `padding-left: 28px` so the rail and node stay clear of the text. */
+/* Three regions, not two. Measured at 1440px the previous two-column split put
+   380px on the left and 515px on the right: the right column filled the card to
+   within 41px of its foot, while the left held only ~85px of content in a
+   ~400px box — 79% empty. Widening the left lane did not help, because the
+   problem was vertical, not horizontal.
+
+   The fix is to move the fact chips into the lead column (they are short) and
+   let the detail paragraph span both rows of column 2 (it is tall). The outcome
+   then spans the full card, because it is the stage's punchline and the one line
+   here that genuinely benefits from width. Nothing is dead and nothing is
+   starved: both lanes now end within ~100px of each other. */
+.pipeline-stage-inner {
+  display: grid;
+  gap: 18px;
+  align-items: start;
+}
+
+.pipeline-stage-lead {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  min-width: 0;
+}
+
+.pipeline-stage-head {
+  min-width: 0;
+}
+
+/* The illustration. Sized from the token grid rather than a literal so it scales
+   with the card, and `flex-shrink: 0` so a long stage title cannot squash it
+   into an ellipse. */
+.stage-illustration {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 68px;
+  height: 68px;
+  padding: 6px;
+  border-radius: 16px;
+  /* Every tone inside the SVG is `currentColor`, so this single declaration
+     themes the whole scene — including the low-opacity washes, which are the
+     same hue at lower strength.
+
+     The stroke is the accent mixed toward `--ink` rather than the raw accent.
+     Amber (#d97706) and green (#16a34a) are substantially lighter than blue
+     and violet, so at a 7% tint they measured 2.73:1 and 2.79:1 against their
+     own tile while the other four scenes measured 4.31-4.74:1 — two washed-out
+     tiles sitting in a row of crisp ones, which reads as a bug rather than as
+     variety. `--ink` is near-black in light and near-white in dark, so this one
+     mix darkens the strokes where they need darkening and lightens them where
+     they need lightening, with no per-accent or per-theme rule. */
+  color: color-mix(in srgb, var(--card-accent, var(--blue)) 78%, var(--ink));
+  /* Named as well as applied: the extract scene fills its lens with
+     `var(--stage-tile)` so the lens occludes the page behind it, and a var can
+     only do that if the tile colour is addressable from inside the SVG. */
+  --stage-tile: color-mix(in srgb, var(--card-accent, var(--blue)) 7%, var(--surface));
+  background: var(--stage-tile);
+}
+
+.stage-illustration svg {
+  width: 100%;
+  height: 100%;
+}
+
+.pipeline-stage-detail {
+  min-width: 0;
+}
+
+@media (max-width: 899px) {
+  /* Narrower gutter: 44px is 11% of a 390px viewport, spent on a 3px line. */
+  .pipeline-track {
+    padding-left: 30px;
+  }
+
+  /* Same gutter rule as the wide case, on a narrower one. */
+  .pipeline-rail {
+    left: 27px;
+  }
+
+  .pipeline-node {
+    /* Same arithmetic on the narrow gutter: padding box at track x = 31, rail
+       27..30 (centre 28.5), dot 13px wide, so 28.5 - 31 - 6.5 = -9px. */
+    left: -9px;
+    width: 13px;
+    height: 13px;
+    box-shadow:
+      0 0 0 2px var(--paper),
+      0 0 0 3px var(--line);
+  }
+
+  .pipeline-stage-lead {
+    gap: 12px;
+  }
+
+  .stage-illustration {
+    width: 52px;
+    height: 52px;
+  }
+}
+
+/* ── Outcome: what the reader gets ─────────────────────────────────────────
+   The distinction this makes is the one the acceptance criteria ask for: a stage
+   can describe a system behaviour ("written to pgvector") without ever saying
+   what that is *for*. The label is a real word, not a tick, so the line still
+   reads when the accent wash does not. */
+.page-body .pipeline-outcome {
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--card-accent-soft);
+  color: var(--ink);
+  /* Slightly larger and a step darker than the detail paragraph it sits beside,
+     because on its own tinted background this is the stage's last word. Scoped
+     under `.page-body` to beat `.page-body p` (0,1,1) — see .pipeline-summary. */
+  font-size: 0.97rem;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+/* `--card-accent-solid`, NOT `--card-accent`. White on a 400-level accent
+   measured 1.67:1 (amber) / 1.74:1 (green) / 2.55:1 (blue) / 2.72:1 (violet)
+   in dark theme and 3.19:1 / 3.30:1 in light — all six below 4.5:1, so every
+   "YOU GET" pill failed contrast. `--card-accent-solid` is the 600/700-level
+   fill, the same token `.pipeline-stage-number` already uses, and
+   tintedContrast.test.ts now pins this pill alongside it. */
+.pipeline-outcome-label {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 2px 8px;
   border-radius: 999px;
+  background: var(--card-accent-solid);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+/* ── The failure branch ────────────────────────────────────────────────────
+   A pipeline page that never says what happens when a stage fails is describing
+   the happy path and calling it the pipeline. Drawn as a branch off the rail at
+   stage 2 — the only stage that can fail a document — rather than as a sentence
+   at the foot of the page.
+
+   `data-accent="rose"` puts this panel on the existing accent scale, so it is
+   correct in dark theme without a rule of its own, and a failure cannot be
+   confused with a stage that has not loaded yet. */
+.pipeline-failure {
+  position: relative;
+  margin-top: 18px;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--card-accent) 26%, var(--line));
+  border-left: 3px dashed var(--card-accent);
+  border-radius: 12px;
+  background: var(--card-accent-soft);
+}
+
+/* The elbow that makes this a BRANCH rather than a rose box inside a card.
+
+   The panel lives in the card's content column, whose left edge is ~29px right
+   of the rail in the track gutter, so a dashed left border on the panel alone
+   does not touch the rail: it rendered as a rule floating inside the card with
+   29px of empty background to its left and the blue rail running past, unjoined.
+   That is the exact opposite of "branch off the rail".
+
+   This pseudo-element is the horizontal arm. Its offsets are in the panel's
+   PADDING box, which starts 3px in (the dashed border's width), so the 25px arm
+   is `left: -28px; width: 25px` — it ends flush against the dashed border's
+   outer edge, and together the two read as one L: down the rail, across, then
+   down the panel's edge.
+
+   25px is derived, not tuned: the card's content column starts at track x 73
+   (44px gutter + 1px border + 28px padding) and the rail's right edge is at 48,
+   so the arm is exactly the gap between them. */
+.pipeline-failure::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -31px;
+  width: 28px;
+  border-top: 2px dashed var(--card-accent);
+}
+
+.pipeline-failure-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.pipeline-failure-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--card-accent);
+}
+
+.pipeline-failure p {
+  margin: 0 0 10px;
   color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.93rem;
+  line-height: 1.65;
+}
+
+.pipeline-failure p:last-child {
+  margin-bottom: 0;
+}
+
+.pipeline-failure-states {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+/* The stage that can fail is marked on the rail too, so the branch is findable
+   by looking at the sequence rather than only by reading the panel. */
+.pipeline-stage[data-branch="failure"] .pipeline-node {
+  box-shadow:
+    0 0 0 3px var(--paper),
+    0 0 0 4px var(--line),
+    0 0 0 7px color-mix(in srgb, var(--rose, #e11d48) 26%, transparent);
+}
+
+/* ── Reduced motion ────────────────────────────────────────────────────────
+   Two things must be true here, and only the first is about comfort:
+
+   1. Nothing moves. The rail stops transitioning and the node stops scaling.
+   2. The sequence is still COMPLETE. useScrollProgress already reports 1 when
+      reduced motion is set, so the rail renders fully drawn; these rules must
+      not reintroduce a partially drawn state, or the page would show a
+      half-connected pipeline to exactly the readers least able to wait for it. */
+@media (prefers-reduced-motion: reduce) {
+  .pipeline-rail-fill,
+  .pipeline-node {
+    transition: none;
+  }
+
+  .pipeline-stage:hover .pipeline-node {
+    transform: none;
+  }
+
+  .pipeline-stage:hover {
+    transform: none;
+  }
 }
 
 /* ── About: stack table ───────────────────────────────────────────────────── */

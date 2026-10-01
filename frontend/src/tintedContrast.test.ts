@@ -147,9 +147,13 @@ describe("accent step-number badges", () => {
   });
 
   it("paints the badges with the solid fill, not the foreground step", () => {
+    // .pipeline-outcome-label joined this list in #582: the white "YOU GET" pill
+    // painted --card-accent, which measured 1.67:1 (amber) to 2.72:1 (violet) in
+    // dark and 3.19:1 / 3.30:1 in light — all six pills below 4.5:1.
     for (const selector of [
       "\\.pipeline-stage-number",
       "\\.landing-step-number",
+      "\\.pipeline-outcome-label",
     ]) {
       const rule = ruleBody(selector);
       expect(rule, `${selector} not found`).toMatch(
@@ -161,11 +165,24 @@ describe("accent step-number badges", () => {
     }
   });
 
-  it("leaves the decorative accent rail on the foreground step", () => {
-    // .pipeline-stage::before is a 3px bar with no text on it. It is not a
-    // contrast failure and does not need the solid step.
-    const rail = ruleBody("\\.pipeline-stage::before");
-    expect(rail).toMatch(/var\(--card-accent/);
+  it("leaves the connector rail on the foreground step, and on one line only", () => {
+    // .pipeline-rail-fill is a 3px line with no text on it. It is not a contrast
+    // failure and does not need the solid step.
+    // Matched against the stylesheet rather than one rule body: the fill's
+    // geometry is shared with the track in one grouped selector and its colour
+    // is in the block below, so no single `{}` holds both.
+    expect(css).toMatch(
+      /\.pipeline-rail-fill\s*\{[\s\S]*?var\(--blue\)[\s\S]*?var\(--green\)/,
+    );
+
+    // #582 removed `.pipeline-stage::before`, the per-card accent bar that
+    // predates it. Both were 3px at the same x, so each card painted its own
+    // accent over the gradient while the 8px gap between cards showed the
+    // gradient alone — measured, the line changed colour at all five
+    // boundaries. This asserts the bar is still gone, because a rule that
+    // "looks decorative" is exactly the kind that gets re-added by a later
+    // change to make a card look accented.
+    expect(css).not.toMatch(/\.pipeline-stage::before\s*\{/);
   });
 
   it("does not flip the numeral to dark ink in dark mode", () => {
