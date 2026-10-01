@@ -20,6 +20,12 @@ import { DOCUMENT_STATUS_TONE } from "../components/documentStatusTone";
 import { PreviewModal } from "../components/PreviewModal";
 import { RefreshIcon, EyeIcon, DownloadIcon, SearchIcon } from "../components/icons";
 import { formatElapsed } from "../utils/time";
+import {
+  advanceCadence,
+  earliestDue,
+  initialCadence,
+} from "../utils/pollCadence";
+import type { PollCadence } from "../utils/pollCadence";
 import { useToast } from "../hooks/useToast";
 import { useDocuments, DOCUMENTS_QUERY_KEY } from "../hooks/useDocuments";
 import { MY_STATISTICS_QUERY_KEY } from "../hooks/useStatistics";
@@ -27,6 +33,20 @@ import { useQueryClient } from "@tanstack/react-query";
 
 /** How often to re-check documents that are still processing. */
 const POLL_INTERVAL_MS = 3000;
+/**
+ * Ceiling for a document that has stopped moving (#589).
+ *
+ * Deliberately equal to `THUMBNAIL_RETRY_MS`: that is the window a failed
+ * thumbnail lookup waits before it is retried, and the thumbnail effect is woken
+ * by this poll. Backing off to a *longer* period than the retry window would
+ * silently stretch thumbnail retries past the window they are written for.
+ */
+const POLL_MAX_INTERVAL_MS = 30_000;
+/** Shared bounds for the per-document poll cadence (#589). */
+const POLL_CADENCE = {
+  baseMs: POLL_INTERVAL_MS,
+  maxMs: POLL_MAX_INTERVAL_MS,
+} as const;
 /** Maximum files the backend accepts per bulk request. */
 const MAX_BULK_UPLOAD_FILES = 20;
 
@@ -49,6 +69,24 @@ const STATUS_FILTERS: Document["status"][] = [
 
 function isProcessing(status: Document["status"]): boolean {
   return status === "pending" || status === "processing";
+}
+
+/**
+ * Whether a status response says anything new about a document.
+ *
+ * Shared by the cache merge and the poll backoff (#589) so the two cannot
+ * disagree about what counts as progress. If they could diverge the cadence
+ * would grow while the UI was visibly updating, or reset on every tick for a
+ * document that never actually moves — and the backoff would be measuring
+ * something other than the thing it is for.
+ */
+function hasStatusChanged(doc: Document, next: DocumentStatusResponse): boolean {
+  return (
+    next.status !== doc.status ||
+    next.error_message !== doc.error_message ||
+    next.has_thumbnail !== doc.has_thumbnail ||
+    next.updated_at !== doc.updated_at
+  );
 }
 
 /** Delay before a failed thumbnail lookup is retried (prevents hammering). */
@@ -301,6 +339,8 @@ export function DocumentsPage() {
    *  once the polled statuses plateau, so effects keyed only on `docs`
    *  would otherwise go quiet. */
   const [pollTick, setPollTick] = useState(0);
+  /** Per-document poll schedule for the status poll below (#589). */
+  const pollCadence = useRef<Map<string, PollCadence>>(new Map());
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
@@ -355,52 +395,150 @@ export function DocumentsPage() {
   // badges update live (after upload or external processing) without a reload.
   // Merges happen through the shared query cache so both the grid and the
   // DocumentFilter on other pages see the freshest status.
+  //
+  // One scheduler with a per-document cadence, not a fixed interval (#589): a
+  // document that has stopped moving backs off towards POLL_MAX_INTERVAL_MS
+  // while a freshly uploaded one is still checked every POLL_INTERVAL_MS, and
+  // any change resets its cadence immediately. See utils/pollCadence.
   useEffect(() => {
     const active = docs.filter((d) => isProcessing(d.status));
-    if (active.length === 0) return;
+    if (active.length === 0) {
+      pollCadence.current.clear();
+      return;
+    }
 
-    const interval = setInterval(async () => {
-      let statuses: DocumentStatusResponse[];
-      try {
-        statuses = await Promise.all(active.map((d) => documents.getStatus(d.id)));
-      } catch {
-        return; // Transient error — keep polling on the next tick.
+    const now = Date.now();
+    const activeById = new Map(active.map((d) => [d.id, d]));
+    // Forget documents that have left the active set (finished, failed, deleted)
+    // so a long-lived tab does not accumulate cadences for ids it will never
+    // poll again.
+    for (const id of pollCadence.current.keys()) {
+      if (!activeById.has(id)) pollCadence.current.delete(id);
+    }
+    for (const id of activeById.keys()) {
+      // A document seen for the first time — a fresh upload — starts at the base
+      // cadence instead of inheriting whatever a long-idle neighbour has reached.
+      if (!pollCadence.current.has(id)) {
+        pollCadence.current.set(id, initialCadence(now, POLL_CADENCE));
       }
+    }
 
-      queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
-        (prev ?? []).map((doc) => {
-          const next = statuses.find((s) => s.id === doc.id);
-          if (!next) return doc;
-          const changed =
-            next.status !== doc.status ||
-            next.error_message !== doc.error_message ||
-            next.has_thumbnail !== doc.has_thumbnail ||
-            next.updated_at !== doc.updated_at;
-          if (!changed && !isProcessing(next.status)) {
-            // Keep the object identity for unchanged, non-active documents so
-            // their memoized cards skip re-rendering on this poll tick.
-            return doc;
-          }
-          // Active documents always get a fresh object so the elapsed-time
-          // label re-renders on every poll (identity only matters for cards
-          // that are not visibly changing every 3s).
-          return {
-            ...doc,
-            status: next.status,
-            error_message: next.error_message,
-            has_thumbnail: next.has_thumbnail,
-            created_at: next.created_at,
-            updated_at: next.updated_at,
-          };
-        }),
+    /** The stored cadence for `id`, seeded if somehow absent. */
+    const cadenceFor = (id: string): PollCadence =>
+      pollCadence.current.get(id) ?? initialCadence(Date.now(), POLL_CADENCE);
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    /**
+     * Set when this effect run is superseded or unmounted.
+     *
+     * Without it an in-flight poll outlives its own cleanup: the request is
+     * already sent, the effect re-runs (a concurrent list refetch, a delete, an
+     * optimistic upload), the new run installs its own timer — and then the old
+     * request resolves and its `finally` schedules *another* timer that nothing
+     * will ever clear. That poll then reschedules itself forever against a stale
+     * document set, which is an unbounded request loop rather than the bounded
+     * one this change is about.
+     */
+    let superseded = false;
+
+    function schedule() {
+      if (superseded) return;
+      const due = earliestDue(
+        [...activeById.keys()].map((id) => cadenceFor(id)),
       );
-      // Wake the page even when the merged data is structurally identical
-      // (active-but-unchanged documents), so elapsed labels and thumbnail
-      // retries keep advancing with the clock.
-      setPollTick((t) => t + 1);
-    }, POLL_INTERVAL_MS);
+      // The wait is recomputed from absolute due times every time this effect
+      // runs, so a `docs` update mid-interval resumes the *remaining* wait
+      // rather than pushing the next poll a whole period away.
+      timer = setTimeout(run, Math.max(0, (due ?? now) - Date.now()));
+    }
 
-    return () => clearInterval(interval);
+    async function run() {
+      try {
+        const at = Date.now();
+        const dueIds = [...activeById.keys()].filter(
+          (id) => cadenceFor(id).nextDueAt <= at,
+        );
+        // Defensive. The scheduler always wakes on an earliest due time, so
+        // there is normally something to do — but polling nothing would tick the
+        // page without merging anything.
+        if (dueIds.length === 0) return;
+
+        let statuses: DocumentStatusResponse[];
+        try {
+          statuses = await Promise.all(
+            dueIds.map((id) => documents.getStatus(id)),
+          );
+        } catch {
+          // Transient failure, a 429 included: not evidence of progress, so the
+          // attempted documents back off rather than holding a fast cadence for
+          // a document we are evidently struggling to reach. `finally` reschedules
+          // either way, so one failure never stops the poll for good.
+          for (const id of dueIds) {
+            pollCadence.current.set(
+              id,
+              advanceCadence(cadenceFor(id), {
+                ...POLL_CADENCE,
+                changed: false,
+                now: Date.now(),
+              }),
+            );
+          }
+          return;
+        }
+
+        // Timed from the moment the answer arrived, not from before the request,
+        // so a slow response does not shorten the following wait.
+        const answered = Date.now();
+        if (superseded) return;
+        for (const next of statuses) {
+          const doc = activeById.get(next.id);
+          if (!doc) continue;
+          pollCadence.current.set(
+            next.id,
+            advanceCadence(cadenceFor(next.id), {
+              ...POLL_CADENCE,
+              changed: hasStatusChanged(doc, next),
+              now: answered,
+            }),
+          );
+        }
+
+        queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
+          (prev ?? []).map((doc) => {
+            const next = statuses.find((s) => s.id === doc.id);
+            if (!next) return doc;
+            if (!hasStatusChanged(doc, next) && !isProcessing(next.status)) {
+              // Keep the object identity for unchanged, non-active documents so
+              // their memoized cards skip re-rendering on this poll tick.
+              return doc;
+            }
+            // Active documents always get a fresh object so the elapsed-time
+            // label re-renders on this poll (identity only matters for cards
+            // that are not visibly changing on every tick).
+            return {
+              ...doc,
+              status: next.status,
+              error_message: next.error_message,
+              has_thumbnail: next.has_thumbnail,
+              created_at: next.created_at,
+              updated_at: next.updated_at,
+            };
+          }),
+        );
+        // Wake the page even when the merged data is structurally identical
+        // (active-but-unchanged documents), so elapsed labels and thumbnail
+        // retries keep advancing with the clock.
+        setPollTick((t) => t + 1);
+      } finally {
+        schedule();
+      }
+    }
+
+    schedule();
+    return () => {
+      superseded = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
   }, [docs, queryClient]);
 
   // Fetch presigned thumbnail URLs for documents that have one (PDFs that

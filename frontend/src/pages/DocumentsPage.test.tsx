@@ -77,6 +77,28 @@ describe("DocumentsPage polling", () => {
     vi.clearAllMocks();
   });
 
+  /**
+   * Advance the fake clock in base-period steps, settling between them.
+   *
+   * A single large jump does not work for the status poll: it fires the pending
+   * timer, the async poll body then suspends on its request, the clock races to
+   * the far end of the jump, and the timer the poll schedules on completion
+   * lands in the past — so only the first poll of the sequence happens. Stepping
+   * lets each poll finish and reschedule before the clock moves on, which is
+   * also what happens in a real browser.
+   */
+  async function advanceBySteps(totalMs: number, stepMs = 3000) {
+    let remaining = totalMs;
+    while (remaining > 0) {
+      const step = Math.min(stepMs, remaining);
+      await act(async () => {
+        vi.advanceTimersByTime(step);
+      });
+      await settle();
+      remaining -= step;
+    }
+  }
+
   it("polls pending documents and updates the status badge", async () => {
     mockedList.mockResolvedValue([pendingDoc, readyDoc]);
     mockedGetStatus.mockResolvedValue({
@@ -203,6 +225,244 @@ describe("DocumentsPage polling", () => {
 
     // No further status requests after the document reached a final state.
     expect(mockedGetStatus.mock.calls.length).toBe(callsAfterFirstPoll);
+  });
+
+  it("backs off when a poll reports no change, instead of polling every 3s forever", async () => {
+    const now = new Date().toISOString();
+    // A document that never moves: every response is identical to the list.
+    mockedList.mockResolvedValue([
+      { ...pendingDoc, status: "processing", updated_at: now },
+    ]);
+    mockedGetStatus.mockResolvedValue({
+      id: "doc-pending",
+      status: "processing",
+      error_message: null,
+      has_thumbnail: false,
+      created_at: now,
+      updated_at: now,
+    });
+
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    const polledAt = async (ms: number) => {
+      const before = mockedGetStatus.mock.calls.length;
+      await act(async () => {
+        vi.advanceTimersByTime(ms);
+      });
+      await settle();
+      return mockedGetStatus.mock.calls.length - before;
+    };
+
+    // Schedule is 3s, then 6s, then 12s, then 24s, then 30s (capped).
+    // Poll times measured from mount: 3000, 9000, 21000, 45000.
+    expect(await polledAt(3000)).toBe(1);
+    expect(await polledAt(3000)).toBe(0); // 6s not yet due
+    expect(await polledAt(3000)).toBe(1); // 9s
+    expect(await polledAt(11_999)).toBe(0); // 20.999s
+    expect(await polledAt(1)).toBe(1); // 21s
+    expect(await polledAt(23_999)).toBe(0); // 44.999s
+    expect(await polledAt(1)).toBe(1); // 45s
+
+    // At the ceiling it holds 30s: a further 30s window is one poll, not ten.
+    expect(await polledAt(29_999)).toBe(0);
+    expect(await polledAt(1)).toBe(1);
+    expect(await polledAt(29_999)).toBe(0);
+    expect(await polledAt(1)).toBe(1);
+  });
+
+  it("resets a backed-off document to the base cadence as soon as it changes", async () => {
+    const now = new Date().toISOString();
+    mockedList.mockResolvedValue([
+      { ...pendingDoc, status: "processing", updated_at: now },
+    ]);
+    mockedGetStatus.mockResolvedValue({
+      id: "doc-pending",
+      status: "processing",
+      error_message: null,
+      has_thumbnail: false,
+      created_at: now,
+      updated_at: now,
+    });
+
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    // Push it to the ceiling: 3s, 9s, 21s, 45s.
+    await advanceBySteps(45_000);
+    expect(mockedGetStatus).toHaveBeenCalledTimes(4);
+
+    // Now it reports a change (a thumbnail appeared) while staying active.
+    const changedAt = new Date(Date.now() + 1000).toISOString();
+    mockedGetStatus.mockResolvedValue({
+      id: "doc-pending",
+      status: "processing",
+      error_message: null,
+      has_thumbnail: true,
+      created_at: now,
+      updated_at: changedAt,
+    });
+
+    // Next due is 75s (45s + 30s). The change resets it to a 3s period, so the
+    // following poll is 3s later — not 30s.
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+    await settle();
+    const afterChange = mockedGetStatus.mock.calls.length;
+    expect(afterChange).toBe(5);
+
+    await act(async () => {
+      vi.advanceTimersByTime(2999);
+    });
+    await settle();
+    expect(mockedGetStatus.mock.calls.length).toBe(afterChange);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    await settle();
+    expect(mockedGetStatus.mock.calls.length).toBe(afterChange + 1);
+  });
+
+  it("gives a newly uploaded document the base cadence beside a backed-off one", async () => {
+    const now = new Date().toISOString();
+    mockedList.mockResolvedValue([
+      { ...pendingDoc, id: "doc-stuck", status: "processing", updated_at: now },
+    ]);
+    mockedGetStatus.mockImplementation((id: string) =>
+      Promise.resolve({
+        id,
+        status: "processing" as const,
+        error_message: null,
+        has_thumbnail: false,
+        created_at: now,
+        updated_at: now,
+      }),
+    );
+    mockedUploadMany.mockResolvedValue({
+      uploaded: [{ ...pendingDoc, id: "doc-fresh" }],
+      failed: [],
+    });
+
+    const { container } = renderWithClient(<DocumentsPage />);
+    await settle();
+
+    // Back the first document all the way to the 30s ceiling.
+    await advanceBySteps(45_000);
+    expect(mockedGetStatus.mock.calls.length).toBe(4);
+
+    // Upload a second document mid-session, as a user would.
+    const file = new File(["hello"], "fresh.pdf", { type: "application/pdf" });
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } });
+    });
+    await settle();
+
+    const countFor = (id: string) =>
+      mockedGetStatus.mock.calls.filter(([polled]) => polled === id).length;
+    expect(countFor("doc-fresh")).toBe(0); // not polled yet
+
+    // The fresh document is polled within the base period even though its
+    // neighbour is at 30s — the scheduler wakes on the *soonest* due time.
+    await advanceBySteps(3000);
+    expect(countFor("doc-fresh")).toBe(1);
+  });
+
+  it("does not leave a superseded in-flight poll rescheduling itself forever", async () => {
+    const now = new Date().toISOString();
+    mockedList.mockResolvedValue([
+      { ...pendingDoc, status: "processing", updated_at: now },
+    ]);
+
+    // The first poll's request is still in flight when the page changes under
+    // it: its result must not schedule another timer, or that poll repeats
+    // forever against a stale document set.
+    let releaseFirst!: (value: {
+      id: string;
+      status: "processing";
+      error_message: null;
+      has_thumbnail: boolean;
+      created_at: string;
+      updated_at: string;
+    }) => void;
+    mockedGetStatus.mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseFirst = resolve;
+      }),
+    );
+
+    const { unmount } = renderWithClient(<DocumentsPage />);
+    await settle();
+
+    // Let the poll fire and hang on its request.
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    await settle();
+    expect(mockedGetStatus).toHaveBeenCalledTimes(1);
+
+    // Unmount, then let the abandoned request resolve.
+    unmount();
+    await act(async () => {
+      releaseFirst({
+        id: "doc-pending",
+        status: "processing",
+        error_message: null,
+        has_thumbnail: false,
+        created_at: now,
+        updated_at: now,
+      });
+    });
+    await settle();
+
+    const callsAfterResolve = mockedGetStatus.mock.calls.length;
+
+    // However long we wait, the abandoned poll must not wake up again.
+    await advanceBySteps(120_000);
+    expect(mockedGetStatus.mock.calls.length).toBe(callsAfterResolve);
+  });
+
+  it("keeps polling after a failed poll, backing off rather than stopping", async () => {
+    const now = new Date().toISOString();
+    mockedList.mockResolvedValue([
+      { ...pendingDoc, status: "processing", updated_at: now },
+    ]);
+    mockedGetStatus.mockRejectedValue(new Error("network down"));
+
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    await settle();
+    expect(mockedGetStatus.mock.calls.length).toBe(1);
+
+    // A failure is not progress, so the cadence backs off like an unchanged
+    // poll — but the scheduler must still be alive for the next attempt.
+    await act(async () => {
+      vi.advanceTimersByTime(6000);
+    });
+    await settle();
+    expect(mockedGetStatus.mock.calls.length).toBe(2);
+
+    // And it recovers once the network does.
+    mockedGetStatus.mockResolvedValue({
+      id: "doc-pending",
+      status: "ready",
+      error_message: null,
+      has_thumbnail: false,
+      created_at: now,
+      updated_at: now,
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(12_000);
+    });
+    await settle();
+    expect(mockedGetStatus.mock.calls.length).toBe(3);
+    expect(screen.queryByText("processing")).toBeNull();
   });
 
   it("does not poll when every document is in a final state", async () => {
