@@ -7,6 +7,7 @@ import {
 } from "../components/PageLayout";
 import { PlanComparison } from "../components/landing/PlanComparison";
 import { FaqAccordion } from "../components/landing/FaqAccordion";
+import { balancedGridClass } from "../utils/gridCols";
 import { FAQ_ITEMS, PLAN_DETAILS, PLANS } from "../content/marketing";
 import { useAuth } from "../hooks/useAuth";
 
@@ -78,7 +79,7 @@ export function PricingPage() {
       </PageSection>
 
       <PageSection title="What each plan includes">
-        <div className="page-grid page-grid-secondary">
+        <div className={`${balancedGridClass(PLAN_DETAILS.length)} page-grid-secondary`}>
           {PLAN_DETAILS.map((plan) => (
             <article key={plan.name} className="page-card-static">
               <h3>{plan.name}</h3>

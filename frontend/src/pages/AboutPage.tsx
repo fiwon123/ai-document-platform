@@ -4,6 +4,7 @@ import {
   PageLayout,
   PageSection,
 } from "../components/PageLayout";
+import { balancedGridClass } from "../utils/gridCols";
 import { SITE } from "../content/marketing";
 
 const PRINCIPLES = [
@@ -62,7 +63,7 @@ export function AboutPage() {
       </PageSection>
 
       <PageSection title="Principles">
-        <div className="page-grid page-grid-secondary">
+        <div className={`${balancedGridClass(PRINCIPLES.length)} page-grid-secondary`}>
           {PRINCIPLES.map((item) => (
             <article key={item.title} className="page-card-static">
               <h3>{item.title}</h3>

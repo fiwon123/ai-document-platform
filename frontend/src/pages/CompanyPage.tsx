@@ -1,4 +1,5 @@
 import { PageCard, PageLayout, PageSection } from "../components/PageLayout";
+import { balancedGridClass } from "../utils/gridCols";
 import { NAV_COMPANY } from "../content/marketing";
 
 const ACCENTS = ["/about", "/blog", "/careers", "/contact"] as const;
@@ -29,7 +30,7 @@ export function CompanyPage() {
       subtitle="A small open-source project built around a simple idea: your documents should be answerable by the people who own them."
     >
       <PageSection title="Where to go next">
-        <div className="page-grid">
+        <div className={`${balancedGridClass(NAV_COMPANY.length)}`}>
           {NAV_COMPANY.map((item) => (
             <PageCard
               key={item.to}

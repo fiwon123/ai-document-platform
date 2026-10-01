@@ -4,6 +4,7 @@ import {
   PageLayout,
   PageSection,
 } from "../components/PageLayout";
+import { balancedGridClass } from "../utils/gridCols";
 import { NAV_PRODUCT } from "../content/marketing";
 
 /** Accent per hub card — matches the feature cards on /features. */
@@ -34,7 +35,7 @@ export function ProductPage() {
       subtitle="Upload files, search them by meaning, and ask questions that get answered from your own content — not from a model's memory."
     >
       <PageSection title="Where to go next">
-        <div className="page-grid">
+        <div className={`${balancedGridClass(NAV_PRODUCT.length)}`}>
           {NAV_PRODUCT.map((item) => (
             <PageCard
               key={item.to}
