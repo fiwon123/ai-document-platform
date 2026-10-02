@@ -73,12 +73,18 @@ function SocialLink({
   );
 }
 
-/** The footer lists each section's hub first, then its pages. A column headed
- *  "Product" whose only links lead to sub-pages leaves no way to reach the
- *  section overview the header already offers. */
+/** The footer lists each section's pages. A column headed "Product" whose only
+ *  links lead to sub-pages leaves no way to reach the section overview the
+ *  header already offers — hence Product's `hub`.
+ *
+ *  Company has none, because `/company` is the first entry of `NAV_COMPANY` and
+ *  reads "General" there (#584). Leaving `hub: "/company"` set as well would
+ *  render the same destination twice in one column, once as "Overview" and once
+ *  as "General", with the reader left to work out whether they are different
+ *  pages. */
 const FOOTER_COLUMNS = [
   { label: "Product", hub: "/product", items: NAV_PRODUCT },
-  { label: "Company", hub: "/company", items: NAV_COMPANY },
+  { label: "Company", hub: null, items: NAV_COMPANY },
   { label: "Legal", hub: null, items: NAV_LEGAL },
 ] as const;
 

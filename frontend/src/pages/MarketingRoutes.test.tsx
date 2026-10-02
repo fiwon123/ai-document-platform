@@ -404,7 +404,7 @@ describe("page hero layout", () => {
 });
 
 describe("navigation coverage", () => {
-  it("offers a hub plus every child page for each section", async () => {
+  it("offers every page in each section, and Company's hub as one of them", async () => {
     await renderAt("/");
 
     const footerProduct = within(screen.getByRole("navigation", { name: "Product" }));
@@ -420,14 +420,28 @@ describe("navigation coverage", () => {
     const footerCompany = within(
       screen.getByRole("navigation", { name: "Company" }),
     );
+    // Company has no separate hub link, so "General" is the only way into
+    // /company from here (#584). A `hub: "/company"` left set alongside it would
+    // render the same destination twice in one column.
     expect(
-      footerCompany.getByRole("link", { name: "Overview" }).getAttribute("href"),
-    ).toBe("/company");
+      footerCompany.queryByRole("link", { name: "Overview" }),
+      "the footer's Company column still has its own Overview link",
+    ).toBeNull();
     for (const item of NAV_COMPANY) {
       expect(
         footerCompany.getByRole("link", { name: item.label }).getAttribute("href"),
       ).toBe(item.to);
     }
+    // One entry per destination, so "General" and a leftover hub cannot both
+    // point at /company and read as two different pages.
+    // `within()` hands back queries, not the element, so this is not
+    // querySelectorAll.
+    const hrefs = footerCompany
+      .getAllByRole("link")
+      .map((a) => a.getAttribute("href"));
+    expect(new Set(hrefs).size, `duplicate footer link in ${hrefs.join(" ")}`).toBe(
+      hrefs.length,
+    );
 
     const footerLegal = within(screen.getByRole("navigation", { name: "Legal" }));
     for (const item of NAV_LEGAL) {

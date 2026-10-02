@@ -17,12 +17,12 @@ import { NAV_COMPANY, NAV_PRODUCT } from "../content/marketing";
  */
 function NavGroupMenu({
   label,
-  hub,
   items,
 }: {
   label: string;
-  /** The section hub — also the first item inside the menu. */
-  hub: string;
+  /** The section's pages, hub first. `NAV_COMPANY` carries `/company` itself,
+   *  so the menu has no separate hub link to compose and no way to disagree
+   *  with the footer about what the section's pages are called (#584). */
   items: { label: string; to: string }[];
 }) {
   /* Openness is derived from which path the menu was opened *for* rather than
@@ -152,10 +152,9 @@ function NavGroupMenu({
     closeTimer.current = setTimeout(close, 140);
   };
 
-  // The hub counts as active too, otherwise visiting a child page leaves the
-  // trigger looking unselected.
-  const active =
-    pathname === hub || items.some((item) => pathname === item.to);
+  // The hub is one of `items` now, so it needs no special case here: visiting
+  // `/company` matches its own entry the same way `/about` matches its own.
+  const active = items.some((item) => pathname === item.to);
 
   return (
     <div
@@ -207,9 +206,6 @@ function NavGroupMenu({
           onMouseEnter={cancelClose}
           onMouseLeave={scheduleClose}
         >
-          <Link to={hub} className="nav-group-overview">
-            {label} overview
-          </Link>
           {items.map((item) => (
             <Link
               key={item.to}
@@ -226,10 +222,10 @@ function NavGroupMenu({
   );
 }
 
-/** Section hubs. The Product hub is a flat list in the desktop row; Company is a
- *  disclosure, and is a flat list again inside the mobile panel — see below. */
+/** The Product hub. Company needs no equivalent: `/company` is the first entry
+ *  of `NAV_COMPANY`, so its menu is built from the shared array like the footer
+ *  column is (#584). */
 const PRODUCT_HUB = "/product";
-const COMPANY_HUB = "/company";
 
 /**
  * Marketing navigation shown on every public page. When the visitor is already
@@ -383,7 +379,7 @@ export function LandingNavbar() {
           ))}
         </div>
 
-        <NavGroupMenu label="Company" hub={COMPANY_HUB} items={NAV_COMPANY} />
+        <NavGroupMenu label="Company" items={NAV_COMPANY} />
 
         {/* Only rendered in the collapsed band, because the row's copy of the
             theme toggle is hidden here. There is deliberately no "Try the demo"

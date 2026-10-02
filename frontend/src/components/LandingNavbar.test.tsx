@@ -208,12 +208,50 @@ describe("LandingNavbar", () => {
     );
   });
 
-  it("exposes the Company hub as the overview link", async () => {
+  it("exposes the Company hub as General, with the label from marketing.ts", async () => {
     renderNavbar();
     await userEvent.click(screen.getByRole("button", { name: /Company/ }));
-    expect(screen.getByRole("link", { name: "Company overview" }).getAttribute("href")).toBe(
+    expect(screen.getByRole("link", { name: "General" }).getAttribute("href")).toBe(
       "/company",
     );
+    // Scoped to the Company menu on purpose: the Product row has its own
+    // "Overview" link, which is a different section and not this issue's
+    // business. An unscoped `queryByRole` caught that one instead.
+    const menu = screen
+      .getByRole("button", { name: /Company/ })
+      .parentElement?.querySelector(".nav-group-menu");
+    expect(menu, "the Company menu did not open").not.toBeNull();
+    expect(
+      [...(menu as HTMLElement).querySelectorAll("a")].filter((a) =>
+        /overview/i.test(a.textContent ?? ""),
+      ),
+      "the composed overview link is still in the Company menu",
+    ).toEqual([]);
+  });
+
+  it("renders the hub entry inline with the other Company items (#584)", async () => {
+    renderNavbar();
+    await userEvent.click(screen.getByRole("button", { name: /Company/ }));
+    const menu = screen
+      .getByRole("button", { name: /Company/ })
+      .parentElement?.querySelector(".nav-group-menu");
+    expect(menu, "the Company menu did not open").not.toBeNull();
+    const links = [...(menu as HTMLElement).querySelectorAll("a")];
+    // "General" used to carry `.nav-group-overview`: font-weight 700, a bottom
+    // border and top-rounded corners, which is what made it read as a heading
+    // above the section rather than as one of its pages.
+    const general = links.find((a) => a.textContent === "General")!;
+    expect(general.className, "the hub is still styled apart").not.toMatch(
+      /nav-group-overview/,
+    );
+    // Same element shape as its siblings means same weight, same indentation.
+    for (const label of ["About", "Blog", "Careers", "Contact"]) {
+      const sibling = links.find((a) => a.textContent === label)!;
+      expect(general.tagName, `General vs ${label}`).toBe(sibling.tagName);
+      expect(general.parentElement, `General vs ${label}`).toBe(sibling.parentElement);
+    }
+    // And it leads, rather than being appended after the pages.
+    expect(links[0]?.textContent, "the menu is empty").toBe("General");
   });
 
   it("composes the Overview link instead of adding one to NAV_PRODUCT", () => {
