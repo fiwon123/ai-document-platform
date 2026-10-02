@@ -16,6 +16,12 @@ const BLURBS: Record<string, string> = {
   "/contact": "Reach the maintainers, or file an issue on the repository.",
 };
 
+/** The hub's own entry, which this page therefore does not link to itself
+ *  (#584). `NAV_COMPANY` starts with "General" → `/company` so the header
+ *  menu, the footer column and the 404 all call the section the same thing;
+ *  "Where to go next" is for the *other* pages. */
+const COMPANY_OTHERS = NAV_COMPANY.filter((item) => item.to !== "/company");
+
 /** Company hub — the header's "Company" destination. */
 export function CompanyPage() {
   return (
@@ -30,8 +36,8 @@ export function CompanyPage() {
       subtitle="A small open-source project built around a simple idea: your documents should be answerable by the people who own them."
     >
       <PageSection title="Where to go next">
-        <div className={`${balancedGridClass(NAV_COMPANY.length)}`}>
-          {NAV_COMPANY.map((item) => (
+        <div className={`${balancedGridClass(COMPANY_OTHERS.length)}`}>
+          {COMPANY_OTHERS.map((item) => (
             <PageCard
               key={item.to}
               to={item.to}

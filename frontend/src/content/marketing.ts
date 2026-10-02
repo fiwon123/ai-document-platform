@@ -389,7 +389,24 @@ export const NAV_PRODUCT = [
   { label: "Live demo", to: "/demo" },
 ];
 
+/**
+ * Company pages, in navigation order.
+ *
+ * The hub is the first entry rather than a separate concept (#584). It used to
+ * be two things: a `hub: "/company"` prop the header and footer each turned
+ * into their own link, labelled by composing `{label} overview` *in the navbar*,
+ * and a hardcoded `Overview` in the footer. So "Company overview" was a string
+ * that existed in a component, and "Overview" a string that existed in another,
+ * for one page that had a label in neither `marketing.ts` — which is how the
+ * header, the footer and the page could disagree about what the section is
+ * called. It read as a different kind of thing from the four items below it.
+ *
+ * Being an entry is also what makes the label one value: the header menu, the
+ * footer column, the 404 (which reads the footer) and the hub page all
+ * iterate this array, so there is no call site left to forget.
+ */
 export const NAV_COMPANY = [
+  { label: "General", to: "/company" },
   { label: "About", to: "/about" },
   { label: "Blog", to: "/blog" },
   { label: "Careers", to: "/careers" },

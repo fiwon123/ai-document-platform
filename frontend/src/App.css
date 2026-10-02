@@ -7609,14 +7609,6 @@ nav.footer-col a:hover {
 
 /* The hub link is visually distinct from its children: it is the section, not
    one item in it. */
-.nav-group-overview {
-  color: var(--ink) !important;
-  font-weight: 700;
-  border-bottom: 1px solid var(--line);
-  border-radius: 8px 8px 0 0 !important;
-  margin-bottom: 4px;
-}
-
 /* Matches the landing navbar's collapse breakpoint: the nav row wraps to full
    width at the same width, so the menu drops the absolute positioning and the
    translate and just flows under its trigger. Absolute positioning on a
