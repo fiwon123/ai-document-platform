@@ -62,9 +62,13 @@ export function FeaturesPage() {
         {/* Two columns on desktop: prose left, the diagram right. The prose was
             in a 52ch column with the right half of the page empty (#581) — this
             is the section that explains the architecture, so it gets to show the
-            shape rather than only describe it. */}
-        <div className="feature-split">
-          <div className="feature-split-prose">
+            shape rather than only describe it.
+
+            `.page-split`, not a page-specific rule (#585): the five Company-family
+            pages needed the same two-lane split, and a second copy of it is how
+            the two drift apart. */}
+        <div className="page-split">
+          <div className="page-split-prose">
             <p>
               The features above are not independent add-ons — they are stages of one
               pipeline. Uploading starts an asynchronous job; extraction and chunking

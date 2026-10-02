@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { PageLayout, PageSection } from "../components/PageLayout";
+import { BlogVisual } from "../components/company/PageVisuals";
 import { SITE } from "../content/marketing";
 
 /**
@@ -9,6 +10,12 @@ import { SITE } from "../content/marketing";
  * Faking an archive — or worse, placeholder posts with plausible dates — makes
  * the site look alive when it is not, and the first real post then has to
  * explain why three imaginary ones came before it.
+ *
+ * So the figure beside the panel is the empty state's *subject* and not a post:
+ * a ruled sheet whose lines stop three-quarters down (#585). A drawing of a post
+ * would be the same fabrication as a fake archive entry, with fewer pixels — and
+ * the reason the lines stop is that a full stack of them reads as "coming soon",
+ * which is a promise this page deliberately does not make.
  */
 export function BlogPage() {
   return (
@@ -18,23 +25,26 @@ export function BlogPage() {
       subtitle="Notes on retrieval, embeddings, and the parts of document processing that are harder than they look."
     >
       <PageSection>
-        <div className="empty-state-panel">
-          <h2>No posts yet</h2>
-          <p>
-            Nothing has been published. Rather than fill this page with
-            placeholder entries, it stays empty until there is something worth
-            reading — which is mostly about the parts of this problem that took
-            a second attempt: chunk boundaries that do not break sentences,
-            embeddings that stay comparable across model versions, and answers
-            that admit when retrieval came back empty.
-          </p>
-          <p>
-            In the meantime the{" "}
-            <a href={SITE.repoUrl} target="_blank" rel="noopener noreferrer">
-              repository
-            </a>{" "}
-            and its commit history tell the same story in more detail.
-          </p>
+        <div className="page-split">
+          <div className="empty-state-panel">
+            <h2>No posts yet</h2>
+            <p>
+              Nothing has been published. Rather than fill this page with
+              placeholder entries, it stays empty until there is something worth
+              reading — which is mostly about the parts of this problem that took
+              a second attempt: chunk boundaries that do not break sentences,
+              embeddings that stay comparable across model versions, and answers
+              that admit when retrieval came back empty.
+            </p>
+            <p>
+              In the meantime the{" "}
+              <a href={SITE.repoUrl} target="_blank" rel="noopener noreferrer">
+                repository
+              </a>{" "}
+              and its commit history tell the same story in more detail.
+            </p>
+          </div>
+          <BlogVisual />
         </div>
       </PageSection>
 

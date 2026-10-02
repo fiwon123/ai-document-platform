@@ -4,6 +4,7 @@ import {
   PageLayout,
   PageSection,
 } from "../components/PageLayout";
+import { AboutVisual } from "../components/company/PageVisuals";
 import { balancedGridClass } from "../utils/gridCols";
 import { SITE } from "../content/marketing";
 
@@ -47,19 +48,24 @@ export function AboutPage() {
       subtitle="An AI document intelligence platform, built in the open because the interesting problems in retrieval are worth sharing."
     >
       <PageSection title="What this is">
-        <p>
-          AskDocs turns a pile of documents into something you can query. You
-          upload files, a background pipeline extracts and embeds their
-          contents, and from that point you can search by meaning or ask
-          questions that get answered from your own material.
-        </p>
-        <p>
-          The interesting part is not the chat box. It is the pipeline
-          underneath: asynchronous processing, chunking that preserves
-          provenance, a vector index that supports filtering, and answers
-          constrained to retrieved context. The interface is the smallest part
-          of the problem.
-        </p>
+        <div className="page-split">
+          <div className="page-split-prose">
+            <p>
+              AskDocs turns a pile of documents into something you can query. You
+              upload files, a background pipeline extracts and embeds their
+              contents, and from that point you can search by meaning or ask
+              questions that get answered from your own material.
+            </p>
+            <p>
+              The interesting part is not the chat box. It is the pipeline
+              underneath: asynchronous processing, chunking that preserves
+              provenance, a vector index that supports filtering, and answers
+              constrained to retrieved context. The interface is the smallest part
+              of the problem.
+            </p>
+          </div>
+          <AboutVisual />
+        </div>
       </PageSection>
 
       <PageSection title="Principles">

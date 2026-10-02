@@ -4,6 +4,7 @@ import {
   PageLayout,
   PageSection,
 } from "../components/PageLayout";
+import { CareersVisual } from "../components/company/PageVisuals";
 import { SITE } from "../content/marketing";
 
 const ROLES = [
@@ -42,19 +43,31 @@ export function CareersPage() {
       }
       subtitle="AskDocs is a small open-source project. There is no org chart, no hiring process, and no recruiter — just a repository and a list of things that need doing."
     >
+      {/* The figure sits beside the roles, not beside the values list (#585).
+
+          It draws three roles under one banner, so it belongs with the roles —
+          but that is not the only reason. The roles were the problem: three
+          stacked cards in a 1027px row, each a bordered box holding 468px of
+          prose. Two columns of two would strand the third, and three across runs
+          the descriptions at ~39 characters. Splitting the section puts the
+          cards in a 493px lane their own prose fills, and gives the drawing the
+          space that was empty beside them. */}
       <PageSection title="Open roles">
-        <div className="contact-list">
-          {ROLES.map((role) => (
-            <div key={role.title} className="contact-row">
-              <h3>
-                {role.title} <span className="role-type">{role.type}</span>
-              </h3>
-              <p>{role.body}</p>
-              <a className="btn btn-secondary" href={`mailto:${SITE.email}?subject=${encodeURIComponent(role.title)}`}>
-                Express interest
-              </a>
-            </div>
-          ))}
+        <div className="page-split">
+          <div className="contact-list">
+            {ROLES.map((role) => (
+              <div key={role.title} className="contact-row">
+                <h3>
+                  {role.title} <span className="role-type">{role.type}</span>
+                </h3>
+                <p>{role.body}</p>
+                <a className="btn btn-secondary" href={`mailto:${SITE.email}?subject=${encodeURIComponent(role.title)}`}>
+                  Express interest
+                </a>
+              </div>
+            ))}
+          </div>
+          <CareersVisual />
         </div>
       </PageSection>
 

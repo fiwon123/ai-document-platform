@@ -1,4 +1,5 @@
 import { PageCard, PageLayout, PageSection } from "../components/PageLayout";
+import { CompanyVisual } from "../components/company/PageVisuals";
 import { balancedGridClass } from "../utils/gridCols";
 import { NAV_COMPANY } from "../content/marketing";
 
@@ -50,22 +51,27 @@ export function CompanyPage() {
       </PageSection>
 
       <PageSection title="What we care about">
-        <p>
-          Three things run through most of the decisions in this codebase.
-          First, <strong>grounding beats fluency</strong>: an answer that cites
-          the passage it came from is worth more than a smoother answer with no
-          provenance, so retrieval happens before generation and the retrieved
-          context is what the model sees. Second,{" "}
-          <strong>isolation is a property of the data model</strong>, not a
-          filter someone remembers to apply — ownership is part of every query.
-          Third, <strong>asynchronous work stays asynchronous</strong>: a slow
-          embedding call belongs in a worker, not in someone's HTTP request.
-        </p>
-        <p>
-          The project is open source and the full history is public. If
-          something here is wrong or could be simpler, an issue is more useful
-          than an email.
-        </p>
+        <div className="page-split">
+          <div className="page-split-prose">
+            <p>
+              Three things run through most of the decisions in this codebase.
+              First, <strong>grounding beats fluency</strong>: an answer that cites
+              the passage it came from is worth more than a smoother answer with no
+              provenance, so retrieval happens before generation and the retrieved
+              context is what the model sees. Second,{" "}
+              <strong>isolation is a property of the data model</strong>, not a
+              filter someone remembers to apply — ownership is part of every query.
+              Third, <strong>asynchronous work stays asynchronous</strong>: a slow
+              embedding call belongs in a worker, not in someone's HTTP request.
+            </p>
+            <p>
+              The project is open source and the full history is public. If
+              something here is wrong or could be simpler, an issue is more useful
+              than an email.
+            </p>
+          </div>
+          <CompanyVisual />
+        </div>
       </PageSection>
     </PageLayout>
   );

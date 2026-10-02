@@ -315,6 +315,127 @@ describe("blog page", () => {
   });
 });
 
+describe("page figure pairing", () => {
+  /* #585: five Company-family routes put their prose in a 52ch column inside a
+     1200px body and left the rest of the row empty — roughly 40% of the width at
+     1440px with nothing in it. The issue asks for a second column, *not* for
+     wider text, so each route now pairs its prose with one drawing.
+
+     jsdom cannot measure any of that, but it can prove the structure that the
+     layout depends on: the figure exists, it sits in the second lane of the same
+     split as a real block of prose, and the prose did not get deleted to make
+     room for it. The 900px collapse and the 62-character measure are pinned in
+     `PageVisuals.test.tsx` against the stylesheet, and the drawings themselves
+     are pinned geometrically in the same file. */
+
+  const ROUTES = ["/company", "/about", "/blog", "/careers", "/contact"];
+
+  it("pairs each route's prose with exactly one figure", async () => {
+    for (const route of ROUTES) {
+      const view = await renderAt(route);
+      const figures = view.container.querySelectorAll(".page-figure");
+      expect(figures.length, `${route} renders ${figures.length} figures, expected 1`).toBe(1);
+      // Each drawing is hidden from assistive tech, so the prose beside it is the
+      // text equivalent. Asserting the SVG is present guards against a figure
+      // whose contents were dropped while its frame stayed.
+      expect(figures[0]!.querySelector("svg")).not.toBeNull();
+    }
+  });
+
+  it("puts the figure in the second lane of the prose's own split", async () => {
+    // A figure rendered outside `.page-split` — appended after the section, or in
+    // a section of its own — leaves the original empty side exactly as empty and
+    // adds a second empty band instead. This is the assertion that would have
+    // caught that.
+    for (const route of ROUTES) {
+      const view = await renderAt(route);
+      const figure = view.container.querySelector(".page-figure")!;
+      const split = figure.closest(".page-split");
+      expect(split, `${route}: figure is not inside a .page-split`).not.toBeNull();
+
+      // Two lanes, and the figure is one of them — found by class rather than by
+      // assuming a fixed lane order, since `/blog` puts the drawing second and
+      // `/careers` puts it second as well but for a different reason.
+      const lanes = [...split!.children];
+      expect(lanes.length, `${route}: split has ${lanes.length} lanes, expected 2`).toBe(2);
+      const figureIndex = lanes.findIndex((lane) => lane.classList.contains("page-figure"));
+      expect(figureIndex, `${route}: figure lane not found among the split's children`).toBeGreaterThanOrEqual(0);
+
+      const prose = lanes[figureIndex === 0 ? 1 : 0]!;
+      // The prose is still the content. A figure that arrives by displacing the
+      // text is the other way this could be "fixed", and it would pass every
+      // layout assertion above.
+      const words = (prose.textContent ?? "").trim().split(/\s+/).filter(Boolean);
+      expect(words.length, `${route}: the prose lane is nearly empty`).toBeGreaterThan(45);
+    }
+  });
+
+it("gives each lane the class its content needs", async () => {
+    /* Six lanes across the five routes, three kinds, and the class has to follow
+       the content rather than being applied uniformly:
+         - bare paragraphs → `.page-split-prose` (/company's principles, /about's
+           overview, /contact's "Before you write"), which is what collapses the
+           last paragraph's bottom margin;
+         - cards → the list class the cards already used (/careers' role rows,
+           /contact's channels), because a card lane wants the card list's gap
+           and borders, not a prose column's margin;
+         - a framed empty state → `.empty-state-panel` (/blog), because a bare
+           paragraph beside a drawing of a blank page reads as a page with one
+           post missing rather than a page with none.
+
+       Asserted both ways: the right lane has the right class, and the wrong
+       class is absent, so a lane cannot quietly become both. */
+    const PROSE_SPLITS = ["/company", "/about", "/contact"];
+    const CARD_SPLITS = ["/careers"];
+
+    for (const route of PROSE_SPLITS) {
+      const view = await renderAt(route);
+      const split = view.container.querySelector(".page-split")!;
+      expect(split.querySelector(".page-split-prose"), `${route}: no prose lane`).not.toBeNull();
+      // A prose column wrapping card lists would undo their gap and borders.
+      expect(split.querySelector(".contact-list"), `${route}: cards in a prose lane`).toBeNull();
+    }
+
+    for (const route of CARD_SPLITS) {
+      const view = await renderAt(route);
+      const split = view.container.querySelector(".page-split")!;
+      expect(split.querySelector(".contact-list"), `${route}: no card lane`).not.toBeNull();
+      expect(split.querySelector(".page-split-prose"), `${route}: cards in a prose lane`).toBeNull();
+    }
+
+    const blog = await renderAt("/blog");
+    const blogSplit = blog.container.querySelector(".page-split")!;
+    expect(blogSplit.querySelector(".empty-state-panel")).not.toBeNull();
+    expect(blogSplit.querySelector(".page-split-prose")).toBeNull();
+    // And the empty state still says what it is in words, next to the drawing.
+    expect(blogSplit.querySelector(".empty-state-panel")?.textContent).toMatch(
+      /nothing has been published/i,
+    );
+  });
+
+  it("keeps /features on the same split rather than a second two-column class", async () => {
+    // The class was renamed from `.feature-split` for exactly this: a page that
+    // needs the same idea and reaches for its own copy is how the two start
+    // disagreeing about the collapse point.
+    const view = await renderAt("/features");
+    expect(view.container.querySelector(".feature-split")).toBeNull();
+    expect(view.container.querySelectorAll(".page-split").length).toBeGreaterThan(0);
+  });
+
+  it("lays /contact's four channels out as a filled grid", async () => {
+    // The channel list was a full-width single column of four rows, which left
+    // the right half of a 1200px body empty for 400px of height. It is now a
+    // two-column list with a bottom-aligned action in each cell, so the section
+    // has no orphan row.
+    const view = await renderAt("/contact");
+    const list = view.container.querySelector(".contact-list--pair");
+    expect(list, "contact has no paired channel list").not.toBeNull();
+    expect(list!.querySelectorAll(":scope > .contact-row").length).toBe(4);
+    // Every cell has something to click, so no cell is a hole in the grid.
+    expect(list!.querySelectorAll("a, button").length).toBeGreaterThanOrEqual(4);
+  });
+});
+
 describe("page hero layout", () => {
   /* jsdom does not cascade the real stylesheet, and a flex alignment is exactly
      the kind of property no render assertion can see — the DOM is identical
