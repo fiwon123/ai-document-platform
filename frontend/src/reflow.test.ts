@@ -54,18 +54,25 @@ describe("marketing reflow", () => {
     const rules = rulesFor(".landing-table-wrap");
     expect(rules.length, "no .landing-table-wrap rule in App.css").toBeGreaterThan(0);
 
-    // The rule is inside a max-width media query, which is why every match is
-    // checked rather than the first.
-    const positioned = rules.filter((r) => /position\s*:\s*relative/.test(r));
-    expect(
-      positioned.length,
-      ".landing-table-wrap must be position: relative — without it the absolutely " +
-        "positioned .sr-only spans in the table cells escape overflow-x: auto and " +
-        "give the document ~39px of horizontal scroll at 375px",
-    ).toBe(rules.length);
+    // Only the rules that restate the wrapper's *box* are held to both
+    // properties. A one-property override inside a media query — the narrow
+    // `max-height: 70vh` cap that makes the sticky header do anything (#583) —
+    // legitimately does not repeat `position` and `overflow-x`, and demanding
+    // that of it would only teach the next person to write out redundant
+    // declarations. A rule that does restate one of them must still restate the
+    // other: declaring `overflow` without `position` is the original defect.
+    const boxed = rules.filter((r) => /position\s*:|overflow-x\s*:/.test(r));
+    expect(boxed.length, "no rule establishes the scroll wrapper").toBeGreaterThan(0);
 
-    // The scroll affordance has to survive: the table is wider than a phone.
-    for (const rule of rules) {
+    for (const rule of boxed) {
+      expect(
+        rule,
+        ".landing-table-wrap must be position: relative — without it the absolutely " +
+          "positioned .sr-only spans in the table cells escape overflow-x: auto and " +
+          "give the document ~39px of horizontal scroll at 375px",
+      ).toMatch(/position\s*:\s*relative/);
+
+      // The scroll affordance has to survive: the table is wider than a phone.
       expect(rule).toMatch(/overflow-x\s*:\s*auto/);
     }
   });

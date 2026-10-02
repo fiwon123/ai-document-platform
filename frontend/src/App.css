@@ -96,6 +96,10 @@
   --blue-soft: #eff6ff; /* blue-50 — tinted backgrounds */
   --green: #16a34a; /* green-600 — success/positive */
   --green-soft: #f0fdf4; /* green-50 */
+  /* Comparison-table ✕. red-600 on white measures 4.83:1, clearing both the
+     3:1 non-text bar and AA outright, so it needs no step down the way
+     --blue-text and --green-text did. */
+  --compare-no: #dc2626;
   --success: #16a34a;
   --warning: #d97706;
   --danger: #dc2626;
@@ -187,6 +191,9 @@
   --blue-soft: rgb(37 99 235 / 0.16);
   --green: #22c55e; /* green-500 */
   --green-soft: rgb(34 197 94 / 0.12);
+  /* red-400, not red-600: the dark page is near-black, so red-600 lands at
+     3.4:1 and reads as a dull maroon next to the green-500 ✓. */
+  --compare-no: #f87171;
   --info: #60a5fa;
   --code-bg: #1b2639;
   --danger-soft: rgb(220 38 38 / 0.14);
@@ -3032,21 +3039,62 @@ body {
 }
 
 /* Pricing. */
+/* Billing toggle.
+
+   #583: the control was `inline-flex` at the section's left edge while the
+   plan cards were centred, so it read 384px off-axis at 1440px. The row below
+   carries the plan grid's own `max-width: 960px` and centres its content, so
+   the toggle's axis *is* the cards' axis on both pages rather than the
+   viewport's. */
+.billing-toggle-row {
+  display: flex;
+  justify-content: center;
+  max-width: 960px;
+  margin: 0 auto 28px;
+}
+
 .billing-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  margin: 0 0 28px;
+  gap: 10px;
   color: var(--muted);
   font-size: 0.92rem;
-  font-weight: 600;
 }
 
-.billing-toggle .active {
+/* The labels are buttons, so the selected period is state on a control rather
+   than a colour change on a read-only word. Three cues carry it, only one of
+   which is colour: the pill (shape), the weight (600 → 800), and
+   `aria-pressed` on the element. Colour alone failed the #583 criterion, and a
+   green/amber pair reads as the app's status language rather than as a choice. */
+.billing-toggle-label {
+  padding: 5px 14px;
+  border: 1px solid transparent;
+  border-radius: 20px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s var(--ease-out, ease), color 0.2s, font-weight 0.2s;
+}
+
+.billing-toggle-label:hover {
   color: var(--ink);
 }
 
-.save-badge {
+.billing-toggle-label.active {
+  border-color: color-mix(in srgb, var(--blue) 30%, transparent);
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.billing-toggle-label:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.billing-toggle .save-badge {
   margin-left: 6px;
   padding: 2px 8px;
   border-radius: 20px;
@@ -3068,6 +3116,11 @@ body {
   background: var(--line);
   cursor: pointer;
   transition: background 0.2s;
+}
+
+.toggle-switch:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 .toggle-switch[aria-checked="true"] {
@@ -3092,6 +3145,20 @@ body {
 
 .toggle-switch[aria-checked="true"] .toggle-thumb {
   transform: translateX(20px);
+}
+
+/* The thumb still moves under reduced motion — that movement *is* the control's
+   state, and removing it would leave two identical switches. Only the spring is
+   dropped, in favour of a plain value swap. The toggle labels keep nothing at
+   all: their transition is decoration on top of an instant state change. */
+@media (prefers-reduced-motion: reduce) {
+  .toggle-thumb {
+    transition: none;
+  }
+
+  .billing-toggle-label {
+    transition: none;
+  }
 }
 
 /* Three plans, same 3 → 1 reasoning as `.landing-steps`: at 768px `auto-fit`
@@ -3128,17 +3195,93 @@ body {
   margin: 0;
 }
 
+/* Plan price, as three elements at three deliberate sizes (#583).
+
+   `.landing-price` used to carry `font-size: 1.9rem` directly, and on
+   `/pricing` that declaration never applied: `.page-body p` is `(0,1,1)` and
+   this rule was `(0,1,0)`, so the prose rule won on both size *and* colour and
+   the price rendered as 16px muted grey instead of 1.9rem ink. The landing page
+   looked right and `/pricing` did not, which is the whole bug.
+
+   Nothing here sets a font-size on the `<p>` itself any more — every size
+   lives on a child, where no `.page-body p` descendant rule can reach it. The
+   `.page-body` scoping below is belt-and-braces for the element's own colour
+   and margin. */
 .landing-price {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   margin: 0;
-  font-size: 1.9rem;
-  font-weight: 800;
+  color: var(--ink);
+  /* Never break "$12" away from its period, and never let "Custom" wrap. */
+  white-space: nowrap;
 }
 
-.landing-price span {
-  display: block;
-  font-size: 0.8rem;
-  font-weight: 500;
+/* Currency mark and figure share a baseline, so "$" sits on the line rather
+   than floating above it. The mark is ~0.44 of the figure: large enough to
+   read as part of the number, small enough that the digit is the subject.
+
+   The size lives on `.landing-price-figure` and the amount inherits it at
+   `1em`. Declaring `0.44em` on the currency alone measured 7.04px, because
+   `em` resolves against the *parent's* font size — which was the inherited
+   16px, not the amount's — and a price whose dollar sign is 7px tall is a
+   different defect from the one being fixed. */
+.landing-price-figure {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.04em;
+  font-size: clamp(2.1rem, 5.5vw, 2.6rem);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.landing-price-currency {
+  font-size: 0.44em;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.landing-price-amount {
+  font-size: 1em;
+}
+
+/* "Custom" is a word, not a figure, so at the figure's size it is ~2.2x wider
+   than "$12" — the widest word here is still ~155px in a 264px card at 1440px,
+   and ~125px in a 286px card at 375px, so it fits at every breakpoint.
+
+   It is set at *exactly* the figure's size, and that is the whole point:
+   #583 asks for "the same optical size as a figure, not as loose text", and
+   matching the size is the only way to make the price row sit on one line.
+
+   An earlier revision set it one step down (0.8em) and compensated with
+   `line-height: calc(1.05 / var(--price-word-step))` so the line box would
+   match. That fixed the card bottoms — the Enterprise card's box had been
+   8.8px shorter, dragging its period, CTA and bottom border up with it — and
+   left the glyph baselines 4px apart, because extra leading is split evenly
+   above and below the text, so a larger line-height does not move a smaller
+   glyph's baseline. Two clevernesses and still a misaligned row. At 1em there
+   is nothing to keep in step. */
+.landing-price-amount-word {
+  font-size: 1em;
+}
+
+/* The period qualifies the figure, so it is the smallest thing in the block.
+   Below the figure rather than beside it: "/ per month" set after "Custom"
+   reads as part of the word. */
+.landing-price-period {
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.3;
   color: var(--muted);
+}
+
+.page-body .landing-price {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
 }
 
 .landing-plans .btn {
@@ -3199,6 +3342,51 @@ body {
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
 }
 
+/* Sticky column headers, only where the table actually scrolls (#583).
+
+   The cap is what makes `position: sticky` on the `th` do anything: sticky
+   positions against the nearest scrolling ancestor, and a wrapper that only
+   ever scrolls sideways never pins anything. It is applied at 520px and below
+   rather than everywhere, because the table's own minimum width is 442px — it
+   overflows the wrapper only when the viewport is narrower than that plus the
+   page's 6vw padding. At 1440 the table is 837px tall and reads perfectly as
+   part of the page, so capping it there would trade a readable table for a
+   nested scrollbar nobody asked for. */
+@media (max-width: 520px) {
+  .landing-table-wrap {
+    max-height: 70vh;
+  }
+}
+
+.landing-table-wrap:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+
+/* Block wrapper so the scroll affordance can sit outside the scroller. */
+.landing-table-block {
+  max-width: 940px;
+  margin: 0 auto;
+}
+
+/* Only shown where the table actually overflows, for the same reason the
+   `max-height` cap is: below 520px the table's 442px minimum does not fit.
+   Without this the Enterprise column is silently off-screen and the table
+   reads as broken rather than as scrollable. */
+.landing-table-hint {
+  display: none;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+@media (max-width: 520px) {
+  .landing-table-hint {
+    display: block;
+  }
+}
+
 :root[data-theme="dark"] .landing-table-wrap {
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
 }
@@ -3209,7 +3397,13 @@ body {
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 14px;
-  overflow: hidden;
+  /* NO `overflow: hidden` here, though the rounded corners look like they want
+     it. `overflow` on an element makes *that element* a scroll container, and a
+     sticky `th` positions against its nearest scrolling ancestor — so the clip
+     became the sticky containing block, the table is not a scroll container, and
+     the header scrolled away with its rows (`stickyAfter: -304` in a scroll
+     test). The wrapper above already carries the same 14px radius and clips its
+     overflowing content, so the corner clipping is not lost. */
 }
 
 .landing-table th,
@@ -3227,8 +3421,13 @@ body {
 
 /* Header row: a tinted band with a stronger bottom rule. Flat --surface
    was too close to the card white, so the column labels read as body
-   text rather than as headers. */
+   text rather than as headers. `top: 0` is relative to `.landing-table-wrap`,
+   which is capped at 70vh and scrolls — so the plan names stay visible while
+   the features scroll under them on a narrow screen. */
 .landing-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   background: var(--surface-2);
   color: var(--ink);
   font-weight: 700;
@@ -3242,14 +3441,40 @@ body {
   background: var(--surface-3);
 }
 
+/* ...and the Pro header keeps its own tint under it. The rule above is
+   `:root[data-theme="dark"] .landing-table thead th` = (0,3,2) and
+   `.landing-table th.pro-head` is (0,2,1), so in dark the band stopped at the
+   header: measured (43,58,85) on all three header cells, against a tinted
+   (203,216,239) in light. Same specificity trap as the zebra/Pro-cell pair
+   above, and the same repair. */
+:root[data-theme="dark"] .landing-table thead th.pro-head {
+  background: color-mix(in srgb, var(--blue) 16%, var(--surface-2));
+}
+
 /* Zebra striping: the comparison rows are long and label-only, so
-   alternating tints carry the eye across. */
-.landing-table tbody tr:nth-child(even) td {
+   alternating tints carry the eye across.
+
+   `:not(.pro-cell)` is load-bearing. The Pro tint is
+   `.landing-table td.pro-cell` = (0,2,1) and this rule was
+   `.landing-table tbody tr:nth-child(even) td` = (0,2,3), so on every even row
+   the zebra won and the Pro column lost its tint — rendering the highlighted
+   column as a dashed stripe with a gap every other row, in both themes.
+   Excluding the Pro cell keeps the two tints independent rather than picking a
+   winner by specificity order. */
+.landing-table tbody tr:nth-child(even) td:not(.pro-cell) {
   background: color-mix(in srgb, var(--surface) 55%, transparent);
 }
 
 .landing-table tbody tr:hover td {
   background: color-mix(in srgb, var(--blue) 5%, transparent);
+}
+
+/* Rows are not focusable — a 15-row table of tab stops would be a worse trap
+   than no highlight — but the wrapper is (it is a scroll region), so keyboard
+   users get a focus ring on the table itself. This rule covers the case where
+   focus lands inside a row via a future link or a browser's cell navigation. */
+.landing-table tbody tr:focus-within td {
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
 }
 
 .landing-table tbody tr:last-child td {
@@ -3264,6 +3489,19 @@ body {
   font-weight: 600;
 }
 
+/* The 7% above is the *light* value, and it does not survive into dark. In
+   dark the zebra is `var(--surface)` at 55% = (23,32,48) and a 7% blue-400
+   tint over the page = (23,35,54): a luminance ratio of 1.03:1, i.e. the Pro
+   cell and the zebra row are the same colour. The fill was continuous — the
+   `:not(.pro-cell)` fix did hold — but on every even row the column dissolved
+   into its neighbours and could only be located by its border lines, which is
+   the symptom `:not(.pro-cell)` was meant to end. 14% is the smallest step that
+   separates the tint from the zebra while leaving the ✓/✕ glyphs above 4.5:1
+   on it (measured 6.0:1 ✓, 4.9:1 ✕). */
+:root[data-theme="dark"] .landing-table .pro-cell {
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+}
+
 .landing-table th.pro-head {
   background: color-mix(in srgb, var(--blue) 12%, var(--surface-2));
   color: var(--blue-text);
@@ -3274,14 +3512,31 @@ body {
   border-right: 1px solid color-mix(in srgb, var(--blue) 25%, var(--line));
 }
 
+/* The ✓/✕ pair in the comparison table.
+
+   #583 asked for a red ✕. It was `var(--muted)` at `opacity: 0.55`, which is
+   not red and not AA — it read as "this cell was not filled in", which is
+   exactly the ambiguity the issue reported. The glyphs are non-text graphics,
+   so the bar is 3:1 (WCAG 1.4.11), not 4.5:1.
+
+   `--green` is 3.30:1 on the table's white but **2.99:1** on the Pro column,
+   whose `7%` blue tint is what puts the ✓ under it. That is a fail by 0.01 and
+   it is invisible on screen, so the ✓ takes `--green-text` (green-800) in
+   light: measured 7.13:1 on white, 6.48:1 on the tint. The ✕ keeps red-600,
+   which holds 4.83:1 on white and 4.39:1 on the same tint.
+
+   A dedicated token for the ✕ rather than `--danger`, for the same reason
+   `--green-text` and `--blue-text` exist: `--danger` is a *background* colour
+   in this file (red-600 on a red-100 wash) and its dark-theme value is a
+   translucent tint, so reusing it would break both the light use and the
+   semantics. */
 .compare-check {
-  color: var(--green);
+  color: var(--green-text);
   vertical-align: middle;
 }
 
 .compare-x {
-  color: var(--muted);
-  opacity: 0.55;
+  color: var(--compare-no);
   vertical-align: middle;
 }
 

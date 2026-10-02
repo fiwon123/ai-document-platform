@@ -7,6 +7,9 @@ import {
 } from "../components/PageLayout";
 import { PlanComparison } from "../components/landing/PlanComparison";
 import { FaqAccordion } from "../components/landing/FaqAccordion";
+import { BillingToggle } from "../components/landing/BillingToggle";
+import { PlanPrice } from "../components/landing/PlanPrice";
+import { Reveal } from "../components/Reveal";
 import { balancedGridClass } from "../utils/gridCols";
 import { FAQ_ITEMS, PLAN_DETAILS, PLANS } from "../content/marketing";
 import { useAuth } from "../hooks/useAuth";
@@ -35,45 +38,30 @@ export function PricingPage() {
       subtitle="Start free. Upgrade when the free limits start costing you more than the subscription."
     >
       <PageSection>
-        <div className="billing-toggle">
-          <span className={annual ? "" : "active"}>Monthly</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={annual}
-            aria-label="Toggle annual billing"
-            className="toggle-switch"
-            onClick={() => setAnnual((value) => !value)}
-          >
-            <span className="toggle-thumb" />
-          </button>
-          <span className={annual ? "active" : ""}>
-            Annual <em className="save-badge">Save 17%</em>
-          </span>
-        </div>
+        <BillingToggle annual={annual} onChange={setAnnual} />
       </PageSection>
 
       <PageSection title="Plans">
         <div className="landing-plans">
-          {PLANS.map((plan) => (
-            <article
-              key={plan.name}
-              className={`landing-plan card-hover${plan.featured ? " landing-plan-featured" : ""}`}
-            >
-              {plan.featured && <span className="plan-badge">Most Popular</span>}
-              <h2>{plan.name}</h2>
-              <p className="landing-price">
-                {annual ? plan.annual : plan.monthly}
-                {plan.period !== "forever" && <span>/ {plan.period}</span>}
-                {plan.period === "forever" && <span>{plan.period}</span>}
-              </p>
-              <Link
-                to={user ? "/app" : "/register"}
-                className={`btn ${plan.featured ? "btn-primary" : "btn-secondary"}`}
+          {PLANS.map((plan, i) => (
+            <Reveal key={plan.name} variant="up" delay={Math.min(i * 80, 160)}>
+              <article
+                className={`landing-plan card-hover${plan.featured ? " landing-plan-featured" : ""}`}
               >
-                {user ? "Open workspace" : plan.cta}
-              </Link>
-            </article>
+                {plan.featured && <span className="plan-badge">Most Popular</span>}
+                <h2>{plan.name}</h2>
+                <PlanPrice
+                  price={annual ? plan.annual : plan.monthly}
+                  period={plan.period}
+                />
+                <Link
+                  to={user ? "/app" : "/register"}
+                  className={`btn ${plan.featured ? "btn-primary" : "btn-secondary"}`}
+                >
+                  {user ? "Open workspace" : plan.cta}
+                </Link>
+              </article>
+            </Reveal>
           ))}
         </div>
       </PageSection>

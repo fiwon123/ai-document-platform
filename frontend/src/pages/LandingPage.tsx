@@ -7,6 +7,8 @@ import { ScreenshotCarousel } from "../components/landing/ScreenshotCarousel";
 import { CountUp } from "../components/landing/CountUp";
 import { FaqAccordion } from "../components/landing/FaqAccordion";
 import { PlanComparison } from "../components/landing/PlanComparison";
+import { BillingToggle } from "../components/landing/BillingToggle";
+import { PlanPrice } from "../components/landing/PlanPrice";
 import { FlowIllustration } from "../components/landing/FlowIllustration";
 import { RevealCard } from "../components/landing/RevealCard";
 import { CheckIcon, FeatureIcon } from "../components/landing/FeatureIcon";
@@ -309,22 +311,7 @@ export function LandingPage() {
           </Reveal>
 
           <Reveal variant="up" delay={80}>
-            <div className="billing-toggle">
-              <span className={annual ? "" : "active"}>Monthly</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={annual}
-                aria-label="Toggle annual billing"
-                className="toggle-switch"
-                onClick={() => setAnnual((value) => !value)}
-              >
-                <span className="toggle-thumb" />
-              </button>
-              <span className={annual ? "active" : ""}>
-                Annual <em className="save-badge">Save 17%</em>
-              </span>
-            </div>
+            <BillingToggle annual={annual} onChange={setAnnual} />
           </Reveal>
 
           <div className="landing-plans">
@@ -335,11 +322,10 @@ export function LandingPage() {
                 >
                   {plan.featured && <span className="plan-badge">Most Popular</span>}
                   <h3>{plan.name}</h3>
-                  <p className="landing-price">
-                    {annual ? plan.annual : plan.monthly}
-                    {plan.period !== "forever" && <span>/ {plan.period}</span>}
-                    {plan.period === "forever" && <span>{plan.period}</span>}
-                  </p>
+                  <PlanPrice
+                    price={annual ? plan.annual : plan.monthly}
+                    period={plan.period}
+                  />
                   <Link
                     to={user ? "/app" : "/register"}
                     className={`btn ${plan.featured ? "btn-primary" : "btn-secondary"}`}
