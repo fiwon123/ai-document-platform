@@ -4,6 +4,7 @@ import {
   PageLayout,
   PageSection,
 } from "../components/PageLayout";
+import { ContactVisual } from "../components/company/PageVisuals";
 import { SITE } from "../content/marketing";
 
 /**
@@ -14,6 +15,11 @@ import { SITE } from "../content/marketing";
  * exist yet, and shipping a form that silently drops mail is worse than not
  * shipping one. GitHub issues are the primary channel because they are public
  * and searchable.
+ *
+ * #585's criteria ask for "the form centred, labelled, and styled consistently
+ * with the auth forms". There is no form, by the decision above, so what that
+ * was reaching for — the channels being the page's centred primary content
+ * rather than a left-hand column — is answered by the channel grid below.
  */
 export function ContactPage() {
   return (
@@ -26,8 +32,16 @@ export function ContactPage() {
       }
       subtitle="The fastest way to reach us is an issue on the repository. Everything else is slower to read and harder to search later."
     >
+      {/* Four channels across, not four stacked rows (#585).
+
+          Stacked they were an 826px lane: four 1027px bordered boxes each
+          holding 459px of prose, with the figure beside them marooned in 586px
+          of its own panel. Two across halves the section and fills every row;
+          the figure goes with "Before you write", whose two paragraphs are
+          close to its height, so the pairing is balanced rather than merely
+          placed. */}
       <PageSection title="Where to go">
-        <div className="contact-list">
+        <div className="contact-list contact-list--pair">
           <div className="contact-row">
             <h3>Bugs and feature requests</h3>
             <p>
@@ -84,18 +98,23 @@ export function ContactPage() {
       </PageSection>
 
       <PageSection title="Before you write">
-        <p>
-          A few questions come up often enough to answer here.{" "}
-          <Link to="/how-it-works">How it works</Link> covers what happens to an
-          uploaded file and why documents can be <code>pending</code> for a
-          while. <Link to="/pricing">Pricing</Link> covers limits. If a
-          document is stuck in <code>processing</code>, the error field on the
-          document detail view is the first thing to look at.
-        </p>
-        <p>
-          Note that the email addresses above use a placeholder domain and must
-          be replaced with a real mailbox before this page is published.
-        </p>
+        <div className="page-split">
+          <div className="page-split-prose">
+            <p>
+              A few questions come up often enough to answer here.{" "}
+              <Link to="/how-it-works">How it works</Link> covers what happens to an
+              uploaded file and why documents can be <code>pending</code> for a
+              while. <Link to="/pricing">Pricing</Link> covers limits. If a
+              document is stuck in <code>processing</code>, the error field on the
+              document detail view is the first thing to look at.
+            </p>
+            <p>
+              Note that the email addresses above use a placeholder domain and must
+              be replaced with a real mailbox before this page is published.
+            </p>
+          </div>
+          <ContactVisual />
+        </div>
       </PageSection>
 
       <PageCta

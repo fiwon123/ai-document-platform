@@ -7856,34 +7856,47 @@ nav.footer-col a:hover {
   text-decoration: underline;
 }
 
-/* "How the pieces fit together" on /features.
+/* The prose/figure split.
 
-   Two columns on desktop: prose at its 52ch measure on the left, the
-   architecture diagram filling the space that was empty beside it (#581). The
-   prose keeps its measure rather than stretching — a 1,000px-wide paragraph is
-   the problem, not the fix — so the diagram does the work of using the width.
+   Six routes use it — `/features` (#581) and the five Company-family pages
+   (#585) — which is why it is not called `.feature-split` any more. The five
+   pages were reaching for exactly this rule, and a second two-column class for
+   the same idea is how the two start disagreeing: a narrower collapse point
+   here, `align-items: start` there, and neither page's review catches it
+   because each looks correct on its own.
 
-   Collapses to a single column at 900px, where two columns would leave ~180px
-   per side and the prose measure would break anyway. */
-.feature-split {
+   Two columns on desktop: prose at its 52ch measure on the left, the figure
+   filling the space that was empty beside it. The prose keeps its measure
+   rather than stretching — a 1,000px-wide paragraph is the problem, not the
+   fix — so the figure does the work of using the width.
+
+   Centred, not `start`. The right column runs taller than the prose beside it
+   on every one of these routes (#585: a 420px card grid on /contact, three role
+   cards on /careers), so pinning both to the top leaves that much empty page
+   under the prose — the same "left-heavy" complaint #554 raised about the old
+   single-column version, just relocated. Centring splits the difference and the
+   section reads as a composition rather than a column with a footnote.
+
+   **900px, and it has to be 900px.** `.page-grid--n*` collapses its two-column
+   variants at 720px, which is right for cards of equal length and wrong here:
+   at 768px a `.page-body` content box is 676px, so two columns are 318px and
+   the prose runs at **~39 characters** — a third narrower than the 52ch measure
+   and below the 45-character floor `pageMeasure.test.ts` holds the site to.
+   Measured, not estimated. Below 900px the figure goes under the prose and the
+   measure goes back to a full ~62 characters. */
+.page-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  /* Centred, not `start`. The right column is the diagram plus its text
-     equivalent and runs ~380px taller than the two paragraphs of prose, so
-     pinning both to the top left that much empty space under the prose — the
-     same "left-heavy" complaint #554 raised about the old single-column
-     version, just relocated. Centring splits the difference and the section
-     reads as a composition rather than a column with a footnote. */
   align-items: center;
   gap: 40px;
 }
 
-.feature-split-prose p:last-child {
+.page-split-prose p:last-child {
   margin-bottom: 0;
 }
 
 @media (max-width: 900px) {
-  .feature-split {
+  .page-split {
     grid-template-columns: minmax(0, 1fr);
     gap: 32px;
   }
@@ -8177,6 +8190,129 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 .page-card-icon svg {
   width: 100%;
   height: 100%;
+}
+/* The page figure: a tinted panel holding one drawing, paired with a column of
+   prose in `.page-split`.
+
+   #581's architecture diagram and #582's pipeline both draw their connectors
+   this way, so the third thing these five pages share is a frame rather than a
+   fifth set of colours. `--card-accent` does the theming: the panel carries an
+   8% wash of it from the top-left, and `[data-accent]` picks which, so neither
+   theme needs a rule on the SVG itself.
+
+   `align-self: center`, not the default `stretch`. Every one of these figures
+   sits in a lane whose other column is a heading and some prose — on /contact
+   that is a 420px card grid and on /careers three role cards — and a stretched
+   panel would be a 600px-tall box with a 240px drawing marooned in the middle
+   of it. Centring the panel instead puts the slack in the page background,
+   symmetrically, which is the argument `.page-split`'s own comment already
+   makes for centring its two lanes.
+
+   `prefers-reduced-data` drops the wash and the shadow rather than only the
+   gradient: both are per-pixel decoration, and a reader who has asked for less
+   data is not helped by a border-radius plus a blur being kept "for the look". */
+.page-figure {
+  position: relative;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  padding: clamp(8px, 1.5vw, 16px);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow: var(--shadow-sm);
+  /* Stated, not inherited. `currentColor` is what every stroke in these
+     drawings resolves to, and "whatever the page happened to set" is not a
+     colour a contrast measurement can be repeated against. */
+  color: var(--ink);
+}
+
+.page-figure::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  background: radial-gradient(
+    120% 120% at 0% 0%,
+    color-mix(in srgb, var(--card-accent) 8%, transparent) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+.page-figure-svg {
+  display: block;
+  /* The lane is 493px at 1440 minus 2×16 of panel padding, so 460px is the
+     drawing at its natural aspect filling the lane without touching the border.
+     Capped lower than that it left ~30px of panel either side and a visibly
+     short panel — and the height a drawing gets is the height of the column it
+     has to match: on /careers the card lane is 713px, so every unit the panel
+     gains is a unit less of slack centred above and below it. */
+  width: 100%;
+  max-width: 460px;
+  height: auto;
+}
+
+/* Figure text. `--ink` for BOTH, at no opacity, and hierarchy from size and
+   weight — the same rule `.arch-label`/`.arch-sub` follows, and for the same
+   reason.
+
+   `--muted` looked like the obvious choice for `.fig-sub` and it fails: it
+   measures 5.12:1 on `--paper` but only **4.41:1** on the 8% accent wash this
+   panel actually paints (measured in Chromium, light theme), and `.fig-sub` is
+   12px, so AA wants 4.5:1. Dark clears at 5.88:1, which is exactly why a
+   light-only eyeball would have shipped it. The wash is what costs the 0.7:1,
+   so fading the text to win it back is the wrong trade — #581 measured the same
+   trap at 2.84–4.23:1. `--ink` measures 15.99:1 light and 12.61:1 dark on the
+   same field, so both are free and the weight difference carries the hierarchy. */
+.fig-label {
+  fill: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.fig-sub {
+  fill: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Strokes, at the same 0.85 for the same reason `.arch-link` sits at 0.54:
+   they carry meaning — a stroke *is* the routing or the content a drawing
+   claims — so they are held to the 3:1 non-text target rather than left to
+   taste. Measured against the washed panel: **10.5:1 light, 9.3:1 dark**. Well
+   clear in both, which is the point of stating the number instead of picking a
+   softer line that reads better.
+
+   This is `.page-figure path` rather than `.fig-link` alone so that the in-panel
+   marks are held to the same number as the connectors. Fading only some of a
+   drawing's lines is how a figure ends up looking uneven without anyone being
+   able to say which line is wrong. Text is not in this rule and must not be:
+   `fill` is not affected by it, and the text rules above set their own. */
+.page-figure path {
+  opacity: 0.85;
+}
+
+@media (max-width: 720px) {
+  .page-figure {
+    min-height: 200px;
+  }
+
+  .page-figure-svg {
+    max-width: 360px;
+  }
+}
+
+@media (prefers-reduced-data: reduce) {
+  .page-figure::before {
+    display: none;
+  }
+
+  .page-figure {
+    box-shadow: none;
+  }
 }
 
 .page-card:hover .page-card-icon,
@@ -8825,6 +8961,39 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* Four equal channels across instead of four stacked rows (#585).
+
+   Stacked, each `.contact-row` was a 1027px bordered box holding 459px of
+   prose — 55% of the row empty, and the wide-box-around-a-narrow-measure
+   shape `pageMeasure.test.ts` calls out for `.pipeline-stage`. Two across
+   gives each card 505px, which its own prose fills.
+
+   900px, like `.page-split` and not like `.page-grid--n4`'s 720px, and for the
+   same measured reason: at 768px two columns are 318px, so the prose would run
+   at ~39 characters. `--stack` below 900px because /careers' three roles have
+   no third column to form — a 2+1 grid is the orphan row `balancedGridClass`
+   exists to prevent, and a contact channel is not something to leave half a row
+   short. */
+.contact-list--pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  .contact-list--pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The button sits at the bottom of its card, so the four CTAs line up on one
+   line. In the stacked list it followed the paragraph directly, which is right;
+   as grid items the four cards are the same height and the paragraphs are not,
+   so a short one would leave its button floating halfway down the card. */
+.contact-list--pair .contact-row > .btn {
+  margin-top: auto;
 }
 
 .contact-row {
