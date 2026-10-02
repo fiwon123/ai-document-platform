@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
@@ -57,7 +59,7 @@ async function askQuestion(question: string) {
   await dismissTour(user);
   await user.click(screen.getByRole("tab", { name: /^Ask/ }));
   fireEvent.change(
-    screen.getByPlaceholderText("Ask a question about the sample documents..."),
+    screen.getByPlaceholderText("Ask about the sample documents..."),
     { target: { value: question } },
   );
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -175,7 +177,7 @@ describe("DemoPage", () => {
       within(status).getByRole("link", { name: "Sign up" }).getAttribute("href"),
     ).toBe("/register");
     expect(
-      screen.getByPlaceholderText("Ask a question about the sample documents..."),
+      screen.getByPlaceholderText("Ask about the sample documents..."),
     ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   });
@@ -213,7 +215,7 @@ describe("DemoPage", () => {
 /** `askQuestion` without the tab switch, for callers already on the Ask tab. */
 async function askQuestionNow(question: string) {
   fireEvent.change(
-    screen.getByPlaceholderText("Ask a question about the sample documents..."),
+    screen.getByPlaceholderText("Ask about the sample documents..."),
     { target: { value: question } },
   );
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -241,12 +243,12 @@ describe("DemoPage — tabs", () => {
       screen.getByPlaceholderText("Search sample documents..."),
     ).toBeTruthy();
     expect(
-      screen.queryByPlaceholderText("Ask a question about the sample documents..."),
+      screen.queryByPlaceholderText("Ask about the sample documents..."),
     ).toBeNull();
 
     await user.click(within(tablist).getByRole("tab", { name: /^Ask/ }));
     expect(
-      screen.getByPlaceholderText("Ask a question about the sample documents..."),
+      screen.getByPlaceholderText("Ask about the sample documents..."),
     ).toBeTruthy();
     expect(
       screen.queryByPlaceholderText("Search sample documents..."),
@@ -289,7 +291,7 @@ describe("DemoPage — tabs", () => {
       "true",
     );
     expect(
-      screen.getByPlaceholderText("Ask a question about the sample documents..."),
+      screen.getByPlaceholderText("Ask about the sample documents..."),
     ).toBeTruthy();
     // Wraps, so the tablist is not a dead end at either end.
     await user.keyboard("{ArrowRight}");
@@ -315,7 +317,7 @@ describe("DemoPage — tabs", () => {
 
     await user.click(screen.getByRole("tab", { name: /^Ask/ }));
     expect(
-      screen.getByPlaceholderText("Ask a question about the sample documents..."),
+      screen.getByPlaceholderText("Ask about the sample documents..."),
     ).toBeTruthy();
   });
 });
@@ -421,12 +423,154 @@ describe("DemoPage — walkthrough", () => {
     renderDemo();
     const dialog = screen.getByRole("dialog");
 
-    // Tab from the last control wraps to the first rather than moving into the
-    // page content the backdrop is covering.
-    const close = within(dialog).getByRole("button", { name: /close/i });
-    close.focus();
+    /* From the *last* focusable control, not the first. Tabbing forward from the
+       close button lands on "Next", which is still inside the dialog, so that
+       direction proves nothing about the trap. Tabbing forward off the last
+       control is the case that would otherwise walk into the page behind. */
+    const last = within(dialog).getByRole("button", { name: "Next" });
+    last.focus();
     await user.tab();
     expect(dialog.contains(document.activeElement)).toBe(true);
-    expect(document.activeElement).not.toBe(close);
+    // Wrapped to the first control rather than to the page behind.
+    expect(document.activeElement).toBe(
+      within(dialog).getByRole("button", { name: /close/i }),
+    );
+  });
+
+  it("wraps backwards from the first control to the last", async () => {
+    const user = userEvent.setup();
+    renderDemo();
+    const dialog = screen.getByRole("dialog");
+
+    const first = within(dialog).getByRole("button", { name: /close/i });
+    first.focus();
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(
+      within(dialog).getByRole("button", { name: "Next" }),
+    );
+  });
+});
+
+describe("DemoPage — placeholder fit", () => {
+  /* An `input`'s placeholder is clipped at its content edge with no ellipsis,
+     so a placeholder that is too long is silently cut mid-word rather than
+     wrapped or truncated visibly. At 375px the Ask input's content box is 295px
+     and the measured average character is ~7.9px there, so ~37 characters fit;
+     "Ask a question about the sample documents..." is 42 and rendered as
+     "Ask a question about the sample docume".
+
+     jsdom cannot measure text, so this pins the character budget rather than a
+     pixel width — enough to fail when the placeholder is lengthened, which is
+     how the bug got there. The number is deliberately loose: a retune of the
+     input's padding should not fail this file. */
+  const MAX_PLACEHOLDER_CHARS = 37;
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+  });
+
+  it("keeps the Ask placeholder inside the narrow input's character budget", async () => {
+    const user = userEvent.setup();
+    renderDemoWithoutTour();
+    await user.click(screen.getByRole("tab", { name: /^Ask/ }));
+
+    const input = screen.getByPlaceholderText("Ask about the sample documents...");
+    const placeholder = input.getAttribute("placeholder") ?? "";
+    expect(placeholder.length).toBeLessThanOrEqual(MAX_PLACEHOLDER_CHARS);
+    // The descriptive label is the accessible name, so shortening the visible
+    // hint does not shorten what a screen reader announces.
+    expect(input.getAttribute("aria-label")).toBe(
+      "Ask a question about the sample documents",
+    );
+  });
+
+  it("keeps the Search placeholder inside the same budget", () => {
+    renderDemoWithoutTour();
+    const placeholder =
+      screen.getByPlaceholderText("Search sample documents...").getAttribute("placeholder") ?? "";
+    expect(placeholder.length).toBeLessThanOrEqual(MAX_PLACEHOLDER_CHARS);
+  });
+});
+
+describe("DemoPage — stylesheet invariants", () => {
+  /* Two visual-review findings that no component test could catch, because both
+     are about a rendered box rather than about what a component emits. Asserted
+     here as *relationships*, following src/pageMeasure.test.ts: a deliberate
+     retune of the padding scale should not fail this file, but the two specific
+     mistakes — a block with no inset, and no word gap on an uppercase sentence —
+     must. */
+
+  const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    "",
+  );
+  /* The selector is escaped before it becomes a pattern. `.demo-usage .badge`
+     happened to work unescaped because `.` matches itself loosely, and
+     `.demo-doc-description + .document-card-body` silently did not: `+` is a
+     quantifier there, so the pattern asked for one-or-more spaces where the
+     combinator should have been, matched nothing, and threw "no ... block in the
+     stylesheet" — a failure in the helper that looks like a failure in the CSS. */
+  const ruleBody = (selector: string): string => {
+    const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const m = css.match(new RegExp(`(?:^|[}\\n])\\s*${esc}\\s*\\{([^}]*)\\}`));
+    if (!m?.[1]) throw new Error(`no ${selector} block in the stylesheet`);
+    return m[1];
+  };
+  const decl = (body: string, prop: string): string | undefined =>
+    body.match(new RegExp(`(?:^|;)\\s*${prop}\\s*:([^;]+)`))?.[1]?.trim();
+
+  it("insets the sample-document description like every other block in the card", () => {
+    /* `.document-card-header` and `.document-card-body` both carry
+       `padding: var(--sp-5)`. As a bare direct child, `.demo-doc-description`
+       rendered flush against the card border — measured 1–2px from the left
+       edge while everything inside sat 20px in, which read as a misaligned
+       block. Asserted against the card's own token, so a change to the padding
+       scale moves both together. */
+    const card = decl(ruleBody(".document-card-header"), "padding");
+    expect(card).toContain("--sp-5");
+
+    const desc = ruleBody(".demo-doc-description");
+    const padding = decl(desc, "padding") ?? "";
+    const paddingLeft = decl(desc, "padding-left");
+    const horizontal = paddingLeft ?? padding;
+    expect(
+      horizontal,
+      "the description needs a horizontal inset or it renders on the card border",
+    ).toContain("--sp-5");
+    /* Vertical padding would double up: the header above and the body below
+       each already contribute their own, which opened a ~46px void. */
+    expect(padding.trim()).toBe(`0 var(--sp-5)`);
+  });
+
+  it("keeps a word gap on the uppercase budget badges", () => {
+    /* `.badge` sets `text-transform: uppercase` with `letter-spacing: 0.03em`.
+       Correct for a one- or two-word status chip, wrong for a sentence: the
+       budget read as "1OF5 QUESTIONS USED" because the word gap (2.8–4.5px) was
+       barely wider than the glyph gap (1–2px). */
+    const usageBadge = ruleBody(".demo-usage .badge");
+    expect(decl(usageBadge, "word-spacing")).toBeTruthy();
+
+    /* The same defect appeared twice: the rule was first written for
+       `.demo-usage .badge` and the tab hints — one selector over — still
+       rendered "10left" with a word gap equal to its digit gap. Asserted across
+       every label-bearing pill on the page so a third cannot slip through. */
+    const tabHint = ruleBody(".tab-hint");
+    expect(
+      decl(tabHint, "word-spacing"),
+      "the tab hint fuses \"10 left\" into \"10left\" without a word gap",
+    ).toBeTruthy();
+  });
+
+  it("bottom-anchors the demo card body so status rows align across cards", () => {
+    /* `.document-card-body` is `flex: 1`, which grows the box but leaves its
+       children top-aligned; only `.document-card-footer` carries
+       `margin-top: auto`, and the demo renders no footer element. So the status
+       row tracked the height of the description above it and sat ~21px lower in
+       whichever card wrapped to an extra line. */
+    const body = ruleBody(".demo-doc-description + .document-card-body");
+    expect(decl(body, "display")).toBe("flex");
+    expect(decl(body, "flex-direction")).toBe("column");
+    expect(decl(body, "justify-content")).toBe("flex-end");
   });
 });

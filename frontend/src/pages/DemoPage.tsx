@@ -448,7 +448,7 @@ export function DemoPage() {
                       type="text"
                       value={qaInput}
                       onChange={(e) => setQaInput(e.target.value)}
-                      placeholder="Ask a question about the sample documents..."
+                      placeholder="Ask about the sample documents..."
                       aria-label="Ask a question about the sample documents"
                       autoComplete="off"
                       className="chat-input"

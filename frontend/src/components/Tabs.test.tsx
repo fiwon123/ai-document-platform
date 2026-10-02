@@ -25,8 +25,7 @@ const tab = (name: string) =>
   screen.getByRole("tab", { name: new RegExp(`^${name}`) });
 
 describe("Tabs", () => {
-  it("exposes the tab pattern rather than just the tablist role", async () => {
-    const user = userEvent.setup();
+  it("exposes the tab pattern rather than just the tablist role", () => {
     render(<Harness />);
 
     // role="tablist" obliges these; a tablist without them fails
