@@ -3,6 +3,8 @@ export interface DemoSampleDoc {
   filename: string;
   mime_type: string;
   status: "ready";
+  /** One line: what is in the document and what it is there to demonstrate. */
+  description: string;
   chunks: string[];
 }
 
@@ -13,6 +15,8 @@ export const DEMO_DOCUMENTS: DemoSampleDoc[] = [
     filename: "company-handbook.pdf",
     mime_type: "application/pdf",
     status: "ready",
+    description:
+      "Benefits, remote-work policy and security rules — the best document to ask a policy question about.",
     chunks: [
       "Welcome to Acme Corp. Our mission is to build reliable, human-friendly software that helps teams stay organized and ship with confidence.",
       "All employees receive unlimited paid time off, a home office stipend, and health coverage starting on day one. Review the full benefits catalog in Workday.",
@@ -26,6 +30,8 @@ export const DEMO_DOCUMENTS: DemoSampleDoc[] = [
     filename: "onboarding-guide.pdf",
     mime_type: "application/pdf",
     status: "ready",
+    description:
+      "A day-one, week-one and first-sprint walkthrough — try it for time-bound questions like “what happens on day one?”",
     chunks: [
       "Day one: your manager will schedule a 1:1, IT will send a laptop, and you will get read access to the engineering wiki and the product roadmap.",
       "The first week focuses on environment setup: clone the monorepo, install the dev tools, and run the local stack against the staging API.",
@@ -39,6 +45,8 @@ export const DEMO_DOCUMENTS: DemoSampleDoc[] = [
     filename: "design-system.md",
     mime_type: "text/markdown",
     status: "ready",
+    description:
+      "Design tokens, spacing scale and component rules — the best document for questions about exact values.",
     chunks: [
       "The design system is built on tokens. Color tokens include ink, paper, surface, muted, line, blue, and green, with dark-theme variants.",
       "Spacing uses a 4px base scale: 4, 8, 12, 16, 24, 32, 48, and 64. Use tokens instead of magic numbers so dark mode stays consistent.",

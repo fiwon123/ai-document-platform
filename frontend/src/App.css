@@ -6468,8 +6468,234 @@ nav.footer-col a:hover {
 .demo-usage {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
-  margin: 14px 0 0;
+  /* The issue called these tags "crowded, sitting too close to the header with
+     no breathing room". The 14px top margin was measured against the header's
+     own 1.2rem bottom margin, so the row read as part of the header block
+     rather than as a separate row of badges. */
+  margin: 22px 0 0;
+}
+
+.demo-tour-button {
+  padding: 5px 14px;
+  font-size: 0.8rem;
+}
+
+/* One-line summary under each sample document's filename.
+
+   It carries the card's horizontal padding itself. As a bare direct child of
+   `.document-card` it rendered flush against the border while every other block
+   inside — header, mime type, status row, footer — sat 20px in, which read as a
+   misaligned block rather than as a description.
+
+   Only the horizontal padding. The header above already contributes its own
+   20px bottom padding and the body below its own 20px top, so adding vertical
+   padding here too opened a ~46px void above `Status:`. */
+.demo-doc-description {
+  margin: 0;
+  padding: 0 var(--sp-5);
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+/* Bottom-anchor the status block so it lands at the same height in every card.
+
+   `.document-card-body` is `flex: 1`, which grows the box but leaves its
+   children top-aligned, so the status row tracks the height of whatever sits
+   above it. Only `.document-card-footer` carries `margin-top: auto`, and the
+   demo renders `.document-card-body` → `.status-row` + `.date` with no footer
+   element — so nothing anchored the row and a description wrapping to a third
+   line pushed it 21px below its neighbours.
+
+   This was already true before the description existed (a card whose body
+   happened to wrap misaligned at 1280); the description changed *which* widths
+   hit it rather than creating it. `DocumentsPage` is unaffected because its
+   body always starts under a uniform-height header. */
+.demo-doc-description + .document-card-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+/* Sentence-length badges, not status chips. `.badge` uppercases with
+   `letter-spacing: 0.03em`, which fuses the words of a budget readout at first
+   pass — "1 OF 5 QUESTIONS USED" reads as "1OF5". A chip's letter-spacing is
+   right for a one- or two-word label and wrong for a sentence, so the budget
+   gets the extra word gap the uppercase lost. */
+.demo-usage .badge {
+  word-spacing: 0.12em;
+}
+
+/* Tabs — the full ARIA pattern lives in components/Tabs.tsx; these are the
+   parts the markup cannot say. */
+.tablist {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 22px;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  /* WCAG 2.5.8: a 44px-tall target, and the underline is the state indicator. */
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+
+.tab-active {
+  color: var(--blue);
+  border-bottom-color: var(--blue);
+}
+
+/* The remaining budget, restated on the tab itself so the ceiling is visible
+   from the tab strip rather than only from inside a panel. */
+.tab-hint {
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  /* Same fused-word defect the budget badges had, one selector over: "10 left"
+     rendered as "10left", its word gap measuring the same 3px as its digit gap.
+     A hint is a short label rather than a sentence, but it still has two words
+     and needs to be told apart. */
+  word-spacing: 0.12em;
+}
+
+.tab-active .tab-hint {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+/* The panel is focusable so a keyboard user can reach content that scrolls
+   past the tab strip; it takes no visible focus ring of its own because the tab
+   that labels it is already the visible focus target. */
+.tabpanel:focus-visible {
+  outline: none;
+}
+
+.tabpanel:focus-visible .tab-hint {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* Walkthrough */
+.tour-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 0.55);
+}
+
+.tour {
+  width: min(520px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.28);
+}
+
+.tour:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.tour-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.tour-title {
+  margin: 0;
+  font-size: 1.2rem;
+  letter-spacing: -0.02em;
+}
+
+.tour-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tour-close:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.tour-body {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.tour-body p {
+  margin: 0 0 10px;
+}
+
+.tour-body p:last-child {
+  margin-bottom: 0;
+}
+
+.tour-body strong {
+  color: var(--ink);
+}
+
+.tour-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.tour-progress {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.tour-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .demo-section {
