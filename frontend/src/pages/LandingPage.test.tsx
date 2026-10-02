@@ -194,9 +194,18 @@ describe("LandingPage", () => {
   it("switches plan card pricing between monthly and annual", () => {
     renderPage();
     expect(screen.getAllByText(/per month/).length).toBeGreaterThan(0);
-    expect(screen.getByText("$12")).toBeTruthy();
+
+    // The price is split into a currency span and an amount span (#583), so it
+    // is no longer one text node — `getByText("$12")` cannot match it without
+    // silently matching a parent instead. Read the amounts directly, and read
+    // all three: "Custom" is the word case the issue asked to size like a
+    // figure, so it belongs in the same assertion.
+    const amounts = () =>
+      [...document.querySelectorAll(".landing-price-amount")].map((e) => e.textContent);
+    expect(amounts()).toEqual(["0", "12", "Custom"]);
+
     fireEvent.click(screen.getByLabelText("Toggle annual billing"));
-    expect(screen.getByText("$10")).toBeTruthy();
+    expect(amounts()).toEqual(["0", "10", "Custom"]);
     expect(screen.getByText("Save 17%")).toBeTruthy();
   });
 
