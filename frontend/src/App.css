@@ -9952,3 +9952,22 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 .page-section--centered .page-split {
   text-align: left;
 }
+
+.pipeline-stage:nth-child(even) .pipeline-stage-inner {
+  grid-template-columns: 1.2fr 1fr;
+}
+.pipeline-stage:nth-child(odd) .pipeline-stage-inner {
+  grid-template-columns: 1fr 1.2fr;
+}
+.pipeline-stage:nth-child(even) .pipeline-stage-lead {
+  order: 2;
+}
+.pipeline-stage:nth-child(even) .pipeline-stage-detail {
+  order: 1;
+}
+.pipeline-stage:nth-child(even) .pipeline-facts {
+  order: 3;
+}
+.pipeline-stage:nth-child(even) .pipeline-outcome {
+  order: 4;
+}
