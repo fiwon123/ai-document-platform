@@ -746,6 +746,8 @@ body {
   font-size: 0.85rem;
   font-weight: 500;
   line-height: 1.4;
+  /* One chip is one line, however narrow. See .status-filter above. */
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background 0.15s,
@@ -889,6 +891,20 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  /* Its own full-width row in the toolbar (#587).
+
+     The toolbar is itself a wrapping flex row, so without a basis the group is
+     a shrinkable item competing with the filename filter for the same line. At
+     375px it ended up 335px wide holding 391px of chips, so it wrapped with one
+     chip (`Failed`) orphaned alone on a second row — which reads as a
+     word-wrap accident rather than as a filter set. Taking a full row means the
+     chips wrap as one deliberate group with uniform 8px gaps at every width.
+
+     `nowrap` on the chip itself is the other half: `Processing` is the longest
+     label, and without it the one long word breaks internally while the shorter
+     labels stay on one line, making a single chip two rows tall. */
+  flex: 1 1 100%;
+  order: 3;
 }
 
 .chip-count {
@@ -9324,5 +9340,379 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 
   .stack-row dt {
     min-width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Documents: layout toggle (#587), table view, and status explanations.
+   --------------------------------------------------------------------------- */
+
+.view-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  margin-left: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.view-toggle-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.view-toggle-option:hover {
+  color: var(--ink);
+}
+
+.view-toggle-option.is-selected {
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow-xs, 0 1px 2px rgb(15 23 42 / 0.08));
+}
+
+.view-toggle-option:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+/* On dark the selected pill must separate from the well it sits in, or the
+   toggle reads as one flat surface with an icon missing. */
+:root[data-theme="dark"] .view-toggle {
+  background: var(--surface);
+}
+
+:root[data-theme="dark"] .view-toggle-option.is-selected {
+  background: var(--surface-2);
+}
+
+/* The status explanation block, shared by both views. */
+
+.doc-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.doc-status-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.doc-status-explain {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.doc-status-explain-row {
+  display: grid;
+  /* The label column is a fixed ch width so the three lines' text all start at
+     the same x. Without it each row's description begins wherever its own label
+     ended, and the block reads as three ragged sentences. */
+  grid-template-columns: 5.5rem 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.doc-status-explain dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.doc-status-explain dt,
+.doc-status-error-label {
+  /* Same fused-word problem the demo budgets had, one class over: an uppercase
+     12px label at 0.04em letter-spacing loses its word gap entirely. */
+  word-spacing: 0.1em;
+}
+
+.doc-status-explain dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+/* In the card the explanation sits between the header and the upload date; the
+   card's own vertical padding carries the spacing, so no extra margin here. */
+
+.doc-status--inline .doc-status-explain-row {
+  grid-template-columns: 4.75rem 1fr;
+}
+
+.doc-status-error-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Table view. */
+
+.document-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+}
+
+.document-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+
+  /* Fixed layout, and this is load-bearing rather than cosmetic. With
+     `auto`, the table is sized by its columns' min-content and simply
+     overflows its container when that total exceeds 100% — the wrapper then
+     scrolls horizontally and the last action button sits *outside* the visible
+     box, still rendered but invisible. At 1440 the row needed 1099px in a
+     1027px wrapper and the Delete button landed 58px past the edge.
+
+     With `fixed`, the widths below are what the columns get, and content
+     wraps or ellipsises inside them, so the table cannot exceed 100%. */
+  table-layout: fixed;
+}
+
+.document-table thead th:nth-child(1) {
+  width: 24%;
+}
+
+.document-table thead th:nth-child(2) {
+  /* 152px, sized to `application/json` — the longest type any document actually
+     produces. At 130px it broke as `application/jso` + an orphaned `n`, which
+     reads as a rendering glitch rather than a wrapped word. The wrap below stays
+     as a backstop for a type longer than any seen here. */
+  width: 152px;
+}
+
+.document-table thead th:nth-child(4) {
+  width: 10%;
+}
+
+.document-table thead th:nth-child(5) {
+  /* 5 compact buttons + margins + cell padding. Fixed rather than `1px`: under
+     `table-layout: fixed` a percentage is honoured and `1px` is not. */
+  width: 208px;
+}
+
+.document-table thead th {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  /* Not --muted. On this tinted band it measured 4.16:1 in light — under the
+     4.5:1 floor for 11px text — while the same colour reaches 5.12:1 on the
+     white card behind it. The header is a *darker* surface, so it needs a
+     darker label; --ink clears both themes. */
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  word-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+.document-table tbody tr + tr td {
+  border-top: 1px solid var(--line);
+}
+
+.document-table td {
+  padding: 12px 14px;
+  vertical-align: top;
+}
+
+.document-table tbody tr:hover td {
+  background: var(--surface-2);
+}
+
+.document-row-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.document-row-thumb,
+.file-icon--row {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  font-size: 0.6rem;
+
+  /* A rendered PDF page is a white rectangle. On the table row's white
+     background in the light theme that is a page drawn on a page: the thumbnail
+     measured as present and loaded but read as an empty cell. The card
+     thumbnail already frames itself this way; the row must match. */
+  border: 1px solid var(--line);
+  background-color: var(--surface-2);
+}
+
+.document-row-name {
+  /* Ellipsis rather than wrapping: a long filename must not stretch the row,
+     and the full name stays reachable via the title attribute and the card.
+
+     `min-width: 0` is load-bearing. As a flex item it defaults to
+     `min-width: auto`, i.e. it refuses to shrink below its own min-content —
+     the longest word in the filename. Below ~540px that pushed the wrapper
+     ~200px past its container and the name was hard-clipped mid-glyph at the
+     card border with no ellipsis, because the overflow happened outside the
+     element that had the ellipsis. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.document-row-type,
+.document-row-date {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+/* `application/pdf` is the longest type any document produces. With `nowrap`
+   it overflowed its own cell and its last glyph touched the status badge in the
+   next column — measured at 0px clearance at 1081px, 8px at 1280px, because
+   the type column is a percentage and the neighbouring badge has no room of
+   its own to give. The date never needs this; the type does. */
+.document-row-type {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.document-row-status {
+  /* Takes the slack left by the sized columns. Its three explanation lines wrap
+     inside whatever width it lands on. */
+  width: auto;
+}
+
+.document-row-actions {
+  text-align: right;
+}
+
+/* The five buttons a failed row needs are 5 x 58px + margins at the card
+   size. That is a 306px column in a ~1030px table — a third of the width for
+   the least-read part of the row. The table's icons are compact: the button
+   keeps its accessible name, its tooltip and its hit area, and just gives up
+   the card's generous padding. */
+.document-row-actions .btn-icon {
+  width: 36px;
+  height: 36px;
+  margin-left: 4px;
+
+  /* Required, not cosmetic: `.btn` carries `padding: 10px 20px`, and with
+     `box-sizing: border-box` a 36px box minus 40px of horizontal padding has
+     *zero* content width. The 16px SVG flex-shrank to nothing and every action
+     button rendered as an empty box — the icon was still in the DOM, so the
+     view-parity test passed while the buttons were blank. The card footer
+     already resets this; the table rule has to mirror it. */
+  padding: 0;
+}
+
+.document-table thead th:last-child {
+  text-align: right;
+}
+
+.document-row-actions .btn-icon {
+  display: inline-flex;
+  margin-left: 4px;
+}
+
+/* Below ~1080px the status column's three explanation lines cannot share a row
+   with four others. Measured: at 1440 it gets 294px and `NEXT` wraps to three
+   lines, but at 901 it was down to ~70px of text — `MEANING` alone broke into
+   five short lines. So each cell stacks under its own column name well before
+   the table could physically overflow, rather than at the point where it
+   becomes unreadable. */
+@media (max-width: 1080px) {
+  .document-table thead {
+    display: none;
+  }
+
+  .document-table,
+  .document-table tbody,
+  .document-table tr,
+  .document-table td {
+    display: block;
+    width: 100%;
+    /* Each cell is now its own block, so the fixed column widths from the
+       desktop table no longer describe anything — and a leftover px width on a
+       stacked cell is what leaves a few pixels of horizontal scroll at 375. */
+    table-layout: auto;
+  }
+
+  .document-table tr {
+    padding: 12px 14px;
+    border-top: 1px solid var(--line);
+  }
+
+  .document-table tbody tr + tr td {
+    border-top: none;
+  }
+
+  .document-table td {
+    padding: 2px 0;
+  }
+
+  .document-table td::before {
+    /* Each cell keeps its column name, since the header row is gone. */
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    word-spacing: 0.1em;
+  }
+
+  /* Keep the file cell a flex row. `td` becomes a block above, and that turned
+     `.document-row-file` into a block too — which left `.document-row-name` an
+     *inline* span, where `min-width: 0` means nothing: it refused to shrink
+     below min-content and pushed the wrapper ~200px past its container, so the
+     long filename was hard-clipped mid-glyph with no ellipsis. Only a flex item
+     can be told to shrink. Specificity is above `.document-table td` on
+     purpose, since that rule is what demoted it. */
+  .document-table .document-row-file {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .document-row-status {
+    min-width: 0;
+    max-width: none;
+  }
+
+  .document-row-actions {
+    margin-top: 8px;
+    text-align: left;
   }
 }

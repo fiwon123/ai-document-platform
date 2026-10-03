@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentsPage } from "./DocumentsPage";
@@ -67,6 +69,33 @@ async function settle() {
   });
 }
 
+/**
+ * Status badge labels **inside the documents list** (#587).
+ *
+ * Scoped deliberately. The status filter chips in the toolbar are also
+ * `.badge`-bearing and carry the same words ("Ready", "Pending"), so a page-wide
+ * `getByText("Ready")` counts a filter and a document as one thing — which is
+ * exactly the ambiguity the toggle makes worth avoiding in tests too.
+ */
+function statusBadges(): string[] {
+  return [...document.querySelectorAll("#documents-list .badge")].map(
+    (b) => b.textContent?.trim() ?? "",
+  );
+}
+
+/**
+ * Error text inside the list. The message is now preceded by a "Reported
+ * error:" label, so it lives in an element whose own text is split across
+ * children and `getByText` (exact, per-element) no longer matches it.
+ */
+function errorText(): string {
+  return (
+    [...document.querySelectorAll("#documents-list .error-detail")]
+      .map((e) => e.textContent ?? "")
+      .join(" | ")
+  );
+}
+
 describe("DocumentsPage polling", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
@@ -113,9 +142,10 @@ describe("DocumentsPage polling", () => {
     renderWithClient(<DocumentsPage />);
     await settle();
 
-    // Initial render: one pending badge, one ready badge.
-    expect(screen.getAllByText("ready").length).toBe(1);
-    expect(screen.getByText("pending")).toBeTruthy();
+    // Initial render: one pending badge, one ready badge. Capitalised, matching
+    // the status filter chips — the same status read two ways is the kind of
+    // inconsistency this issue exists to remove.
+    expect(statusBadges().sort()).toEqual(["Pending", "Ready"]);
 
     // Advance one poll interval; the pending badge becomes ready.
     await act(async () => {
@@ -124,8 +154,7 @@ describe("DocumentsPage polling", () => {
     await settle();
 
     expect(mockedGetStatus).toHaveBeenCalledWith("doc-pending");
-    expect(screen.getAllByText("ready").length).toBe(2);
-    expect(screen.queryByText("pending")).toBeNull();
+    expect(statusBadges()).toEqual(["Ready", "Ready"]);
   });
 
   it("shows a ticking elapsed label while a document is pending", async () => {
@@ -470,7 +499,7 @@ describe("DocumentsPage polling", () => {
 
     renderWithClient(<DocumentsPage />);
     await settle();
-    expect(screen.getAllByText("ready").length).toBe(1);
+    expect(statusBadges()).toEqual(["Ready"]);
 
     await act(async () => {
       vi.advanceTimersByTime(9000);
@@ -1127,15 +1156,15 @@ describe("DocumentsPage reprocess", () => {
     await settle();
 
     // The failed error is visible before reprocessing.
-    expect(screen.getByText(/did not complete/)).toBeTruthy();
+    expect(errorText()).toMatch(/did not complete/);
 
     fireEvent.click(screen.getByRole("button", { name: "Reprocess document" }));
     await settle();
 
     expect(mockedReprocess).toHaveBeenCalledWith("doc-failed");
     // The card switches to the pending badge and the error disappears.
-    expect(screen.getByText("pending")).toBeTruthy();
-    expect(screen.queryByText(/did not complete/)).toBeNull();
+    expect(statusBadges()).toContain("Pending");
+    expect(errorText()).not.toMatch(/did not complete/);
   });
 
   it("optimistically flips the failed card to pending while the request is in flight", async () => {
@@ -1157,8 +1186,8 @@ describe("DocumentsPage reprocess", () => {
     // Optimistic: the card immediately shows the pending badge and the
     // failure message clears, before the request has resolved.
     expect(mockedReprocess).toHaveBeenCalledWith("doc-failed");
-    expect(screen.getByText("pending")).toBeTruthy();
-    expect(screen.queryByText(/did not complete/)).toBeNull();
+    expect(statusBadges()).toContain("Pending");
+    expect(errorText()).not.toMatch(/did not complete/);
 
     await act(async () => {
       resolveReprocess({
@@ -1170,8 +1199,8 @@ describe("DocumentsPage reprocess", () => {
     await settle();
 
     // The card stays pending once the request has completed.
-    expect(screen.getByText("pending")).toBeTruthy();
-    expect(screen.queryByText(/did not complete/)).toBeNull();
+    expect(statusBadges()).toContain("Pending");
+    expect(errorText()).not.toMatch(/did not complete/);
   });
 
   it("rolls back to the failed state when reprocessing fails", async () => {
@@ -1186,7 +1215,329 @@ describe("DocumentsPage reprocess", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("already processing");
     // The optimistic flip rolls back: the card stays failed with its
     // original error message and its Reprocess button.
-    expect(screen.getByText(/did not complete/)).toBeTruthy();
+    expect(errorText()).toMatch(/did not complete/);
     expect(screen.getByRole("button", { name: "Reprocess document" })).toBeTruthy();
+  });
+});
+/* ---------------------------------------------------------------------------
+   Grid ⇄ table view (#587)
+   --------------------------------------------------------------------------- */
+
+describe("DocumentsPage — layout toggle", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+    mockedList.mockResolvedValue([readyDoc, pendingDoc, failedDoc]);
+  });
+
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  const toggle = () => screen.getByRole("radiogroup", { name: "Document layout" });
+  const gridOption = () => screen.getByRole("radio", { name: "Grid view" });
+  const tableOption = () => screen.getByRole("radio", { name: "Table view" });
+
+  it("is a radiogroup with one checked option, and defaults to grid", async () => {
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    expect(toggle()).toBeTruthy();
+    expect(gridOption().getAttribute("aria-checked")).toBe("true");
+    expect(tableOption().getAttribute("aria-checked")).toBe("false");
+    expect(document.querySelector(".document-grid")).toBeTruthy();
+    expect(document.querySelector(".document-table")).toBeNull();
+  });
+
+  it("is one tab stop, with arrow keys moving between the options", async () => {
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    // Roving tabindex: the selected option is the group's only tab stop.
+    expect(gridOption().getAttribute("tabindex")).toBe("0");
+    expect(tableOption().getAttribute("tabindex")).toBe("-1");
+
+    tableOption().focus();
+    fireEvent.keyDown(tableOption(), { key: "ArrowLeft" });
+    await settle();
+    expect(gridOption().getAttribute("aria-checked")).toBe("true");
+    expect(document.querySelector(".document-grid")).toBeTruthy();
+  });
+
+  it("wraps at both ends of the group", async () => {
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    fireEvent.keyDown(gridOption(), { key: "ArrowRight" });
+    await settle();
+    expect(tableOption().getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.keyDown(tableOption(), { key: "ArrowRight" });
+    await settle();
+    expect(gridOption().getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("points aria-controls at the list it rearranges", async () => {
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    const controls = tableOption().getAttribute("aria-controls");
+    expect(controls).toBe("documents-list");
+    expect(document.getElementById(controls!)).toBeTruthy();
+  });
+
+  it("switches to the table on click and persists the choice", async () => {
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    fireEvent.click(tableOption());
+    await settle();
+
+    expect(document.querySelector(".document-table")).toBeTruthy();
+    expect(document.querySelector(".document-grid")).toBeNull();
+    expect(window.localStorage.getItem("askdocs-documents-view")).toBe("table");
+  });
+
+  it("restores the persisted choice on mount", async () => {
+    window.localStorage.setItem("askdocs-documents-view", "table");
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    expect(document.querySelector(".document-table")).toBeTruthy();
+    expect(tableOption().getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("falls back to grid for a corrupt or unknown stored value", async () => {
+    window.localStorage.setItem("askdocs-documents-view", "carousel");
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    expect(document.querySelector(".document-grid")).toBeTruthy();
+    expect(gridOption().getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("carries the same status, filename, type, date and actions in both views", async () => {
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    /** Everything a user can read or do for one document, from whichever view. */
+    const surface = () => {
+      const root = document.querySelector("#documents-list")!;
+      const rows = [...root.querySelectorAll(".document-card, .document-row")];
+      return rows.map((row) => {
+        const name = row.querySelector(".document-info h3, .document-row-name");
+        return {
+          name: name?.textContent?.trim(),
+          type: row.querySelector(".document-info p, .document-row-type")?.textContent?.trim(),
+          badge: row.querySelector(".badge")?.textContent?.trim(),
+          actions: [...row.querySelectorAll("button[aria-label]")]
+            .map((b) => `${b.getAttribute("aria-label")}:${(b as HTMLButtonElement).disabled}`)
+            .sort(),
+          meaning: row.querySelector(".doc-status-explain dd")?.textContent?.trim(),
+        };
+      });
+    };
+
+    const inGrid = surface();
+
+    fireEvent.click(tableOption());
+    await settle();
+    const inTable = surface();
+
+    // Same documents, same order, same information, same enabled/disabled state.
+    expect(inTable).toEqual(inGrid);
+    expect(inGrid).toHaveLength(3);
+    expect(inGrid.every((d) => d.badge && d.meaning)).toBe(true);
+  });
+
+  it("keeps the retry button exclusive to failed documents in both views", async () => {
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    const retryPerView = () =>
+      [...document.querySelectorAll("#documents-list button[aria-label='Reprocess document']")]
+        .length;
+
+    expect(retryPerView()).toBe(1);
+
+    fireEvent.click(tableOption());
+    await settle();
+    expect(retryPerView()).toBe(1);
+  });
+
+  it("does not re-fetch when the view changes", async () => {
+    renderWithClient(<DocumentsPage />);
+    await settle();
+    mockedList.mockClear();
+    mockedGetStatus.mockClear();
+
+    fireEvent.click(tableOption());
+    await settle();
+    fireEvent.click(gridOption());
+    await settle();
+
+    // The layout is presentation: it must not touch the query cache, and it
+    // must not restart the status poll.
+    expect(mockedList).not.toHaveBeenCalled();
+    expect(mockedGetStatus).not.toHaveBeenCalled();
+  });
+
+  it("keeps the filters and the result count applied in both views", async () => {
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Ready/ }));
+    await settle();
+
+    expect(document.querySelectorAll("#documents-list .document-card")).toHaveLength(1);
+    expect(screen.getByText(/Showing 1 of 3 documents/)).toBeTruthy();
+
+    fireEvent.click(tableOption());
+    await settle();
+
+    expect(document.querySelectorAll("#documents-list .document-row")).toHaveLength(1);
+    expect(screen.getByText(/Showing 1 of 3 documents/)).toBeTruthy();
+  });
+
+  it("renders a real table with header cells and a caption in table view", async () => {
+    renderWithClient(<DocumentsPage />);
+    await settle();
+    fireEvent.click(tableOption());
+    await settle();
+
+    const table = document.querySelector(".document-table")!;
+    expect(table.tagName).toBe("TABLE");
+    // Real column headers, so "column 3 of 5" is announced rather than implied.
+    expect([...table.querySelectorAll("thead th")].map((t) => t.getAttribute("scope")))
+      .toEqual(["col", "col", "col", "col", "col"]);
+    expect(table.querySelector("caption")).toBeTruthy();
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(3);
+  });
+
+  it("explains every status and offers a next step", async () => {
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    for (const row of document.querySelectorAll("#documents-list .document-card")) {
+      const rows = [...row.querySelectorAll(".doc-status-explain-row")];
+      expect(rows.map((r) => r.querySelector("dt")?.textContent)).toEqual([
+        "Meaning",
+        "Now",
+        "Next",
+      ]);
+      // Every explanation is a real sentence, not an empty cell: an unfilled
+      // explanation is worse than none, because it looks answered.
+      rows.forEach((r) => {
+        expect((r.querySelector("dd")?.textContent ?? "").length).toBeGreaterThan(10);
+      });
+    }
+  });
+
+  it("shows a progress bar and elapsed time only while processing", async () => {
+    renderWithClient(<DocumentsPage />);
+    await settle();
+
+    const processingRow = [...document.querySelectorAll("#documents-list .document-card")].find(
+      (r) => r.querySelector(".badge")?.textContent?.trim() === "Pending",
+    )!;
+    expect(processingRow.querySelector(".progress-track")).toBeTruthy();
+    expect(processingRow.querySelector(".status-elapsed")).toBeTruthy();
+
+    const readyRow = [...document.querySelectorAll("#documents-list .document-card")].find(
+      (r) => r.querySelector(".badge")?.textContent?.trim() === "Ready",
+    )!;
+    expect(readyRow.querySelector(".progress-track")).toBeNull();
+    expect(readyRow.querySelector(".status-elapsed")).toBeNull();
+  });
+});
+
+/**
+ * The table's column sizing, as a stylesheet invariant (#587).
+ *
+ * jsdom performs no layout, so it cannot observe that the Delete button ends up
+ * outside the visible table — which is exactly what happened: under
+ * `table-layout: auto` the row's min-content was 1099px in a 1027px wrapper, so
+ * the wrapper scrolled horizontally and Delete sat 58px past the edge, still in
+ * the DOM and invisible. The parity test above passes happily while that is
+ * true, because the button genuinely exists.
+ *
+ * Asserted as a stylesheet relationship for the same reason, following
+ * `src/pageMeasure.test.ts`: `fixed` is what makes the column widths binding
+ * and therefore what stops the table exceeding 100%.
+ */
+describe("DocumentsPage — table column sizing", () => {
+  const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    "",
+  );
+  const ruleBody = (selector: string): string => {
+    /* Whitespace in a selector is not significant to CSS, but it is to a
+       regex: `.document-row-thumb, .file-icon--row` is written across two lines
+       in the stylesheet, so the literal form never matches. */
+    const esc = selector
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      .replace(/\s+/g, "\\s*");
+    const m = css.match(new RegExp(`(?:^|[}\\n])\\s*${esc}\\s*\\{([^}]*)\\}`));
+    if (!m?.[1]) throw new Error(`no ${selector} block in the stylesheet`);
+    return m[1];
+  };
+  const decl = (body: string, prop: string): string | undefined =>
+    body.match(new RegExp(`(?:^|;)\\s*${prop}\\s*:([^;]+)`))?.[1]?.trim();
+
+  it("sizes the table's columns explicitly so it cannot exceed its container", () => {
+    expect(decl(ruleBody(".document-table"), "table-layout")).toBe("fixed");
+
+    // Every column but the status one is given a width, and the status column
+    // is the one left to take the slack.
+    // The Actions column is the fifth, and it is the one with a pixel width;
+    // the status column is the one left to absorb the slack.
+    expect(decl(ruleBody(".document-table thead th:nth-child(5)"), "width")).toBeTruthy();
+    expect(decl(ruleBody(".document-row-status"), "width")).toBe("auto");
+  });
+
+  it("keeps the action column wide enough for a failed row's five buttons", () => {
+    /* A failed row renders Retry + Preview + Download + Delete. Five buttons at
+       the card's 58px each would need ~306px; the table compacts them, and the
+       column is sized for the compacted set. If the icon size is ever raised
+       back, this number has to move with it. */
+    const actions = ruleBody(".document-row-actions .btn-icon");
+    expect(decl(actions, "width")).toBe("36px");
+    expect(decl(ruleBody(".document-table thead th:nth-child(5)"), "width")).toBe("208px");
+  });
+
+  it("labels the table header row in ink, not muted, for contrast on the tinted band", () => {
+    /* --muted on --surface-2 measured 4.16:1 in light, under the 4.5:1 floor
+       for 11px uppercase; the same colour reaches 5.12:1 on the white card, so
+       the failure was specific to the darker header band. */
+    expect(decl(ruleBody(".document-table thead th"), "color")).toBe("var(--ink)");
+  });
+
+  it("zeroes the compact action button padding so the icon cannot collapse", () => {
+    /* The compacting above sets `width: 36px` but does not shrink `.btn`'s
+       `padding: 10px 20px`. With `box-sizing: border-box`, 40px of horizontal
+       padding inside a 36px box leaves zero content width, flex-shrink crushes
+       the 16px SVG, and every action button renders as an *empty box* — while
+       the DOM still contains the icon, so every behavioural assertion in this
+       file passes. Asserted here because only the stylesheet can catch it. */
+    expect(decl(ruleBody(".document-row-actions .btn-icon"), "padding")).toBe("0");
+  });
+
+  it("frames the table thumbnail so a white page reads against a white row", () => {
+    /* A rendered PDF first page is a white rectangle. On the table row's white
+       background that is invisible in the light theme: the image loaded and had
+       a non-zero `naturalWidth` while reading as an empty cell. The card
+       thumbnail already frames itself; the row has to match. */
+    const thumb = ruleBody(".document-row-thumb, .file-icon--row");
+    expect(decl(thumb, "border")).toBeTruthy();
+    expect(decl(thumb, "background-color")).toBe("var(--surface-2)");
+  });
+
+  it("lets the type cell wrap so a long mime type cannot reach the status badge", () => {
+    /* `application/pdf` is the longest type any document produces. Under
+       `white-space: nowrap` it overflowed its cell and its final glyph touched
+       the status badge that follows: measured 0px clearance at 1081px and 8px at
+       1280px, in light theme only. */
+    expect(decl(ruleBody(".document-row-type"), "white-space")).toBe("normal");
+    expect(decl(ruleBody(".document-row-type"), "overflow-wrap")).toBe("anywhere");
   });
 });
