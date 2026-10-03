@@ -7931,9 +7931,10 @@ nav.footer-col a:hover {
   min-width: 210px;
   padding: 6px;
   transform: translateX(-50%);
-  border: 1px solid var(--line);
+  border: 1px solid var(--appbar-line);
   border-radius: 12px;
-  background: var(--paper);
+  background: var(--appbar-bg);
+  color: var(--appbar-fg);
   box-shadow: 0 18px 44px rgb(15 23 42 / 0.14);
   animation: nav-group-in 0.16s var(--ease-standard);
 }
@@ -7952,7 +7953,7 @@ nav.footer-col a:hover {
 .nav-group-menu a {
   padding: 8px 12px;
   border-radius: 8px;
-  color: var(--muted);
+  color: var(--appbar-fg);
   font-size: 0.9rem;
   font-weight: 600;
   text-decoration: none;
@@ -7965,8 +7966,8 @@ nav.footer-col a:hover {
 .nav-group-menu a:hover,
 .nav-group-menu a:focus-visible,
 .nav-group-menu a.active {
-  background: color-mix(in srgb, var(--blue) 8%, transparent);
-  color: var(--ink);
+  background: var(--appbar-wash);
+  color: var(--appbar-active-fg);
 }
 
 .nav-group-menu a:focus-visible {
@@ -9950,4 +9951,23 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 }
 .page-section--centered .page-split {
   text-align: left;
+}
+
+.pipeline-stage:nth-child(even) .pipeline-stage-inner {
+  grid-template-columns: 1.2fr 1fr;
+}
+.pipeline-stage:nth-child(odd) .pipeline-stage-inner {
+  grid-template-columns: 1fr 1.2fr;
+}
+.pipeline-stage:nth-child(even) .pipeline-stage-lead {
+  order: 2;
+}
+.pipeline-stage:nth-child(even) .pipeline-stage-detail {
+  order: 1;
+}
+.pipeline-stage:nth-child(even) .pipeline-facts {
+  order: 3;
+}
+.pipeline-stage:nth-child(even) .pipeline-outcome {
+  order: 4;
 }
