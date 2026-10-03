@@ -134,14 +134,16 @@ export function PageSection({
   title,
   level = 2,
   children,
+  centered = false,
 }: {
   title?: string;
   level?: 2 | 3;
   children: ReactNode;
+  centered?: boolean;
 }) {
   const Heading = level === 2 ? "h2" : "h3";
   return (
-    <Reveal as="section" variant="up" className="page-section">
+    <Reveal as="section" variant="up" className={`page-section ${centered ? "page-section--centered" : ""}`}>
       {title && <Heading className="page-section-title">{title}</Heading>}
       {children}
     </Reveal>

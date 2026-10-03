@@ -76,7 +76,7 @@
      find in light mode. The user reported precisely that. It now measures
      3.46:1 on white, clearing the 3:1 non-text target, without going as
      heavy as slate-500 (4.76:1) and shouting at every edge. */
-  --line-strong: #7c8ba1;
+  --line-strong: #6b7c96;
   --paper: #ffffff; /* white background */
   /* Surface ladder: page bands -> inputs/panels -> raised -> floating.
      Every step below is one slate notch darker than it was. The old values
@@ -3559,7 +3559,8 @@ body {
 
 /* FAQ. */
 .faq-wrap {
-  max-width: 760px;
+  max-width: 900px;
+  width: 100%;
   margin: 0 auto;
   text-align: left;
 }
@@ -7975,14 +7976,21 @@ nav.footer-col a:hover {
 
 /* The hub link is visually distinct from its children: it is the section, not
    one item in it. */
-/* Dark theme: give the section menu lift. The panel must separate from both
-   the header (#0a0f1a) and the hero; raising its background one step and
-   adding a real shadow provides that without changing light theme. */
+/* Dark theme: give the section menu lift. Match appbar colors for consistency. */
 :root[data-theme="dark"] .nav-group-menu {
-  background: var(--surface);
-  border-color: var(--line-strong);
+  background: var(--appbar-bg);
+  border-color: var(--appbar-line);
   box-shadow: 0 20px 60px -10px rgba(0, 0, 0, 0.9),
     0 6px 28px -14px rgba(0, 0, 0, 0.8);
+}
+:root[data-theme="dark"] .nav-group-menu a {
+  color: var(--appbar-fg);
+}
+:root[data-theme="dark"] .nav-group-menu a:hover,
+:root[data-theme="dark"] .nav-group-menu a:focus-visible,
+:root[data-theme="dark"] .nav-group-menu a.active {
+  background: var(--appbar-wash);
+  color: var(--appbar-active-fg);
 }
 
 
@@ -9916,4 +9924,30 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 }
 .doc-status-explain.is-collapsed {
   display: none !important;
+}
+
+/* Landing navbar secondary buttons - visible on dark background */
+:root[data-theme="light"] .landing-nav-actions .btn-secondary,
+:root[data-theme="dark"] .landing-nav-actions .btn-secondary {
+  color: var(--appbar-fg);
+  border-color: var(--appbar-line);
+}
+:root[data-theme="light"] .landing-nav-actions .btn-secondary:hover,
+:root[data-theme="dark"] .landing-nav-actions .btn-secondary:hover {
+  background: var(--appbar-wash);
+}
+
+.page-section--centered {
+  text-align: center;
+}
+.page-section--centered .page-section-title {
+  text-align: center;
+}
+.page-section--centered p {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 70ch;
+}
+.page-section--centered .page-split {
+  text-align: left;
 }
