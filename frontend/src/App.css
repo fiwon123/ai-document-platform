@@ -7973,6 +7973,17 @@ nav.footer-col a:hover {
 
 /* The hub link is visually distinct from its children: it is the section, not
    one item in it. */
+/* Dark theme: give the section menu lift. The panel must separate from both
+   the header (#0a0f1a) and the hero; raising its background one step and
+   adding a real shadow provides that without changing light theme. */
+:root[data-theme="dark"] .nav-group-menu {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  box-shadow: 0 20px 60px -10px rgba(0, 0, 0, 0.9),
+    0 6px 28px -14px rgba(0, 0, 0, 0.8);
+}
+
+
 /* Matches the landing navbar's collapse breakpoint: the nav row wraps to full
    width at the same width, so the menu drops the absolute positioning and the
    translate and just flows under its trigger. Absolute positioning on a
