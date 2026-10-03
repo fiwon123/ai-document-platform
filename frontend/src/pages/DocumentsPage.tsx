@@ -15,11 +15,15 @@ import type { Document, DocumentPreview, DocumentStatusResponse } from "../types
 import { SkeletonCard } from "../components/Skeleton";
 import { Spinner } from "../components/Spinner";
 import { EmptyState } from "../components/EmptyState";
-import { Badge } from "../components/Badge";
-import { DOCUMENT_STATUS_TONE } from "../components/documentStatusTone";
+import { DocumentStatusCell } from "../components/DocumentStatusCell";
+import { isProcessing } from "../components/documentStatusMeta";
+import { DocumentViewToggle, type DocumentView } from "../components/DocumentViewToggle";
+import {
+  readStoredView,
+  writeStoredView,
+} from "../components/documentsViewPreference";
 import { PreviewModal } from "../components/PreviewModal";
 import { RefreshIcon, EyeIcon, DownloadIcon, SearchIcon } from "../components/icons";
-import { formatElapsed } from "../utils/time";
 import {
   advanceCadence,
   earliestDue,
@@ -47,6 +51,9 @@ const POLL_CADENCE = {
   baseMs: POLL_INTERVAL_MS,
   maxMs: POLL_MAX_INTERVAL_MS,
 } as const;
+/** id of the list region the layout toggle's `aria-controls` points at (#587). */
+const LIST_REGION_ID = "documents-list";
+
 /** Maximum files the backend accepts per bulk request. */
 const MAX_BULK_UPLOAD_FILES = 20;
 
@@ -66,10 +73,6 @@ const STATUS_FILTERS: Document["status"][] = [
   "ready",
   "failed",
 ];
-
-function isProcessing(status: Document["status"]): boolean {
-  return status === "pending" || status === "processing";
-}
 
 /**
  * Whether a status response says anything new about a document.
@@ -186,95 +189,168 @@ const DocumentCard = memo(function DocumentCard({
         </div>
       </div>
       <div className="document-card-body">
-        <div className="status-row">
-          <span>Status:</span>
-          <span className="status-badge-group">
-            <Badge tone={DOCUMENT_STATUS_TONE[doc.status] ?? "gray"}>
-              {doc.status}
-            </Badge>
-            {isProcessing(doc.status) && (
-              <span
-                className="status-elapsed"
-                title={`${doc.status} for ${formatElapsed(doc.updated_at)}`}
-              >
-                {formatElapsed(doc.updated_at)}
-              </span>
-            )}
-          </span>
-        </div>
-        {isProcessing(doc.status) && (
-          <span className="progress-track" aria-hidden="true">
-            <span className="progress-bar" />
-          </span>
-        )}
-        {doc.error_message && (
-          <p className="error-detail">{doc.error_message}</p>
-        )}
+        <DocumentStatusCell doc={doc} layout="stacked" />
         <p className="date">
           Uploaded: {new Date(doc.created_at).toLocaleDateString()}
         </p>
       </div>
       <div className="document-card-footer">
-        {doc.status === "failed" && (
-          <button
-            onClick={() => onReprocess(doc.id)}
-            disabled={isReprocessing}
-            className="btn btn-icon-accent btn-icon-blue btn-icon"
-            aria-label="Reprocess document"
-            title="Reprocess document"
-          >
-            {isReprocessing ? (
-              <Spinner size={16} label="Reprocessing" />
-            ) : (
-              <RefreshIcon />
-            )}
-          </button>
-        )}
-        <button
-          onClick={() => onPreview(doc)}
-          disabled={isPreviewLoading}
-          className="btn btn-icon-accent btn-icon-violet btn-icon"
-          aria-label="Preview document"
-          title="Preview document"
-        >
-          {isPreviewLoading ? (
-            <Spinner size={16} label="Loading preview" />
-          ) : (
-            <EyeIcon />
-          )}
-        </button>
-        <button
-          onClick={() => onDownload(doc)}
-          disabled={doc.status !== "ready" || isDownloading}
-          className="btn btn-icon-accent btn-icon-green btn-icon"
-          aria-label="Download document"
-          title={
-            doc.status !== "ready" ? "Available after processing" : "Download document"
-          }
-        >
-          {isDownloading ? (
-            <Spinner size={16} label="Downloading" />
-          ) : (
-            <DownloadIcon />
-          )}
-        </button>
-        <button
-          onClick={() => onDelete(doc.id)}
-          disabled={isDeleting}
-          className="btn btn-danger btn-icon"
-          aria-label="Delete document"
-          title="Delete document"
-        >
-          {isDeleting ? (
-            <Spinner size={16} label="Deleting" />
-          ) : (
-            <TrashIcon />
-          )}
-        </button>
+        {documentActions(doc, {
+          isPreviewLoading,
+          isDownloading,
+          isDeleting,
+          isReprocessing,
+          onPreview,
+          onDownload,
+          onDelete,
+          onReprocess,
+        })}
       </div>
     </div>
   );
 });
+
+/**
+ * Table-view row (#587).
+ *
+ * Renders the *same* status cell, thumbnail, filename, type, date, error detail
+ * and action buttons as `DocumentCard` — only the arrangement differs. The
+ * toolbar buttons are pulled into `documentActions` rather than duplicated, so
+ * "the table's Retry is missing" cannot be a thing that happens.
+ *
+ * The row is a real `<tr>`, not a div with ARIA roles: a layout table carrying
+ * row/column relationships is what a table is, and re-implementing it with divs
+ * would put the burden of announcing "column 3 of 5" on the accessibility tree.
+ */
+const DocumentRow = memo(function DocumentRow({
+  doc,
+  thumbnailUrl,
+  isPreviewLoading,
+  isDownloading,
+  isDeleting,
+  isReprocessing,
+  onPreview,
+  onDownload,
+  onDelete,
+  onReprocess,
+  onThumbnailError,
+}: DocumentCardProps) {
+  return (
+    <tr className="document-row">
+      <td className="document-row-file" data-label="Document">
+        {thumbnailUrl ? (
+          <img
+            className="document-row-thumb"
+            src={thumbnailUrl}
+            alt={`Preview of ${doc.filename}`}
+            loading="lazy"
+            onError={() => onThumbnailError(doc.id)}
+          />
+        ) : (
+          <span className="file-icon file-icon--row" aria-hidden="true">
+            {fileExtension(doc.filename)}
+          </span>
+        )}
+        <span className="document-row-name" title={doc.filename}>
+          {doc.filename}
+        </span>
+      </td>
+      <td className="document-row-type" data-label="Type">{doc.mime_type || "Unknown type"}</td>
+      <td className="document-row-status" data-label="Status">
+        <DocumentStatusCell doc={doc} layout="inline" />
+      </td>
+      <td className="document-row-date" data-label="Uploaded">
+        {new Date(doc.created_at).toLocaleDateString()}
+      </td>
+      <td className="document-row-actions" data-label="Actions">{documentActions(doc, {
+        isPreviewLoading,
+        isDownloading,
+        isDeleting,
+        isReprocessing,
+        onPreview,
+        onDownload,
+        onDelete,
+        onReprocess,
+      })}</td>
+    </tr>
+  );
+});
+
+/**
+ * The per-document action buttons, shared by both views.
+ *
+ * Extracted so the table cannot drift from the card: the set is defined once,
+ * including which button appears for which status (Retry only on `failed`) and
+ * which is disabled and why (Download only on `ready`). The icons carry the
+ * accessible name, not an adjacent text label, so the same set works in a card
+ * footer and in a narrow table cell.
+ */
+function documentActions(
+  doc: Document,
+  flags: {
+    isPreviewLoading: boolean;
+    isDownloading: boolean;
+    isDeleting: boolean;
+    isReprocessing: boolean;
+    onPreview: (doc: Document) => void;
+    onDownload: (doc: Document) => void;
+    onDelete: (id: string) => void;
+    onReprocess: (id: string) => void;
+  },
+) {
+  const {
+    isPreviewLoading,
+    isDownloading,
+    isDeleting,
+    isReprocessing,
+    onPreview,
+    onDownload,
+    onDelete,
+    onReprocess,
+  } = flags;
+  return (
+    <>
+      {doc.status === "failed" && (
+        <button
+          onClick={() => onReprocess(doc.id)}
+          disabled={isReprocessing}
+          className="btn btn-icon-accent btn-icon-blue btn-icon"
+          aria-label="Reprocess document"
+          title="Reprocess document"
+        >
+          {isReprocessing ? <Spinner size={16} label="Reprocessing" /> : <RefreshIcon />}
+        </button>
+      )}
+      <button
+        onClick={() => onPreview(doc)}
+        disabled={isPreviewLoading}
+        className="btn btn-icon-accent btn-icon-violet btn-icon"
+        aria-label="Preview document"
+        title="Preview document"
+      >
+        {isPreviewLoading ? <Spinner size={16} label="Loading preview" /> : <EyeIcon />}
+      </button>
+      <button
+        onClick={() => onDownload(doc)}
+        disabled={doc.status !== "ready" || isDownloading}
+        className="btn btn-icon-accent btn-icon-green btn-icon"
+        aria-label="Download document"
+        title={doc.status !== "ready" ? "Available after processing" : "Download document"}
+      >
+        {isDownloading ? <Spinner size={16} label="Downloading" /> : <DownloadIcon />}
+      </button>
+      <button
+        onClick={() => onDelete(doc.id)}
+        disabled={isDeleting}
+        className="btn btn-danger btn-icon"
+        aria-label="Delete document"
+        title="Delete document"
+      >
+        {isDeleting ? <Spinner size={16} label="Deleting" /> : <TrashIcon />}
+      </button>
+    </>
+  );
+}
 
 export function DocumentsPage() {
   const queryClient = useQueryClient();
@@ -352,6 +428,8 @@ export function DocumentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   /** Active status chip, or null when filtering by all statuses. */
   const [statusFilter, setStatusFilter] = useState<Document["status"] | null>(null);
+  /** Grid or table (#587). Persisted, and defaults to grid. */
+  const [view, setView] = useState<DocumentView>(readStoredView);
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** Ids whose thumbnail URL was fetched successfully (avoids refetching). */
@@ -374,6 +452,14 @@ export function DocumentsPage() {
       return matchesQuery && matchesStatus;
     });
   }, [optimisticDocs, deferredQuery, statusFilter]);
+
+  /* Persist the layout choice. Kept out of the data layer on purpose: writing
+     here rather than inside the toggle means a caller that sets `view`
+     programmatically persists it too, and nothing about this can trigger a
+     refetch — the poll and query keys below do not read it. */
+  useEffect(() => {
+    writeStoredView(view);
+  }, [view]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<Document["status"], number> = {
@@ -855,6 +941,11 @@ export function DocumentsPage() {
               </button>
             )}
           </div>
+          <DocumentViewToggle
+            view={view}
+            onChange={setView}
+            controlsId={LIST_REGION_ID}
+          />
           <div
             className="status-filter"
             role="group"
@@ -903,7 +994,10 @@ export function DocumentsPage() {
       )}
 
       {docsQuery.isPending ? (
-        <div className="document-grid" aria-busy="true">
+        <div
+          className={view === "grid" ? "document-grid" : "document-grid is-skeleton-rows"}
+          aria-busy="true"
+        >
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
@@ -924,24 +1018,65 @@ export function DocumentsPage() {
           action={{ label: "Clear filters", onClick: clearFilters }}
         />
       ) : (
-        <div className="document-grid">
-          {filteredDocs.map((doc) => (
-            <DocumentCard
-              key={doc.id}
-              doc={doc}
-              thumbnailUrl={thumbnailUrls[doc.id]}
-              isPreviewLoading={previewLoadingId === doc.id}
-              isDownloading={downloadingId === doc.id}
-              isDeleting={deletingId === doc.id}
-              isReprocessing={reprocessingId === doc.id}
-              onPreview={handlePreview}
-              onDownload={handleDownload}
-              onDelete={handleDelete}
-              onReprocess={handleReprocess}
-              onThumbnailError={clearThumbnailUrl}
-            />
-          ))}
-        </div>
+        view === "grid" ? (
+          <div className="document-grid" id={LIST_REGION_ID}>
+            {filteredDocs.map((doc) => (
+              <DocumentCard
+                key={doc.id}
+                doc={doc}
+                thumbnailUrl={thumbnailUrls[doc.id]}
+                isPreviewLoading={previewLoadingId === doc.id}
+                isDownloading={downloadingId === doc.id}
+                isDeleting={deletingId === doc.id}
+                isReprocessing={reprocessingId === doc.id}
+                onPreview={handlePreview}
+                onDownload={handleDownload}
+                onDelete={handleDelete}
+                onReprocess={handleReprocess}
+                onThumbnailError={clearThumbnailUrl}
+              />
+            ))}
+          </div>
+        ) : (
+          /* A real table: row/column relationships are announced rather than
+             re-implemented with divs and ARIA. `aria-controls` on the toggle
+             points here, so the switch is announced as changing how the list
+             is presented. */
+          <div className="document-table-wrap" id={LIST_REGION_ID}>
+            <table className="document-table">
+              <caption className="sr-only">
+                Your documents — {filteredDocs.length} of {optimisticDocs.length} shown
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Document</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Uploaded</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDocs.map((doc) => (
+                  <DocumentRow
+                    key={doc.id}
+                    doc={doc}
+                    thumbnailUrl={thumbnailUrls[doc.id]}
+                    isPreviewLoading={previewLoadingId === doc.id}
+                    isDownloading={downloadingId === doc.id}
+                    isDeleting={deletingId === doc.id}
+                    isReprocessing={reprocessingId === doc.id}
+                    onPreview={handlePreview}
+                    onDownload={handleDownload}
+                    onDelete={handleDelete}
+                    onReprocess={handleReprocess}
+                    onThumbnailError={clearThumbnailUrl}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
       )}
       </div>
 

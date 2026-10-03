@@ -461,7 +461,24 @@ const PROBE = () => {
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return false;
     const style = getComputedStyle(el);
-    return style.visibility !== "hidden" && style.display !== "none";
+    if (style.visibility === "hidden" || style.display === "none") return false;
+    /* Text that is clipped away is not rendered text, and a contrast ratio
+       measured across it describes a pixel nobody can see. Two ways this
+       happens, both checked:
+
+       - the `.sr-only` idiom (1x1 box, `position: absolute`, overflow hidden),
+         which is how a control's accessible name is carried when its visible
+         content is an icon. A zero-size test does not catch it: the box is 1px,
+         not 0px, so it passed as readable and reported the muted label against
+         whatever the parent background was.
+       - `clip-path: inset(50%)`, the modern variant, which collapses the whole
+         element while leaving `getBoundingClientRect()` at full size.
+    */
+    if (style.position === "absolute" && style.overflow === "hidden"
+        && rect.width <= 1 && rect.height <= 1) return false;
+    const clip = style.clipPath;
+    if (clip && /inset\(\s*(5\d|100)%/.test(clip)) return false;
+    return true;
   };
 
   // Resolve CSS colours through the browser's own colour engine rather than by
