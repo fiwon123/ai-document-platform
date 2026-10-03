@@ -7964,9 +7964,12 @@ nav.footer-col a:hover {
 }
 
 .nav-group-menu a:hover,
-.nav-group-menu a:focus-visible,
-.nav-group-menu a.active {
+.nav-group-menu a:focus-visible {
   background: var(--appbar-wash);
+  color: var(--appbar-active-fg);
+}
+.nav-group-menu a.active {
+  background: var(--appbar-active-bg);
   color: var(--appbar-active-fg);
 }
 
