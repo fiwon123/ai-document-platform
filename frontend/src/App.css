@@ -1549,7 +1549,10 @@ body {
    dropped. */
 .landing-nav-links .nav-flat a.active,
 .landing-nav-links .nav-flat a[aria-current="page"] {
-  color: var(--ink);
+  color: var(--appbar-active-fg);
+  background: var(--appbar-active-bg);
+  border-radius: 6px;
+  padding: 4px 8px;
 }
 
 .landing-nav-actions {
@@ -9977,4 +9980,6 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 
 .nav-group-trigger.active {
   color: var(--appbar-active-fg);
+  background: var(--appbar-active-bg);
+  border-radius: 6px;
 }
