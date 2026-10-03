@@ -1556,6 +1556,7 @@ body {
 }
 .landing-nav-links .nav-flat a {
   color: var(--appbar-fg);
+  padding: 4px 8px;
 }
 .landing-nav-links .nav-flat a:hover {
   color: var(--appbar-active-fg);
@@ -7895,6 +7896,7 @@ nav.footer-col a:hover {
   cursor: pointer;
   transition: all 0.2s;
   border-radius: 6px;
+  margin: 0;
 }
 
 .nav-group-trigger:hover,
