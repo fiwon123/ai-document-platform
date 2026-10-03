@@ -1048,10 +1048,10 @@ body {
   font-size: 0.9rem;
   padding: 6px 10px;
   border-radius: 999px;
-  opacity: 0.8;
+  opacity: 1;
   transition:
-    opacity 0.2s,
-    background-color 0.2s;
+    background-color 0.2s,
+    color 0.2s;
 }
 
 .navbar-links a:hover {
@@ -1059,6 +1059,7 @@ body {
   /* An explicit wash, not 8% of a colour that inverts: 8% of the dark ink was
      indistinguishable from no change at all on the dark bar. */
   background: var(--appbar-wash);
+  color: var(--appbar-active-fg);
 }
 
 /* Active tab. Two rounds of history here. First it was a 16% tint of --paper,
