@@ -1551,18 +1551,19 @@ body {
 .landing-nav-links .nav-flat a[aria-current="page"] {
   color: var(--appbar-active-fg);
   background: var(--appbar-active-bg);
-  border-radius: 6px;
-  padding: 4px 8px;
+  border-radius: 999px;
+  padding: 4px 12px;
 }
 .landing-nav-links .nav-flat a {
   color: var(--appbar-fg);
-  padding: 4px 8px;
+  padding: 4px 12px;
+  border-radius: 999px;
 }
 .landing-nav-links .nav-flat a:hover {
   color: var(--appbar-active-fg);
   background: var(--appbar-wash);
-  border-radius: 6px;
-  padding: 4px 8px;
+  border-radius: 999px;
+  padding: 4px 12px;
 }
 
 .landing-nav-actions {
@@ -7886,7 +7887,7 @@ nav.footer-col a:hover {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 8px;
+  padding: 4px 12px;
   border: 0;
   background: none;
   color: var(--appbar-fg);
@@ -7895,7 +7896,7 @@ nav.footer-col a:hover {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  border-radius: 6px;
+  border-radius: 999px;
   margin: 0;
 }
 
@@ -7903,12 +7904,12 @@ nav.footer-col a:hover {
 .nav-group-trigger[aria-expanded="true"] {
   color: var(--appbar-active-fg);
   background: var(--appbar-wash);
-  border-radius: 6px;
+  border-radius: 999px;
 }
 .nav-group-trigger.active {
   color: var(--appbar-active-fg);
   background: var(--appbar-active-bg);
-  border-radius: 6px;
+  border-radius: 999px;
 }
 
 .nav-group-chevron {
@@ -9999,5 +10000,5 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 .nav-group-trigger.active {
   color: var(--appbar-active-fg);
   background: var(--appbar-active-bg);
-  border-radius: 6px;
+  border-radius: 999px;
 }
