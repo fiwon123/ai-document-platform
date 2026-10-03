@@ -283,7 +283,7 @@
   background: linear-gradient(
     180deg,
     var(--paper) 0%,
-    color-mix(in srgb, var(--surface) 45%, var(--paper)) 100%
+    color-mix(in srgb, var(--surface) 60%, var(--paper)) 100%
   );
 }
 
@@ -1361,8 +1361,9 @@ body {
   justify-content: space-between;
   gap: 24px;
   padding: 18px 6vw;
-  background: var(--paper);
-  border-bottom: 1px solid var(--line);
+  background: var(--appbar-bg);
+  color: var(--appbar-fg);
+  border-bottom: 1px solid var(--appbar-line);
 }
 
 .landing-brand {
@@ -3736,7 +3737,7 @@ body {
 /* Supporting line so the band carries a reason to act, not just a button. */
 .landing-cta-band-sub {
   margin: 0 auto 32px;
-  max-width: 52ch;
+  max-width: 55ch;
   color: rgb(255 255 255 / 0.86);
   font-size: 1.05rem;
   line-height: 1.6;
@@ -8186,7 +8187,7 @@ nav.footer-col a:hover {
      narrower than 52ch, so card copy is unaffected. Left-aligned on purpose: it
      matches `.page-section`'s existing alignment, so headings and the text they
      head stay flush. */
-  max-width: 52ch;
+  max-width: 55ch;
 }
 
 .page-body p strong {
@@ -8207,7 +8208,7 @@ nav.footer-col a:hover {
   color: var(--muted);
   line-height: 1.7;
   /* Same measure cap as the paragraphs, for the same reason. */
-  max-width: 52ch;
+  max-width: 55ch;
 }
 
 .page-body li {
@@ -9356,6 +9357,9 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
+  justify-items: center;
+  max-width: 1000px;
+  margin: 0 auto;
 }
 
 @media (max-width: 900px) {
@@ -9419,7 +9423,7 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
    left with the text it heads; capping only the `<p>`s would leave every heading
    spanning the full 970px while its own paragraph stopped at ~575px. */
 .legal-body {
-  max-width: 52ch;
+  max-width: 55ch;
 }
 
 .template-notice {
@@ -9845,8 +9849,71 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
     max-width: none;
   }
 
+  /* Condense status explanation on mobile for better readability */
+  .doc-status--inline .doc-status-explain {
+    display: none;
+  }
+  .doc-status--stacked .doc-status-explain {
+    display: flex;
+  }
+  .document-table td::before {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
   .document-row-actions {
     margin-top: 8px;
     text-align: left;
   }
+}
+/* Landing navbar always dark */
+:root[data-theme="light"] .landing-navbar {
+  background: var(--appbar-bg);
+  color: var(--appbar-fg);
+  border-bottom: 1px solid var(--appbar-line);
+}
+
+:root[data-theme="light"] .landing-brand,
+:root[data-theme="light"] .landing-brand a,
+:root[data-theme="light"] .landing-nav-links a,
+:root[data-theme="light"] .landing-nav-actions .theme-toggle,
+:root[data-theme="light"] .landing-nav-toggle {
+  color: var(--appbar-fg);
+}
+
+:root[data-theme="light"] .landing-nav-links a:hover,
+:root[data-theme="light"] .landing-nav-links a.active,
+:root[data-theme="light"] .landing-nav-links a[aria-current="page"] {
+  color: var(--appbar-active-fg);
+}
+
+:root[data-theme="light"] .landing-nav-links a:hover {
+  background: var(--appbar-wash);
+  border-radius: 6px;
+}
+
+/* Workspace navbar always dark */
+:root[data-theme="light"] .navbar {
+  background: color-mix(in srgb, var(--appbar-bg) 92%, transparent);
+  color: var(--appbar-fg);
+  border-bottom: 1px solid var(--appbar-line);
+}
+:root[data-theme="light"] .navbar-brand a,
+:root[data-theme="light"] .navbar-brand-mark {
+  color: var(--appbar-fg);
+}
+
+.status-details-toggle {
+  margin-top: 6px;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.doc-status-explain.is-collapsed {
+  display: none !important;
 }

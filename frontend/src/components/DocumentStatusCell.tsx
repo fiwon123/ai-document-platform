@@ -1,4 +1,5 @@
 import type { Document } from "../types";
+import { useState } from "react";
 import { formatElapsed } from "../utils/time";
 import { Badge } from "./Badge";
 import { documentStatusMeta, isProcessing } from "./documentStatusMeta";
@@ -32,9 +33,10 @@ export function DocumentStatusCell({
 }) {
   const meta = documentStatusMeta(doc.status);
   const processing = isProcessing(doc.status);
+  const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className={`doc-status doc-status--${layout}`}>
+    <div className={`doc-status doc-status--${layout} ${expanded ? "is-expanded" : ""}`}>
       <div className="doc-status-head">
         <Badge tone={DOCUMENT_STATUS_TONE[doc.status] ?? "gray"}>{meta.label}</Badge>
         {processing && (
@@ -53,10 +55,21 @@ export function DocumentStatusCell({
         </span>
       )}
 
+      {layout === "inline" && (
+        <button
+          type="button"
+          className="status-details-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? "Hide details" : "Show details"}
+        </button>
+      )}
+
       {/* The label says which line is which. Without it, three sentences of
           status copy read as one undifferentiated paragraph — which is how
           "what can I do about it" becomes invisible next to "what is it doing". */}
-      <dl className="doc-status-explain">
+      <dl className={`doc-status-explain ${layout === "inline" && !expanded ? "is-collapsed" : ""}`}>
         <div className="doc-status-explain-row">
           <dt>Meaning</dt>
           <dd>{meta.meaning}</dd>
