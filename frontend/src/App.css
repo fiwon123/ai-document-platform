@@ -7888,9 +7888,15 @@ nav.footer-col a:hover {
 }
 
 .nav-group-trigger:hover,
-.nav-group-trigger[aria-expanded="true"],
+.nav-group-trigger[aria-expanded="true"] {
+  color: var(--appbar-active-fg);
+  background: var(--appbar-wash);
+  border-radius: 6px;
+}
 .nav-group-trigger.active {
-  color: var(--ink);
+  color: var(--appbar-active-fg);
+  background: var(--appbar-active-bg);
+  border-radius: 6px;
 }
 
 .nav-group-chevron {
