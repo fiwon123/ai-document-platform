@@ -1667,6 +1667,7 @@ GROUPS.landing = [
     expect: ".landing-navbar",
     click: ".nav-group-trigger",
     assertAttr: { selector: ".nav-group-trigger", attr: "aria-expanded", value: "true" },
+    pointerAway: true,
   },
   {
     // The hover-opened state is kept rather than traded away for the click one.
@@ -2742,6 +2743,19 @@ async function applyInteraction(page, scenario) {
         return describeSkip("assertAttr", { selector }, { attr, value });
       }
       acts.push({ action: "assertAttr", selector, attr, value });
+      return null;
+    },
+    pointerAway: async () => {
+      const spec = scenario.pointerAway ?? true;
+      if (spec === false) return null;
+      const vp = page.viewportSize();
+      if (!vp) return null;
+      const point = typeof spec === 'object' && spec !== null
+        ? { x: spec.x ?? vp.width / 2, y: spec.y ?? Math.max(1, vp.height - 1) }
+        : { x: vp.width / 2, y: Math.max(1, vp.height - 1) };
+      await page.mouse.move(point.x, point.y);
+      await page.waitForTimeout(250);
+      acts.push({ action: 'pointerAway', ...point });
       return null;
     },
     settle: async () => {
