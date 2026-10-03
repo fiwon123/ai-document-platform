@@ -9974,3 +9974,7 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 .pipeline-stage:nth-child(even) .pipeline-outcome {
   order: 4;
 }
+
+.nav-group-trigger.active {
+  color: var(--appbar-active-fg);
+}
