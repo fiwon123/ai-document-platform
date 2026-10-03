@@ -944,3 +944,12 @@ test("a scenario that pre-clicks is still ordered so the assertion sees the resu
     "the post-condition must run after the interaction it checks",
   );
 });
+test("pointerAway runs after interactions but before settle in order", () => {
+  const keys = orderedStepKeys({ click: ".btn", pointerAway: true });
+  const clickIdx = keys.indexOf("click");
+  const paIdx = keys.indexOf("pointerAway");
+  const settleIdx = keys.indexOf("settle");
+  assert.ok(clickIdx < paIdx, "pointerAway after click");
+  assert.ok(paIdx < settleIdx, "pointerAway before settle");
+});
+

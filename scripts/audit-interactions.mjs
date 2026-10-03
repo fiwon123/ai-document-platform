@@ -109,6 +109,7 @@ export const STEP_ORDER = [
   "hover",
   "clickNth",
   "assertAttr",
+  "pointerAway",
   "settle",
 ];
 
