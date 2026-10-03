@@ -83,7 +83,15 @@ export function WebhooksPage() {
 
   const [notice, setNotice] = useState<Notice | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, string>>({});
+  /* `{ message, at }`, not a bare string (#588). A test ping that reported only
+     its message could not be told apart from one sent minutes earlier — the
+     card's own "Last delivered" row updates on a *different* schedule, so
+     "delivered 3 minutes ago" next to an undated "Test: ok" reads as a
+     contradiction rather than as two events. The time is taken when the
+     response arrives. */
+  const [testResults, setTestResults] = useState<
+    Record<string, { message: string; at: Date }>
+  >({});
   // The "How webhooks work" card auto-expands while the user has no
   // subscriptions and collapses as soon as they create one. Closing it
   // manually stays respected even with an empty list.
@@ -190,14 +198,17 @@ export function WebhooksPage() {
       const result = await webhooks.test(sub.id);
       setTestResults((current) => ({
         ...current,
-        [sub.id]: result.message,
+        [sub.id]: { message: result.message, at: new Date() },
       }));
       // Reflect the updated delivery stats in the listing.
       void queryClient.invalidateQueries({ queryKey: WEBHOOKS_QUERY_KEY });
     } catch (err: unknown) {
       setTestResults((current) => ({
         ...current,
-        [sub.id]: err instanceof Error ? err.message : "Test failed",
+        [sub.id]: {
+          message: err instanceof Error ? err.message : "Test failed",
+          at: new Date(),
+        },
       }));
     } finally {
       setTestingId(null);
@@ -205,7 +216,7 @@ export function WebhooksPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page page-column page-column--wide">
       <header className="page-header">
         <h1>Webhooks</h1>
         <p>Get notified when your documents change processing state</p>
@@ -352,83 +363,95 @@ export function WebhooksPage() {
             No webhooks yet — create one above to receive document events.
           </p>
         ) : (
-          optimisticSubs.map((sub) => (
-            <article key={sub.id} className="settings-card webhook-card">
-              <div className="webhook-card-header">
-                <code className="webhook-url">{sub.url}</code>
-                <Badge tone={sub.is_active ? "green" : "gray"}>
-                  {sub.is_active ? "Active" : "Paused"}
-                </Badge>
-              </div>
+          optimisticSubs.map((sub) => {
+            /* Read once: re-indexing `testResults[sub.id]` inside the JSX loses
+               the narrowing that the `&&` guard established. */
+            const testResult = testResults[sub.id];
+            return (
+              <article key={sub.id} className="settings-card webhook-card">
+                <div className="webhook-card-header">
+                  <code className="webhook-url">{sub.url}</code>
+                  <Badge tone={sub.is_active ? "green" : "gray"}>
+                    {sub.is_active ? "Active" : "Paused"}
+                  </Badge>
+                </div>
 
-              <div className="webhook-events-tags">
-                {sub.events.map((event) => (
-                  <span key={event} className="webhook-event-tag">
-                    {event}
-                  </span>
-                ))}
-              </div>
+                <div className="webhook-events-tags">
+                  {sub.events.map((event) => (
+                    <span key={event} className="webhook-event-tag">
+                      {event}
+                    </span>
+                  ))}
+                </div>
 
-              <dl className="webhook-meta">
-                <div>
-                  <dt>Last delivery</dt>
-                  <dd
-                    className={
-                      sub.last_status === "failed" ? "webhook-delivery-failed" : ""
-                    }
+                <dl className="webhook-meta">
+                  <div>
+                    <dt>Last delivery</dt>
+                    <dd
+                      className={
+                        sub.last_status === "failed" ? "webhook-delivery-failed" : ""
+                      }
+                    >
+                      {sub.last_status === null
+                        ? "Never"
+                        : `${sub.last_status}${sub.last_status_code ? ` (HTTP ${sub.last_status_code})` : ""}`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Consecutive failures</dt>
+                    <dd>{sub.failure_count}</dd>
+                  </div>
+                  <div>
+                    <dt>Last delivered</dt>
+                    <dd>{sub.last_delivered_at ? new Date(sub.last_delivered_at).toLocaleString() : "—"}</dd>
+                  </div>
+                </dl>
+
+                <details className="webhook-secret">
+                  <summary>Show signing secret</summary>
+                  <code>{sub.secret}</code>
+                </details>
+
+                <div className="webhook-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleToggleActive(sub)}
                   >
-                    {sub.last_status === null
-                      ? "Never"
-                      : `${sub.last_status}${sub.last_status_code ? ` (HTTP ${sub.last_status_code})` : ""}`}
-                  </dd>
+                    {sub.is_active ? "Pause" : "Resume"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleTest(sub)}
+                    disabled={testingId === sub.id}
+                  >
+                    {testingId === sub.id ? "Sending…" : "Send test"}
+                  </button>
+                  {/* Inline with the button that produced it, and carrying when.
+                      `role="status"` announces it when it lands, without moving
+                      focus. */}
+                  {testResult && (
+                    <span className="webhook-test-result" role="status">
+                      <span className="webhook-test-result-time">
+                        Test sent {testResult.at.toLocaleTimeString()}
+                      </span>
+                      <span className="webhook-test-result-message">
+                        {testResult.message}
+                      </span>
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    onClick={() => handleDelete(sub)}
+                  >
+                    Delete
+                  </button>
                 </div>
-                <div>
-                  <dt>Consecutive failures</dt>
-                  <dd>{sub.failure_count}</dd>
-                </div>
-                <div>
-                  <dt>Last delivered</dt>
-                  <dd>{sub.last_delivered_at ? new Date(sub.last_delivered_at).toLocaleString() : "—"}</dd>
-                </div>
-              </dl>
-
-              <details className="webhook-secret">
-                <summary>Show signing secret</summary>
-                <code>{sub.secret}</code>
-              </details>
-
-              {testResults[sub.id] && (
-                <p className="settings-note" role="status">
-                  Test: {testResults[sub.id]}
-                </p>
-              )}
-
-              <div className="webhook-actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => handleToggleActive(sub)}
-                >
-                  {sub.is_active ? "Pause" : "Resume"}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => handleTest(sub)}
-                  disabled={testingId === sub.id}
-                >
-                  {testingId === sub.id ? "Sending…" : "Send test"}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-danger btn-sm"
-                  onClick={() => handleDelete(sub)}
-                >
-                  Delete
-                </button>
-              </div>
-            </article>
-          ))
+              </article>
+              );
+          })
         )}
       </section>
     </div>

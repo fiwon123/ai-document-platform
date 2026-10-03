@@ -101,6 +101,19 @@ export function SettingsPage() {
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
 
+  /* What the key field is currently saying, in words (#588).
+     `hasApiKey` on its own is ambiguous as soon as the box holds a draft: with
+     a key saved *and* an edit typed over it, "A custom API key is saved" is
+     both true and misleading, and nothing on the page says the stored key is
+     not the one in the field. Four states, and an unsaved draft outranks the
+     saved one — that is the one a user is about to act on. Read from
+     localStorage rather than mirrored into state so the secret is not held in
+     two places. */
+  const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY) ?? "";
+  const trimmedDraft = apiKeyDraft.trim();
+  const keyState: "saved" | "empty" | "unsaved" =
+    !trimmedDraft ? (hasApiKey ? "saved" : "empty") : trimmedDraft === storedKey ? "saved" : "unsaved";
+
   function handleModelChange(model: string) {
     setSelectedModel(model);
     localStorage.setItem(MODEL_STORAGE_KEY, model);
@@ -127,7 +140,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page page-column">
       <header className="page-header">
         <h1>Settings</h1>
         <p>Manage your account, model, and API access</p>
@@ -182,6 +195,14 @@ export function SettingsPage() {
                         autoComplete="off"
                       />
                       <span>{model}</span>
+                      {selectedModel === model && (
+                        /* Decorative: the radio already reports `checked` to
+                           assistive tech, so the glyph is `aria-hidden` and
+                           carries the selection visually only. */
+                        <span className="settings-model-option-check" aria-hidden="true">
+                          ✓
+                        </span>
+                      )}
                     </label>
                   ))}
                 </div>
@@ -199,6 +220,14 @@ export function SettingsPage() {
                         autoComplete="off"
                       />
                       <span>{model}</span>
+                      {selectedModel === model && (
+                        /* Decorative: the radio already reports `checked` to
+                           assistive tech, so the glyph is `aria-hidden` and
+                           carries the selection visually only. */
+                        <span className="settings-model-option-check" aria-hidden="true">
+                          ✓
+                        </span>
+                      )}
                     </label>
                   ))}
                 </div>
@@ -229,6 +258,11 @@ export function SettingsPage() {
               onChange={(e) => setApiKeyDraft(e.target.value)}
               placeholder="sk-..."
               autoComplete="off"
+              /* A key is not prose: autocorrect capitalising it or the browser
+                 offering a spelling underline would both corrupt it silently. */
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
             />
           </div>
           <div className="settings-api-key-actions">
@@ -246,7 +280,11 @@ export function SettingsPage() {
           </div>
         </form>
 
-        {hasApiKey && <p className="settings-note">A custom API key is saved.</p>}
+        <p className="settings-note" role="status">
+          {keyState === "saved" && "A custom API key is saved."}
+          {keyState === "empty" && "No custom API key saved."}
+          {keyState === "unsaved" && "Unsaved changes — press Save to use this key."}
+        </p>
 
         {notice?.type === "success" && (
           <p className="success-message">{notice.text}</p>

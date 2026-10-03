@@ -7255,6 +7255,33 @@ nav.footer-col a:hover {
   }
 }
 
+/* Workspace column (#588).
+   `.main-content` is centred at 1200px, but a page whose content is narrower
+   than that has to centre itself too — otherwise the column hugs the shell's
+   left edge and the space lands all on the right, which is what #588 reports:
+   640px of card in a 1200px shell left 474px of dead space beside it.
+
+   One class, so the next narrow workspace page inherits the behaviour instead
+   of rediscovering the gap. `max-width`/`margin-inline` rather than a
+   percentage keeps the measure constant from ~900px upwards. */
+.page-column {
+  max-width: 700px;
+  margin-inline: auto;
+}
+
+/* Card lists need more room than a single form column: a webhook card carries
+   a URL, an event tag row, a three-item definition list and a button row, and
+   700px forced the URL onto three lines. */
+.page-column--wide {
+  max-width: 860px;
+}
+
+/* The column now owns the measure; a card capping at 640px inside it would
+   reintroduce the same left-hug in miniature. Mirrors `.profile-page`. */
+.page-column .settings-card {
+  max-width: none;
+}
+
 /* Settings Page */
 .settings-card {
   max-width: 640px;
@@ -7317,11 +7344,51 @@ nav.footer-col a:hover {
   padding: 10px 12px;
   margin-bottom: 8px;
   border: 1px solid var(--line);
+  border-radius: 6px;
   cursor: pointer;
   font-size: 0.92rem;
   transition:
     border-color 0.2s,
-    background 0.2s;
+    background 0.2s,
+    box-shadow 0.2s;
+}
+
+/* Selected state (#588).
+   A colour change alone is not a selected state: it fails anyone who cannot
+   separate the two hues, and in dark theme the tint difference is subtle
+   anyway. Three non-colour cues carry it —
+     - a 3px inset rule on the leading edge (shape/position),
+     - semibold type (weight),
+     - a check glyph in the markup (symbol).
+   `:has()` is what lets the *label* react to the input inside it; the radio
+   itself stays in the DOM and keeps its own filled-dot cue, so nothing about
+   the accessible state changes. */
+.settings-model-option:has(input:checked) {
+  border-color: var(--blue);
+  background: var(--surface);
+  box-shadow: inset 3px 0 0 var(--blue);
+  font-weight: 600;
+}
+
+.settings-model-option-check {
+  margin-left: auto;
+  color: var(--blue);
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+/* Focus has to reach the input, which is visually inset inside the card, so
+   the ring is drawn on the card rather than lost against the border. */
+.settings-model-option:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* The card above draws the ring, so the inset radio must not draw a second one
+   inside it. */
+.settings-model-option input:focus-visible {
+  outline: none;
 }
 
 .settings-model-option:last-child {
@@ -7413,11 +7480,68 @@ nav.footer-col a:hover {
   gap: 16px;
 }
 
+.webhook-card {
+  /* One rhythm for the card's internals (#588). These were four independent
+     margin-bottom declarations, which is why the gap under the event tags did
+     not match the gap under the URL. A single `gap` on a flex column makes
+     them the same value by construction — adding a fifth block cannot pick a
+     different one. */
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .webhook-card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+/* The test result sits inline with the button that produced it (#588), directly
+   after it and before Delete. It was right-aligned with `margin-left: auto`
+   first, which put it ~378px from Send test with nothing between: it read as a
+   row-level status rather than as the answer to that button. */
+.webhook-test-result {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* A real glyph rather than relying on the flex gap: with only whitespace
+   between "3:47:03 AM" and "HTTP 405" the two read as unrelated items. */
+.webhook-test-result-time::after {
+  content: "·";
+  margin-left: 6px;
+  color: var(--muted);
+}
+
+.webhook-test-result-time {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.webhook-test-result-message {
+  overflow-wrap: anywhere;
+}
+
+/* Below the wrap point there is no room to sit the result on the far right, and
+   a right-aligned block above the buttons reads as belonging to something
+   else. */
+@media (max-width: 560px) {
+  .webhook-test-result {
+    flex-basis: 100%;
+  }
+}
+
+/* The tutorial callout is a banner rather than a card, but it still has to fill
+   the measure: left at its own 640px it stopped 220px short of the column the
+   cards below it use, and was the only element on the page that did. */
+.page-column--wide .webhook-tutorial {
+  max-width: none;
 }
 
 .webhook-url {
@@ -7429,7 +7553,6 @@ nav.footer-col a:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 12px;
 }
 
 .webhook-event-tag {
@@ -7454,7 +7577,6 @@ nav.footer-col a:hover {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
-  margin: 14px 0;
   font-size: 0.85rem;
 }
 
@@ -7476,7 +7598,6 @@ nav.footer-col a:hover {
 
 .webhook-secret {
   font-size: 0.85rem;
-  margin-bottom: 12px;
 }
 
 .webhook-secret summary {
@@ -7500,6 +7621,7 @@ nav.footer-col a:hover {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .webhook-notice-success {
