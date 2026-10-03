@@ -89,6 +89,6 @@ describe("workspace column", () => {
     /* Documents, Search, Dashboard and Admin are grids and tables: capping
        their width would be a regression, so the column must stay opt-in via
        the extra class rather than becoming `.page`'s own rule. */
-    expect(css).not.toMatch(/^\.page\s*\{[^}]*max-width/m);
+    expect(css).not.toMatch(/^\s*\.page\s*\{[^}]*max-width/m);
   });
 });

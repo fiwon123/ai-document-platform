@@ -261,6 +261,27 @@ describe("SettingsPage", () => {
     expect(screen.getByText(/Unsaved changes/)).toBeInTheDocument();
   });
 
+  it("does not keep claiming a saved key after storage is cleared underneath it (#588)", async () => {
+    /* The state was a boolean mirror of storage, written only by the Save/Clear
+       handlers. Storage can change without them — another tab, or
+       `clearPersistedSession()` on logout while this page stays mounted — and
+       the note then contradicted reality: "a key is saved" after the session had
+       already wiped it. Storage is now the only source of truth. */
+    localStorage.setItem(API_KEY_STORAGE_KEY, "sk-stored");
+    const { unmount } = renderPage();
+    await act(async () => {});
+    expect(screen.getByText("A custom API key is saved.")).toBeInTheDocument();
+
+    localStorage.removeItem(API_KEY_STORAGE_KEY);
+    unmount();
+    renderPage();
+    await act(async () => {});
+    expect(screen.getByText("No custom API key saved.")).toBeInTheDocument();
+
+    /* Clear follows the same single source of truth rather than the stale flag. */
+    expect(screen.getByRole("button", { name: "Clear" })).toBeDisabled();
+  });
+
   it("does not let the browser autocorrect an API key (#588)", () => {
     renderPage();
     const input = screen.getByLabelText("Custom API key") as HTMLInputElement;

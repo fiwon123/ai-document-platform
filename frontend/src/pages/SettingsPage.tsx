@@ -95,24 +95,27 @@ export function SettingsPage() {
       DEFAULT_MODELS.free[0] ??
       "gpt-4o-mini",
   );
-  const [hasApiKey, setHasApiKey] = useState<boolean>(() =>
-    Boolean(localStorage.getItem(API_KEY_STORAGE_KEY)),
-  );
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
 
   /* What the key field is currently saying, in words (#588).
-     `hasApiKey` on its own is ambiguous as soon as the box holds a draft: with
-     a key saved *and* an edit typed over it, "A custom API key is saved" is
-     both true and misleading, and nothing on the page says the stored key is
-     not the one in the field. Four states, and an unsaved draft outranks the
-     saved one — that is the one a user is about to act on. Read from
-     localStorage rather than mirrored into state so the secret is not held in
-     two places. */
+     A boolean mirror of storage is ambiguous as soon as the box holds a draft:
+     with a key saved *and* an edit typed over it, "A custom API key is saved"
+     is both true and misleading, and nothing on the page says the stored key is
+     not the one in the field. Three states, and an unsaved draft outranks the
+     saved one — that is the one a user is about to act on.
+
+     Derived from storage directly rather than from a mirrored boolean. The
+     mirror was only ever written by the Save/Clear handlers, so it went stale
+     when storage changed underneath it — another tab saving a key, or
+     `clearPersistedSession()` on logout — and this page would keep claiming a
+     key was saved after the session had already wiped it. localStorage writes
+     do not re-render on their own, but both handlers set the draft and the
+     notice, which do, so the derived value is never a render behind. */
   const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY) ?? "";
   const trimmedDraft = apiKeyDraft.trim();
   const keyState: "saved" | "empty" | "unsaved" =
-    !trimmedDraft ? (hasApiKey ? "saved" : "empty") : trimmedDraft === storedKey ? "saved" : "unsaved";
+    !trimmedDraft ? (storedKey ? "saved" : "empty") : trimmedDraft === storedKey ? "saved" : "unsaved";
 
   function handleModelChange(model: string) {
     setSelectedModel(model);
@@ -127,14 +130,12 @@ export function SettingsPage() {
       return;
     }
     localStorage.setItem(API_KEY_STORAGE_KEY, key);
-    setHasApiKey(true);
     setApiKeyDraft("");
     setNotice({ type: "success", text: "API key saved" });
   }
 
   function handleClearApiKey() {
     localStorage.removeItem(API_KEY_STORAGE_KEY);
-    setHasApiKey(false);
     setApiKeyDraft("");
     setNotice({ type: "success", text: "API key cleared" });
   }
@@ -273,7 +274,7 @@ export function SettingsPage() {
               type="button"
               className="btn btn-secondary"
               onClick={handleClearApiKey}
-              disabled={!hasApiKey}
+              disabled={!storedKey}
             >
               Clear
             </button>
