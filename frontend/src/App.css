@@ -1554,6 +1554,15 @@ body {
   border-radius: 6px;
   padding: 4px 8px;
 }
+.landing-nav-links .nav-flat a {
+  color: var(--appbar-fg);
+}
+.landing-nav-links .nav-flat a:hover {
+  color: var(--appbar-active-fg);
+  background: var(--appbar-wash);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
 
 .landing-nav-actions {
   display: flex;
