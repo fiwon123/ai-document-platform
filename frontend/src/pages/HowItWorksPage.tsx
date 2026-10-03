@@ -27,7 +27,7 @@ export function HowItWorksPage() {
       }
       subtitle="Six stages, one of which is slow on purpose. Here is what happens to a file after you drop it in."
     >
-      <PageSection title="The short version">
+      <PageSection title="The short version" centered>
         <p>
           Three steps cover most of how people use the product:{" "}
           {STEPS.map((step, i) => (
@@ -41,11 +41,11 @@ export function HowItWorksPage() {
         </p>
       </PageSection>
 
-      <PageSection title="Stage by stage">
+      <PageSection title="Stage by stage" centered>
         <PipelineTrack />
       </PageSection>
 
-      <PageSection title="Why processing is asynchronous">
+      <PageSection title="Why processing is asynchronous" centered>
         <p>
           Embedding a large PDF is the expensive step — it can take longer than
           the upload itself. Running it inside the request would mean either a
@@ -62,7 +62,7 @@ export function HowItWorksPage() {
         </p>
       </PageSection>
 
-      <PageSection title="What this means for privacy">
+      <PageSection title="What this means for privacy" centered>
         <p>
           Chunks, embeddings, and answers are all scoped to the owning user, and
           object storage paths are namespaced per user ID. Search and Q&amp;A
