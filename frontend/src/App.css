@@ -7876,15 +7876,16 @@ nav.footer-col a:hover {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 0;
+  padding: 4px 8px;
   border: 0;
   background: none;
-  color: var(--muted);
+  color: var(--appbar-fg);
   font: inherit;
   font-size: 0.92rem;
   font-weight: 600;
   cursor: pointer;
-  transition: color 0.2s;
+  transition: all 0.2s;
+  border-radius: 6px;
 }
 
 .nav-group-trigger:hover,
