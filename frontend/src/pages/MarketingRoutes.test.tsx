@@ -62,6 +62,12 @@ describe("marketing routes", () => {
       // The eyebrow is the section label, so a page filed under Product cannot
       // drift into reading as a Legal or Company page.
       if (MARKETING_ROUTE_LABELS[route] === "Live demo") return;
+      // The two challenges routes carry no eyebrow, and are not asking to be
+      // filed under a section: the title *is* the section ("Challenges"), and a
+      // second label above it would say the same word twice. Asserted on its own
+      // terms below rather than exempted here, so dropping the eyebrow by
+      // accident on some future page is still caught.
+      if (route.startsWith("/challenges")) return;
       const section = route.startsWith("/product") || /features|how-it-works|pricing/.test(route)
         ? "Product"
         : /privacy|terms|security|gdpr/.test(route)
@@ -88,6 +94,8 @@ describe("marketing routes", () => {
       "/terms": /terms of service/i,
       "/security": /security/i,
       "/gdpr": /gdpr/i,
+      "/challenges": /^challenges$/i,
+      "/challenges/new": /new challenge/i,
       "/demo": /try the demo/i,
     };
     for (const [path, pattern] of Object.entries(expected)) {

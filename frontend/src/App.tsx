@@ -82,6 +82,14 @@ const SecurityPage = lazy(() =>
 const GdprPage = lazy(() =>
   import("./pages/GdprPage").then((m) => ({ default: m.GdprPage })),
 );
+/* Challenges. Its own chunk, and two pages rather than one because the form is
+   only reachable from the index — the copy for both lives in content/challenges. */
+const ChallengesPage = lazy(() =>
+  import("./pages/ChallengesPage").then((m) => ({ default: m.ChallengesPage })),
+);
+const NewChallengePage = lazy(() =>
+  import("./pages/NewChallengePage").then((m) => ({ default: m.NewChallengePage })),
+);
 const DocumentsPage = lazy(() =>
   import("./pages/DocumentsPage").then((m) => ({ default: m.DocumentsPage })),
 );
@@ -221,6 +229,9 @@ function App() {
                     <Route path="/terms" element={<TermsPage />} />
                     <Route path="/security" element={<SecurityPage />} />
                     <Route path="/gdpr" element={<GdprPage />} />
+                    {/* Challenges */}
+                    <Route path="/challenges" element={<ChallengesPage />} />
+                    <Route path="/challenges/new" element={<NewChallengePage />} />
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/register" element={<RegisterPage />} />
                     <Route path="/app/*" element={<ProtectedRoutes />} />

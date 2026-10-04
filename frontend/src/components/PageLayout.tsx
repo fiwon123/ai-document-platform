@@ -52,12 +52,25 @@ export function PageLayout({
   title,
   subtitle,
   eyebrow,
+  heroAction,
   children,
 }: {
   title: ReactNode;
   subtitle?: string;
   /** Small label above the title, e.g. "Product". */
   eyebrow?: string;
+  /** A CTA or button row rendered centred beneath the subtitle.
+   *
+   *  The hero is a centred column (`.page-hero-inner`), so a page whose main
+   *  action belongs to the title block puts that action *here* rather than
+   *  beside the title. Beside a centred title it sits on the wrong axis: it
+   *  reads as belonging to the brand, and at narrow widths it has nowhere to
+   *  go but over the title. In the column it lands on the same centre line as
+   *  the title and subtitle, which is where the eye already is.
+   *
+   *  Opt-in per page, like `PageCta`: a page whose hero is informational passes
+   *  nothing. */
+  heroAction?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -77,6 +90,15 @@ export function PageLayout({
           {subtitle && (
             <Reveal variant="up" delay={eyebrow ? 160 : 80}>
               <p className="landing-sub">{subtitle}</p>
+            </Reveal>
+          )}
+          {heroAction && (
+            <Reveal
+              variant="up"
+              delay={eyebrow ? 240 : subtitle ? 160 : 80}
+              className="page-hero-action"
+            >
+              {heroAction}
             </Reveal>
           )}
         </div>
