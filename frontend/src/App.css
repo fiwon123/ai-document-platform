@@ -1040,6 +1040,12 @@ body {
 .navbar-links {
   display: flex;
   gap: 4px;
+  /* Centred between the brand and the user cluster. `margin-inline: auto`
+     splits the row's free space evenly either side of the links; a single
+     `margin-left: auto` on `.navbar-user` alone (which is what this replaced)
+     pushed the links hard against the back link and brand instead, so the
+     workspace's own navigation sat off to one side of its header. */
+  margin-inline: auto;
 }
 
 .navbar-links a {
@@ -1122,7 +1128,9 @@ body {
 }
 
 .navbar-user {
-  margin-left: auto;
+  /* No auto margin: the free space is now split either side of `.navbar-links`
+     (see that rule), which leaves this cluster hard against the right gutter
+     without needing one. */
   display: flex;
   align-items: center;
   gap: 16px;
@@ -1392,11 +1400,24 @@ body {
   color: #60a5fa;
 }
 
+/* Centred between the brand and the action cluster.
+   `margin-inline: auto` rather than `margin-left: auto`: the row is
+   brand | links | actions, and a left auto margin dumps all the free space in
+   one place — which is what pushed the links flush to the right gutter and left
+   the actions glued to the brand. Auto margins on *both* sides split the free
+   space evenly, so the links sit in the middle with the two clusters balanced
+   either side of them.
+
+   "Centred" here means centred *between the brand and the buttons*, not against
+   the viewport: the brand is ~106px and the action cluster ~260px, so equal
+   margins cannot put the links on the viewport's centre line either. True
+   viewport centring needs a spacer element on the brand side, which would put an
+   empty node in the reading order for a header that is already correct. */
 .landing-nav-links {
   display: flex;
   align-items: center;
   gap: 28px;
-  margin-left: auto;
+  margin-inline: auto;
 }
 
 .landing-nav-links a {
@@ -1544,10 +1565,9 @@ body {
   }
 }
 
-/* Current page, marked the same way `.nav-group-menu a.active` marks it, so the
-   flat links and the menu's own links read as one navigation. `aria-current` is
-   mirrored in the selector so the state is visible even if the class is ever
-   dropped. */
+/* Current page. The header is one flat row now — the section menus are gone —
+   so this is the only active treatment it has. `aria-current` is mirrored in the
+   selector so the state is visible even if the class is ever dropped. */
 .landing-nav-links .nav-flat a.active,
 .landing-nav-links .nav-flat a[aria-current="page"] {
   color: var(--appbar-active-fg);
@@ -1614,8 +1634,8 @@ body {
    navbar, where the row has room for both and the panel only catches up on
    narrow screens.
 
-   This must stay in step with the `.nav-group-menu` block further down the file,
-   which drops the menu's absolute positioning for the same reason. */
+   Nothing else in the header needed this width: the section menus this block
+   used to be aligned with are gone (see `.nav-flat`). */
 @media (max-width: 900px) {
   .landing-navbar {
     /* Wraps, so the panel can take a line of its own when it opens. `nowrap`
@@ -1686,10 +1706,6 @@ body {
     display: none;
   }
 
-  .nav-group-trigger {
-    min-height: 44px;
-  }
-
   .landing-nav-actions .btn {
     min-height: 44px;
   }
@@ -1729,15 +1745,18 @@ body {
     align-items: center;
     justify-content: flex-start;
     gap: 12px;
-    /* Deliberately further from the nested Company card (8px above it) than the
-       card sits from its trigger. The card's own bottom border and this divider
-       are the same width, so equal spacing on either side made them read as one
-       rule drawn twice; unequal spacing is what tells them apart. */
+    /* The toggle is separated from the last link above it by more space than the
+       links are separated from each other, so it reads as a footer to the
+       destination list rather than as one more destination. */
     margin-top: 28px;
     padding-top: 12px;
     border-top: 1px solid var(--line);
   }
 
+  /* Base colour for dark, where the panel sits on the dark surface. The
+     light-theme override near the end of this file repaints it: the header is a
+     dark navy bar in *both* themes, so `var(--ink)` — the right colour for the
+     page behind — is invisible on it. */
   .landing-nav-panel-actions .theme-toggle {
     color: var(--ink);
   }
@@ -7875,179 +7894,6 @@ nav.footer-col a:hover {
   color: var(--code-number);
 }
 
-/* ── Header section menus ──────────────────────────────────────────────────
-   The header carries two disclosure menus (Product, Company) rather than eight
-   flat links. Legal deliberately stays footer-only: primary navigation should
-   hold where people are going, not every page that exists. */
-
-.nav-group {
-  position: relative;
-}
-
-.nav-group-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 12px;
-  border: 0;
-  background: none;
-  color: var(--appbar-fg);
-  font: inherit;
-  font-size: 0.92rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  border-radius: 999px;
-  margin: 0;
-}
-
-.nav-group-trigger:hover,
-.nav-group-trigger[aria-expanded="true"] {
-  color: var(--appbar-active-fg);
-  background: var(--appbar-wash);
-  border-radius: 999px;
-}
-.nav-group-trigger.active {
-  color: var(--appbar-active-fg);
-  background: var(--appbar-active-bg);
-  border-radius: 999px;
-}
-
-.nav-group-chevron {
-  transition: transform 0.2s var(--ease-standard);
-}
-
-.nav-group-trigger[aria-expanded="true"] .nav-group-chevron {
-  transform: rotate(180deg);
-}
-
-/* Visible focus ring for keyboard users. The trigger is a <button>, so this
-   replaces the browser default rather than supplementing it. */
-.nav-group-trigger:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: 3px;
-  border-radius: 4px;
-}
-
-/* Hover bridge.
-   The menu sits 10px below the trigger, and an absolutely positioned child
-   does not contribute to its parent's hover box — so the pointer is outside the
-   container while crossing that band, and a naive `mouseleave` close fires
-   before the pointer arrives. This transparent strip fills the gap and belongs
-   to the container, keeping the pointer inside for the whole journey. */
-.nav-group::after {
-  content: "";
-  position: absolute;
-  top: 100%;
-  left: 0;
-  width: 100%;
-  height: 12px;
-}
-
-.nav-group-menu {
-  position: absolute;
-  top: calc(100% + 10px);
-  left: 50%;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  min-width: 210px;
-  padding: 6px;
-  transform: translateX(-50%);
-  border: 1px solid var(--appbar-line);
-  border-radius: 12px;
-  background: var(--appbar-bg);
-  color: var(--appbar-fg);
-  box-shadow: 0 18px 44px rgb(15 23 42 / 0.14);
-  animation: nav-group-in 0.16s var(--ease-standard);
-}
-
-@keyframes nav-group-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -6px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
-}
-
-.nav-group-menu a {
-  padding: 8px 12px;
-  border-radius: 8px;
-  color: var(--appbar-fg);
-  font-size: 0.9rem;
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-  transition:
-    background 0.15s,
-    color 0.15s;
-}
-
-.nav-group-menu a:hover,
-.nav-group-menu a:focus-visible {
-  background: var(--appbar-wash);
-  color: var(--appbar-active-fg);
-}
-.nav-group-menu a.active {
-  background: var(--appbar-active-bg);
-  color: var(--appbar-active-fg);
-}
-
-.nav-group-menu a:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: -2px;
-}
-
-/* The hub link is visually distinct from its children: it is the section, not
-   one item in it. */
-/* Dark theme: give the section menu lift. Match appbar colors for consistency. */
-:root[data-theme="dark"] .nav-group-menu {
-  background: var(--appbar-bg);
-  border-color: var(--appbar-line);
-  box-shadow: 0 20px 60px -10px rgba(0, 0, 0, 0.9),
-    0 6px 28px -14px rgba(0, 0, 0, 0.8);
-}
-:root[data-theme="dark"] .nav-group-menu a {
-  color: var(--appbar-fg);
-}
-:root[data-theme="dark"] .nav-group-menu a:hover,
-:root[data-theme="dark"] .nav-group-menu a:focus-visible,
-:root[data-theme="dark"] .nav-group-menu a.active {
-  background: var(--appbar-wash);
-  color: var(--appbar-active-fg);
-}
-
-
-/* Matches the landing navbar's collapse breakpoint: the nav row wraps to full
-   width at the same width, so the menu drops the absolute positioning and the
-   translate and just flows under its trigger. Absolute positioning on a
-   full-width wrapped row opens off-screen. */
-@media (max-width: 900px) {
-  .nav-group-menu {
-    position: static;
-    min-width: 0;
-    transform: none;
-    margin-top: 8px;
-    animation: none;
-  }
-
-  .nav-group {
-    width: 100%;
-  }
-
-  /* No gap to bridge once the menu is in normal flow. */
-  .nav-group::after {
-    display: none;
-  }
-
-  .nav-group-menu a {
-    white-space: normal;
-  }
-}
-
 /* ── Marketing page shell ───────────────────────────────────────────────────
    Shared by all 13 non-landing marketing routes via <PageLayout>, so a new page
    inherits the landing page's measure, spacing rhythm, and type scale instead
@@ -9912,7 +9758,16 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 :root[data-theme="light"] .landing-brand,
 :root[data-theme="light"] .landing-brand a,
 :root[data-theme="light"] .landing-nav-links a,
+/* Both the header's own theme toggle and the mobile panel's copy, plus the
+   hamburger. The panel's toggle used to be left out of this list and kept
+   `color: var(--ink)` from the 900px block — but the header is a dark navy bar
+   in *both* themes, so on a light-theme phone the toggle rendered ink-on-navy at
+   1.00:1: invisible. And because the row's own toggle is `display: none` below
+   900px, that left a light-theme phone user with no visible way to switch theme
+   at all. The panel copy is the live control at that width, so it has to be
+   painted for the surface it actually sits on. */
 :root[data-theme="light"] .landing-nav-actions .theme-toggle,
+:root[data-theme="light"] .landing-nav-panel-actions .theme-toggle,
 :root[data-theme="light"] .landing-nav-toggle {
   color: var(--appbar-fg);
 }
@@ -9996,10 +9851,4 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 }
 .pipeline-stage:nth-child(even) .pipeline-outcome {
   order: 4;
-}
-
-.nav-group-trigger.active {
-  color: var(--appbar-active-fg);
-  background: var(--appbar-active-bg);
-  border-radius: 999px;
 }

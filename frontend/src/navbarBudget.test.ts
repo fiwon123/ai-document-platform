@@ -140,7 +140,14 @@ describe("workspace navbar width budget (#443)", () => {
     // width is set by a state-dependent CTA ("Sign up" 86.6px vs "Go to app"
     // 107.6px). It is a different navbar with a different budget; editing the
     // workspace one must not drag it along.
-    const landing = blocksContaining([".nav-group-menu"]);
+    // `display: none` on `.landing-nav-links` is the collapse's defining move —
+    // the links leave the row entirely — and the 1200px compact band does not do
+    // it. Keyed on that rather than on a selector, because `.landing-nav-links`
+    // appears in both bands and the old `.nav-group-menu` probe went away with
+    // the section menus.
+    const landing = maxWidthBlocks().filter((b) =>
+      /\.landing-nav-links\s*\{[^}]*display:\s*none/.test(b.body),
+    );
     expect(landing).toHaveLength(1);
     expect(landing[0]!.width).toBe(900);
   });
