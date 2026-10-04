@@ -638,7 +638,14 @@ class TestDocumentContent:
         monkeypatch.setattr(app_storage, "open_object", open_object)
         return opened
 
-    def _create_with_thumbnail(self, client, auth_headers, db_session):
+    def _create_with_thumbnail(self, client, auth_headers, db_session, monkeypatch):
+        # Mocked here rather than at each call site: this helper uploads, and an
+        # unmocked upload needs a live object store. Seven tests in this class
+        # were failing on CI for exactly that reason while passing in the dev
+        # sandbox, which runs MinIO (#632). Mocking it beside the upload it
+        # replaces means a test added here cannot repeat the omission.
+        _mock_upload_ok(monkeypatch)
+
         from app.models.document import DocumentDB
 
         created = _create_document(client, auth_headers)
@@ -656,7 +663,7 @@ class TestDocumentContent:
     ):
         from app.services.media_tokens import issue_token
 
-        created = self._create_with_thumbnail(client, auth_headers, db_session)
+        created = self._create_with_thumbnail(client, auth_headers, db_session, monkeypatch)
         self._fake_storage(monkeypatch, self.THUMBNAIL_PNG)
         token = issue_token(UUID(created["id"]), "thumbnail")
 
@@ -705,7 +712,7 @@ class TestDocumentContent:
         """
         from app.services.media_tokens import issue_token
 
-        created = self._create_with_thumbnail(client, auth_headers, db_session)
+        created = self._create_with_thumbnail(client, auth_headers, db_session, monkeypatch)
         opened = self._fake_storage(monkeypatch, b"x")
 
         client.get(
@@ -732,7 +739,7 @@ class TestDocumentContent:
     ):
         from app.services.media_tokens import issue_token
 
-        created = self._create_with_thumbnail(client, auth_headers, db_session)
+        created = self._create_with_thumbnail(client, auth_headers, db_session, monkeypatch)
         opened = self._fake_storage(monkeypatch, b"x")
         other = uuid4()
 
@@ -754,7 +761,7 @@ class TestDocumentContent:
     ):
         from app.services.media_tokens import issue_token
 
-        created = self._create_with_thumbnail(client, auth_headers, db_session)
+        created = self._create_with_thumbnail(client, auth_headers, db_session, monkeypatch)
         opened = self._fake_storage(monkeypatch, b"x")
         token = issue_token(UUID(created["id"]), "thumbnail")
 
@@ -774,7 +781,7 @@ class TestDocumentContent:
     ):
         from app.services.media_tokens import issue_token
 
-        created = self._create_with_thumbnail(client, auth_headers, db_session)
+        created = self._create_with_thumbnail(client, auth_headers, db_session, monkeypatch)
         opened = self._fake_storage(monkeypatch, b"x")
         # Issued an hour ago with a one-minute life: expired without sleeping.
         stale = issue_token(
@@ -792,8 +799,10 @@ class TestDocumentContent:
         assert resp.status_code == 403
         assert opened == []
 
-    def test_missing_or_malformed_token_is_refused(self, client, auth_headers, db_session):
-        created = self._create_with_thumbnail(client, auth_headers, db_session)
+    def test_missing_or_malformed_token_is_refused(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
+        created = self._create_with_thumbnail(client, auth_headers, db_session, monkeypatch)
 
         for token in ("", "garbage", "123", "123.abc", "."):
             resp = client.get(
@@ -843,7 +852,7 @@ class TestDocumentContent:
         from app.services.media_tokens import issue_token
         from app.storage.storage import storage as app_storage
 
-        created = self._create_with_thumbnail(client, auth_headers, db_session)
+        created = self._create_with_thumbnail(client, auth_headers, db_session, monkeypatch)
 
         def boom(object_key):
             raise RuntimeError("NoSuchKey")
