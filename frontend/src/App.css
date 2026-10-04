@@ -1518,7 +1518,9 @@ body {
    this control can perceive. Same bars-to-X transform as `.navbar-toggle`, so
    the two headers behave identically. */
 .landing-nav-toggle-bar {
-  transition: transform 0.18s ease, opacity 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease;
 }
 
 .landing-nav-toggle[aria-expanded="true"] .landing-nav-toggle-bar:nth-child(1) {
@@ -3126,7 +3128,10 @@ body {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s var(--ease-out, ease), color 0.2s, font-weight 0.2s;
+  transition:
+    background 0.2s var(--ease-out, ease),
+    color 0.2s,
+    font-weight 0.2s;
 }
 
 .billing-toggle-label:hover {
@@ -6711,7 +6716,9 @@ nav.footer-col a:hover {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .tab:hover {
@@ -8212,7 +8219,6 @@ nav.footer-col a:hover {
      narrower than 52ch, so card copy is unaffected. Left-aligned on purpose: it
      matches `.page-section`'s existing alignment, so headings and the text they
      head stay flush. */
-  max-width: 55ch;
 }
 
 .page-body p strong {
@@ -9442,15 +9448,6 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 
 /* ── Legal documents ──────────────────────────────────────────────────────── */
 
-/* The four legal routes are the prose-heaviest pages in the site, so the cap
-   goes on the *container* rather than on the paragraphs (which `.page-body p`
-   already caps). Capping the container keeps each `.legal-section h2` flush
-   left with the text it heads; capping only the `<p>`s would leave every heading
-   spanning the full 970px while its own paragraph stopped at ~575px. */
-.legal-body {
-  max-width: 55ch;
-}
-
 .template-notice {
   margin-bottom: 28px;
   padding: 16px 18px;
@@ -9966,6 +9963,7 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 .page-section--centered {
   text-align: center;
 }
+
 .page-section--centered .page-section-title {
   text-align: center;
 }

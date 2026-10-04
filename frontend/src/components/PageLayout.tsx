@@ -131,11 +131,7 @@ export function PageCard({
   accent?: "blue" | "violet" | "green" | "amber" | "rose";
 }) {
   return (
-    <Link
-      to={to}
-      className="page-card card-hover"
-      data-accent={accent}
-    >
+    <Link to={to} className="page-card card-hover" data-accent={accent}>
       <h2>{title}</h2>
       <p>{body}</p>
       <span className="page-card-cta">
@@ -165,7 +161,11 @@ export function PageSection({
 }) {
   const Heading = level === 2 ? "h2" : "h3";
   return (
-    <Reveal as="section" variant="up" className={`page-section ${centered ? "page-section--centered" : ""}`}>
+    <Reveal
+      as="section"
+      variant="up"
+      className={`page-section ${centered ? "page-section--centered" : ""}`}
+    >
       {title && <Heading className="page-section-title">{title}</Heading>}
       {children}
     </Reveal>

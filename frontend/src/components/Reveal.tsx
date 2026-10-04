@@ -1,15 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useScrollReveal } from "../hooks/useScrollReveal";
 
-type RevealTag =
-  | "div"
-  | "section"
-  | "article"
-  | "li"
-  | "header"
-  | "footer"
-  | "span"
-  | "p";
+type RevealTag = "div" | "section" | "article" | "li" | "header" | "footer" | "span" | "p";
 
 interface RevealProps {
   /** Element type to render. Defaults to div. */
@@ -46,9 +38,7 @@ export function Reveal({
 }: RevealProps) {
   const { ref, isVisible } = useScrollReveal<HTMLElement>();
   const style: CSSProperties | undefined =
-    delay > 0
-      ? ({ "--reveal-delay": `${delay}ms` } as CSSProperties)
-      : undefined;
+    delay > 0 ? ({ "--reveal-delay": `${delay}ms` } as CSSProperties) : undefined;
 
   return (
     <Tag
