@@ -437,6 +437,8 @@ export const MARKETING_ROUTES = [
   "/terms",
   "/security",
   "/gdpr",
+  "/challenges",
+  "/challenges/new",
 ] as const;
 
 /** Labels for `MARKETING_ROUTES`, used by the routing smoke test. */
@@ -456,4 +458,6 @@ export const MARKETING_ROUTE_LABELS: Record<(typeof MARKETING_ROUTES)[number], s
   "/terms": "Terms",
   "/security": "Security",
   "/gdpr": "GDPR",
+  "/challenges": "Challenges",
+  "/challenges/new": "New challenge",
 };

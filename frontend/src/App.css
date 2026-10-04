@@ -4394,6 +4394,112 @@ nav.footer-col a:hover {
   border-color: var(--blue);
 }
 
+/* ── Challenges: create form ─────────────────────────────────────────────
+   Built on `.form-group` rather than a parallel set of field styles, so a
+   label/input here is the same object as one on the login form — same padding,
+   same focus ring, same border token. Only the control differs. */
+.challenge-intro {
+  max-width: 62ch;
+  margin: 0 0 24px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.challenge-form {
+  max-width: 720px;
+}
+
+.form-group textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  font-family: inherit;
+  font-size: 1rem;
+  /* `monospace` would suit the tests field specifically, but a stack here means
+     the prompt field — which is prose a person writes — stops looking like
+     prose. One family for all three keeps the form reading as one form. */
+  line-height: 1.6;
+  background: var(--surface);
+  color: var(--ink);
+  resize: vertical;
+  transition: border-color 0.2s;
+}
+
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.form-group textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+/* Guidance under a control. Distinct from the placeholder on purpose: the
+   placeholder is a sample of the expected *shape* and vanishes on focus, this is
+   the requirement and stays. Rendering the placeholder's own text here as well
+   was tried and reads as a copy-paste artifact — the same sentence twice, a few
+   pixels apart. */
+.form-help {
+  margin: 8px 0 0;
+  max-width: 62ch;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--muted);
+  /* `pretty`, not `balance`. This is a reading paragraph that wraps to three or
+     four lines at 390px, and a lone trailing word ("…not a run of / them.") is
+     an orphan. `balance` would even out every line, which is right for a
+     two-line hero subtitle and wrong for prose — `pretty` only avoids the
+     orphan and leaves the rest of the rag alone. The hero uses `balance` for
+     the opposite reason. */
+  text-wrap: pretty;
+}
+
+/* Error text is never colour-only: it is a sentence, so it is legible in
+   greyscale, and the control also gets `aria-invalid` for assistive tech. */
+.form-error {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.55;
+  /* --danger-text, not --danger: this token pair is deliberate. --danger is a
+     border/fill step, and as small text it measured 4.41:1 on --surface, under
+     AA's 4.5:1. red-700 clears it at 5.91:1. */
+  color: var(--danger-text);
+}
+
+.form-group textarea[aria-invalid="true"] {
+  /* The border keeps --danger, which is the step meant for borders. */
+  border-color: var(--danger);
+}
+
+.challenge-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+/* The honest post-submit notice. Informational, not an error — it uses the
+   muted surface and the app's ink rather than the danger colour a failed
+   submit would use, because nothing failed: the form validated and the server
+   simply does not exist yet. */
+.challenge-notice {
+  margin-top: 24px;
+  padding: 16px 18px;
+  max-width: 720px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--blue);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.challenge-notice strong {
+  color: var(--ink);
+}
+
 /* Password visibility toggle */
 .password-field {
   position: relative;
@@ -7938,11 +8044,49 @@ nav.footer-col a:hover {
   font-size: clamp(2.1rem, 4.6vw, 3.4rem);
   line-height: 1.12;
   letter-spacing: -0.03em;
+  /* Same treatment the landing hero and the CTA band already get: a short
+     headline wraps on the last whole word rather than orphaning one. */
+  text-wrap: balance;
 }
 
 .page-hero .landing-sub {
   margin-top: 18px;
   font-size: clamp(1.02rem, 1.5vw, 1.15rem);
+  /* Hero subtitles are one deliberate sentence, not a reading measure, so they
+     balance their lines instead of filling the 560px cap evenly. Without this a
+     subtitle of the wrong length orphans its last word — "…evaluate a" /
+     "solution." — which reads as a mistake even when the wrap is perfectly
+     legal. Same reason `.page-cta-band-sub` balances. */
+  text-wrap: balance;
+}
+
+/* Slot for a CTA that belongs to the title block (see `PageLayout`'s
+   `heroAction`). `.page-hero-inner` is already a centred flex column, so this
+   only has to carry the button row's own layout and the gap up to the subtitle.
+
+   `.landing-sub` carries a 28px bottom margin, which is what spaces the
+   subtitle from page content. This slot sits between the two, so its own top
+   margin collapses against that and the net gap is what the button needs rather
+   than subtitle-to-button *plus* button-to-body. */
+.page-hero-action {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: -8px;
+}
+
+/* A plus sign on a primary CTA reads as "create something new" and is set as
+   its own span rather than typed into the label, so the accessible name can
+   drop it: a screen reader announcing "plus new challenge" is noise, and the
+   destination is already carried by the link's own context. */
+.hero-plus {
+  margin-right: 8px;
+  font-weight: 600;
+  /* Optical, not metric: a `+` sits high on the cap line next to lowercase
+     text, so it is nudged down to sit on the same centre as the label. */
+  position: relative;
+  top: -1px;
 }
 
 /* The marketing measure, shared by all 13 `PageLayout` routes.
