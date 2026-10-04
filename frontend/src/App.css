@@ -8793,7 +8793,7 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
      - 2px border = 544px of content, which clears the 520px the fact chips need
      at 0.8rem. The rail lives in the track's own gutter, outside this box, so
      the sequence is connected without the card being wide. */
-  max-width: 600px;
+  max-width: 900px;
   margin-bottom: 14px;
   padding: 24px 26px 24px 28px;
   border: 1px solid var(--line);

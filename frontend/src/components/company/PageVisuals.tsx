@@ -396,7 +396,7 @@ export function ContactVisual() {
       <Caption x={78} y={top - 6} anchor="middle">
         question
       </Caption>
-      <Caption x={282} y={top - 6} anchor="middle">
+      <Caption x={295} y={top - 6} anchor="middle">
         channel
       </Caption>
       {pairs.map((p, i) => {
