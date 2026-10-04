@@ -79,6 +79,12 @@ jobs:
     name: Backend (pytest)
     if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
+    # Without Redis this suite takes ~30 minutes and reports failures, against
+    # ~40s with it. A refused connection is instant, so the time is the quota and
+    # cache paths retrying against a dead server — the symptom is a job that looks
+    # hung rather than one that looks broken, which is much slower to diagnose.
+    # See #630.
+    timeout-minutes: 15
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -90,6 +96,20 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      # The suite needs Redis, not just postgres: tests/test_cache.py,
+      # tests/test_rate_limit.py, tests/test_provider_quota.py, the QA
+      # provider-budget tests and the document-status cache test all assert
+      # against it. Same image as the dev sandbox. `conftest.py` forces
+      # REDIS_DB=15, so the job cannot touch anything else on the runner.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
