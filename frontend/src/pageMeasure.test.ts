@@ -22,11 +22,28 @@ import { describe, expect, it } from "vitest";
  *     i.e. *wider* than the 670px it was supposed to protect.
  *
  * So the invariants pinned here are the relationships, not the literals. A
- * deliberate retune to 1240px, or 48ch, must not fail this file; what must fail
- * is marketing going narrower than the workspace again, the prose cap being
- * dropped or going wider than the container, and any later rule silently
- * re-declaring the measure.
+ * deliberate retune to 1240px must not fail this file; what must fail is
+ * marketing going narrower than the workspace, the container measure being
+ * declared twice, and prose and lists disagreeing with each other.
+ *
+ * ## The reading measure was deliberately removed (#621)
+ *
+ * This file used to require a 45–75 character reading measure on `.page-body p`
+ * and `.legal-body`. That cap was deleted, and the owner confirmed the wider
+ * prose is intended rather than accidental — so the requirement is inverted
+ * rather than reinstated.
+ *
+ * What replaced it is the invariant that would have caught the removal being
+ * half-finished: the cap came off `.page-body p` and `.legal-body` but stayed on
+ * `.page-body ul, .page-body ol`, leaving prose at ~127 characters per line beside
+ * ~55-character bullets on every page that has a list. "Prose and lists declare
+ * the same measure" holds in both directions — capped or uncapped — and is the
+ * check that fails if a future edit reaches only half the rules it names.
+ *
+ * A cap narrower than the container is still a defect, so that is asserted
+ * directly rather than through a character budget.
  */
+
 
 const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8").replace(
   /\/\*[\s\S]*?\*\//g,
@@ -36,18 +53,6 @@ const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8").repla
 const ruleBody = (selector: string): string => {
   const m = css.match(new RegExp(`(?:^|[}\\n])\\s*${selector}\\s*\\{([^}]*)\\}`));
   if (!m?.[1]) throw new Error(`no ${selector} block in the stylesheet`);
-  return m[1];
-};
-
-/**
- * Like `ruleBody`, but for a selector that is the first item of a grouped list
- * (`.page-body ul,\n.page-body ol { ... }`). A grouped rule is invisible to a
- * helper that requires `{` straight after the selector, which would have made
- * the list cap look unset rather than wrong.
- */
-const groupedRuleBody = (selector: string): string => {
-  const m = css.match(new RegExp(`(?:^|[}\\n])\\s*${selector}\\s*,\\s*[^{}]*\\{([^}]*)\\}`));
-  if (!m?.[1]) throw new Error(`no grouped ${selector} block in the stylesheet`);
   return m[1];
 };
 
@@ -75,14 +80,44 @@ const ch = (value: string): number => {
   return Number.parseFloat(m[1]);
 };
 
-/**
- * Measured in Chromium against Manrope 16px (see the module comment). Kept as a
- * named constant so the character budget in the assertions below is auditable
- * rather than a magic number.
- */
-const CH_TO_CHARACTERS = 1.36;
+/** Pixels in one `ch` in Manrope at 16px. Measured in Chromium, not assumed —
+ *  the character-budget assertions that used to need `CH_TO_CHARACTERS` are gone
+ *  (#621), but a declared `ch` measure still has to be compared against a px
+ *  container, and that comparison needs the real width of a `ch`. */
+const CH_PX = 10.0;
 
-const REAL_CHARACTERS_PER_CH = (value: string): number => ch(value) * CH_TO_CHARACTERS;
+/* ── Absence-aware helpers (#621) ───────────────────────────────────────────
+   The prose measure is now intentionally *undeclared*, so "no max-width" is a
+   meaningful state rather than a missing value. `declaration()` throws on it,
+   which is right for the container (which must exist) and wrong for the
+   measures that are allowed to be absent. These return `null` instead, and
+   `measurePx` reads `null` and `"none"` as "fills the container". */
+
+/** Like `ruleBody`, but a missing rule is `null` rather than an error. */
+const maybeRuleBody = (selector: string): string | null => {
+  const m = css.match(new RegExp(`(?:^|[}\\n])\\s*${selector}\\s*\\{([^}]*)\\}`));
+  return m?.[1] ?? null;
+};
+
+/** Like `groupedRuleBody`, but a missing rule is `null` rather than an error. */
+const maybeGroupedRuleBody = (selector: string): string | null => {
+  const m = css.match(new RegExp(`(?:^|[}\\n])\\s*${selector}\\s*,\\s*[^{}]*\\{([^}]*)\\}`));
+  return m?.[1] ?? null;
+};
+
+const maybeDeclaration = (body: string | null, name: string): string | null =>
+  body?.match(new RegExp(`${name}\\s*:\\s*([^;]+);`))?.[1]?.trim() ?? null;
+
+/**
+ * A declared measure in pixels. An absent measure — or an explicit `none` —
+ * resolves to `containerPx`, because that is what it means: the element fills
+ * its container rather than being capped inside it.
+ */
+const measurePx = (value: string | null, containerPx: number): number => {
+  if (value === null || value === "none") return containerPx;
+  if (value.endsWith("ch")) return ch(value) * CH_PX;
+  return px(value);
+};
 
 describe("marketing measure (#440)", () => {
   it("renders the marketing body at least as wide as the workspace", () => {
@@ -100,64 +135,51 @@ describe("marketing measure (#440)", () => {
     expect(allDeclarationsFor(".page-body", "max-width")).toHaveLength(1);
   });
 
-  it("caps prose far narrower than the container it sits in", () => {
+  it("lets prose fill the marketing container", () => {
     const container = px(declaration(".page-body", "max-width"));
-    const prose = declaration(".page-body p", "max-width");
+    const prose = maybeDeclaration(maybeRuleBody(".page-body p"), "max-width");
 
-    // Prose must not simply follow the container: that is the readability
-    // regression this file exists to prevent.
-    expect(ch(prose)).toBeLessThan(ch(`${container / 10}ch`));
+    // Deliberately not a character budget. The 45–75 measure was removed on
+    // purpose (#621), so pinning a number here would just re-litigate it. What
+    // must not come back is a cap that strands prose inside the container.
+    expect(measurePx(prose, container)).toBeGreaterThanOrEqual(container);
   });
 
-  it("keeps the prose measure inside a readable 45-75 character budget", () => {
-    const prose = declaration(".page-body p", "max-width");
-    const characters = REAL_CHARACTERS_PER_CH(prose);
+  it("keeps lists on the same measure as paragraphs", () => {
+    const paragraph = maybeDeclaration(maybeRuleBody(".page-body p"), "max-width");
+    // `.page-body ul, .page-body ol` is a grouped rule.
+    const list = maybeDeclaration(maybeGroupedRuleBody(".page-body ul"), "max-width");
 
-    // The number that actually matters. `70ch` fails this at ~95 characters,
-    // which is the mistake this cap is most likely to be "corrected" back into.
-    expect(characters).toBeGreaterThanOrEqual(45);
-    expect(characters).toBeLessThanOrEqual(75);
-  });
-
-  it("declares the prose cap exactly once, and never wider than the container", () => {
-    const declarations = allDeclarationsFor(".page-body p", "max-width");
-    expect(declarations).toHaveLength(1);
-
-    const container = px(declaration(".page-body", "max-width"));
-    // 1ch is 10px in this font, so compare in the same unit.
-    expect(ch(declarations[0] ?? "")).toBeLessThanOrEqual(container / 10);
-  });
-
-  it("caps lists on the same measure as paragraphs", () => {
-    const paragraph = declaration(".page-body p", "max-width");
-    // `.page-body ul, .page-body ol` is a grouped rule, hence groupedRuleBody.
-    const list = groupedRuleBody(".page-body ul").match(/max-width\s*:\s*([^;]+);/)?.[1]?.trim();
+    // This is the check that would have caught #621. The cap came off the
+    // paragraphs and stayed on the lists, so prose ran 127 characters to the
+    // line while bullets sat in a 515px column — and every other assertion in
+    // this file passed, because each looked at one selector at a time.
     expect(list).toBe(paragraph);
   });
 
-  it("lets the pipeline opt out of the list measure without loosening it", () => {
-    // #582: `.page-body ol { max-width: 52ch }` is a PROSE rule, and this page
-    // renders the pipeline as `<ol className="pipeline">`, so the pipeline
-    // inherited it and came out 497px wide inside a 1200px container — one
-    // unbroken ~500px column for ~3450px of scroll, with the right lane empty
-    // the whole way down (the measurement in #554).
-    //
-    // The override must stay SCOPED to `.pipeline`. The invariant two tests
-    // above is correct for every prose list on the site, and loosening it to fix
-    // one card stack would silently un-cap all the others.
-    expect(css).toMatch(/\.page-body ol\.pipeline\s*\{/);
-    const override = ruleBody("\\.page-body ol\\.pipeline").match(
-      /max-width\s*:\s*([^;]+);/,
-    )?.[1]?.trim();
-    expect(override, "the pipeline override must set max-width").toBeDefined();
+  it("never strands prose or lists in a measure narrower than the container", () => {
+    const container = px(declaration(".page-body", "max-width"));
 
-    // ...and it must not have quietly changed the shared prose rules it sits
-    // beside. A rewrite that "fixed" the pipeline by editing `.page-body ul`
-    // or `.page-body p` would pass every other test in this file.
-    const proseList = groupedRuleBody(".page-body ul").match(
-      /max-width\s*:\s*([^;]+);/,
-    )?.[1]?.trim();
-    expect(proseList).toBe(declaration(".page-body p", "max-width"));
+    for (const body of [maybeRuleBody(".page-body p"), maybeGroupedRuleBody(".page-body ul")]) {
+      const value = maybeDeclaration(body, "max-width");
+      expect(measurePx(value, container), `measure ${value ?? "(unset)"}`).toBeGreaterThanOrEqual(
+        container,
+      );
+    }
+  });
+
+  it("does not give the pipeline a narrower list measure than other prose", () => {
+    // #582 scoped this override so the pipeline could opt out of the prose list
+    // cap. With the cap gone it reads `max-width: none`, which now matches every
+    // other list — so the invariant is that it has not become a way to make this
+    // one list narrower than the prose around it.
+    const container = px(declaration(".page-body", "max-width"));
+    const other = maybeDeclaration(maybeGroupedRuleBody(".page-body ul"), "max-width");
+    const pipeline = maybeDeclaration(maybeRuleBody("\\.page-body ol\\.pipeline"), "max-width");
+
+    expect(measurePx(pipeline, container)).toBeGreaterThanOrEqual(
+      measurePx(other, container),
+    );
   });
 
   it("caps the pipeline cards at one measure, so the border has no dead interior", () => {
@@ -190,13 +212,18 @@ describe("marketing measure (#440)", () => {
     );
   });
 
-  it("caps the legal body on its container, so headings stay flush with their text", () => {
-    // Capping the <p>s would leave every .legal-section h2 spanning the full
-    // container while its own paragraph stopped short. Measured in Chromium:
-    // both resolve to left 475px / width 520px, i.e. the same box.
-    const legal = declaration(".legal-body", "max-width");
-    const prose = declaration(".page-body p", "max-width");
-    expect(legal).toBe(prose);
+  it("keeps the legal body on the same measure as its paragraphs", () => {
+    // The legal pages are the prose-heaviest on the site. They previously
+    // declared their own `.legal-body { max-width: 55ch }` so that every
+    // `.legal-section h2` stayed flush with the text it heads; capping only the
+    // `<p>`s would have left each heading spanning the full container while its
+    // own paragraph stopped short. Both caps went in #621, so the invariant is
+    // that the legal body and ordinary prose still resolve to the same box.
+    const container = px(declaration(".page-body", "max-width"));
+    const legal = maybeDeclaration(maybeRuleBody(".legal-body"), "max-width");
+    const prose = maybeDeclaration(maybeRuleBody(".page-body p"), "max-width");
+
+    expect(measurePx(legal, container)).toBe(measurePx(prose, container));
   });
 
   it("keeps the CTA band's own 54ch measure out of the prose rule's reach", () => {
