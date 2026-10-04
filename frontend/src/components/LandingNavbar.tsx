@@ -1,231 +1,15 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
 import { useAuth } from "../hooks/useAuth";
 import { BrandMark } from "./icons";
 import { NAV_COMPANY, NAV_PRODUCT } from "../content/marketing";
 
-/**
- * Header section menu.
- *
- * Built on the disclosure pattern rather than the ARIA `menu` pattern: a button
- * carrying `aria-expanded` reveals a set of ordinary links. ARIA menus oblige
- * the author to implement arrow-key roving focus, Home/End, and type-ahead, and
- * a half-implemented menu widget is worse for keyboard and screen-reader users
- * than a plain list of links. The disclosure gives the same result with the
- * links behaving like links.
- */
-function NavGroupMenu({
-  label,
-  items,
-}: {
-  label: string;
-  /** The section's pages, hub first. `NAV_COMPANY` carries `/company` itself,
-   *  so the menu has no separate hub link to compose and no way to disagree
-   *  with the footer about what the section's pages are called (#584). */
-  items: { label: string; to: string }[];
-}) {
-  /* Openness is derived from which path the menu was opened *for* rather than
-     stored as a boolean. A plain boolean needs an effect to close on
-     navigation, and a setState-in-effect is a second render pass for something
-     the render already knows: if the menu was opened for a different path, the
-     user has moved on, so it is closed.
-
-     Alongside the path it records *how* the menu was opened, because hover and
-     click mean opposite things here (#591). One object rather than two pieces of
-     state, so the two cannot disagree: `pinned` is only ever read together with
-     the path it was pinned for. */
-  const [state, setState] = useState<{ path: string; pinned: boolean } | null>(
-    null,
-  );
-  const containerRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const menuId = useId();
-  const { pathname } = useLocation();
-
-  const open = state?.path === pathname;
-  const pinned = open && state?.pinned === true;
-
-  const cancelClose = useCallback(() => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  }, []);
-
-  const close = useCallback(() => {
-    cancelClose();
-    setState(null);
-  }, [cancelClose]);
-
-  /* Hover opens it *unpinned*: the menu is on loan to the pointer and is
-     dismissed when the pointer leaves. It never clears an existing pin, so
-     arriving at a pinned menu does not un-pin it. */
-  const openNow = useCallback(
-    () =>
-      setState((current) =>
-        current?.path === pathname && current.pinned
-          ? current
-          : { path: pathname, pinned: false },
-      ),
-    [pathname],
-  );
-
-  /* Click is not the negation of hover (#591). Every pointer interaction begins
-     with a move onto the element, so for a mouse the click always arrives after
-     hover has already opened the menu — a plain toggle therefore closed what the
-     pointer had just opened and the click did nothing observable at all. Worse,
-     it inverted: the first click closed, and only the second one opened.
-
-     So a click *pins*: hovering in, clicking keeps it open; clicking a pinned
-     menu closes it. A click is never a no-op, and never means the opposite of
-     what the previous one did. On touch, where `hoverable` is false and nothing
-     ever opens by hover, this is an ordinary toggle. */
-  const toggle = useCallback(
-    () =>
-      setState((current) =>
-        current?.path === pathname && current.pinned
-          ? null
-          : { path: pathname, pinned: true },
-      ),
-    [pathname],
-  );
-
-  useEffect(() => cancelClose, [cancelClose]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const onPointerDown = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) close();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      close();
-      // Return focus to the trigger, otherwise Escape drops the user at the top
-      // of the document with no indication where they were.
-      triggerRef.current?.focus();
-    };
-
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open, close]);
-
-  /**
-   * Hover intent.
-   *
-   * The menu is offset 10px below the trigger so it reads as a separate surface
-   * rather than a continuation of the button. That offset creates a band of
-   * empty space between them, and because an absolutely positioned child does
-   * not contribute to its parent's hover box, the pointer is *outside* the
-   * container while crossing it. Closing on `mouseleave` therefore dismissed the
-   * menu before the pointer could arrive — the original bug.
-   *
-   * Two things fix it together:
-   *   1. A short grace period on the way out, so a diagonal path across the gap
-   *      is not treated as leaving.
-   *   2. An explicit hover bridge — a transparent strip owned by the container
-   *      that covers the gap, so the pointer is technically still inside.
-   *
-   * Only `(hover: hover)` devices opt in. A touch device has no hover, and
-   * `mouseleave` there would fire on tap, making the menu undismissable.
-   *
-   * Hover is also *transitional*: the menu is on loan to the pointer, and only a
-   * click pins it so the pointer can leave it open (#591). See `toggle`.
-   */
-  const hoverable =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(hover: hover)").matches;
-
-  const scheduleClose = () => {
-    // `pinned` first: a menu the user opened by clicking stays open when the
-    // pointer leaves. Escape, an outside click and navigation all still dismiss
-    // it, so pinning is not a trap — it is what makes the click meaningful.
-    if (!hoverable || pinned) return;
-    cancelClose();
-    closeTimer.current = setTimeout(close, 140);
-  };
-
-  // The hub is one of `items` now, so it needs no special case here: visiting
-  // `/company` matches its own entry the same way `/about` matches its own.
-  const active = items.some((item) => pathname === item.to);
-
-  return (
-    <div
-      className="nav-group"
-      ref={containerRef}
-      onMouseEnter={() => {
-        if (!hoverable) return;
-        cancelClose();
-        openNow();
-      }}
-      onMouseLeave={scheduleClose}
-    >
-      <button
-        type="button"
-        ref={triggerRef}
-        className={`nav-group-trigger${active ? " active" : ""}`}
-        aria-expanded={open}
-        aria-controls={menuId}
-        aria-current={active ? "true" : undefined}
-        onClick={toggle}
-      >
-        {label}
-        <svg
-          className="nav-group-chevron"
-          viewBox="0 0 24 24"
-          width="14"
-          height="14"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <path
-            d="M6 9l6 6 6-6"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-
-      {open && (
-        <div
-          className="nav-group-menu"
-          id={menuId}
-          // Entering the menu cancels the pending close. Without this the
-          // 140ms grace period would close the menu out from under a pointer
-          // that made it across the gap but then paused inside.
-          onMouseEnter={cancelClose}
-          onMouseLeave={scheduleClose}
-        >
-          {items.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={pathname === item.to ? "active" : undefined}
-              aria-current={pathname === item.to ? "page" : undefined}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** The Product hub. Company needs no equivalent: `/company` is the first entry
- *  of `NAV_COMPANY`, so its menu is built from the shared array like the footer
- *  column is (#584). */
+/** The Product and Company hubs. `/company` is `NAV_COMPANY`'s own first entry
+ *  rather than a separate constant, so the header, the footer column and the
+ *  hub page cannot disagree about what the section is called (#584). */
 const PRODUCT_HUB = "/product";
+const COMPANY_HUB = "/company";
 
 /**
  * Marketing navigation shown on every public page. When the visitor is already
@@ -235,9 +19,16 @@ const PRODUCT_HUB = "/product";
  * Product is a flat list rather than a second menu. Its five destinations are
  * the header's primary content, and hiding them behind a disclosure meant the
  * one section a visitor is most likely to want cost a hover, a click, and two
- * tab stops to reach. Company stays a menu: it is a section rather than a set
- * of pages someone arrives on directly, and leaving it alone keeps the header
- * from flattening into a wall of links.
+ * tab stops to reach.
+ *
+ * Company is a flat link for the same reason, and it was the last section menu
+ * standing. It offered one destination — the hub — behind a hover, a click and
+ * two tab stops, while its five pages sat in the footer all along. So the header
+ * now carries six links in one row and no dropdown at all: a section is a
+ * navigation level that costs a level of nesting to express, and with nothing
+ * behind it there was nothing to reveal. `NAV_COMPANY` still defines the section
+ * — the link's active state and the footer column both read it — so the header
+ * cannot drift from the list of pages that actually exist.
  *
  * Legal pages are deliberately absent: they live in the footer only. Putting
  * eight destinations in the header turns navigation into a wall of links, and
@@ -271,18 +62,26 @@ const PRODUCT_HUB = "/product";
 export function LandingNavbar() {
   const { user } = useAuth();
   const { pathname } = useLocation();
-  /* Openness is tracked as the path the panel was opened *for*, the same trick
-     NavGroupMenu below uses. A plain boolean needs an effect to close on
-     navigation, and a setState-in-effect is a second render pass for something
-     the render already knows: the panel was opened on one route, the route
-     changed, so it is closed. It also means a browser back/forward cannot
-     leave the panel hanging open over unrelated content. */
+  /* Openness is tracked as the path the panel was opened *for*. A plain boolean
+     needs an effect to close on navigation, and a setState-in-effect is a
+     second render pass for something the render already knows: the panel was
+     opened on one route, the route changed, so it is closed. It also means a
+     browser back/forward cannot leave the panel hanging open over unrelated
+     content. */
   const [openedFor, setOpenedFor] = useState<string | null>(null);
   const menuOpen = openedFor === pathname;
   const toggleRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = useCallback(() => setOpenedFor(null), []);
+
+  /* One link now stands for the whole section, so the active state has to cover
+     the section rather than just the page: on `/about` the Company link is where
+     you came from, and marking nothing active would lose that. Derived from
+     `NAV_COMPANY` rather than a second hardcoded route list, so adding a company
+     page cannot leave the header blind to it — the same single-source rule the
+     footer column follows (#584). */
+  const companyActive = NAV_COMPANY.some((item) => pathname === item.to);
 
   // Mobile panel key handling (ARIA disclosure, APG "Navigation Menu Button"):
   // focus moves to the first link on open, Escape closes and returns focus to
@@ -315,6 +114,64 @@ export function LandingNavbar() {
         AskDocs
       </Link>
 
+      <div
+        ref={menuRef}
+        id="landing-nav-links"
+        className={`landing-nav-links${menuOpen ? " landing-nav-links-open" : ""}`}
+      >
+        {/* The hub is composed here rather than added to NAV_PRODUCT: the footer
+            derives its own Overview link from the column's `hub` field, so
+            putting it in the shared array would render it twice down there. */}
+        <div className="nav-flat">
+          <Link
+            to={PRODUCT_HUB}
+            onClick={closeMenu}
+            className={pathname === PRODUCT_HUB ? "active" : undefined}
+            aria-current={pathname === PRODUCT_HUB ? "page" : undefined}
+          >
+            Overview
+          </Link>
+          {NAV_PRODUCT.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              onClick={closeMenu}
+              className={pathname === item.to ? "active" : undefined}
+              aria-current={pathname === item.to ? "page" : undefined}
+            >
+              {item.label}
+            </Link>
+          ))}
+          {/* Company is a plain link, not a second disclosure: its five pages
+              are reachable from the footer, and a section menu here cost a
+              hover and a tab stop to reach the one thing it held. The link
+              still reads as active across the whole section, so it is not
+              ambiguous which section you are in. */}
+          <Link
+            to={COMPANY_HUB}
+            onClick={closeMenu}
+            className={companyActive ? "active" : undefined}
+            aria-current={companyActive ? "page" : undefined}
+          >
+            Company
+          </Link>
+        </div>
+
+        {/* Only rendered in the collapsed band, because the row's copy of the
+            theme toggle is hidden here. There is deliberately no "Try the demo"
+            button in the panel — see the note on the component above. */}
+        <div className="landing-nav-panel-actions">
+          <ThemeToggle />
+        </div>
+      </div>
+
+      {/* Actions come after the links so the row reads brand | links | actions,
+          with the link group centred between the two clusters by
+          `margin-inline: auto`. In DOM order before them they sat hard against
+          the brand and pushed the links to the right gutter: the toggle and the
+          two buttons read as the header's leading content and the navigation
+          read as a trailing afterthought. Source order is what assistive tech
+          and Tab follow, so this is also the reading order. */}
       <div className="landing-nav-actions">
         {/* Desktop placement. At the collapse width the row cannot hold both
             this and the CTA (see App.css), so the panel carries a copy — the
@@ -347,46 +204,6 @@ export function LandingNavbar() {
           <span className="landing-nav-toggle-bar" />
           <span className="landing-nav-toggle-bar" />
         </button>
-      </div>
-
-      <div
-        ref={menuRef}
-        id="landing-nav-links"
-        className={`landing-nav-links${menuOpen ? " landing-nav-links-open" : ""}`}
-      >
-        {/* The hub is composed here rather than added to NAV_PRODUCT: the footer
-            derives its own Overview link from the column's `hub` field, so
-            putting it in the shared array would render it twice down there. */}
-        <div className="nav-flat">
-          <Link
-            to={PRODUCT_HUB}
-            onClick={closeMenu}
-            className={pathname === PRODUCT_HUB ? "active" : undefined}
-            aria-current={pathname === PRODUCT_HUB ? "page" : undefined}
-          >
-            Overview
-          </Link>
-          {NAV_PRODUCT.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              onClick={closeMenu}
-              className={pathname === item.to ? "active" : undefined}
-              aria-current={pathname === item.to ? "page" : undefined}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-
-        <NavGroupMenu label="Company" items={NAV_COMPANY} />
-
-        {/* Only rendered in the collapsed band, because the row's copy of the
-            theme toggle is hidden here. There is deliberately no "Try the demo"
-            button in the panel — see the note on the component above. */}
-        <div className="landing-nav-panel-actions">
-          <ThemeToggle />
-        </div>
       </div>
     </nav>
   );

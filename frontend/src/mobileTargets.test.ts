@@ -136,12 +136,13 @@ describe("touch targets (#442)", () => {
   });
 
   it("gives the marketing header 44px targets only inside its 900px collapse", () => {
-    // 34x34 theme toggle, 31.2px disclosure trigger, and a 43.2px primary CTA
-    // (0.8px under). The nav links themselves get the full 44px here, where this
-    // row *is* the primary navigation.
-    const [collapse] = blockContaining("max-width", [".nav-group-trigger", ".landing-nav-actions .theme-toggle"]);
+    // 34x34 theme toggle and a 43.2px primary CTA (0.8px under). The nav links
+    // themselves get the full 44px here, where this row *is* the primary
+    // navigation. The header's section menus — and their triggers — are gone, so
+    // there is no longer a disclosure trigger to hold to 44px in this band.
+    const [collapse] = blockContaining("max-width", [".landing-nav-actions .theme-toggle", ".landing-nav-links"]);
     expect(collapse?.width).toBe(900);
-    for (const needle of [".nav-group-trigger", ".landing-nav-actions .btn", ".landing-nav-links a", ".landing-brand"]) {
+    for (const needle of [".landing-nav-actions .btn", ".landing-nav-links a", ".landing-brand"]) {
       // `[,\\{]` because `.landing-nav-links a,` and `.landing-brand` share one rule.
       expect(collapse?.body, needle).toMatch(
         new RegExp(`${escapeRe(needle)}\\s*[,\\{][^}]*min-height:\\s*${MOBILE}px`),

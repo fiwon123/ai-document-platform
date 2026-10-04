@@ -1,4 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Navbar } from "./Navbar";
@@ -35,6 +37,29 @@ beforeEach(() => {
   });
 });
 
+/**
+ * App.css with comments stripped — a comment quoting a selector would otherwise
+ * satisfy a guard that is only looking for the text.
+ */
+const css = readFileSync(resolve(__dirname, "../App.css"), "utf8").replace(
+  /\/\*[\s\S]*?\*\//g,
+  "",
+);
+
+/** Declarations of the first rule whose selector list contains `selector`. */
+function declarationsFor(selector: string): string[] {
+  for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = (match[1] ?? "").split(",").map((s) => s.trim());
+    if (selectors.includes(selector)) {
+      return (match[2] ?? "")
+        .split(";")
+        .map((d) => d.trim())
+        .filter(Boolean);
+    }
+  }
+  throw new Error(`no rule found for selector "${selector}" in App.css`);
+}
+
 describe("Navbar", () => {
   beforeEach(() => {
     user = { username: "alice", role: "customer" };
@@ -51,6 +76,38 @@ describe("Navbar", () => {
     expect(screen.getByText("Search")).toBeTruthy();
     expect(screen.getByText("Q&A")).toBeTruthy();
     expect(screen.getByText("Settings")).toBeTruthy();
+  });
+
+  /* The workspace navigation used to carry no auto margin of its own while
+     `.navbar-user` carried `margin-left: auto`, so every pixel of the row's free
+     space went to one side and the six page links sat packed against the brand.
+     The free space is now split either side of the links instead. These pin the
+     CSS that does it, because "the links are in the middle" is not something a
+     jsdom assertion about the DOM can see. */
+  it("centres the page links by splitting the row's free space either side", () => {
+    const decls = declarationsFor(".navbar-links");
+    expect(decls, "links must split the free space on both sides").toContain(
+      "margin-inline: auto",
+    );
+  });
+
+  it("does not push the user cluster with a one-sided auto margin", () => {
+    // Both sides auto on `.navbar-links` is what centres the group; a
+    // `margin-left: auto` here as well would add a third auto margin, and flexbox
+    // would split the free space three ways — the links would drift off centre
+    // again by however much the cluster is wider than the brand.
+    expect(declarationsFor(".navbar-user")).not.toContain("margin-left: auto");
+  });
+
+  it("keeps the page links in their own row, ahead of the user cluster", () => {
+    const { container } = renderNavbar();
+    // Source order is the reading and Tab order, so the links must precede the
+    // cluster that holds the theme toggle, username and logout.
+    const nav = container.querySelector(".navbar")!;
+    const children = [...nav.children].map((el) => el.className.split(" ")[0]);
+    expect(children.indexOf("navbar-links")).toBeLessThan(
+      children.indexOf("navbar-user"),
+    );
   });
 
   it("renders the AskDocs brand mark next to the name", () => {
