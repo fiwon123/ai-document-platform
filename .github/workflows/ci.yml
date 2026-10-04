@@ -79,10 +79,15 @@ jobs:
     name: Backend (pytest)
     if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
-    # Without Redis this suite takes ~30 minutes and reports failures, against
-    # ~40s with it. A refused connection is instant, so the time is the quota and
-    # cache paths retrying against a dead server — the symptom is a job that looks
-    # hung rather than one that looks broken, which is much slower to diagnose.
+    # Without Redis this suite **fails**, which is the reason for the service
+    # below. It does not hang: measured with the object store absent, the three
+    # Redis-dependent files take 4.0s with a reachable server and 4.2s with
+    # `REDIS_PORT=1`, so Redis costs no measurable time.
+    #
+    # The ~30 minutes this job was actually taking was #634 — the S3 client
+    # retrying an absent object store on every app construction. With that
+    # merged the whole suite runs in ~4m20s, so this ceiling has real room; it
+    # is here to turn a job that hangs into one that reports red.
     # See #630.
     timeout-minutes: 15
     services:
