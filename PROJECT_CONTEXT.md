@@ -148,7 +148,9 @@ LLM and Embedding APIs
 │   │   │                      # LandingNavbar, LandingFooter, PageLayout,
 │   │   │                      # LegalDocument, Markdown, Skeleton, Spinner
 │   │   ├── content/           # marketing.ts — single source for marketing copy,
-│   │   │                      # navigation, the route list, and pricing data
+│   │   │                      # navigation, the route list, and pricing data;
+│   │   │                      # legal.ts — all four legal documents, with
+│   │   │                      # NAV_LEGAL derived from them
 │   │   ├── context/           # ToastContext (toast notifications)
 │   │   ├── pages/             # Landing, Login, Register, Documents, Search, QA,
 │   │   │                      # Dashboard, Admin, Profile, Settings, Webhooks,
@@ -439,11 +441,20 @@ Navigation rules:
 - `frontend/src/content/marketing.ts` is the single source for the route list,
   the navigation, and the marketing copy, so the header, footer, hub pages, and
   the routing test cannot disagree about what exists.
+- `frontend/src/content/legal.ts` is the single source for **all four legal
+  documents**. Each page file (`PrivacyPage`, `TermsPage`, `SecurityPage`,
+  `GdprPage`) is a thin wrapper that looks its document up by route, and
+  `NAV_LEGAL` is **derived** from the same list rather than hand-written beside
+  it. So the footer column, the navigation, and the pages that exist cannot
+  drift apart, and adding a document is one entry here plus one route in
+  `App.tsx` — not a new page file plus a `marketing.ts` edit plus a footer edit.
 
 > **Before publishing the legal pages**: they are templates and carry a visible
 > review notice. `SITE` in `content/marketing.ts` still holds placeholder
 > values — `*.example` email addresses, the entity name, and the jurisdiction —
-> which must be replaced, and the text reviewed by a qualified lawyer.
+> which must be replaced, and the text reviewed by a qualified lawyer. The text
+> itself now lives in `content/legal.ts`, so that review is done on one file
+> rather than four page components.
 
 ## Environment configuration
 
@@ -693,6 +704,13 @@ when done; `make check` before every push; only `dev-up` requires opencode
 - **Marketing content in one module**: `frontend/src/content/marketing.ts` holds
   the route list, navigation, pricing, and copy, so the header, footer, hub
   pages, and the routing test cannot disagree about what exists
+- **Legal copy is content, not components**: the four legal documents live in
+  `frontend/src/content/legal.ts`, one array the footer column, `NAV_LEGAL` and
+  the pages themselves all read. They were the one place on the site where copy
+  sat inside a `.tsx` file, so the text a lawyer has to review was scattered
+  across four page components with nothing asserting the four even shared a
+  shape — and a page could be added to the router without appearing in the
+  footer, or vice versa
 - **Disclosure menus, not ARIA menus**: Header section menus are a button with
   `aria-expanded` revealing ordinary links, which needs no roving focus or
   type-ahead. Open state is derived from the current path rather than reset in an

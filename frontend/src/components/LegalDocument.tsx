@@ -1,15 +1,12 @@
-import type { ReactNode } from "react";
 import { PageLayout, TemplateNotice } from "./PageLayout";
 import { SITE } from "../content/marketing";
+import type { LegalSection } from "../content/legal";
 
-export type LegalSection = {
-  heading: string;
-  /** One or more paragraphs. Kept as an array so a section can split content
-   *  into lead + detail without nesting markup in the content module. */
-  body: string[];
-  /** Optional bullet list rendered under the paragraphs. */
-  items?: string[];
-};
+/* `LegalSection` lives in `content/legal.ts`, next to the documents it
+   describes. A data shape belongs with the data: it used to be declared here,
+   which meant the shape of a legal section was only visible to the component
+   that renders it and not to the module that holds four documents' worth of
+   them. */
 
 /**
  * Shell shared by Privacy, Terms, Security and GDPR.
@@ -17,7 +14,8 @@ export type LegalSection = {
  * All four are structured documents with the same shape — a title, a
  * last-updated line, a standing notice, and a numbered list of sections — so
  * the layout lives here rather than being copied four times with small
- * differences.
+ * differences. The copy itself is in `content/legal.ts`; this is only the frame
+ * it is shown in.
  *
  * The `TemplateNotice` is not decoration. These documents are written to be
  * realistic, and realistic legal text published under a brand name becomes a
@@ -77,6 +75,7 @@ export function LegalDocument({
   );
 }
 
-export function LegalContact({ children }: { children: ReactNode }) {
-  return <p className="legal-contact">{children}</p>;
-}
+/* `LegalContact` used to live here and has been removed: nothing rendered it,
+   there was no `.legal-contact` rule behind it, and leaving an unused export in
+   the one module meant to be canonical for these documents would invite the next
+   page to reach for it. */

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { NAV_COMPANY, NAV_LEGAL, NAV_PRODUCT, SITE, SOCIAL_PATHS } from "../content/marketing";
+import { NAV_COMPANY, NAV_PRODUCT, SITE, SOCIAL_PATHS } from "../content/marketing";
+import { NAV_LEGAL } from "../content/legal";
 
 /**
  * A social icon.
