@@ -8238,8 +8238,14 @@ nav.footer-col a:hover {
   padding-left: 22px;
   color: var(--muted);
   line-height: 1.7;
-  /* Same measure cap as the paragraphs, for the same reason. */
-  max-width: 55ch;
+  /* No measure cap, matching `.page-body p`.
+     This used to be `55ch`, "the same measure cap as the paragraphs". It was
+     left behind when the paragraph cap was removed, which is worse than either
+     state on its own: prose ran the full 1200px container at ~127 characters
+     while bullets stayed in a ~515px column, so on any page with a list under a
+     paragraph the two measures disagreed by more than a factor of two.
+     `pageMeasure.test.ts` asserts these two agree, which is what catches a
+     removal that only reaches half the rules it names. */
 }
 
 .page-body li {
