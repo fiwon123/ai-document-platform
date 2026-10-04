@@ -2,7 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { MarketingShell } from "./components/PageLayout";
-import { NAV_COMPANY, NAV_LEGAL, NAV_PRODUCT } from "./content/marketing";
+import { NAV_COMPANY, NAV_PRODUCT } from "./content/marketing";
+import { NAV_LEGAL } from "./content/legal";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
 /* The real MarketingShell pulls in LandingNavbar, which reads auth to decide

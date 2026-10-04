@@ -7,9 +7,9 @@ import {
   MARKETING_ROUTES,
   MARKETING_ROUTE_LABELS,
   NAV_COMPANY,
-  NAV_LEGAL,
   NAV_PRODUCT,
 } from "../content/marketing";
+import { NAV_LEGAL } from "../content/legal";
 
 /* The real App is rendered so the route table under test is App's, not a copy
    of it. A mirrored route tree (see AppRoutes.test.tsx) proves the shape of

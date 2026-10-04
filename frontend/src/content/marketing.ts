@@ -413,12 +413,11 @@ export const NAV_COMPANY = [
   { label: "Contact", to: "/contact" },
 ];
 
-export const NAV_LEGAL = [
-  { label: "Privacy", to: "/privacy" },
-  { label: "Terms", to: "/terms" },
-  { label: "Security", to: "/security" },
-  { label: "GDPR", to: "/gdpr" },
-];
+/* `NAV_LEGAL` used to live here, hand-written beside the four pages it pointed
+   at. It now lives in `content/legal.ts` and is derived from the list of
+   documents that actually exist (#618) — two lists that had to be kept in step
+   by hand, and which could disagree without anything noticing. Import it from
+   there. */
 
 /** Every internal marketing route, for the sitemap and the routing test. */
 export const MARKETING_ROUTES = [
