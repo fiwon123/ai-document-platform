@@ -98,6 +98,28 @@ test("the defaults are the measured knee, not a guess", () => {
 
 // ── the probe names the capability it actually uses ────────────────────────
 
+test("the decode step writes through image2, the muxer the probe asks about", () => {
+  // The machine-independent half of the claim, and the half that actually matters.
+  //
+  // `probeSupport` asks whether the `image2` muxer exists; `webmDecodeArgs` is
+  // what writes the PNG sequence. If those two ever diverge, the probe is asking
+  // a question the decode step does not care about — which is the entire bug this
+  // module was written to fix, in a form no reason string would reveal.
+  //
+  // Asserted from argv because it is pure: it holds on the dev image, on a CI
+  // runner with no Playwright binaries, and on a laptop with no ffmpeg at all.
+  // The three `-ss` tests below read the same array for the seek placement and
+  // none of them looked at the muxer, which is how a probe could be pointed at
+  // the wrong format with every test still green.
+  const args = webmDecodeArgs("/tmp/clip.webm", "/tmp/f-%05d.png");
+  assert.ok(args.includes("-f"), `decode argv must name an output format: ${args.join(" ")}`);
+  assert.equal(args[args.indexOf("-f") + 1], "image2");
+  // `-f image2` writes the numbered pattern, so the pattern has to be the last
+  // argument and it must be the one the caller supplied — an ffmpeg that is
+  // handed a format but no pattern writes nothing and says nothing.
+  assert.equal(args[args.length - 1], "/tmp/f-%05d.png");
+});
+
 test("the ffmpeg half is probed with the muxer the decode step writes with", async () => {
   // The probe that used to be here asked for a *null* sink (`-f null -`), which
   // this ffmpeg build does not know. It reported a machine that decodes WebM
@@ -106,14 +128,34 @@ test("the ffmpeg half is probed with the muxer the decode step writes with", asy
   //
   // Probed with a python that does not exist, so the decode half is what decides
   // the answer. Written to hold on a machine without the baked Playwright too —
-  // these tests are local, and a test that only passes in the dev image is a
-  // test that quietly stops being run.
+  // these tests are local, and a test that only passes in the dev image is a test
+  // that quietly stops being run.
   const support = await gifSupport({ ffmpeg: FFMPEG, python: "/nonexistent/python" });
   assert.equal(support.ok, false);
-  assert.match(support.reason, /image2|Pillow/i);
-  // On a machine that *does* have the decode half, the reason must name the half
-  // that actually failed. "no gif" on its own sends someone to the wrong tool.
-  if (!/no ffmpeg/.test(support.reason)) assert.match(support.reason, /Pillow/i);
+
+  // Branch on whether this machine has ffmpeg at all, because the probe answers a
+  // different question on each and the reason names the half that decided it.
+  //
+  // This branch is the reason the file exists in two halves. `FFMPEG` is a
+  // hardcoded Playwright build path: the dev image has that binary baked, and a CI
+  // runner knows the path (the `playwright` package configures it) without ever
+  // running `playwright install`. So the probe genuinely cannot get past its
+  // `execFileAsync` on a runner, and the reason comes back naming ffmpeg alone.
+  // Asserting `/image2|Pillow/i` on it unconditionally is what made this test
+  // fail on the first CI run it ever saw (#628) while passing in the container.
+  if (/no ffmpeg/.test(support.reason)) {
+    // No ffmpeg on this machine: the muxer question was never reached, so the
+    // only honest thing to assert is that the reason says which tool is missing —
+    // "no gif" on its own sends someone to the wrong machine.
+    assert.match(support.reason, /ffmpeg/);
+    assert.match(support.reason, /ENOENT|no such file/i);
+  } else {
+    // ffmpeg is present, so the probe got as far as the muxer and then the
+    // encoder. With python pinned to a path that does not exist, the failure has
+    // to be Pillow — which also means image2 was found.
+    assert.match(support.reason, /image2|Pillow/i);
+    assert.match(support.reason, /Pillow/i);
+  }
 });
 
 test("a missing ffmpeg is reported as a reason, not thrown", async () => {
