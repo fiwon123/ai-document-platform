@@ -52,13 +52,20 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/src"
 
 # The worker runs as a non-root user in production.
-RUN groupadd --system app && useradd --system --gid app --create-home app
+#
+# The uid/gid are fixed and the USER instruction below is NUMERIC on purpose.
+# `USER app` records the *name* in the image config, and the kubelet then
+# refuses the container under `runAsNonRoot` with "image has non-numeric user
+# (app), cannot verify user is non-root" (#650). `--system` would also pick an
+# arbitrary uid, so a base-image change could silently move it.
+RUN groupadd --gid 1001 app \
+ && useradd --uid 1001 --gid app --create-home --no-log-init app
 
 # Copy the ready-made virtualenv and the worker source.
 COPY --from=build /app/.venv /app/.venv
 COPY --from=build /app/src /app/src
 
-USER app
+USER 1001:1001
 
 # arq consumes the WorkerSettings dict defined in app.worker.
 CMD ["arq", "app.worker.WorkerSettings"]
