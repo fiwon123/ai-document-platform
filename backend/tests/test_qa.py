@@ -1775,6 +1775,14 @@ class TestRateLimit429Response:
         )
 
         _own_quota_window(monkeypatch)
+        # Stub the provider as configured. Without a key, `ask` resolves no client
+        # and returns the graceful "AI service is not configured." answer with a
+        # 200, so `provider_quota.reserve` is never consulted and the ceiling this
+        # test asserts is never applied. That made the result depend on ambient
+        # credentials: it passed in the dev container, which has GROQ_API_KEY, and
+        # failed on a runner, which does not, with the same `assert 200 == 429`.
+        # Nothing is sent — the refusal happens before any client call.
+        _patch_llm_client(monkeypatch, MagicMock())
         monkeypatch.setitem(
             provider_quota.PROVIDER_LIMITS,
             "groq",
