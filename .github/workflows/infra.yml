@@ -194,7 +194,7 @@ jobs:
           done
 
       - name: Scan backend image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: ghcr.io/fiwon123/ai-platform/backend:${{ needs.build-images.outputs.tag }}
           severity: HIGH,CRITICAL
@@ -202,7 +202,7 @@ jobs:
           exit-code: "1"
 
       - name: Scan worker image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: ghcr.io/fiwon123/ai-platform/worker:${{ needs.build-images.outputs.tag }}
           severity: HIGH,CRITICAL
@@ -210,7 +210,7 @@ jobs:
           exit-code: "1"
 
       - name: Scan frontend image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: ghcr.io/fiwon123/ai-platform/frontend:${{ needs.build-images.outputs.tag }}
           severity: HIGH,CRITICAL
