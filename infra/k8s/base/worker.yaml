@@ -43,20 +43,34 @@ spec:
                 sleep 2;
               done
         - name: wait-for-migrate
-          image: bitnami/kubectl:1.30
+          # bitnami/kubectl no longer exists on Docker Hub (Bitnami removed its
+          # free catalogue images), so this init container could not start at
+          # all: `docker.io/bitnami/kubectl:1.30: not found` (#648). The
+          # official Kubernetes image is used instead.
+          image: registry.k8s.io/kubectl:v1.30.14
           securityContext:
-            runAsNonRoot: true # image default uid 1001
+            # This image is distroless and runs as uid 0, so `runAsNonRoot` on
+            # its own is refused by the kubelet ("image will run as root"). The
+            # uid is declared explicitly rather than inherited from the image.
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-          command:
-            - sh
-            - -c
-            - >
-              until kubectl get job migrate -n ai-platform -o jsonpath='{.status.succeeded}' | grep -q "1"; do
-                echo "waiting for migrate job to complete...";
-                sleep 3;
-              done
+          # `args` only, so the image entrypoint (/bin/kubectl) is kept. The
+          # previous `sh -c 'until kubectl get job ... | grep -q 1'` loop cannot
+          # work here: this image has no shell (`sh` resolves to a kubectl
+          # subcommand and errors out). `kubectl wait` does the same job
+          # natively, and being bounded it fails the pod visibly instead of
+          # polling forever.
+          args:
+            - wait
+            - --for=condition=complete
+            - job/migrate
+            - -n
+            - ai-platform
+            - --timeout=300s
       containers:
         - name: worker
           image: ai-platform/worker:latest
