@@ -24,6 +24,31 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      # The one workload that must reach Postgres, and previously the only one
+      # with no gate on it: `alembic upgrade head` connects on first instruction,
+      # so a fresh `kubectl apply` raced the Postgres StatefulSet through its
+      # image pull and PVC init. `backoffLimit: 3` was then exhausted, the pod
+      # was deleted, and the Job never reached a `Complete` condition — leaving
+      # the backend's wait-for-migrate to time out against a migration that had
+      # never really run. Deliberately the same gate the backend and worker
+      # Deployments already carry, rather than a third spelling of it.
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534 # nobody
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command:
+            - sh
+            - -c
+            - >
+              until nc -z postgres 5432; do
+                echo "waiting for postgres...";
+                sleep 2;
+              done
       containers:
         - name: migrate
           image: ai-platform/backend:latest
