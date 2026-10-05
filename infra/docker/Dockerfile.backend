@@ -53,7 +53,16 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/src"
 
 # The app runs as a non-root user in production.
-RUN groupadd --system app && useradd --system --gid app --create-home app
+#
+# The uid/gid are fixed and the USER instruction below is NUMERIC on purpose.
+# `USER app` records the *name* in the image config, and the kubelet then
+# refuses the container under `runAsNonRoot` with "image has non-numeric user
+# (app), cannot verify user is non-root" — which is how the migrate Job, and
+# every pod built on this image, failed to start (#650). `--system` would also
+# pick an arbitrary uid from the system range, so a base-image change could
+# silently move it. 1001 matches the uid the Kubernetes manifests already use.
+RUN groupadd --gid 1001 app \
+ && useradd --uid 1001 --gid app --create-home --no-log-init app
 
 # Copy the ready-made virtualenv and the thin runtime files.
 COPY --from=build /app/.venv /app/.venv
@@ -61,7 +70,7 @@ COPY --from=build /app/src /app/src
 COPY migrations/ ./migrations/
 COPY alembic.ini ./
 
-USER app
+USER 1001:1001
 
 EXPOSE 8000
 
