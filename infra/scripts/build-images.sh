@@ -44,8 +44,11 @@ image() {
 image backend backend
 image worker backend
 image frontend frontend
+# NOTE: minio has no build context of its own — Dockerfile.minio downloads a
+# pinned, checksum-verified release binary — so the docker/ directory is enough.
+image minio infra/docker
 
 echo "==> Done. Images:"
-for img in backend worker frontend; do
+for img in backend worker frontend minio; do
   echo "  - ${REGISTRY}/${img}:${TAG}"
 done

@@ -20,7 +20,10 @@ spec:
     spec:
       containers:
         - name: minio
-          image: minio/minio:latest
+          # Built by infra/docker/Dockerfile.minio, not pulled from a registry:
+          # the official image is no longer obtainable (#646).
+          image: ai-platform/minio:latest
+          imagePullPolicy: IfNotPresent
           command: ["minio", "server", "/data", "--console-address", ":9001"]
           ports:
             - containerPort: 9000

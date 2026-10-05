@@ -34,6 +34,13 @@ images:
   - name: ai-platform/frontend
     newName: ghcr.io/fiwon123/ai-platform/frontend
     newTag: latest
+  # MinIO is built from source by infra/docker/Dockerfile.minio because the
+  # official image is no longer published anywhere anonymously pullable (#646).
+  # Without this entry the base's `ai-platform/minio:latest` would resolve to the
+  # Docker Hub namespace `ai-platform` and fail to pull in production.
+  - name: ai-platform/minio
+    newName: ghcr.io/fiwon123/ai-platform/minio
+    newTag: latest
 
 patches:
   # Production secrets come from External Secrets Operator (eso.yaml); drop

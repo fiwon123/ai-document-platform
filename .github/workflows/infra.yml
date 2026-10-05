@@ -150,7 +150,10 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.tag.outputs.sha }}"
-          for img in backend worker frontend; do
+          # minio is included: the base StatefulSet references
+          # ai-platform/minio:latest and the production overlay rewrites it to
+          # this registry (#646). Omitting it here breaks production deploys.
+          for img in backend worker frontend minio; do
             image="ghcr.io/fiwon123/ai-platform/${img}"
             docker push "${image}:${TAG}"
             docker tag "${image}:${TAG}" "${image}:latest"
@@ -189,7 +192,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ needs.build-images.outputs.tag }}"
-          for img in backend worker frontend; do
+          for img in backend worker frontend minio; do
             docker pull "ghcr.io/fiwon123/ai-platform/${img}:${TAG}"
           done
 
@@ -213,6 +216,17 @@ jobs:
         uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: ghcr.io/fiwon123/ai-platform/frontend:${{ needs.build-images.outputs.tag }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      # MinIO is now a first-party published image (built by
+      # infra/docker/Dockerfile.minio, #646), so it is scanned on the same terms
+      # as the other three rather than shipped unscanned.
+      - name: Scan minio image
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          image-ref: ghcr.io/fiwon123/ai-platform/minio:${{ needs.build-images.outputs.tag }}
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"

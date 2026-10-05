@@ -18,6 +18,9 @@ images:
   - name: ai-platform/frontend
     newName: localhost:5000/frontend
     newTag: latest
+  - name: ai-platform/minio
+    newName: localhost:5000/minio
+    newTag: latest
 
 patches:
   # Expose frontend on NodePort 30080 (host: 18080 via Kind).
