@@ -21,6 +21,15 @@ from app.models.document import DocumentDB
 from app.models.search import SearchHistory
 from app.schemas.search import SearchMode, SearchResult
 
+_INTERNAL_METADATA_KEYS = {"start_char", "end_char", "char_count"}
+
+
+def _sanitize_metadata(metadata: dict | None) -> dict | None:
+    if not metadata:
+        return metadata
+    return {k: v for k, v in metadata.items() if k not in _INTERNAL_METADATA_KEYS}
+
+
 logger = logging.getLogger(__name__)
 
 # The full-text search configuration, and the two expressions built from it.
@@ -285,7 +294,7 @@ class SearchRepository:
                     document_filename=filename,
                     content=chunk.content,
                     score=float(score),
-                    metadata_=chunk.metadata_,
+                    metadata_=_sanitize_metadata(chunk.metadata_),
                 )
                 for chunk, filename, score, _ in rows
             ],
@@ -419,7 +428,7 @@ class SearchRepository:
                     document_filename=filename,
                     content=chunk.content,
                     score=float(score),
-                    metadata_=chunk.metadata_,
+                    metadata_=_sanitize_metadata(chunk.metadata_),
                 )
                 for chunk, filename, score, _ in rows
             ],
