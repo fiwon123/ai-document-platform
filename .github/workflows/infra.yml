@@ -199,6 +199,18 @@ jobs:
       - name: Scan backend image
         uses: aquasecurity/trivy-action@v0.33.1
         with:
+          # The Trivy version is pinned, and written literally in every scan
+          # step rather than hoisted into a job-level `env`. Left unset,
+          # setup-trivy resolves "latest" through the trivy repo's git tags —
+          # that landed on v0.65.0, a tag whose *release assets have since been
+          # deleted*, so the resolver was satisfied, the download 404'd, and the
+          # installer exited 1 without a word. The job then failed in ~31s
+          # having scanned nothing (#652).
+          #
+          # v0.75.0 is the newest tag whose release assets verifiably exist,
+          # including trivy_0.75.0_Linux-64bit.tar.gz — the exact file the
+          # installer requests. Bump every step together.
+          version: v0.75.0
           image-ref: ghcr.io/fiwon123/ai-platform/backend:${{ needs.build-images.outputs.tag }}
           severity: HIGH,CRITICAL
           ignore-unfixed: true
@@ -208,6 +220,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: ghcr.io/fiwon123/ai-platform/worker:${{ needs.build-images.outputs.tag }}
+          version: v0.75.0
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
@@ -216,6 +229,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: ghcr.io/fiwon123/ai-platform/frontend:${{ needs.build-images.outputs.tag }}
+          version: v0.75.0
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
