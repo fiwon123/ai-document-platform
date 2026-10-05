@@ -55,6 +55,24 @@ MINIO_REGION = os.getenv(
     "us-east-1",
 )
 
+# botocore's own defaults are a 60-second connect timeout and 5 attempts in
+# legacy mode, so one call against an unreachable object store costs ~10s.
+# That is not a resilience policy, it is an accident of a default — and it is
+# paid on the app's startup path (`ensure_bucket` in the lifespan) and again
+# before every upload, so a hung store stalls startup and every write that
+# touches it (#634).
+#
+# Bounded explicitly instead. `MAX_ATTEMPTS` is botocore's *retry* count, not
+# its attempt count: botocore rewrites it to `total_max_attempts = N + 1`, so 2
+# is three calls — the first plus two retries. A ceiling rather than zero,
+# because a transient blip on a real upload should not become a user-visible
+# failure; and not botocore's 5, because the call this bounds is a
+# reachability probe whose failure is already caught and logged, so the extra
+# attempts only delay finding out.
+CONNECT_TIMEOUT_SECONDS = 2.0
+READ_TIMEOUT_SECONDS = 5.0
+MAX_ATTEMPTS = 2
+
 
 class MinioStorage:
     def __init__(
@@ -89,7 +107,12 @@ class MinioStorage:
             endpoint_url=normalize_endpoint(endpoint, secure),
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
-            config=Config(signature_version="s3v4"),
+            config=Config(
+                signature_version="s3v4",
+                connect_timeout=CONNECT_TIMEOUT_SECONDS,
+                read_timeout=READ_TIMEOUT_SECONDS,
+                retries={"max_attempts": MAX_ATTEMPTS, "mode": "standard"},
+            ),
             region_name=region,
         )
 
