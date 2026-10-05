@@ -30,11 +30,33 @@ FAILED=0
 fail() { echo "FAIL: $*" >&2; FAILED=1; }
 ok()   { echo "ok:   $*"; }
 
-# Most recent migrate Job logs seen while its pod still existed. A Job with
-# `backoffLimit` deletes its pod once the retries are exhausted, so the reason a
-# migration failed is only readable *during* the wait — by the time the rollout
-# gives up, `kubectl logs` has nothing left to return (#655).
-MIGRATE_LOG_SNAPSHOT=""
+# The migrate Job's logs, captured by a watcher running for the whole test.
+#
+# This has to be a watcher, not a snapshot taken while waiting on the migrate
+# target, because the Job's pod is gone before that wait even starts: a Job with
+# `backoffLimit` deletes its pod once the retries are exhausted, the Job lives
+# ~2 minutes, and `job/migrate` is checked last in the rollout loop — after
+# backend has burned 300s and worker another 300s. Snapshotting from inside that
+# loop therefore started ~7 minutes after the evidence was deleted (#655, #662).
+MIGRATE_SNAPSHOT_FILE="$(mktemp)"
+MIGRATE_WATCH_STOP="$(mktemp)"
+rm -f "${MIGRATE_WATCH_STOP}"   # absence of this file is what keeps the watcher running
+MIGRATE_WATCH_PID=""
+
+stop_migrate_watcher() {
+  [ -n "${MIGRATE_WATCH_PID}" ] || return 0
+  touch "${MIGRATE_WATCH_STOP}"
+  wait "${MIGRATE_WATCH_PID}" 2>/dev/null || true
+  MIGRATE_WATCH_PID=""
+}
+
+# Stops the watcher and removes its temp files. Registered as an EXIT trap so the
+# background process cannot outlive the script, including on an early `exit`.
+cleanup() {
+  stop_migrate_watcher
+  rm -f "${MIGRATE_WATCH_STOP}" "${MIGRATE_SNAPSHOT_FILE}" "${MIGRATE_SNAPSHOT_FILE}.new"
+}
+trap cleanup EXIT
 
 for cmd in docker kind kubectl kustomize curl python3; do
   command -v "${cmd}" >/dev/null 2>&1 || { echo "ERROR: '${cmd}' is required but not installed"; exit 1; }
@@ -55,28 +77,43 @@ echo "==> Applying the dev overlay"
 kubectl config use-context "kind-${CLUSTER_NAME}" >/dev/null
 kustomize build "${ROOT_DIR}/infra/k8s/overlays/dev" | kubectl apply -f -
 
-# Keep the newest non-blank capture, so a poll taken after the pod vanished
-# cannot overwrite a good one with an error message.
-snapshot_migrate_logs() {
+# Re-capture on every pass, so a poll taken while the pod is alive is never
+# overwritten by the "container not found" error from a poll taken after it was
+# collected. Run in the background for the whole test: it is the only thing that
+# can see these logs, because neither the rollout wait nor the diagnostics dump
+# happens while the pod still exists.
+watch_migrate_logs() {
   local pod out
-  pod="$(kubectl -n "${NAMESPACE}" get pods -l job-name=migrate \
-    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
-  [ -n "${pod}" ] || return 0
-
-  # `--previous` matters as much as the current container: a failing Job restarts
-  # in place, so the crashed attempt is usually the one holding the reason.
-  out="$(kubectl -n "${NAMESPACE}" logs "${pod}" --all-containers --tail=60 2>&1 || true)"
-  out="${out}"$'\n'"$(kubectl -n "${NAMESPACE}" logs "${pod}" --all-containers \
-    --tail=60 --previous 2>&1 || true)"
-  [ -n "$(printf '%s' "${out}" | tr -d '[:space:]')" ] || return 0
-
-  MIGRATE_LOG_SNAPSHOT="(pod ${pod})
-${out}"
+  while [ ! -f "${MIGRATE_WATCH_STOP}" ]; do
+    pod="$(kubectl -n "${NAMESPACE}" get pods -l job-name=migrate \
+      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+    if [ -n "${pod}" ]; then
+      # `--previous` matters as much as the current container: a failing Job
+      # restarts in place, so the crashed attempt is often the one holding the
+      # reason.
+      out="$(kubectl -n "${NAMESPACE}" logs "${pod}" --all-containers --tail=60 2>&1 || true)"
+      out="${out}"$'\n'"$(kubectl -n "${NAMESPACE}" logs "${pod}" --all-containers \
+        --tail=60 --previous 2>&1 || true)"
+      if [ -n "$(printf '%s' "${out}" | tr -d '[:space:]')" ]; then
+        # Write then move, so a concurrent dump never reads a half-written file.
+        {
+          echo "(pod ${pod})"
+          printf '%s\n' "${out}"
+        } > "${MIGRATE_SNAPSHOT_FILE}.new"
+        mv "${MIGRATE_SNAPSHOT_FILE}.new" "${MIGRATE_SNAPSHOT_FILE}"
+      fi
+    fi
+    sleep 2
+  done
 }
 
-# Poll rather than block in one long `rollout status`, so snapshot_migrate_logs
-# can run while the pod is still there. A failing Job also exits this loop early
-# instead of always burning the full timeout.
+# Started before anything waits on a rollout, because the migrate Job's pod does
+# not survive the backend's own 300s rollout wait.
+watch_migrate_logs &
+MIGRATE_WATCH_PID=$!
+
+# Poll rather than block in one long `rollout status`, so a failing Job exits this
+# loop early instead of always burning the full timeout.
 wait_for_rollout() {
   local target="$1" timeout_secs="$2" out=""
   local deadline=$(( SECONDS + timeout_secs ))
@@ -85,7 +122,6 @@ wait_for_rollout() {
       printf '%s\n' "${out}"
       return 0
     fi
-    if [ "${target}" = "job/migrate" ]; then snapshot_migrate_logs; fi
     sleep 2
   done
   printf '%s\n' "${out}" >&2
@@ -128,11 +164,17 @@ dump_diagnostics() {
 
   # Last, because it is the answer to "why did the migration fail" — and the only
   # section that still exists after the Job's pod has been garbage collected.
-  if [ -n "${MIGRATE_LOG_SNAPSHOT}" ]; then
+  if [ -s "${MIGRATE_SNAPSHOT_FILE}" ]; then
     echo "--- logs job/migrate (captured while the pod still existed) ---" >&2
-    printf '%s\n' "${MIGRATE_LOG_SNAPSHOT}" >&2
+    cat "${MIGRATE_SNAPSHOT_FILE}" >&2
   else
-    echo "--- logs job/migrate: no snapshot was captured ---" >&2
+    # Deliberately loud. An earlier version printed "no snapshot was captured",
+    # which reads like the Job produced no output rather than like the capture
+    # itself being broken — and that ambiguity is what let #656 look correct in
+    # review and print nothing in CI (#662).
+    echo "--- logs job/migrate: NOTHING CAPTURED. This is a gap in the test's" >&2
+    echo "    diagnostics, not a statement about the Job: the watcher never saw a" >&2
+    echo "    migrate pod with container output. ---" >&2
   fi
 }
 
@@ -140,7 +182,11 @@ echo "==> Waiting for backend/frontend rollouts"
 ROLLOUT_FAILED=0
 # Every workload is attempted and every failure reported: `set -e` would abort on
 # the first one, so a single bad workload hid the state of the other two.
-for target in deploy/backend deploy/worker deploy/frontend job/migrate; do
+#
+# `job/migrate` is first because it is the prerequisite for the other two and the
+# only one whose logs stop existing. Checking it last meant paying ~10 minutes to
+# find out that the migration had failed (#662).
+for target in job/migrate deploy/backend deploy/worker deploy/frontend; do
   if wait_for_rollout "${target}" 300; then
     ok "rollout ${target}"
   else
@@ -150,6 +196,7 @@ for target in deploy/backend deploy/worker deploy/frontend job/migrate; do
 done
 
 if [ "${ROLLOUT_FAILED}" = "1" ]; then
+  stop_migrate_watcher
   dump_diagnostics "at least one rollout did not complete"
   echo "" >&2
   echo "SMOKE TEST FAILED ✘ (rollouts did not complete; see diagnostics above)" >&2
