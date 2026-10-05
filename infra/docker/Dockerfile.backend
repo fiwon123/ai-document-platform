@@ -8,13 +8,21 @@
 #   runtime -> slim Python image, non-root user, only what the API needs
 
 # uv version, bump via --build-arg UV_VERSION=x.y.z
+#
+# This ARG must stay in *global* scope (before the first FROM) so the uv stage
+# below can expand it. Keep it there.
 ARG UV_VERSION=0.6.1
+
+# ---------- uv stage ----------
+# BuildKit refuses variable expansion in `COPY --from`
+# ("variable expansion is not supported for --from"), so the pinned uv image
+# cannot be written as `COPY --from=ghcr.io/astral-sh/uv:${UV_VERSION}`.
+# Consuming the ARG in a FROM and referencing the stage by name is the
+# documented workaround, and it keeps `--build-arg UV_VERSION=x.y.z` working.
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 # ---------- Build stage ----------
 FROM python:3.14-slim AS build
-
-# Re-declare ARG after FROM so it is in scope in this stage.
-ARG UV_VERSION=0.6.1
 
 WORKDIR /app
 
@@ -27,7 +35,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv (pinned to avoid surprises).
-COPY --from=ghcr.io/astral-sh/uv:${UV_VERSION} /uv /usr/local/bin/uv
+COPY --from=uv /uv /usr/local/bin/uv
 
 # Copy project metadata + source, then install locked deps (no dev group).
 COPY pyproject.toml uv.lock README.md ./
@@ -36,8 +44,6 @@ RUN uv sync --frozen --no-dev
 
 # ---------- Runtime stage ----------
 FROM python:3.14-slim AS runtime
-
-ARG UV_VERSION=0.6.1
 
 WORKDIR /app
 
