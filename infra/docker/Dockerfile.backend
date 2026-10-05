@@ -52,6 +52,29 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH="/app/src"
 
+# Trim the base image before anything is copied in, so this layer stays cached
+# independently of the application source (#660).
+#
+# `apt-get upgrade` picks up the Debian security fixes that the floating
+# `python:3.14-slim` tag had not moved to yet: libpcre2-8-0 CVE-2026-103111
+# (HIGH, out-of-bounds write via a crafted regular expression) is fixed in
+# 10.46-1~deb13u3. Waiting for the tag to catch up is not a fix, the same way a
+# deleted image is not something a newer tag repairs. `upgrade` rather than
+# `full-upgrade`, so a package is never removed as a side effect.
+#
+# Uninstalling pip removes the packages it vendors. The venv is built by
+# `uv sync` in the build stage and copied in whole, `uv` never reaches this
+# stage, and nothing installs anything at runtime — so pip is dead weight that
+# carries msgpack 1.1.2 (GHSA-6v7p-g79w-8964) and setuptools 70.3.0
+# (CVE-2025-47273). Trivy reads those out of pip's bundled-license tree and
+# reports them as installed packages, which is how an image with neither
+# dependency came to be scanned for them.
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+ && rm -rf /var/lib/apt/lists/* \
+ && python -m pip uninstall -y pip \
+ && rm -rf /root/.cache/pip
+
 # The app runs as a non-root user in production.
 #
 # The uid/gid are fixed and the USER instruction below is NUMERIC on purpose.
