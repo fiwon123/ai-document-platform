@@ -8,23 +8,37 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 load_dotenv()
 
-db_name = os.getenv("POSTGRES_DB", "mydb")
-db_user = os.getenv("POSTGRES_USER", "postgres")
-db_password = os.getenv("POSTGRES_PASSWORD")
-db_port = os.getenv("POSTGRES_PORT", "5432")
-db_host = os.getenv("POSTGRES_HOST", "localhost")
+# An explicitly supplied DATABASE_URL wins over assembling one from the
+# individual POSTGRES_* parts. `migrations/env.py` has always preferred it this
+# way, and it is the *only* database configuration the migrate Job is given — so
+# preferring the parts meant that variable was dead config everywhere it was set
+# (the backend has it too, and ignored it), and the migrate Job could not start
+# at all: this module raised at import time, before env.py's DATABASE_URL branch
+# was reachable (#664).
+db_url = os.getenv("DATABASE_URL")
 
-if not db_password:
-    # No baked-in default: a silently-used placeholder password is a
-    # security footgun. Fail fast with a clear message instead.
-    raise RuntimeError(
-        "POSTGRES_PASSWORD environment variable must be set "
-        "(no default is provided — configure it via the environment or .env)"
+if db_url:
+    SQLALCHEMY_DATABASE_URL = db_url
+else:
+    db_name = os.getenv("POSTGRES_DB", "mydb")
+    db_user = os.getenv("POSTGRES_USER", "postgres")
+    db_password = os.getenv("POSTGRES_PASSWORD")
+    db_port = os.getenv("POSTGRES_PORT", "5432")
+    db_host = os.getenv("POSTGRES_HOST", "localhost")
+
+    if not db_password:
+        # No baked-in default: a silently-used placeholder password is a
+        # security footgun. Fail fast with a clear message instead. Scoped to the
+        # fallback because a complete URL was not supplied either — in that case
+        # the credential is already there and there is nothing to guess.
+        raise RuntimeError(
+            "DATABASE_URL is not set and POSTGRES_PASSWORD is missing — "
+            "set DATABASE_URL or configure the POSTGRES_* variables"
+        )
+
+    SQLALCHEMY_DATABASE_URL = (
+        f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
     )
-
-SQLALCHEMY_DATABASE_URL = (
-    f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
-)
 
 # Connection-pool tuning, all env-configurable so operators can size the pool
 # per deployment without a code change. Defaults match the previous
