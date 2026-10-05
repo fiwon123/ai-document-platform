@@ -79,6 +79,17 @@ jobs:
     name: Backend (pytest)
     if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
+    # Without Redis this suite **fails**, which is the reason for the service
+    # below. It does not hang: measured with the object store absent, the three
+    # Redis-dependent files take 4.0s with a reachable server and 4.2s with
+    # `REDIS_PORT=1`, so Redis costs no measurable time.
+    #
+    # The ~30 minutes this job was actually taking was #634 — the S3 client
+    # retrying an absent object store on every app construction. With that
+    # merged the whole suite runs in ~4m20s, so this ceiling has real room; it
+    # is here to turn a job that hangs into one that reports red.
+    # See #630.
+    timeout-minutes: 15
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -90,6 +101,20 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      # The suite needs Redis, not just postgres: tests/test_cache.py,
+      # tests/test_rate_limit.py, tests/test_provider_quota.py, the QA
+      # provider-budget tests and the document-status cache test all assert
+      # against it. Same image as the dev sandbox. `conftest.py` forces
+      # REDIS_DB=15, so the job cannot touch anything else on the runner.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
