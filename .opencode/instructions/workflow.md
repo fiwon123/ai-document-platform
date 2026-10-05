@@ -125,6 +125,9 @@ Post these comments automatically — no user prompting required:
 - CI only validates on `dev` → `main` PRs — local testing is your gate
 
 <<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> origin/main
 #### 4b. Visual verification (anything that changes what a user sees)
 
 Tests and numbers do not catch a page that renders wrong. For any change to a
@@ -163,8 +166,11 @@ playwright screenshot --viewport-size=390,844 --full-page <url> /tmp/opencode/mo
   the semantic one. Use both.
 - Details and rationale: `.opencode/instructions/testing.md` → "Visual checks".
 
+<<<<<<< HEAD
+=======
 =======
 >>>>>>> f91498b (refactor: adopt two-tier branch model (main <- dev <- features))
+>>>>>>> origin/main
 ### 5. Push & PR (feature branch → dev)
 
 ```bash
@@ -263,6 +269,10 @@ git remote prune origin
 <<<<<<< HEAD
 - `gh` CLI is authenticated on the host (shared read-only with the dev sandbox)
 =======
+<<<<<<< HEAD
+- `gh` CLI is authenticated on the host (shared read-only with the dev sandbox)
+=======
 - `gh` CLI is authenticated and its credentials persist across devcontainer rebuilds
 >>>>>>> f91498b (refactor: adopt two-tier branch model (main <- dev <- features))
+>>>>>>> origin/main
 - Never access secret files (`.env`, etc.) without explicit permission
