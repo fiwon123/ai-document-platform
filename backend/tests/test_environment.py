@@ -41,7 +41,14 @@ def test_database_requires_postgres_password(monkeypatch):
     """db.py must fail loudly instead of defaulting to a placeholder."""
     import app.database.db as db_module  # ensure the module is loaded first
 
+    # DATABASE_URL goes too, and that is the point of the change (#664):
+    # a complete URL carries the credential, so the password is no longer the
+    # only thing that can supply one. Deleting only POSTGRES_PASSWORD left the
+    # guard correctly unreached — the module was configured — so this test was
+    # asserting the absence of a failure rather than the presence of the error.
+    # The guard's real precondition is "no credentials from either source".
     monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     with pytest.raises(RuntimeError, match="POSTGRES_PASSWORD"):
         importlib.reload(db_module)
 
