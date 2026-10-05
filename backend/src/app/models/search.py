@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,8 +17,15 @@ class SearchHistory(Base):
         default=uuid.uuid4,
     )
 
+    # A user's searches are the most personal thing the platform stores — the
+    # literal text of what they were looking for — so they cascade with the
+    # account rather than outliving it (#495). Declared on the column, not as an
+    # ORM relationship, for the reason given on `DocumentDB.owner_id`: a
+    # relationship would have SQLAlchemy manage the deletion itself instead of
+    # letting the database do it.
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

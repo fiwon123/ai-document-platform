@@ -13,12 +13,16 @@ dependencies = [
     "passlib>=1.7.4",
     "pgvector>=0.3.6",
     "psycopg2-binary>=2.9.12",
-    "PyPDF2>=3.0.0",
+    # pypdf is the maintained continuation of PyPDF2 (the project was
+    # renamed; PyPDF2 3.0.1 was the last release under that name).
+    "pypdf>=4.0.0",
     "python-jose[cryptography]>=3.5.0",
     "redis>=5.0.0",
     "sqlalchemy>=2.0.51",
     "openai>=1.0.0",
     "arq>=0.28.0",
+    "pymupdf>=1.28.2",
+    "prometheus-client>=0.20.0",
 ]
 
 [dependency-groups]
@@ -27,6 +31,11 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
     "ruff>=0.8.0",
+    # Parses docker-compose.yaml in tests/test_compose_env.py, which pins the
+    # sandbox's provider variables to the app's own defaults. Already resolved
+    # transitively via alembic; declared here so the test does not rely on
+    # another package's dependency graph.
+    "pyyaml>=6.0",
 ]
 
 [tool.pytest.ini_options]

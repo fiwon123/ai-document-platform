@@ -1,0 +1,123 @@
+# Backend API: FastAPI + uvicorn on :8000.
+# Configuration comes from app-config ConfigMap + app-secrets Secret.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: ai-platform
+  labels:
+    app.kubernetes.io/part-of: ai-platform
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: backend
+    spec:
+      serviceAccountName: app
+      # Backend image runs as non-root 'app' user; enforce it at the pod level.
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      # Start only after the DB is up and the migrate Job has completed.
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534 # nobody
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command:
+            - sh
+            - -c
+            - >
+              until nc -z postgres 5432; do
+                echo "waiting for postgres...";
+                sleep 2;
+              done
+        - name: wait-for-migrate
+          # bitnami/kubectl no longer exists on Docker Hub (Bitnami removed its
+          # free catalogue images), so this init container could not start at
+          # all: `docker.io/bitnami/kubectl:1.30: not found` (#648). The
+          # official Kubernetes image is used instead.
+          image: registry.k8s.io/kubectl:v1.30.14
+          securityContext:
+            # This image is distroless and runs as uid 0, so `runAsNonRoot` on
+            # its own is refused by the kubelet ("image will run as root"). The
+            # uid is declared explicitly rather than inherited from the image.
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          # `args` only, so the image entrypoint (/bin/kubectl) is kept. The
+          # previous `sh -c 'until kubectl get job ... | grep -q 1'` loop cannot
+          # work here: this image has no shell (`sh` resolves to a kubectl
+          # subcommand and errors out). `kubectl wait` does the same job
+          # natively, and being bounded it fails the pod visibly instead of
+          # polling forever.
+          args:
+            - wait
+            - --for=condition=complete
+            - job/migrate
+            - -n
+            - ai-platform
+            - --timeout=300s
+      containers:
+        - name: backend
+          image: ai-platform/backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secrets
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: ai-platform
+  labels:
+    app.kubernetes.io/part-of: ai-platform
+    app.kubernetes.io/component: backend
+spec:
+  selector:
+    app.kubernetes.io/component: backend
+  ports:
+    # Named so the monitoring ServiceMonitor can reference the scrape port
+    # (targetPort: http = the container port name).
+    - name: http
+      port: 8000
+      targetPort: http

@@ -9,8 +9,23 @@ the issue and PR assigned, labeled, linked, and commented at each milestone.
 
 - **Assignee**: always `fiwon123` (issues AND pull requests)
 - **Labels**: match the commit type (see table below)
+- **Milestones**: every issue must be assigned to a milestone (see "Milestone conventions" below)
 - **Comments**: post at every milestone (see "Comment milestones" below)
-- **Linking**: every PR references its issue (`Closes #N`), and branch names are derived from the work
+- **Linking**: every PR references its issue (`Closes #N`), and branch names include the issue number
+
+### Linking conventions (mandatory)
+
+Every change must be traceable end-to-end:
+
+| From | To | How |
+|------|-----|-----|
+| Branch | Issue | Branch name includes issue number: `feat/42-document-chunking` |
+| PR | Issue | `Closes #<number>` in PR body |
+| PR | Milestone | `gh pr edit <number> --milestone "<name>"` |
+| Issue | Milestone | `gh issue edit <number> --milestone "<name>"` |
+| Commit | Issue | Conventional commit with issue context |
+
+No orphaned branches, PRs, or issues. Every piece of work is linked.
 
 ### Label mapping (commit type → GitHub label)
 
@@ -25,7 +40,15 @@ the issue and PR assigned, labeled, linked, and commented at each milestone.
 | `ci`        | `ci` |
 
 > If the label does not exist on the repo, create it first:
-> `gh label create chore --color C5DEF5 --description "Chores, tooling, and maintenance"`
+> `gh label create <name> --color <hex> --description "<description>"`
+
+### Milestone conventions
+
+- Every issue MUST be assigned to a milestone before work begins
+- Milestones represent releases or sprint iterations
+- Use `gh issue edit <number> --milestone "<milestone-name>"`
+- When creating issues, assign to the current active milestone
+- Track milestone progress on the GitHub Milestones page
 
 ### Comment milestones
 
@@ -33,12 +56,15 @@ Post these comments automatically — no user prompting required:
 
 | # | Milestone | Target | Template |
 |---|-----------|--------|----------|
-| 1 | Issue created | issue | `🔍 Starting work on this` |
-| 2 | PR opened | issue | `🔗 PR opened: #<pr-number>` |
+| 1 | Issue created | issue | `Starting work on this — Milestone: <milestone>` |
+| 2 | PR opened | issue | `PR opened: #<pr-number>` |
 | 3 | PR opened | PR | Summary of changes + `Closes #<issue-number>` |
-| 4 | CI passed | issue | `✅ CI passed — ready to merge` |
-| 5 | Merged | issue | `🎉 Merged in <commit-sha>` |
-| 6 | Merged | PR | `Merged — thanks!` |
+| 4 | Merged to dev | issue | `Merged into dev — ready for release` |
+| 5 | Merged to dev | PR | `Merged into dev — thanks!` |
+| 6 | dev → main PR opened | issue | `Release PR opened: #<pr-number>` |
+| 7 | CI passed | issue | `CI passed — ready to merge to main` |
+| 8 | Merged to main | issue | `Released in <commit-sha>` |
+| 9 | Merged to main | PR | `Released — thanks!` |
 
 ### 1. Plan
 
@@ -50,30 +76,32 @@ Post these comments automatically — no user prompting required:
     --title "<type>: <short description>" \
     --body "<problem statement / acceptance criteria>" \
     --label "<label per mapping table>" \
-    --assignee fiwon123
+    --assignee fiwon123 \
+    --milestone "<milestone-name>"
   ```
-- **Comment on the issue**: `gh issue comment <issue-number> --body "🔍 Starting work on this"`
+- **Comment on the issue**: `gh issue comment <issue-number> --body "Starting work on this — Milestone: <milestone>"`
 - Output: Goal, Files to modify, Dependencies, Risks, Steps
 - Get user approval before proceeding to implementation
 
 ### 2. Branch
 
-- Always start from an up-to-date main:
+- Always start from an up-to-date `dev`:
   ```bash
-  git checkout main
-  git pull origin main
-  git checkout -b <type>/<short-description>
+  git checkout dev
+  git pull origin dev
+  git checkout -b <type>/<issue-number>-<slug>
   ```
 - Branch types: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/`, `ci/`
-- Example: `feat/document-chunking`, `fix/auth-token-expiry`
-- The branch implements exactly the issue created in step 1
+- Examples: `feat/42-document-chunking`, `fix/17-auth-token-expiry`, `refactor/31-schema-validation`
+- The branch implements the issue created in step 1 (or multiple related issues)
 
-### One feature per pull request
+### PR scope
 
-- Each branch/PR MUST implement exactly ONE feature, fix, or refactor.
-- Do NOT bundle multiple unrelated changes into a single branch/PR.
-- If additional issues are discovered while implementing, create a separate issue, branch and PR for each one instead of folding them into the current change.
-- Tests for the feature being implemented belong in the same PR as the feature.
+- Each branch should implement related changes (one or more related issues).
+- PRs CAN merge multiple related issues (e.g., two bugs in the same module).
+- Do NOT bundle unrelated changes into a single branch/PR.
+- If additional issues are discovered while implementing, create a separate issue and branch.
+- Tests for the features being implemented belong in the same PR.
 
 ### 3. Implement
 
@@ -87,15 +115,54 @@ Post these comments automatically — no user prompting required:
 - Include a body for non-trivial changes (what and why)
 - Do NOT create issues/PRs from subagents — that responsibility stays with the primary agent
 
-### 4. Test
+### 4. Test (local only — CI does not run on feature branches)
 
 - Backend: `cd backend && uv run pytest` (when tests exist)
 - Backend lint: `cd backend && uv run ruff check src/`
 - Frontend lint: `cd frontend && npm run lint`
 - Frontend build: `cd frontend && npm run build`
-- Verify no regressions before opening a PR
+- Verify no regressions before pushing
+- CI only validates on `dev` → `main` PRs — local testing is your gate
 
-### 5. Push & PR
+#### 4b. Visual verification (anything that changes what a user sees)
+
+Tests and numbers do not catch a page that renders wrong. For any change to a
+page, component, style, colour, copy or responsive behaviour, capture the real
+rendering and **look at it** before opening the PR.
+
+**Cadence: targeted while you work, the full audit once before the PR.** Do not
+run the whole audit per change — it is ~13 minutes and 300+ captures, nearly all
+on routes the change did not touch. See `.opencode/instructions/testing.md` →
+"Visual checks" for the per-change loop and for which artifact (screenshot /
+video / GIF) the change actually needs.
+
+```bash
+playwright screenshot --full-page <url> /tmp/opencode/shot.png
+playwright screenshot --color-scheme=dark --full-page <url> /tmp/opencode/dark.png
+playwright screenshot --viewport-size=390,844 --full-page <url> /tmp/opencode/mobile.png
+```
+
+- The agent runs **inside** the dev container, so `localhost:5173` is the app and
+  the capture path is readable directly — no `docker compose cp`.
+- `scripts/audit.mjs` (the multi-route audit) is the objective layer: `--gate` to
+  fail on a new contrast/overflow/unlabelled/landmark/page-error finding. Its
+  first log line names the Playwright and chromium revision it resolved (#529).
+- **The main agent cannot look at anything** — it has no image input. It captures;
+  the `visual` subagent looks; the main agent acts on the findings. Do not report
+  a visual conclusion that came back from anywhere else, and treat a rate-limited
+  or failed review as *unverified* rather than carrying the claim forward (#548).
+- `read` does not render WebM, so a recorded animation is unreviewable as-is.
+  Pack motion into a GIF before handing it over — one file, one attachment.
+- **Check both themes.** A change verified only in light mode is unverified.
+- Re-capture after a fix. Do not report a visual fix on the strength of the edit.
+- A pixel-diff mismatch is a reason to look, not proof of a bug: captures vary by
+  a sub-pixel band (#485) and a baseline is only comparable against the machine
+  that produced it. The audit's `--gate` signals (contrast, page-errors, skips,
+  overflow, unlabelled, landmarks) are the objective layer; the visual read is
+  the semantic one. Use both.
+- Details and rationale: `.opencode/instructions/testing.md` → "Visual checks".
+
+### 5. Push & PR (feature branch → dev)
 
 ```bash
 git push origin <branch>
@@ -103,48 +170,92 @@ gh pr create \
   --title "<type>: <description>" \
   --body "<template>" \
   --label "<label per mapping table>" \
-  --assignee fiwon123
+  --assignee fiwon123 \
+  --base dev
 ```
 
 - Fill out the PR template completely (`.github/pull_request_template.md`)
 - Link the issue created in step 1: `Closes #<issue-number>`
-- **Comment on the issue**: `gh issue comment <issue-number> --body "🔗 PR opened: #<pr-number>"`
-- Work only in feature branches — never push directly to main
+- **Comment on the issue**: `gh issue comment <issue-number> --body "PR opened: #<pr-number>"`
+- Work only in feature branches — never push directly to `dev` or `main`
 
-> Note: GitHub auto-drops the PR author from the assignee list, so if the agent
-> doubly owns the PR (author + would-be assignee) the PR itself may show no
-> assignee. Always assign the linked *issue*, which is what tracks ownership.
+### 6. Review & Merge (feature branch → dev)
 
-### 6. Review & Merge
-
-- Verify CI checks pass (green ✅) — backend check, frontend lint, frontend build
-- **Comment on the issue**: `gh issue comment <issue-number> --body "✅ CI passed — ready to merge"`
 - Self-review the diff for bugs, security, and regressions
 - Only merge when explicitly instructed
 - Prefer squash merge, then delete the branch:
   ```bash
   gh pr merge <number> --squash --delete-branch
   ```
-- After merging (the issue auto-closes via `Closes #N`):
-  - **Comment on the issue**: `gh issue comment <issue-number> --body "🎉 Merged in <commit-sha>"`
-  - **Comment on the PR**: `gh pr comment <number> --body "Merged — thanks!"`
+- After merging to `dev`:
+  - **Comment on the issue**: `gh issue comment <issue-number> --body "Merged into dev — ready for release"`
+  - **Comment on the PR**: `gh pr comment <number> --body "Merged into dev — thanks!"`
+- **Always return to dev after merge**:
+  ```bash
+  git checkout dev
+  git pull origin dev
+  ```
 - If a PR/branch is not necessary, close it with a comment explaining why
 
-### 7. Cleanup
+### 7. Release merge (dev → main) — User-initiated only
+
+- **Do NOT automatically create release PRs or merge to main**
+- The user must explicitly ask: "Can we merge dev to main?" or "Put this in production"
+- Before requesting, verify that:
+  - All milestone issues are complete
+  - `dev` branch is stable (no failing tests, no regressions)
+  - All feature branches for this milestone have been merged
+- When user requests release:
+  ```bash
+  git checkout dev
+  git pull origin dev
+  git push origin dev
+  gh pr create \
+    --title "release: <milestone-name>" \
+    --body "Release PR for milestone: <milestone-name>" \
+    --label "release" \
+    --base main
+  ```
+- CI runs automatically on this PR
+- **Comment on the issue**: `gh issue comment <issue-number> --body "Release PR opened: #<pr-number>"`
+- After CI passes:
+  - **Comment on the issue**: `gh issue comment <issue-number> --body "CI passed — ready to merge to main"`
+- **Ask user to confirm merge**: "CI passed. Ready to merge dev to main?"
+- Only merge after user confirms:
+  ```bash
+  gh pr merge <number> --squash --delete-branch
+  ```
+- After merging:
+  - **Comment on the issue**: `gh issue comment <issue-number> --body "Released in <commit-sha>"`
+  - **Comment on the PR**: `gh pr comment <number> --body "Released — thanks!"`
+- **Always return to dev after release merge**:
+  ```bash
+  git checkout dev
+  git pull origin dev
+  ```
+
+### 8. Cleanup
 
 ```bash
-git checkout main
-git pull origin main
+git checkout dev
+git pull origin dev
 git remote prune origin
 ```
 
-- Verify clean state: only `main` remains locally and on the remote
+- **Always end on `dev`** — this is the working branch with the latest integrated features
+- Verify clean state: only `dev` remains locally and on the remote
 
 ### Environment Notes
 
-- This project runs inside a Dev Container — there is NO docker CLI available
-  (services run in separate containers, reachable via forwarded ports)
+- Golden rules: `make dev-up` → `make dev-log` (2nd terminal) → `make dev-down`
+  when done; `make check` before every push; only `dev-up` requires opencode
+  (`infra-up` + host loop don't).
+- The project supports two agent loops, same files (bind mount): **sandboxed**
+  (recommended — `make opencode` runs the agent inside the `dev` container;
+  stack at `:8000`/`:5173`, make/git/gh/docker available) and **host-native**
+  (this session — opencode on the host drives the sandbox via
+  `make`/`docker compose`). See `DEVELOPMENT.md` for the cheatsheet.
 - Backend: Python 3.14 managed by `uv` — use `uv run`, never pip directly
 - Frontend: Node 22 managed by `npm`
-- `gh` CLI is authenticated and its credentials persist across devcontainer rebuilds
+- `gh` CLI is authenticated on the host (shared read-only with the dev sandbox)
 - Never access secret files (`.env`, etc.) without explicit permission

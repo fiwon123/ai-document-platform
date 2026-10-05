@@ -1,0 +1,319 @@
+# Default values for ai-platform.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# -- Override the base name used for resources
+nameOverride: ""
+# -- Override the full resource name
+fullnameOverride: ""
+
+# -- Number of backend replicas
+backendReplicas: 1
+# -- Number of worker replicas
+workerReplicas: 1
+# -- Number of frontend replicas
+frontendReplicas: 1
+
+serviceAccount:
+  # -- Render a ServiceAccount (plus the migrate-waiter Role/RoleBinding
+  # that lets pods observe the migrate Job status). Set false to provide
+  # your own account via serviceAccount.name.
+  create: true
+  # -- Name of the ServiceAccount to use. Empty = derived from the release
+  # name; useful when reusing a pre-created account (create: false).
+  name: ""
+  # -- Extra annotations on the ServiceAccount (e.g. IRSA/EKS or GKE/WI
+  # workload-identity annotations).
+  annotations: {}
+
+image:
+  repository: ghcr.io/EXAMPLE/ai-platform
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  # -- Backend port exposed in-cluster
+  backendPort: 8000
+  # -- Frontend port exposed in-cluster
+  frontendPort: 8080
+  nodePorts:
+    # -- NodePort for frontend (optional; dev/kind)
+    frontend: 30080
+    # -- NodePort for backend (optional; dev/kind)
+    backend: 30081
+
+ingress:
+  enabled: false
+  className: nginx
+  host: ai-platform.example.com
+  tlsSecretName: ai-platform-tls
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+
+certManager:
+  # -- Render cert-manager ClusterIssuers (staging, prod, selfsigned) and
+  # annotate the Ingress for automatic TLS issuance. Requires cert-manager
+  # installed in the cluster.
+  enabled: false
+  # -- ClusterIssuer used by the Ingress annotation. Let's Encrypt for real
+  # environments; switch to `selfsigned` for plain local testing.
+  clusterIssuer: letsencrypt-prod
+  # -- Email for ACME account registration and expiry notifications
+  acmeEmail: ops@example.com
+  # -- Ingress class the ACME HTTP-01 solver targets
+  ingressClass: nginx
+
+secrets:
+  # -- Name of the Kubernetes Secret containing app secrets
+  name: app-secrets
+  # -- true: do NOT render the bundled Secret; provide your own (External
+  # Secrets / sealed-secrets etc.) named secrets.name with the keys
+  # SECRET_KEY, POSTGRES_PASSWORD, MINIO_ACCESS_KEY, MINIO_SECRET_KEY,
+  # DATABASE_URL. Configure the corresponding values below anyway so the
+  # ConfigMap/initContainers resolve the right hosts.
+  external: false
+  # -- Render an ExternalSecret + ClusterSecretStore (External Secrets
+  # Operator). Implies external: the bundled dev Secret is not rendered and
+  # ESO materializes the secrets.name Secret from the provider.
+  eso:
+    enabled: false
+    # -- Refresh interval for pulling updates from the provider
+    refreshInterval: 1h
+    # -- SecretStore provider (aws / gcp / vault / ...)
+    provider: aws
+    # -- AWS region (aws provider)
+    awsRegion: us-east-1
+    # -- AWS Secrets Manager secret id containing the app keys below
+    awsSecretId: ai-platform/production/backend
+    # -- Name of the Secret holding the AWS credentials (access-key-id /
+    # secret-access-key); create it manually in the release namespace. Omit
+    # auth via IRSA by leaving the credential keys empty.
+    awsCredsSecret: eso-aws-creds
+    # -- Secret keys synced from the provider (must exist on the remote side)
+    keys:
+      - SECRET_KEY
+      - POSTGRES_PASSWORD
+      - MINIO_ACCESS_KEY
+      - MINIO_SECRET_KEY
+      - DATABASE_URL
+      - OPENAI_API_KEY
+      - GROQ_API_KEY
+  # -- JWT signing key (dev placeholder; MUST be changed in real envs)
+  # The default below is committed to this repository, so the backend REFUSES TO
+  # BOOT with it (#524) — a chart install left at this value will CrashLoop, by
+  # design. Set `secrets.jwtSecretKey`, or point `secrets.existingSecret` at a
+  # real Secret managed by External Secrets Operator / Vault.
+  jwtSecretKey: "change-me-jwt-secret"
+  # -- PostgreSQL password (dev placeholder; used for both the bundled Secret
+  # and the DATABASE_URL it generates)
+  postgresPassword: "mysecretpassword"
+  # -- MinIO root credentials (dev placeholders; match docker-compose defaults)
+  minioAccessKey: "minioadmin"
+  minioSecretKey: "minioadmin"
+
+config:
+  postgres:
+    db: mydb
+    user: postgres
+    # -- Leave empty to auto-derive from the release name
+    host: ""
+    port: "5432"
+  redis:
+    # -- Leave empty to auto-derive from the release name
+    host: ""
+    port: "6379"
+    db: "0"
+  minio:
+    # -- Leave empty to auto-derive from the release name
+    endpoint: ""
+    bucket: documents
+  logging:
+    # -- Log output format: "json" (Loki/Promtail-friendly) or "plain"
+    format: "json"
+    secure: "false"
+    region: us-east-1
+  auth:
+    algorithm: HS256
+    accessTokenExpireMinutes: "30"
+    refreshTokenExpireDays: "7"
+    # -- Set false when serving over plain HTTP (local/kind)
+    refreshCookieSecure: "true"
+  ai:
+    openaiModel: gpt-4
+    embeddingModel: text-embedding-ada-002
+    # The width this space's vectors must be. A vector of any other width cannot
+    # be written or compared, and the service refuses it rather than storing it,
+    # so changing embeddingModel means changing this too.
+    embeddingDimensions: 1536
+    # The local embedding space (Ollama), used only when no OpenAI key is
+    # configured — the order is deliberate, so an existing OpenAI deployment is
+    # never silently moved to a different space and left unable to search its
+    # own vectors. nomic-embed-text is 768-wide; all-minilm is 384 and
+    # mxbai-embed-large 1024. baseUrl is the same server as localLlm.baseUrl
+    # above, and has the same reachability caveat: a cluster IP, not 127.0.0.1.
+    localEmbedding:
+      model: nomic-embed-text
+      dimensions: 768
+    # Default QA model. Empty means "let the application decide", which is
+    # free-first: a configured Groq or local provider wins, and a paid OpenAI
+    # model is only reached when nothing free is available. Set this to pin a
+    # specific model, e.g. openai/gpt-oss-120b.
+    qaModel: ""
+    # Answer length cap (#486). The application's own default is 1000; lower it
+    # for a CPU-only local model, where generation runs at a few tokens per
+    # second and the default turns a short answer into a multi-minute wait.
+    maxTokens: 1000
+    # Provider ceilings the app enforces on itself (#489), so a Groq quota
+    # is refused locally with 429 rather than by the provider with a message
+    # identical to a dead one. These match the application's own defaults;
+    # 0 means "no ceiling". The budget is org-wide because that is what
+    # Groq enforces, and it fails open if Redis is unreachable.
+    providerQuota:
+      enabled: true
+      groqRequestsPerMinute: 30
+      groqTokensPerDay: 200000
+    # Local OpenAI-compatible provider (Ollama) — the only path that needs no
+    # API key at all. Off by default, and *opt-in* rather than probed: enabling
+    # it states that a local model server is running, which avoids a network
+    # call on every request. baseUrl must be reachable *from the pod*; inside
+    # Kubernetes a pod's "localhost" is the pod itself, so this has to be a
+    # cluster IP or node IP (an Ollama Service), not 127.0.0.1. The dev sandbox
+    # equivalent is host.docker.internal — see DEVELOPMENT.md.
+    localLlm:
+      enabled: false
+      baseUrl: http://localhost:11434/v1
+      model: llama3.2:1b
+  rateLimit:
+    requests: "100"
+    window: "60"
+
+migrate:
+  enabled: true
+  backoffLimit: 3
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+postgres:
+  enabled: true
+  image: pgvector/pgvector:pg16
+  storage: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  storage: 5Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 512Mi
+
+minio:
+  enabled: true
+  # Built from infra/docker/Dockerfile.minio; the official `minio/minio` image is
+  # no longer published anywhere anonymously pullable (#646). Override this to
+  # point at a MinIO distribution you host or license yourself.
+  image: ai-platform/minio:latest
+  storage: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 1Gi
+
+backend:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  # -- Extra env vars for the backend deployment
+  extraEnv: []
+
+worker:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  # -- Extra env vars for the worker deployment
+  extraEnv: []
+
+frontend:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+autoscaling:
+  enabled: false
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+  backend:
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  worker:
+    minReplicas: 1
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+pdb:
+  # -- Render PodDisruptionBudgets for backend/worker/frontend
+  enabled: false
+
+networkPolicy:
+  # -- Render default-deny + explicit allow NetworkPolicies
+  enabled: false
+  # -- Namespace of the ingress controller the frontend accepts traffic from
+  ingressControllerNamespace: ingress-nginx
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+monitoring:
+  # -- Render a ServiceMonitor (backend /metrics), PrometheusRule,
+  # AlertmanagerConfig and a Grafana dashboard for kube-prometheus-stack
+  enabled: false
+  # -- Namespace where kube-prometheus-stack is installed
+  namespace: monitoring
+  # -- Namespace of this release to scrape (defaults to release namespace)
+  scrapeNamespace: ""
+  # -- Alertmanager receiver email / relay placeholders (replace before use)
+  alertEmailTo: ops@example.com
+  alertEmailFrom: alertmanager@example.com
+  smarthost: smtp.example.com:587
+  # -- Secret holding the SMTP password (key: password) in the monitoring namespace
+  smtpAuthSecret: smtp-auth
+
+logging:
+  # -- Render Loki + Promtail + a Grafana Loki datasource (centralized logs)
+  enabled: false
+  # -- Namespace where Loki/Promtail are deployed and the datasource lands
+  namespace: monitoring
+  # -- Log retention period (Loki limits_config.retention_period)
+  retentionPeriod: 168h
+  # -- Persistent storage per Loki replica
+  storageSize: 10Gi
+  # -- Image tags (pinned, Loki 3.x single-binary TSDB schema)
+  lokiImage: grafana/loki:3.3.2
+  promtailImage: grafana/promtail:3.3.2

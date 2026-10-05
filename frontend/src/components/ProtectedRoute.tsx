@@ -9,6 +9,12 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return (
       <div className="loading-center">
         <Spinner size={32} label="Loading your session" />
+        {/* aria-hidden: the spinner above already carries this as the accessible
+            name on its role="status". Repeating it would announce it twice — the
+            text here is for people who cannot see the spinner label. */}
+        <p className="loading-message" aria-hidden="true">
+          Loading your session…
+        </p>
       </div>
     );
   }

@@ -1,0 +1,72 @@
+# Non-secret configuration shared by backend/worker/frontend pods.
+# Secrets (passwords, API keys) live in secret.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: ai-platform
+  labels:
+    app.kubernetes.io/part-of: ai-platform
+data:
+  # --- Database ---
+  POSTGRES_DB: "mydb"
+  POSTGRES_USER: "postgres"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  # --- Redis ---
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  # --- MinIO ---
+  MINIO_ENDPOINT: "minio:9000"
+  MINIO_BUCKET: "documents"
+  MINIO_SECURE: "false"
+  MINIO_REGION: "us-east-1"
+  # --- Auth ---
+  ALGORITHM: "HS256"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+  REFRESH_TOKEN_EXPIRE_DAYS: "7"
+  REFRESH_COOKIE_SECURE: "true"
+  # --- AI ---
+  OPENAI_MODEL: "gpt-4"
+  EMBEDDING_MODEL: "text-embedding-ada-002"
+  # The width each space's vectors must be. Set together with the model when
+  # switching either space, because vectors of different widths cannot be
+  # compared and the service refuses one of the wrong width rather than storing
+  # it. Same values as the Helm chart's config.ai.*.
+  EMBEDDING_DIMENSIONS: "1536"
+  # The local embedding space (Ollama), used only when OPENAI_API_KEY is unset
+  # so an existing OpenAI deployment is never silently moved. nomic-embed-text
+  # is 768-wide; all-minilm is 384 and mxbai-embed-large 1024.
+  LOCAL_EMBEDDING_MODEL: "nomic-embed-text"
+  LOCAL_EMBEDDING_DIMENSIONS: "768"
+  # Default QA model. Empty means "let the application decide", which is
+  # free-first: a configured Groq or local provider wins, and a paid OpenAI
+  # model is reached only when nothing free is available. Set to
+  # "openai/gpt-oss-120b" to pin Groq's best free-tier model explicitly.
+  QA_MODEL: ""
+  # Answer length cap. The application's own default is 1000; lower it for a
+  # CPU-only local model, where generation runs at a few tokens per second.
+  QA_MAX_TOKENS: "1000"
+  # Provider ceilings the app enforces itself (#489), matching Groq's free
+  # tier so a call is refused before the provider rejects it. Same values as
+  # the Helm chart's config.ai.providerQuota.*.
+  GROQ_REQUESTS_PER_MINUTE: "30"
+  GROQ_TOKENS_PER_DAY: "200000"
+  PROVIDER_QUOTA_ENABLED: "true"
+  # Local OpenAI-compatible provider (Ollama) — the only path needing no API
+  # key. Off by default and opt-in rather than probed, so a request never pays
+  # for a health check against an endpoint that may not exist.
+  # A pod's "localhost" is the pod itself, so baseUrl must be a cluster IP or
+  # a node IP (e.g. an Ollama Service), NOT 127.0.0.1. Same values as the Helm
+  # chart's config.ai.localLlm.*.
+  LOCAL_LLM_ENABLED: ""
+  LOCAL_LLM_BASE_URL: "http://localhost:11434/v1"
+  LOCAL_LLM_MODEL: "llama3.2:1b"
+  # --- Logging ---
+  # Structured JSON access/service logs for Loki/Promtail (request-id,
+  # method, path, status_code, process_time are emitted as JSON fields).
+  LOG_FORMAT: "json"
+  # --- Rate limiting ---
+  RATE_LIMIT_REQUESTS: "100"
+  RATE_LIMIT_WINDOW: "60"

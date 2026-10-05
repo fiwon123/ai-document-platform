@@ -5,7 +5,7 @@ from uuid import UUID
 from app.cache.redis import redis_client
 from app.models.search import SearchHistory
 from app.repositories.search import SearchRepository
-from app.schemas.document import SearchResponse
+from app.schemas.search import SearchResponse
 from app.services.embedding import EmbeddingService
 
 logger = logging.getLogger(__name__)
@@ -13,6 +13,24 @@ logger = logging.getLogger(__name__)
 SEARCH_CACHE_TTL_SECONDS = 300
 _SEARCH_VERSION_KEY = "search_version:{user_id}"
 _SEARCH_KEY = "search:{user_id}:{version}:{cache_id}"
+
+
+def user_cache_version(user_id: UUID) -> str | None:
+    """Return the user's current cache generation.
+
+    Every cache that depends on a user's document set (search results,
+    QA answers, dashboard statistics) includes this version in its key.
+    ``invalidate_user_search_cache`` bumps it, so a single version key
+    invalidates all of them together. Returns None when Redis is
+    unavailable — callers must then bypass the cache.
+    """
+    try:
+        return (
+            redis_client.get(_SEARCH_VERSION_KEY.format(user_id=user_id)) or "0"
+        )
+    except Exception as e:  # noqa: BLE001 - cache must never break callers
+        logger.warning(f"Cache version read failed: {e}")
+        return None
 
 
 def _search_cache_key(
@@ -28,7 +46,7 @@ def _search_cache_key(
     bypass the cache instead of failing the request.
     """
     try:
-        version = redis_client.get(_SEARCH_VERSION_KEY.format(user_id=user_id)) or "0"
+        version = user_cache_version(user_id) or "0"
         cache_id = hashlib.sha256(
             f"{query}|{top_k}|{offset}|{sorted(map(str, document_ids or []))}".encode()
         ).hexdigest()[:16]
@@ -108,6 +126,7 @@ class SearchService:
         top_k: int = 5,
         offset: int = 0,
         document_ids: list[UUID] | None = None,
+        record_history: bool = True,
     ) -> SearchResponse:
         cached = _get_cached_search(user_id, query, top_k, offset, document_ids)
         if cached is not None:
@@ -117,7 +136,8 @@ class SearchService:
 
         # Generate a query embedding so the repository can run semantic
         # (vector) search. Falls back to plain text search when embedding
-        # generation is unavailable (no API key, API error, etc.).
+        # generation is unavailable (no provider configured, wrong embedding
+        # width, API error, etc.).
         query_embedding = None
         try:
             query_embedding = self.embedding_service.generate_embedding(query)
@@ -126,26 +146,43 @@ class SearchService:
                 f"Query embedding unavailable, falling back to text search: {e}"
             )
 
-        results, total_count = self.repository.search(
+        outcome = self.repository.search(
             user_id=user_id,
             query_embedding=query_embedding,
+            # The keyword fallback has no embedding to work from, so the query
+            # text itself is the only thing it can match against. It used to be
+            # dropped here, which is how the fallback ended up returning the
+            # user's first chunks regardless of the question (#451).
+            query_text=query,
             top_k=top_k,
             offset=offset,
             document_ids=document_ids,
+            # Which column the query vector is comparable with, and which model
+            # produced it. Both are needed so the repository reads the right
+            # column and never ranks vectors from another model.
+            query_space=self.embedding_service.space,
+            query_model=self.embedding_service.model,
         )
 
-        search_history = SearchHistory(
-            user_id=user_id,
-            query=query,
-            results_count=total_count,
-        )
-        self.repository.save_search_history(search_history)
+        if record_history:
+            search_history = SearchHistory(
+                user_id=user_id,
+                query=query,
+                results_count=outcome.total_count,
+            )
+            self.repository.save_search_history(search_history)
 
         response = SearchResponse(
             query=query,
-            results=results,
-            total_count=total_count,
-            has_more=offset + len(results) < total_count,
+            results=outcome.results,
+            total_count=outcome.total_count,
+            has_more=offset + len(outcome.results) < outcome.total_count,
+            # Taken from what the repository reported, not from whether an
+            # embedding was generated: a vector query that the database
+            # rejected is answered by the keyword path, and reporting
+            # `semantic` for keyword results is exactly the kind of quiet lie
+            # this field exists to prevent.
+            mode=outcome.mode,
         )
         _cache_search(user_id, query, top_k, offset, document_ids, response)
         return response

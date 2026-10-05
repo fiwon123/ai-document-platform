@@ -1,0 +1,67 @@
+# MinIO: S3-compatible object storage, built from the official release binary.
+#
+# WHY THIS IS NOT `FROM minio/minio:latest`
+#
+# The official published image can no longer be pulled by anyone, from any
+# registry:
+#
+#   docker.io/minio/minio     -> HTTP 404, "object not found" (repo deleted)
+#   quay.io/minio/minio       -> HTTP 401, anonymous manifest pull refused
+#   quay.io/minio/mc          -> HTTP 401, same
+#   dl.min.io/.../linux-amd64 -> HTTP 410 Gone
+#
+# A manifest pinned to the official image therefore fails at pod start with
+#
+#   Failed to pull image "minio/minio:latest": pull access denied, repository
+#   does not exist or may require authorization: insufficient_scope
+#
+# which is what the Kind smoke test hit (#646). This is the same failure shape
+# as the vanished `bitnami/kubectl` and stale `trivy-action` references: a
+# third-party artifact that disappeared underneath a pinned manifest.
+#
+# So the image is built here instead, from the release binary published on
+# GitHub — which is still downloadable and verifiable. RELEASE.2025-09-07 is the
+# last MinIO release that ships a redistributable binary (newer tags publish
+# packaging metadata only).
+#
+# The version is pinned AND checksum-verified rather than tracking "latest": a
+# build that silently changes its MinIO version is not reproducible, and this
+# binary is the object store holding every uploaded document.
+
+FROM alpine:3.20 AS fetch
+
+# Overridable so a future bump is a one-line diff, but the default is what the
+# checksum below belongs to — changing MINIO_RELEASE alone will fail the build.
+ARG MINIO_RELEASE=RELEASE.2025-09-07T16-13-09Z
+ARG MINIO_SHA256=7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f
+
+RUN apk add --no-cache curl
+
+WORKDIR /tmp
+RUN curl -fsSL -o minio \
+        "https://github.com/minio/minio/releases/download/${MINIO_RELEASE}/minio.linux-amd64.${MINIO_RELEASE}" \
+ && echo "${MINIO_SHA256}  minio" | sha256sum -c - \
+ && chmod +x minio \
+ && ./minio --version
+
+FROM alpine:3.20
+
+# ca-certificates so MinIO can talk to a TLS endpoint if one is ever configured
+# in front of it; the static binary itself needs nothing else.
+RUN apk add --no-cache ca-certificates
+
+COPY --from=fetch /tmp/minio /usr/local/bin/minio
+
+# Deliberately no USER directive. /data is a PersistentVolumeClaim mounted by the
+# kubelet and owned by root, so dropping to an unprivileged uid here would make
+# MinIO unable to write. The official image runs as root for the same reason;
+# if MinIO is ever hardened to a non-root uid, the volume ownership has to be
+# fixed at the same time or this breaks in a much more confusing way.
+
+EXPOSE 9000 9001
+
+# The k8s StatefulSet overrides this with an explicit
+# `command: ["minio", "server", ...]`, which replaces ENTRYPOINT — hence the
+# binary lives on PATH rather than being invoked by absolute path only.
+ENTRYPOINT ["minio"]
+CMD ["server", "/data", "--console-address", ":9001"]

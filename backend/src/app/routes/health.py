@@ -1,4 +1,8 @@
+import logging
+from typing import Annotated
+
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -8,9 +12,18 @@ from app.storage.storage import storage
 
 router = APIRouter(tags=["health"])
 
+logger = logging.getLogger(__name__)
+
 
 @router.get("/health")
-def health_check(db: Session = Depends(get_db)):
+def health_check(db: Annotated[Session, Depends(get_db)]):
+    """Liveness/readiness probe for the API and its dependencies.
+
+    Checks PostgreSQL, Redis, the document-processing worker heartbeat, and
+    object storage. Responds 200 ``healthy`` when every dependency is up, or
+    503 ``degraded`` (with per-service errors) otherwise — orchestration and
+    uptime monitors key off that status code.
+    """
     checks = {
         "status": "healthy",
         "services": {
@@ -28,6 +41,9 @@ def health_check(db: Session = Depends(get_db)):
 
     if not all_healthy:
         checks["status"] = "degraded"
+        # Return 503 so orchestration (K8s probes, load balancers,
+        # uptime monitors) can act on the degraded state.
+        return JSONResponse(status_code=503, content=checks)
 
     return checks
 
@@ -36,8 +52,11 @@ def check_database(db: Session) -> dict:
     try:
         db.execute(text("SELECT 1"))
         return {"status": "healthy"}
-    except Exception as e:
-        return {"status": "unhealthy", "error": str(e)}
+    except Exception:
+        # Log the real cause for operators; the external probe only needs
+        # to know the dependency is down (never leak internals).
+        logger.exception("Health check failed: database")
+        return {"status": "unhealthy", "error": "Database check failed"}
 
 
 def check_redis() -> dict:
@@ -45,8 +64,9 @@ def check_redis() -> dict:
         if redis_client.ping():
             return {"status": "healthy"}
         return {"status": "unhealthy", "error": "Ping failed"}
-    except Exception as e:
-        return {"status": "unhealthy", "error": str(e)}
+    except Exception:
+        logger.exception("Health check failed: redis")
+        return {"status": "unhealthy", "error": "Redis check failed"}
 
 
 def check_worker() -> dict:
@@ -66,13 +86,15 @@ def check_worker() -> dict:
             "status": "unhealthy",
             "error": "No worker heartbeat detected — document processing is unavailable",
         }
-    except Exception as e:
-        return {"status": "unhealthy", "error": str(e)}
+    except Exception:
+        logger.exception("Health check failed: worker")
+        return {"status": "unhealthy", "error": "Worker check failed"}
 
 
 def check_storage() -> dict:
     try:
         storage.ensure_bucket()
         return {"status": "healthy"}
-    except Exception as e:
-        return {"status": "unhealthy", "error": str(e)}
+    except Exception:
+        logger.exception("Health check failed: storage")
+        return {"status": "unhealthy", "error": "Object storage check failed"}

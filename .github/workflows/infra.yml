@@ -1,0 +1,278 @@
+name: Infra
+
+on:
+  pull_request:
+    types: [labeled, synchronize]
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+concurrency:
+  group: infra-${{ github.ref }}
+  cancel-in-progress: true
+
+# Mirrors the label-gating convention of ci.yml: validation runs only when
+# the `ci` label is on a PR. No Actions run on pushes to `dev` — infra checks
+# and image builds happen only on dev→main PRs (label-gated) or manual
+# dispatch, so merged dev work is never re-verified or published on dev.
+#
+# `packages: write` is deliberately NOT granted workflow-wide (#544). It is
+# scoped to the single job that pushes, so a job that merely validates cannot
+# write to the registry even if its own `if:` were widened by mistake. The
+# floating `latest` tag is what staging and production follow, so the ability to
+# move it is the thing worth protecting — not the ability to read manifests.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate:
+    name: Infra (kustomize + helm + kubeconform)
+    # PR events are `ci`-label gated; manual dispatch always runs.
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Skip the job body entirely for PRs that touch no infra files
+      # (code-only release PRs are validated by the image-build job).
+      - name: Detect infra changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            infra:
+              - 'infra/**'
+              - '.github/workflows/**'
+
+      - name: Install kustomize, helm, kubeconform
+        if: steps.changes.outputs.infra == 'true'
+        run: |
+          set -euo pipefail
+          # Pin tool versions so the validation gate is reproducible.
+          curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.5.0/kustomize_v5.5.0_linux_amd64.tar.gz" -o /tmp/kustomize.tgz
+          tar -xzf /tmp/kustomize.tgz -C /tmp
+          sudo mv /tmp/kustomize /usr/local/bin/kustomize
+          curl -sSL "https://get.helm.sh/helm-v3.16.4-linux-amd64.tar.gz" -o /tmp/helm.tgz
+          tar -xzf /tmp/helm.tgz -C /tmp
+          sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
+          curl -sSL "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz" -o /tmp/kubeconform.tgz
+          tar -xzf /tmp/kubeconform.tgz -C /tmp
+          sudo mv /tmp/kubeconform /usr/local/bin/kubeconform
+          kustomize version
+          helm version --short
+          kubeconform -v
+
+      - name: Validate overlays and chart
+        if: steps.changes.outputs.infra == 'true'
+        run: |
+          set -euo pipefail
+          # Render once, schema-check the same output.
+          kustomize build infra/k8s/overlays/dev > /tmp/dev-rendered.yaml
+          kustomize build infra/k8s/overlays/staging > /tmp/staging-rendered.yaml
+          kustomize build infra/k8s/overlays/production > /tmp/prod-rendered.yaml
+          helm lint infra/helm/ai-platform
+          helm template ai-platform infra/helm/ai-platform > /tmp/helm-rendered.yaml
+          # `-ignore-missing-schemas`: cluster-scoped CRDs (cert-manager,
+          # External Secrets, Prometheus CRDs, ArgoCD, ...) have no schema in
+          # the bundled set; they are reported as Skipped instead of failing.
+          kubeconform -strict -ignore-missing-schemas -summary /tmp/dev-rendered.yaml
+          kubeconform -strict -ignore-missing-schemas -summary /tmp/staging-rendered.yaml
+          kubeconform -strict -ignore-missing-schemas -summary /tmp/prod-rendered.yaml
+          kubeconform -strict -ignore-missing-schemas -summary /tmp/helm-rendered.yaml
+          # ArgoCD GitOps manifests (infra/argo): Application/ApplicationSet
+          # CRDs are Skipped via -ignore-missing-schemas, but the YAML must
+          # parse and render.
+          for manifest in infra/argo/*.yaml; do
+            kubeconform -strict -ignore-missing-schemas -summary "$manifest"
+          done
+          echo "all manifests valid"
+
+  build-images:
+    name: Build and push production images (ghcr.io)
+    # Publishing is allowed from two places only: a `ci`-labelled dev→main PR, or
+    # a manual dispatch of `main` itself. A dispatch of any other ref is refused.
+    #
+    # `workflow_dispatch` runs on whichever ref is picked in the dropdown, and the
+    # push step below re-tags whatever it built as the floating `latest`. Since
+    # `infra/k8s/overlays/staging` and `.../production` are `latest`-pinned and
+    # ArgoCD syncs them automatically, an unguarded dispatch meant that
+    # `gh workflow run infra.yml --ref <feature-branch>` — the obvious way to
+    # "just check my infra change" — published unmerged code as `latest` and
+    # rolled those environments onto it. The safe action and the dangerous one
+    # were the same command. See #544.
+    #
+    # Validate and the Kind smoke test deliberately stay runnable from any ref:
+    # neither writes to the registry, and they are what a feature branch wants.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'ci') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'ci'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Compute image tag
+        id: tag
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build images
+        run: ./infra/scripts/build-images.sh ghcr.io/fiwon123/ai-platform "${{ steps.tag.outputs.sha }}"
+
+      - name: Push images (SHA + latest tags)
+        # The `latest` re-tag is safe only because of this job's `if:` — the
+        # staging and production overlays resolve `latest` and ArgoCD syncs them
+        # automatically, so moving this tag is a production action. Do not widen
+        # the guard above without re-reading this (#544).
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.sha }}"
+          # minio is included: the base StatefulSet references
+          # ai-platform/minio:latest and the production overlay rewrites it to
+          # this registry (#646). Omitting it here breaks production deploys.
+          for img in backend worker frontend minio; do
+            image="ghcr.io/fiwon123/ai-platform/${img}"
+            docker push "${image}:${TAG}"
+            docker tag "${image}:${TAG}" "${image}:latest"
+            docker push "${image}:latest"
+          done
+
+  scan-images:
+    name: Scan images (Trivy)
+    # Runs on the same events as build-images, always after the images are
+    # pushed. Fails the release PR when HIGH/CRITICAL vulnerabilities WITH a
+    # known fix are found (`ignore-unfixed`), so actionable findings block the
+    # merge until the base images are bumped.
+    #
+    # Same ref restriction as build-images (#544): it pulls the SHA-tagged images
+    # that job published, and it carries no `packages: write`.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'ci') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'ci'))
+    needs: build-images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull images
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.build-images.outputs.tag }}"
+          for img in backend worker frontend minio; do
+            docker pull "ghcr.io/fiwon123/ai-platform/${img}:${TAG}"
+          done
+
+      - name: Scan backend image
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          # The Trivy version is pinned, and written literally in every scan
+          # step rather than hoisted into a job-level `env`. Left unset,
+          # setup-trivy resolves "latest" through the trivy repo's git tags —
+          # that landed on v0.65.0, a tag whose *release assets have since been
+          # deleted*, so the resolver was satisfied, the download 404'd, and the
+          # installer exited 1 without a word. The job then failed in ~31s
+          # having scanned nothing (#652).
+          #
+          # v0.75.0 is the newest tag whose release assets verifiably exist,
+          # including trivy_0.75.0_Linux-64bit.tar.gz — the exact file the
+          # installer requests. Bump every step together.
+          version: v0.75.0
+          image-ref: ghcr.io/fiwon123/ai-platform/backend:${{ needs.build-images.outputs.tag }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Scan worker image
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          image-ref: ghcr.io/fiwon123/ai-platform/worker:${{ needs.build-images.outputs.tag }}
+          version: v0.75.0
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Scan frontend image
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          image-ref: ghcr.io/fiwon123/ai-platform/frontend:${{ needs.build-images.outputs.tag }}
+          version: v0.75.0
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      # MinIO is now a first-party published image (built by
+      # infra/docker/Dockerfile.minio, #646), so it is scanned on the same terms
+      # as the other three rather than shipped unscanned.
+      - name: Scan minio image
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          image-ref: ghcr.io/fiwon123/ai-platform/minio:${{ needs.build-images.outputs.tag }}
+          # Same pin as the other three scan steps, and for the same reason:
+          # unpinned, setup-trivy resolves "latest" via the trivy repo's git
+          # tags, which landed on v0.65.0 — a tag whose release assets have been
+          # deleted, so the installer 404s and exits 1 silently (#652).
+          version: v0.75.0
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  smoke:
+    name: Smoke test (Kind)
+    # End-to-end check on a real Kind cluster: deploy the dev overlay and
+    # assert backend health, frontend reachability and an API round-trip.
+    # Runs only on dev→main PRs (label-gated) and manual dispatch.
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install kustomize
+        run: |
+          curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.5.0/kustomize_v5.5.0_linux_amd64.tar.gz" -o /tmp/kustomize.tgz
+          tar -xzf /tmp/kustomize.tgz -C /tmp
+          sudo mv /tmp/kustomize /usr/local/bin/kustomize
+
+      - name: Install kind
+        run: |
+          curl -sSLo /tmp/kind "https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64"
+          chmod +x /tmp/kind
+          sudo mv /tmp/kind /usr/local/bin/kind
+
+      - name: Run smoke test
+        run: ./infra/scripts/smoke-test.sh

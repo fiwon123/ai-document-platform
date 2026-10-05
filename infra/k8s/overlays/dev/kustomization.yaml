@@ -1,0 +1,119 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# Dev overlay: match the Kind cluster (localhost:5000 registry, NodePorts).
+# The frontend Service becomes NodePort 30080 -> pod 8080 and the backend
+# Service NodePort 30081 -> pod 8000, as declared in kind-config.yaml.
+
+images:
+  - name: ai-platform/backend
+    newName: localhost:5000/backend
+    newTag: latest
+  - name: ai-platform/worker
+    newName: localhost:5000/worker
+    newTag: latest
+  - name: ai-platform/frontend
+    newName: localhost:5000/frontend
+    newTag: latest
+  - name: ai-platform/minio
+    newName: localhost:5000/minio
+    newTag: latest
+
+patches:
+  # Expose frontend on NodePort 30080 (host: 18080 via Kind).
+  - target:
+      kind: Service
+      name: frontend
+    patch: |-
+      - op: add
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30080
+  # Expose backend on NodePort 30081 (host: 18001 via Kind).
+  - target:
+      kind: Service
+      name: backend
+    patch: |-
+      - op: add
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30081
+  # Dev resources are modest.
+  - target:
+      kind: ConfigMap
+      name: app-config
+    patch: |-
+      # Dev runs over plain HTTP (Kind NodePort): Secure cookies would never
+      # be sent by browsers, breaking the refresh-token flow.
+      - op: replace
+        path: /data/REFRESH_COOKIE_SECURE
+        value: "false"
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: Deployment
+      name: worker
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: Deployment
+      name: frontend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  # The local Kind cluster is the one environment where the committed
+  # placeholder signing key is knowingly fine, and the app now refuses to boot
+  # on it (#524). Acknowledge it here — and only here: staging and production
+  # inherit the same base Secret and must supply a real key.
+  #
+  # Strategic merge, not a JSON6902 add: the base containers carry `envFrom` but
+  # no `env` key, and appending to a list that does not exist yet is an error.
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: backend
+        namespace: ai-platform
+      spec:
+        template:
+          spec:
+            containers:
+              - name: backend
+                env:
+                  - name: ALLOW_PLACEHOLDER_SECRET_KEY
+                    value: "1"
+  - target:
+      kind: Deployment
+      name: worker
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: worker
+        namespace: ai-platform
+      spec:
+        template:
+          spec:
+            containers:
+              - name: worker
+                env:
+                  - name: ALLOW_PLACEHOLDER_SECRET_KEY
+                    value: "1"

@@ -30,11 +30,6 @@ MINIO_ENDPOINT = os.getenv(
     "localhost:9000",
 )
 
-MINIO_PUBLIC_ENDPOINT = os.getenv(
-    "MINIO_PUBLIC_ENDPOINT",
-    MINIO_ENDPOINT,
-)
-
 MINIO_ACCESS_KEY = os.getenv(
     "MINIO_ACCESS_KEY",
     "minioadmin",
@@ -60,12 +55,29 @@ MINIO_REGION = os.getenv(
     "us-east-1",
 )
 
+# botocore's own defaults are a 60-second connect timeout and 5 attempts in
+# legacy mode, so one call against an unreachable object store costs ~10s.
+# That is not a resilience policy, it is an accident of a default — and it is
+# paid on the app's startup path (`ensure_bucket` in the lifespan) and again
+# before every upload, so a hung store stalls startup and every write that
+# touches it (#634).
+#
+# Bounded explicitly instead. `MAX_ATTEMPTS` is botocore's *retry* count, not
+# its attempt count: botocore rewrites it to `total_max_attempts = N + 1`, so 2
+# is three calls — the first plus two retries. A ceiling rather than zero,
+# because a transient blip on a real upload should not become a user-visible
+# failure; and not botocore's 5, because the call this bounds is a
+# reachability probe whose failure is already caught and logged, so the extra
+# attempts only delay finding out.
+CONNECT_TIMEOUT_SECONDS = 2.0
+READ_TIMEOUT_SECONDS = 5.0
+MAX_ATTEMPTS = 2
+
 
 class MinioStorage:
     def __init__(
         self,
         endpoint: str,
-        public_endpoint: str,
         access_key: str,
         secret_key: str,
         bucket: str,
@@ -76,14 +88,6 @@ class MinioStorage:
 
         self.client = self._create_client(
             endpoint=endpoint,
-            access_key=access_key,
-            secret_key=secret_key,
-            secure=secure,
-            region=region,
-        )
-
-        self.public_client = self._create_client(
-            endpoint=public_endpoint,
             access_key=access_key,
             secret_key=secret_key,
             secure=secure,
@@ -103,7 +107,12 @@ class MinioStorage:
             endpoint_url=normalize_endpoint(endpoint, secure),
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
-            config=Config(signature_version="s3v4"),
+            config=Config(
+                signature_version="s3v4",
+                connect_timeout=CONNECT_TIMEOUT_SECONDS,
+                read_timeout=READ_TIMEOUT_SECONDS,
+                retries={"max_attempts": MAX_ATTEMPTS, "mode": "standard"},
+            ),
             region_name=region,
         )
 
@@ -159,30 +168,35 @@ class MinioStorage:
 
         return response["Body"]
 
+    def open_object(self, object_key: str):
+        """Return ``(body, content_length)`` for reading an object's bytes.
+
+        The body is boto3's streaming object rather than a bytes blob, so serving
+        a 40 MB upload through the API does not buffer 40 MB per request. The
+        caller is responsible for closing it, which ``StreamingResponse`` does
+        when the response is finished.
+
+        Deliberately not a presigned URL: a URL would have to name an endpoint
+        the *browser* can reach, and that host is a configuration guess
+        (#536). This route knows only its own origin, which the browser
+        demonstrably can reach.
+        """
+        response = self.client.get_object(
+            Bucket=self.bucket,
+            Key=object_key,
+        )
+
+        return response["Body"], int(response.get("ContentLength") or 0)
+
     def delete(self, object_key: str) -> None:
         self.client.delete_object(
             Bucket=self.bucket,
             Key=object_key,
         )
 
-    def create_download_url(
-        self,
-        object_key: str,
-        expires_in: int = 3600,
-    ) -> str:
-        return self.public_client.generate_presigned_url(
-            ClientMethod="get_object",
-            Params={
-                "Bucket": self.bucket,
-                "Key": object_key,
-            },
-            ExpiresIn=expires_in,
-        )
-
 
 storage = MinioStorage(
     endpoint=MINIO_ENDPOINT,
-    public_endpoint=MINIO_PUBLIC_ENDPOINT,
     access_key=MINIO_ACCESS_KEY,
     secret_key=MINIO_SECRET_KEY,
     bucket=MINIO_BUCKET,

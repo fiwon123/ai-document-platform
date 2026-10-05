@@ -1,0 +1,46 @@
+{{- if .Values.secrets.eso.enabled }}
+# External Secrets Operator resources. Requires ESO installed in the
+# cluster; the ExternalSecret materializes the well-known secrets.name
+# Secret (same keys the Deployments consume via envFrom — no app changes).
+# AWS provider shown; extend provider support in ClusterSecretStore as needed.
+apiVersion: external-secrets.io/v1beta1
+kind: ClusterSecretStore
+metadata:
+  name: {{ include "ai-platform.fullname" . }}
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: {{ .Values.secrets.eso.awsRegion }}
+      auth:
+        secretRef:
+          accessKeyIDSecretRef:
+            name: {{ .Values.secrets.eso.awsCredsSecret }}
+            namespace: {{ .Release.Namespace }}
+            key: access-key-id
+          secretAccessKeySecretRef:
+            name: {{ .Values.secrets.eso.awsCredsSecret }}
+            namespace: {{ .Release.Namespace }}
+            key: secret-access-key
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: {{ .Values.secrets.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  refreshInterval: {{ .Values.secrets.eso.refreshInterval }}
+  secretStoreRef:
+    name: {{ include "ai-platform.fullname" . }}
+    kind: ClusterSecretStore
+  target:
+    name: {{ .Values.secrets.name }}
+    creationPolicy: Owner
+  data:
+    {{- range $k := .Values.secrets.eso.keys }}
+    - secretKey: {{ $k }}
+      remoteRef:
+        key: {{ $.Values.secrets.eso.awsSecretId }}
+        property: {{ $k }}
+    {{- end }}
+{{- end }}

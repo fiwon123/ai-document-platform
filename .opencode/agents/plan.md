@@ -1,7 +1,7 @@
 ---
 description: Analysis and planning without making changes
 mode: primary
-model: opencode/mimo-v2.5-free
+model: opencode/nemotron-3-ultra-free
 permission:
   edit: deny
   bash:

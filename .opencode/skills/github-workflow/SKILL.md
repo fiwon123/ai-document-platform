@@ -12,7 +12,7 @@ metadata:
 Every change is tracked on GitHub: **issue → branch → PR → merge**.
 
 1. **Create an issue** before writing any code (assigned + labeled)
-2. **Create a branch** from main that implements exactly that issue
+2. **Create a branch** from `dev` that implements exactly that issue
 3. **Open a PR** linked to the issue (`Closes #N`, assigned + labeled)
 4. **Comment at every milestone** (issue created, PR opened, CI passed, merged)
 5. **Merge** only when explicitly instructed, then comment
@@ -99,7 +99,8 @@ gh pr create \
   --title "<type>: <description>" \
   --body-file <path> \
   --label "<label per mapping table>" \
-  --assignee fiwon123
+  --assignee fiwon123 \
+  --base dev
 
 # Comment on the PR
 gh pr comment <number> --body "<message>"
@@ -117,7 +118,7 @@ gh pr merge <number> --squash --delete-branch
 ### Pull Request Workflow
 
 1. Create issue (assigned + labeled), comment `🔍 Starting work on this`
-2. Create feature branch from main
+2. Create feature branch from `dev`
 3. Make changes and commit
 4. Push branch and create PR (assigned + labeled, `Closes #N`)
 5. Comment on issue: `🔗 PR opened: #<pr-number>`
@@ -128,7 +129,7 @@ gh pr merge <number> --squash --delete-branch
 
 ### PR Rules
 
-- NEVER push directly to main
+- NEVER push directly to `dev` or `main`
 - Always work in feature branches
 - Run tests before opening a PR
 - Write clear PR descriptions

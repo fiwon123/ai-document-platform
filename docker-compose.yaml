@@ -1,8 +1,298 @@
+# Dev-sandbox Compose file (repo root) — lightweight Docker-based development.
+#
+# Replaces the old VS Code Dev Containers setup (`.devcontainer/`): a single
+# prebuilt `dev` container (bind-mounted source, deps baked at image build)
+# runs uvicorn + vite in the foreground with fast hot reload, a `worker`
+# service runs the arq document-processing worker, and `postgres` / `redis` /
+# `minio` provide infrastructure. Use `docker compose up dev` (or `make
+# dev-up`); use `make infra-up` for the host-native path (infra only, then
+# run uvicorn + vite directly on the host).
+#
+# `name` is pinned so project volumes/networks keep the
+# ai-document-platform_* prefix regardless of where the compose file lives.
+# The Make targets export host identity and host path variables. Direct
+# `docker compose` users should set HOST_UID/HOST_GID/DOCKER_GID and use
+# `--build` before starting the services.
+
+name: ai-document-platform
+
 services:
+  # Dev sandbox — the coding/runtime environment. Source is bind-mounted for
+  # hot reload; backend deps are baked into /opt/backend-venv; node_modules
+  # is shared with the host and bootstrapped via npm ci when missing.
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    # Match the host identity so bind-mounted workspace writes do not become
+    # root-owned files. The trusted dev service also needs the host Docker
+    # socket group to drive Compose from inside the sandbox.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    group_add:
+      - "${DOCKER_GID:-999}"
+    # Lets the container reach services bound on the HOST, which is how a
+    # host-side Ollama is addressed (LOCAL_LLM_BASE_URL =
+    # http://host.docker.internal:11434/v1 — see DEVELOPMENT.md).
+    #
+    # Docker Desktop injects this name on its own, but plain Linux Docker does
+    # NOT: without this mapping the name fails to resolve with
+    # "Could not resolve host: host.docker.internal" and the local provider
+    # silently falls back to Groq. `host-gateway` resolves to the bridge
+    # gateway (172.17.0.1 on a default Linux install), which routes to the
+    # host, so the daemon must be listening on a non-loopback address
+    # (OLLAMA_HOST=0.0.0.0:11434) to answer. Harmless on Desktop.
+    # tests/test_compose_env.py pins this so the docs cannot drift again.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["/sandbox/ai-document-platform/dev-entrypoint.sh"]
+    # Docker's default /dev/shm is 64 MB, which makes Chromium crash on any
+    # non-trivial page. The baked headless Chromium (see Dockerfile) is what
+    # accessibility/E2E checks run against, so give it real shared memory.
+    shm_size: "2gb"
+    ports:
+      # Host ports avoid conflicts with other local projects' containers
+      # binding 8000/5173. Internal container ports stay 8000/5173, so the
+      # Vite proxy default (http://localhost:8000) inside the container just
+      # works.
+      - "8001:8000"
+      - "5175:5173"
+    environment:
+      HOME: /home/appuser
+      HOST_UID: ${HOST_UID:-1000}
+      HOST_GID: ${HOST_GID:-1000}
+      HOST_HOME: ${HOST_HOME:-${HOME}}
+      HOST_PROJECT_DIR: ${HOST_PROJECT_DIR:-.}
+      DOCKER_GID: ${DOCKER_GID:-999}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-mydb}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mysecretpassword}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MINIO_ENDPOINT: minio:9000
+      # Endpoint minted INSIDE presigned download/thumbnail URLs served to the
+      # browser. minio:9000 is only resolvable inside the Docker network, so
+      # presigned URLs must use the host-published port instead.
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      # The SECRET_KEY default above is the placeholder committed to this repo,
+      # and the app refuses to boot on it (#524). This dev sandbox is the one
+      # place that is knowingly fine, so it acknowledges the risk explicitly
+      # rather than the check being weakened to accommodate it.
+      ALLOW_PLACEHOLDER_SECRET_KEY: ${ALLOW_PLACEHOLDER_SECRET_KEY:-1}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/${POSTGRES_DB:-mydb}
+      # LLM provider passthrough. Values come from a gitignored root `.env` (or
+      # the shell) with NO edit to this file — Compose reads the project `.env`
+      # for `${...}` substitution. Only variable NAMES live here; no secret is
+      # ever committed.
+      #
+      # Every default below is the application's own default, and that is
+      # deliberate rather than cosmetic. `load_dotenv()` does not override real
+      # environment variables, so an empty value passed from here WINS over
+      # backend/src/app/.env and over the `os.getenv` fallback in the code:
+      #   EMBEDDING_MODEL=""  -> every embed call sends model="" and 400s
+      #   OPENAI_MODEL=""     -> qa._MODEL_BY_ID[""] is None -> TypeError
+      #   LOCAL_LLM_*=""      -> an empty model id in the registry, no base URL
+      # Defaulting to the app's value instead makes "unset" mean exactly what it
+      # means in the host-native loop. tests/test_compose_env.py pins this.
+      #
+      # The two keys default to empty because empty IS the app's default (no
+      # provider configured), so passing them through is a no-op until set.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      QA_MODEL: ${QA_MODEL:-}
+      LOCAL_LLM_ENABLED: ${LOCAL_LLM_ENABLED:-}
+      QA_MAX_TOKENS: ${QA_MAX_TOKENS:-1000}
+      # Provider ceilings the QA service enforces itself, matching Groq's
+      # free tier so the app refuses a call before the provider does.
+      GROQ_REQUESTS_PER_MINUTE: ${GROQ_REQUESTS_PER_MINUTE:-30}
+      GROQ_TOKENS_PER_DAY: ${GROQ_TOKENS_PER_DAY:-200000}
+      PROVIDER_QUOTA_ENABLED: ${PROVIDER_QUOTA_ENABLED:-true}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-ada-002}
+      # The OpenAI space's width. Set together with EMBEDDING_MODEL when
+      # switching to another hosted model, because a vector of the wrong width
+      # cannot be written or compared, and the service refuses it loudly rather
+      # than storing it.
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+      # The local embedding space (Ollama). Used only when OPENAI_API_KEY is
+      # unset, so a deployment that has always embedded with OpenAI keeps
+      # doing so — see app.services.embedding for why the order is deliberate.
+      LOCAL_EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}
+      LOCAL_EMBEDDING_DIMENSIONS: ${LOCAL_EMBEDDING_DIMENSIONS:-768}
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:11434/v1}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-llama3.2:1b}
+      # Redirects the OpenAI SDK itself (embeddings AND the OpenAI QA provider)
+      # — it is an SDK-wide default, not a project feature, so it also points
+      # at a local Ollama/stub server. An empty value is dropped by
+      # app.env.drop_blank_provider_vars() before any client is built, because
+      # the SDK treats "" as a real base URL and every request then fails.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      # GitHub passthrough for the sandboxed AI agent (trusted-agent model):
+      # the `dev` service mounts gh config + the Docker socket and drives the
+      # GitHub workflow, so it forwards the host token by name only. The
+      # `worker` service deliberately does NOT get these (non-trusted).
+      #
+      # The ~/.config/gh mount below is NOT sufficient on its own: the host token
+      # normally lives in the OS keyring, so hosts.yml carries no `oauth_token`
+      # and this container has no keyring socket. The token is therefore resolved
+      # from the host's active gh credential by scripts/resolve-gh-token.sh and
+      # arrives via the environment (see the GH_TOKEN wiring in the Makefile).
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GH_TOKEN: ${GH_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ${HOST_PROJECT_DIR:-.}:/sandbox/ai-document-platform:cached
+      # Sandboxed AI coding agent (trusted-agent model — see DEVELOPMENT.md):
+      # mount the host Docker socket so opencode INSIDE the dev container can
+      # drive Docker/compose, and share the host gh auth, opencode binary +
+      # config, and git identity read-only. `make dev-up` pre-creates
+      # ${HOST_HOME}/.config/opencode and ${HOST_HOME}/.gitconfig so these mounts
+      # never fail on a fresh machine. The `worker` service gets none of these.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOST_HOME:-${HOME}}/.config/gh:/home/appuser/.config/gh:ro
+      - ${HOST_HOME:-${HOME}}/.opencode/bin/opencode:/usr/local/bin/opencode:ro
+      - ${HOST_HOME:-${HOME}}/.config/opencode:/home/appuser/.config/opencode:ro
+      - ${HOST_HOME:-${HOME}}/.gitconfig:/home/appuser/.gitconfig:ro
+    healthcheck:
+      # python:3.14-slim ships no curl; urllib is stdlib and always present.
+      # /v1/health returns 503 when degraded (e.g. no worker heartbeat yet).
+      # Treat degraded as container-ready: the worker container is gated on
+      # `dev: service_healthy`, and the worker seeds the heartbeat that
+      # flips /v1/health back to 200 — failing here would deadlock cold starts.
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import urllib.request as u, urllib.error as e
+          try:
+              u.urlopen('http://localhost:8000/v1/health', timeout=5)
+          except e.HTTPError as x:
+              exit(0 if x.code == 503 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      # Image build deps are baked, so cold starts are fast; keep a generous
+      # start_period anyway for alembic + uvicorn on first boot.
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          # Runs uvicorn --reload + vite + alembic — give it headroom, but
+          # baking deps into the image removes the old startup memory spike.
+          memory: 2G
+    networks:
+      - default
+
+  # arq worker — consumes document-processing jobs from Redis. A managed
+  # Compose service (not a background process) so it restarts automatically
+  # if it crashes. The baked /opt/backend-venv is used directly (no uv sync
+  # race with the dev container).
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    # The worker also writes Python caches in the bind-mounted workspace, so it
+    # must use the same host identity as the dev service.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    command: ["/opt/backend-venv/bin/arq", "app.worker.WorkerSettings"]
+    working_dir: /sandbox/ai-document-platform/backend
+    # Same host-Ollama reachability as the dev service above; see the comment
+    # there. Kept in sync deliberately so the two services cannot diverge.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      HOME: /home/appuser
+      HOST_HOME: ${HOST_HOME:-${HOME}}
+      HOST_PROJECT_DIR: ${HOST_PROJECT_DIR:-.}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-mydb}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mysecretpassword}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MINIO_ENDPOINT: minio:9000
+      # Presigned URL endpoint (browser-reachable) — see dev service above.
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      # The SECRET_KEY default above is the placeholder committed to this repo,
+      # and the app refuses to boot on it (#524). This dev sandbox is the one
+      # place that is knowingly fine, so it acknowledges the risk explicitly
+      # rather than the check being weakened to accommodate it.
+      ALLOW_PLACEHOLDER_SECRET_KEY: ${ALLOW_PLACEHOLDER_SECRET_KEY:-1}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/${POSTGRES_DB:-mydb}
+      # LLM provider passthrough — the worker generates embeddings, so without
+      # these it can only ever do text-only search. Same contract and same
+      # "default to the app's own value" reasoning as the dev service above.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      QA_MODEL: ${QA_MODEL:-}
+      LOCAL_LLM_ENABLED: ${LOCAL_LLM_ENABLED:-}
+      QA_MAX_TOKENS: ${QA_MAX_TOKENS:-1000}
+      # Provider ceilings the QA service enforces itself, matching Groq's
+      # free tier so the app refuses a call before the provider does.
+      GROQ_REQUESTS_PER_MINUTE: ${GROQ_REQUESTS_PER_MINUTE:-30}
+      GROQ_TOKENS_PER_DAY: ${GROQ_TOKENS_PER_DAY:-200000}
+      PROVIDER_QUOTA_ENABLED: ${PROVIDER_QUOTA_ENABLED:-true}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-ada-002}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+      LOCAL_EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}
+      LOCAL_EMBEDDING_DIMENSIONS: ${LOCAL_EMBEDDING_DIMENSIONS:-768}
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://localhost:11434/v1}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-llama3.2:1b}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      # Processing-timeout tuning (large PDFs): job_timeout is arq's per-run
+      # budget; the recovery floor is clamped to job_timeout × retries inside
+      # the worker. Embedding knobs bound per-request latency and batch size.
+      WORKER_JOB_TIMEOUT_SECONDS: ${WORKER_JOB_TIMEOUT_SECONDS:-900}
+      WORKER_RECOVERY_TIMEOUT_MINUTES: ${WORKER_RECOVERY_TIMEOUT_MINUTES:-30}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-120}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-2048}
+    depends_on:
+      # Wait for dev to finish migrations + start uvicorn first so the worker
+      # never polls the queue before the schema exists.
+      dev:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ${HOST_PROJECT_DIR:-.}:/sandbox/ai-document-platform:cached
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    networks:
+      - default
+
   postgres:
     image: pgvector/pgvector:pg16
     ports:
-      - "5432:5432"
+      # Host port 5434 avoids conflicts with other local PostgreSQL instances /
+      # Docker projects binding 5432. Internal container port stays 5432.
+      - "5434:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mydb}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -14,11 +304,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          # Cap each service so a single container can never exhaust the host
+          # memory and trigger the OOM killer (exit code 137) during startup.
+          memory: 512M
+    networks:
+      - default
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      # Host port 63790 avoids conflicts with other local Redis instances /
+      # Docker projects binding 6379. Internal container port stays 6379.
+      - "63790:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -26,9 +326,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - default
 
   minio:
-    image: minio/minio:latest
+    # Built, not pulled: the official `minio/minio` image is no longer
+    # obtainable (Docker Hub repo deleted, quay.io requires auth, dl.min.io
+    # answers 410 Gone), so `make dev-up` could not start storage at all.
+    # See infra/docker/Dockerfile.minio and #646.
+    build:
+      context: ./infra/docker
+      dockerfile: Dockerfile.minio
+    image: ai-platform/minio:latest
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -39,100 +352,30 @@ services:
       - minio_data:/data
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # Was `["CMD", "mc", "ready", "local"]`, which required the `mc` client to
+      # be present in the image. The image carries only the MinIO server binary,
+      # so readiness is polled over the health endpoint instead — `/ready` is the
+      # server-side equivalent of `mc ready local`.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9000/minio/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - default
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: "5432"
-      POSTGRES_DB: ${POSTGRES_DB:-mydb}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mysecretpassword}
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/${POSTGRES_DB:-mydb}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    volumes:
-      - .:/workspace
-      # Persist gh CLI credentials so they survive container rebuilds.
-      # Mounted at both homes: the agent shell runs as root, while the
-      # interactive devcontainer terminal typically runs as vscode.
-      - gh_cli_config:/root/.config/gh
-      - gh_cli_config:/home/vscode/.config/gh
-    working_dir: /workspace/backend
-    command: >
-      sh -c "uv sync && uv run python -m alembic upgrade head && uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
-
-  worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: "5432"
-      POSTGRES_DB: ${POSTGRES_DB:-mydb}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mysecretpassword}
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/${POSTGRES_DB:-mydb}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    volumes:
-      - .:/workspace
-    working_dir: /workspace/backend
-    command: >
-      sh -c "uv sync && uv run arq app.worker.WorkerSettings"
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "5173:5173"
-    environment:
-      # Inside this container the backend is only reachable by compose
-      # service name, not localhost, so point the Vite proxy at it.
-      VITE_PROXY_TARGET: http://backend:8000
-    depends_on:
-      - backend
-    volumes:
-      - .:/workspace
-      - /workspace/frontend/node_modules
-    working_dir: /workspace/frontend
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+networks:
+  # Pin the project network by name so host-side `docker compose up` runs
+  # always target the SAME physical network (prevents the drift that used to
+  # brick DNS for the devcontainer; harmless now that compose is the only
+  # driver, but keeps the name stable).
+  default:
+    name: ai-document-platform_default
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
-  # Persists gh CLI credentials across devcontainer rebuilds (see backend
-  # service mounts). Remove with `docker compose down -v` to clear auth.
-  gh_cli_config:

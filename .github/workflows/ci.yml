@@ -1,8 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [dev]
   pull_request:
     types: [labeled, synchronize]
     branches: [main]
@@ -32,33 +30,66 @@ permissions:
 # The focal CI gate lets us do all heavy verification at milestone time.
 jobs:
   backend-check:
-    name: Backend (uv sync + syntax check)
+    name: Backend (uv sync + ruff + syntax)
     if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # Skip the expensive job body entirely for PRs that touch no backend
+      # code (frontend-only work is validated by the frontend jobs).
+      - name: Detect backend changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/workflows/**'
+
       - name: Install uv
+        if: steps.changes.outputs.backend == 'true'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
       - name: Set up Python
+        if: steps.changes.outputs.backend == 'true'
         run: uv python install 3.14
 
       - name: Sync dependencies (locked)
+        if: steps.changes.outputs.backend == 'true'
         run: uv sync --locked
         working-directory: backend
 
       - name: Syntax check
+        if: steps.changes.outputs.backend == 'true'
         run: uv run python -m compileall -q src
+        working-directory: backend
+
+      - name: Lint (ruff)
+        if: steps.changes.outputs.backend == 'true'
+        run: uv run ruff check src/
         working-directory: backend
 
   backend-test:
     name: Backend (pytest)
     if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
+    # Without Redis this suite **fails**, which is the reason for the service
+    # below. It does not hang: measured with the object store absent, the three
+    # Redis-dependent files take 4.0s with a reachable server and 4.2s with
+    # `REDIS_PORT=1`, so Redis costs no measurable time.
+    #
+    # The ~30 minutes this job was actually taking was #634 — the S3 client
+    # retrying an absent object store on every app construction. With that
+    # merged the whole suite runs in ~4m20s, so this ceiling has real room; it
+    # is here to turn a job that hangs into one that reports red.
+    # See #630.
+    timeout-minutes: 15
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -70,6 +101,20 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      # The suite needs Redis, not just postgres: tests/test_cache.py,
+      # tests/test_rate_limit.py, tests/test_provider_quota.py, the QA
+      # provider-budget tests and the document-status cache test all assert
+      # against it. Same image as the dev sandbox. `conftest.py` forces
+      # REDIS_DB=15, so the job cannot touch anything else on the runner.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -156,4 +201,27 @@ jobs:
 
       - name: Typecheck and build
         run: npm run build
+        working-directory: frontend
+
+  frontend-test:
+    name: Frontend (vitest)
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run tests
+        run: npm test
         working-directory: frontend

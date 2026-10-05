@@ -1,13 +1,63 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { memo, useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { useTheme } from "../hooks/useTheme";
+import { ThemeToggle } from "./ThemeToggle";
+import { ArrowLeftIcon, BrandMark } from "./icons";
 
-export function Navbar() {
+interface NavLinkDef {
+  to: string;
+  label: string;
+  /** True when the current pathname should mark this link active. */
+  isActive: (pathname: string) => boolean;
+  adminOnly?: boolean;
+}
+
+const NAV_LINKS: NavLinkDef[] = [
+  {
+    to: "/app",
+    label: "Dashboard",
+    isActive: (pathname) => pathname === "/app" || pathname === "/app/",
+  },
+  {
+    to: "/app/documents",
+    label: "Documents",
+    isActive: (pathname) => pathname.startsWith("/app/documents"),
+  },
+  {
+    to: "/app/search",
+    label: "Search",
+    isActive: (pathname) => pathname.startsWith("/app/search"),
+  },
+  {
+    to: "/app/qa",
+    label: "Q&A",
+    isActive: (pathname) => pathname.startsWith("/app/qa"),
+  },
+  {
+    to: "/app/settings",
+    label: "Settings",
+    isActive: (pathname) => pathname.startsWith("/app/settings"),
+  },
+  {
+    to: "/app/webhooks",
+    label: "Webhooks",
+    isActive: (pathname) => pathname.startsWith("/app/webhooks"),
+  },
+  { to: "/app/admin", label: "Users", isActive: (p) => p.startsWith("/app/admin"), adminOnly: true },
+];
+
+/**
+ * Memoized app navbar: it takes no props, so parent re-renders (page state)
+ * are skipped; only the auth/theme contexts it consumes and route changes
+ * (needed for the active link state) trigger a re-render.
+ */
+export const Navbar = memo(function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const { theme, toggleTheme } = useTheme();
+  const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = () => setMenuOpen(false);
 
@@ -17,15 +67,53 @@ export function Navbar() {
     navigate("/login");
   };
 
+  // Mobile menu key handling (ARIA disclosure pattern, APG "Navigation Menu
+  // Button"): focus moves to the first link when the menu opens, and Escape
+  // closes it and returns focus to the toggle. Tab follows the natural DOM
+  // order — a disclosure menu is not a modal dialog, so it must not trap
+  // focus (trapping would strand keyboard users from the toggle).
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuRef.current
+      ?.querySelector<HTMLElement>("a[href], button:not([disabled])")
+      ?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        toggleRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [menuOpen]);
+
   return (
     <nav className="navbar">
+      {/* The exit link lives beside the brand, not in the page row: it leaves
+          the app entirely, so grouping it with "Dashboard / Documents / ..."
+          made it read as one more workspace page and broke the brand lockup.
+          It is rendered before the brand and stays out of NAV_LINKS so it can
+          never pick up the active-page treatment. */}
+      <Link
+        to="/"
+        className="navbar-back-link"
+        onClick={closeMenu}
+      >
+        <ArrowLeftIcon />
+        <span className="navbar-back-link-text">Back to site</span>
+      </Link>
+
       <div className="navbar-brand">
-<Link to="/app" aria-label="AskDocs home" onClick={closeMenu}>
-          AskDocs
+        <Link to="/app" aria-label="AskDocs home" onClick={closeMenu}>
+          <BrandMark className="navbar-brand-mark" />
+          <span>AskDocs</span>
         </Link>
+        <span className="navbar-workspace-badge">Workspace</span>
       </div>
 
       <button
+        ref={toggleRef}
         type="button"
         className="navbar-toggle"
         aria-expanded={menuOpen}
@@ -39,42 +127,32 @@ export function Navbar() {
       </button>
 
       <div
+        ref={menuRef}
         className={`navbar-links${menuOpen ? " navbar-links-open" : ""}`}
         id="navbar-links"
       >
-        <Link to="/app" onClick={closeMenu}>
-          Dashboard
-        </Link>
-        <Link to="/app/documents" onClick={closeMenu}>
-          Documents
-        </Link>
-        <Link to="/app/search" onClick={closeMenu}>
-          Search
-        </Link>
-        <Link to="/app/qa" onClick={closeMenu}>
-          Q&A
-        </Link>
-        <Link to="/app/settings" onClick={closeMenu}>
-          Settings
-        </Link>
-        {user?.role === "admin" && (
-          <Link to="/app/admin" onClick={closeMenu}>
-            Users
-          </Link>
+        {NAV_LINKS.filter((link) => !link.adminOnly || user?.role === "admin").map(
+          (link) => {
+            const active = link.isActive(pathname);
+            return (
+              <Link
+                key={link.to}
+                to={link.to}
+                onClick={closeMenu}
+                className={active ? "active" : undefined}
+                aria-current={active ? "page" : undefined}
+              >
+                {link.label}
+              </Link>
+            );
+          },
         )}
         {user && (
           <div className="navbar-user-mobile">
             <Link to="/app/profile" onClick={closeMenu}>
               {user.username}
             </Link>
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={toggleTheme}
-              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-            >
-              {theme === "dark" ? "Light" : "Dark"}
-            </button>
+            <ThemeToggle />
             <button onClick={handleLogout} className="btn btn-secondary">
               Logout
             </button>
@@ -83,15 +161,7 @@ export function Navbar() {
       </div>
 
       <div className="navbar-user">
-        <button
-          type="button"
-          className="theme-toggle"
-          onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-        >
-          {theme === "dark" ? "Light" : "Dark"}
-        </button>
+        <ThemeToggle />
         {user && (
           <>
             <Link to="/app/profile" className="navbar-username">
@@ -105,4 +175,4 @@ export function Navbar() {
       </div>
     </nav>
   );
-}
+});

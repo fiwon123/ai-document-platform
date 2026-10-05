@@ -25,3 +25,18 @@ class StatisticsResponse(BaseModel):
     failed_documents: int
     total_chunks: int
     recent_documents: list[RecentDocument]
+
+
+class AdminStatisticsResponse(BaseModel):
+    """System-wide aggregates for the admin dashboard (all users)."""
+
+    total_users: int
+    active_users: int
+    disabled_users: int
+    total_documents: int
+    pending_documents: int
+    processing_documents: int
+    ready_documents: int
+    failed_documents: int
+    total_chunks: int
+    total_searches: int

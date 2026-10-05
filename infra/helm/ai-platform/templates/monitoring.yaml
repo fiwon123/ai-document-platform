@@ -1,0 +1,214 @@
+{{- if .Values.monitoring.enabled }}
+{{- $namespace := .Release.Namespace }}
+{{- if .Values.monitoring.scrapeNamespace }}
+{{- $namespace = .Values.monitoring.scrapeNamespace }}
+{{- end }}
+# kube-prometheus-stack integration: backend /metrics ServiceMonitor, alert
+# rules, alert routing and a Grafana dashboard (sidecar label based).
+# Requires kube-prometheus-stack installed in
+# {{ .Values.monitoring.namespace }} with default selectors.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "ai-platform.fullname" . }}-backend
+  namespace: {{ .Values.monitoring.namespace }}
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "ai-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      honorLabels: true
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "ai-platform.fullname" . }}
+  namespace: {{ .Values.monitoring.namespace }}
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: {{ include "ai-platform.fullname" . }}
+      rules:
+        - alert: BackendDown
+          expr: min_over_time(up{namespace="{{ $namespace }}"}[5m]) == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Backend is not scrapeable"
+        - alert: BackendHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{namespace="{{ $namespace }}", status=~"5.."}[5m]))
+              by (pod)
+              / clamp_min(sum(rate(http_requests_total{namespace="{{ $namespace }}"}[5m])) by (pod), 1)
+              > 0.05
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Backend 5xx rate above 5%"
+            description: "Pod {{ "{{ $labels.pod }}" }} served more than 5% 5xx responses over the last 10 minutes."
+        - alert: BackendLatencyHigh
+          expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="{{ $namespace }}"}[5m])) by (le, pod)) > 2
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Backend p95 latency above 2s"
+        # Worker health. The backend exports app_worker_up (1 when the arq
+        # worker heartbeat key exists in Redis) — see backend/src/app/system_metrics.py.
+        - alert: WorkerDown
+          expr: min(app_worker_up{namespace="{{ $namespace }}"}) == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "No document-processing worker alive"
+            description: "No arq worker heartbeat has been seen for 5 minutes. Document uploads will stay pending/processing forever. Check the worker Deployment."
+        - alert: WorkerStaleDocuments
+          expr: max(app_documents_stale{namespace="{{ $namespace }}"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Documents stuck in pending/processing"
+        # PostgreSQL pool exhaustion. The backend exports pool_overflow
+        # (checkouts beyond pool_size) — see backend/src/app/database/db.py.
+        - alert: PostgresConnectionPoolExhausted
+          expr: max(pool_overflow{namespace="{{ $namespace }}"}) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Postgres connection pool exhausted"
+        # Redis memory (used_memory from INFO memory, exported by the
+        # backend). 400 MB keeps headroom under the chart's 512Mi limit.
+        - alert: RedisMemoryHigh
+          expr: max(redis_memory_used_bytes{namespace="{{ $namespace }}"}) > 400000000
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Redis memory usage above 400 MB"
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: {{ include "ai-platform.fullname" . }}
+  namespace: {{ .Values.monitoring.namespace }}
+  labels:
+    {{- include "ai-platform.labels" . | nindent 4 }}
+spec:
+  route:
+    groupBy: [namespace, alertname]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+    matchers:
+      - name: severity
+        matchType: =~
+        value: warning|critical
+    receiver: platform-email
+  receivers:
+    - name: platform-email
+      emailConfigs:
+        - to: {{ .Values.monitoring.alertEmailTo | quote }}
+          from: {{ .Values.monitoring.alertEmailFrom | quote }}
+          smarthost: {{ .Values.monitoring.smarthost | quote }}
+          authUsername: alertmanager
+          authIdentity: alertmanager
+          authPassword:
+            name: {{ .Values.monitoring.smtpAuthSecret }}
+            key: password
+            optional: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-platform.fullname" . }}-grafana-dashboard
+  namespace: {{ .Values.monitoring.namespace }}
+  labels:
+    grafana_dashboard: "1"
+    {{- include "ai-platform.labels" . | nindent 4 }}
+data:
+  {{ include "ai-platform.fullname" . }}-dashboard.json: |-
+    {
+      "annotations": { "list": [{ "builtIn": 1, "datasource": { "type": "grafana", "uid": "-- Grafana --" }, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard" }] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }, "unit": "reqps" }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "id": 1,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(http_requests_total{namespace=\"{{ $namespace }}\"}[5m])) by (method)", "legendFormat": "{{ "{{ method }}" }}", "refId": "A" }
+          ],
+          "title": "HTTP request rate by method",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }, "unit": "s" }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "id": 2,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"{{ $namespace }}\"}[5m])) by (le, method))", "legendFormat": "p95 {{ "{{ method }}" }}", "refId": "A" }
+          ],
+          "title": "HTTP p95 latency by method",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }, "unit": "percentunit" }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "id": 3,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "sum(rate(http_requests_total{namespace=\"{{ $namespace }}\",status=~\"5..\"}[5m])) by (method) / clamp_min(sum(rate(http_requests_total{namespace=\"{{ $namespace }}\"}[5m])) by (method), 1)", "legendFormat": "5xx {{ "{{ method }}" }}", "refId": "A" }
+          ],
+          "title": "5xx error rate by method",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }, "unit": "short" }, "overrides": [] },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "id": 4,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "process_resident_memory_bytes{namespace=\"{{ $namespace }}\"}", "legendFormat": "{{ "{{ pod }}" }} RSS", "refId": "A" }
+          ],
+          "title": "Backend RSS memory",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "tags": ["ai-platform"],
+      "templating": { "list": [] },
+      "time": { "from": "now-1h", "to": "now" },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "AI Platform",
+      "uid": "ai-platform",
+      "version": 1,
+      "weekStart": ""
+    }
+{{- end }}

@@ -1,0 +1,36 @@
+# Build context exclusion for the root dev Dockerfile.
+# The bake step COPYs backend/ wholesale, so anything listed here must NEVER
+# end up in an image layer — especially secrets and virtualenvs.
+
+# VCS / tooling
+.git
+.gitignore
+.opencode
+
+# Secrets — never bake environment files into an image!
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Python
+backend/.venv
+**/__pycache__
+*.py[codz]
+*.pyc
+*$py.class
+*.egg-info
+backend/.pytest_cache
+backend/.ruff_cache
+backend/tests
+
+# Node
+node_modules
+**/node_modules
+frontend/dist
+frontend/coverage
+
+# Misc
+*.log
+.DS_Store
+.devspace

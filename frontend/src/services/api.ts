@@ -1,30 +1,269 @@
 import type {
+  AdminStatisticsResponse,
+  BulkUploadResponse,
   Document,
+  DocumentPreview,
   DocumentStatusResponse,
   QAResponse,
   SearchResponse,
   StatisticsResponse,
+  ThumbnailUrlResponse,
   TokenResponse,
   User,
+  WebhookEvent,
+  WebhookSubscription,
+  WebhookTestResult,
 } from "../types";
 
 const API_BASE = "/v1";
 
-class ApiError extends Error {
-  status: number;
+/**
+ * Names of the keys this app writes to `localStorage`.
+ *
+ * They live here, in one place, because the set that gets *written* has to be
+ * the same set that gets *cleared* on sign-out — the BYOK provider key was
+ * persisted by two call sites and removed by neither, so a paid third-party
+ * credential outlived logout and account deletion (#522).
+ */
+export const ACCESS_TOKEN_STORAGE_KEY = "token";
+export const API_KEY_STORAGE_KEY = "askdocs-api-key";
 
-  constructor(status: number, message: string) {
+/**
+ * Drop everything tied to the signed-in user.
+ *
+ * Called on logout and on account deletion. The provider key is a paid secret
+ * belonging to an *external* provider and does not expire, so unlike a device
+ * preference it must not survive the user asking to sign out.
+ */
+export function clearPersistedSession(): void {
+  localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  localStorage.removeItem(API_KEY_STORAGE_KEY);
+}
+
+/** The `details` object the backend attaches to a standardized error. */
+export type ErrorDetails = Record<string, unknown>;
+
+export class ApiError extends Error {
+  status: number;
+  /**
+   * The stable machine-readable code (`provider_rate_limited`,
+   * `rate_limit_exceeded`, `validation_error`, …).
+   *
+   * Kept because the message is for people and this is for the program: the UI
+   * needs to tell "wait a moment" apart from "this will never work" without
+   * pattern-matching English. Absent for the legacy `{detail}` shape and for
+   * responses with no body, so every read of it is optional.
+   */
+  code?: string;
+  details?: ErrorDetails;
+  /**
+   * Seconds to wait before retrying.
+   *
+   * The `Retry-After` header is preferred — it is the interoperable signal, the
+   * one a proxy or any other client reads — and the body's `retry_after` is the
+   * fallback for when a proxy dropped it. Accepts both forms the header may
+   * take (a delay in seconds, or an HTTP date) and resolves them here, so the
+   * field means "how long to wait" whichever source answered.
+   */
+  retryAfterSeconds?: number;
+
+  constructor(
+    status: number,
+    message: string,
+    extra: { code?: string; details?: ErrorDetails; retryAfterSeconds?: number } = {},
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = extra.code;
+    this.details = extra.details;
+    this.retryAfterSeconds = extra.retryAfterSeconds;
   }
 }
 
-async function request<T>(
+/** What a caller needs to explain a rate limit and offer a retry. */
+export interface RateLimitInfo {
+  /** Seconds until the limit is expected to reset, if the server said. */
+  retryAfterSeconds?: number;
+  /** Which provider refused, when the error named one. */
+  provider?: string;
+  /** What was exhausted: the per-minute or per-day budget. */
+  scope?: string;
+  /** Whether the refusal came from our own ceiling or the provider's. */
+  source?: string;
+}
+
+/** `Retry-After` is either a delay in seconds or an HTTP date. */
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, Math.ceil(seconds));
+  }
+  const when = Date.parse(value);
+  if (Number.isNaN(when)) return undefined;
+  return Math.max(0, Math.ceil((when - Date.now()) / 1000));
+}
+
+function str(details: ErrorDetails | undefined, key: string): string | undefined {
+  const value = details?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function num(details: ErrorDetails | undefined, key: string): number | undefined {
+  const value = details?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * The rate-limit facts for an error, or null when it is not a rate limit.
+ *
+ * One helper rather than per-call-site checks, so every surface describes a rate
+ * limit the same way and a future third caller cannot forget a field.
+ *
+ * Both codes are handled: `provider_rate_limited` is the LLM provider refusing,
+ * and `rate_limit_exceeded` is the app's own per-IP limiter. They mean the same
+ * thing to a user — come back shortly — while differing in whether a retry will
+ * help sooner or is already known to have hit a shared provider budget.
+ */
+export function rateLimitFrom(error: unknown): RateLimitInfo | null {
+  if (!(error instanceof ApiError)) return null;
+  if (
+    error.code !== "provider_rate_limited" &&
+    error.code !== "rate_limit_exceeded"
+  ) {
+    return null;
+  }
+  return {
+    retryAfterSeconds: error.retryAfterSeconds,
+    provider: str(error.details, "provider"),
+    scope: str(error.details, "scope"),
+    source: str(error.details, "source"),
+  };
+}
+
+/** A rate limit in words a user can act on, without an internal provider id. */
+/**
+ * A wait, phrased in the largest unit that still reads naturally.
+ *
+ * Seconds is only the right unit under a minute. The daily token cap sends a
+ * wait measured to the next UTC midnight, which is up to 24 hours: the original
+ * formatter rendered that as "Try again in about 52200 seconds", which is both
+ * unreadable and, paired with "this is temporary", self-contradictory.
+ *
+ * `lead` carries the verb, because the two callers mean different things by the
+ * same duration — a provider burst is something to retry, while an exhausted
+ * daily allowance is something to wait out.
+ */
+function formatWait(seconds: number | undefined, lead: string): string {
+  if (seconds === undefined) return "";
+  // A sub-minute wait is worth naming precisely; a fraction of a second is not.
+  const [value, unit] =
+    seconds < 60
+      ? [Math.max(1, Math.round(seconds)), "second"]
+      : seconds < 3600
+        ? [Math.round(seconds / 60), "minute"]
+        : [Math.round(seconds / 3600), "hour"];
+  return ` ${lead} in about ${value} ${unit}${value === 1 ? "" : "s"}.`;
+}
+
+export function describeRateLimit(info: RateLimitInfo): string {
+  const wait = info.retryAfterSeconds;
+
+  // The provider id stays out of the user-facing text on purpose: "groq" is an
+  // internal name, and showing it makes a temporary limit look like a broken
+  // backend. The source distinguishes our ceiling from the provider's, which is
+  // the part that tells a user whether waiting is likely to help.
+  if (info.source === "provider") {
+    return `The AI provider's own rate limit was reached, so this is temporary.${formatWait(wait, "Try again")}`;
+  }
+  if (info.scope === "tokens" || info.scope === "tokens_per_day") {
+    // Not "try again" and not "temporary": the daily allowance is spent, and what
+    // resets is the allowance when the day turns over. Calling a 14-hour wait
+    // temporary is the sentence contradicting itself.
+    // The base sentence already ends in a period, so the fallback for an unknown
+    // wait is nothing at all — "." here produced "is used up..".
+    const resets = formatWait(wait, "It resets");
+    return `The AI provider's daily request allowance is used up.${resets}`;
+  }
+  return `Too many questions in a short time. Please wait a moment.${formatWait(wait, "Try again")}`;
+}
+
+type RequestOptions = RequestInit & { _retried?: boolean };
+
+/** Deduped in-flight refresh call: concurrent 401s share one request. */
+let refreshPromise: Promise<RefreshOutcome> | null = null;
+
+/**
+ * Why a refresh attempt did not yield a token.
+ *
+ * `terminal` is the whole point. A `null` return used to mean both "the server
+ * rejected your refresh token, you are signed out" and "the server never
+ * answered", and the caller cleared the access token for either. So a rate
+ * limit or a 502 during refresh signed the user out — the same defect #579
+ * found on the `/auth/me` path, one request later.
+ */
+interface RefreshFailure {
+  ok: false;
+  /**
+   * The server answered and refused the refresh token, so the session really
+   * has ended. `false` means we were never told (429, 5xx, dropped connection)
+   * and the token must be kept.
+   */
+  terminal: boolean;
+  /** The status that came back, when we got one at all. */
+  status?: number;
+  retryAfterSeconds?: number;
+}
+
+type RefreshOutcome = { ok: true; token: TokenResponse } | RefreshFailure;
+
+async function refreshAccessToken(): Promise<RefreshOutcome> {
+  try {
+    // No Authorization header and no retry: the refresh cookie is the auth.
+    const response = await fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (response.ok) {
+      return { ok: true, token: (await response.json()) as TokenResponse };
+    }
+    const retryAfterSeconds = parseRetryAfter(response.headers.get("Retry-After"));
+    // 401/403 means the cookie itself is no longer good — that is a real end
+    // to the session. Everything else (429, 5xx) means we were not told.
+    return {
+      ok: false,
+      terminal: response.status === 401 || response.status === 403,
+      status: response.status,
+      // Only meaningful when the server said so; harmless otherwise.
+      retryAfterSeconds,
+    };
+  } catch {
+    return { ok: false, terminal: false };
+  }
+}
+
+function getRefreshPromise(): Promise<RefreshOutcome> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
+/**
+ * Core fetch with shared auth handling: attaches the Bearer token from
+ * localStorage, sends the refresh cookie, and transparently mints a fresh
+ * access token via the refresh endpoint when a request comes back 401 (then
+ * replays the original request once). Every API call — JSON or file download —
+ * flows through here so the refresh logic lives in exactly one place.
+ */
+async function fetchWithAuth(
   path: string,
-  options: RequestInit = {},
-): Promise<T> {
-  const token = localStorage.getItem("token");
+  options: RequestOptions = {},
+): Promise<Response> {
+  const token = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
 
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
@@ -45,23 +284,117 @@ async function request<T>(
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
+    // Refresh-token cookie must be sent on same-origin requests (Vite proxy
+    // in dev; same domain in production).
+    credentials: "include",
   });
 
-  if (!response.ok) {
-    // If the server returns 401, the token is invalid or expired.
-    // Clear it and redirect to login so the user can re-authenticate.
-    if (response.status === 401) {
-      localStorage.removeItem("token");
-      window.location.href = "/login";
-      throw new ApiError(401, "Session expired. Please log in again.");
+  if (
+    response.status === 401 &&
+    !options._retried &&
+    // Login failures come from bad credentials, not an expired session —
+    // replaying through a refresh would only mask the real error.
+    path !== "/auth/login"
+  ) {
+    // Try to mint a fresh access token from the refresh cookie, then replay
+    // the original request once. If refresh fails, the session is gone —
+    // clear the token and send the user back to login.
+    const refreshed = await getRefreshPromise();
+    if (refreshed.ok) {
+      localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, refreshed.token.access_token);
+      return fetchWithAuth(path, { ...options, _retried: true });
     }
+    if (!refreshed.terminal) {
+      // The refresh was rate limited or the server was unreachable. That says
+      // nothing about whether this token is still valid, so the session is
+      // kept and the transient failure is surfaced instead of being turned into
+      // a sign-out (#579).
+      throw new ApiError(
+        refreshed.status ?? 503,
+        "Could not reach the server. Please try again.",
+        {
+          code: refreshed.status === 429 ? "rate_limit_exceeded" : "server_unreachable",
+          retryAfterSeconds: refreshed.retryAfterSeconds,
+        },
+      );
+    }
+    localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    window.location.href = "/login";
+    throw new ApiError(401, "Session expired. Please log in again.");
+  }
 
-    const error = await response.json().catch(() => ({ detail: "Request failed" }));
-    // Support both the legacy `{detail}` and the standardized
-    // `{error: {code, message}}` response shapes.
-    const message =
-      error?.detail ?? error?.error?.message ?? `Request failed (${response.status})`;
-    throw new ApiError(response.status, message);
+  return response;
+}
+
+/** Shared error parsing for non-2xx responses (JSON body or fallback). */
+/**
+ * Turn a `validation_error`'s `details` into something a user can act on.
+ *
+ * The backend already explains the rejection: for an over-long question it sends
+ * `{question: "String should have at most 2000 characters"}`. The generic
+ * `message` beside it is "Request validation failed" — true, and useless, since
+ * it names neither the field nor the limit. So the field reasons win when there
+ * are any, joined so a second field is not silently dropped.
+ *
+ * Only the *first* few are listed: this is an error line, not a report, and a
+ * wall of Pydantic messages is as unreadable as none at all.
+ */
+function describeValidationError(details: unknown): string | undefined {
+  if (!details || typeof details !== "object" || Array.isArray(details)) return undefined;
+  const fields = Object.entries(details as Record<string, unknown>).filter(
+    ([, reason]) => typeof reason === "string" && reason.length > 0
+  );
+  if (fields.length === 0) return undefined;
+  const shown = fields.slice(0, 3).map(([field, reason]) => `${field}: ${reason}`);
+  const extra = fields.length - shown.length;
+  return shown.join("; ") + (extra > 0 ? `; and ${extra} more` : "");
+}
+
+async function parseError(response: Response, fallback: string): Promise<ApiError> {
+  // A body that is absent or not JSON (a proxy's HTML error page, an empty
+  // 502) still has to produce the caller's fallback rather than "[object
+  // Object]", so an unparsable body is treated as `{detail: fallback}` exactly
+  // as before — that is where a useful message comes from.
+  const parsed = await response.json().catch(() => undefined);
+  const body = parsed ?? { detail: fallback };
+  // Support both the legacy `{detail}` and the standardized
+  // `{error: {code, message, details}}` response shapes.
+  const details =
+    body?.error?.details && typeof body.error.details === "object"
+      ? (body.error.details as ErrorDetails)
+      : undefined;
+  const code = typeof body?.error?.code === "string" ? body.error.code : undefined;
+
+  // A validation failure already carries per-field reasons, so prefer them over
+  // the summary. Rate limits must not go through here: their `details` is the
+  // retry contract, and `message` is the sentence the user is meant to read.
+  const message =
+    (code === "validation_error" ? describeValidationError(details) : undefined) ??
+    body?.detail ??
+    body?.error?.message ??
+    `Request failed (${response.status})`;
+
+  return new ApiError(response.status, message, {
+    code,
+    details,
+    // The header wins because it is the interoperable signal, but the body
+    // carries the same fact and a proxy can drop the header. Deciding the
+    // precedence here — rather than in each caller — means `retryAfterSeconds`
+    // means "how long to wait" whichever source answered.
+    retryAfterSeconds:
+      parseRetryAfter(response.headers.get("retry-after")) ??
+      num(details, "retry_after"),
+  });
+}
+
+async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const response = await fetchWithAuth(path, options);
+
+  if (!response.ok) {
+    throw await parseError(response, "Request failed");
   }
 
   if (response.status === 204) {
@@ -102,6 +435,28 @@ export const auth = {
   async getMe(): Promise<User> {
     return request<User>("/auth/me");
   },
+
+  /** Mint a fresh access token from the httpOnly refresh cookie. */
+  async refresh(): Promise<TokenResponse> {
+    const refreshed = await getRefreshPromise();
+    if (refreshed.ok) return refreshed.token;
+    // Only a refused cookie is an expired session. A 429 or a dropped
+    // connection is reported as itself, so the caller can tell "sign out" from
+    // "try again in a moment" (#589 shares this path).
+    throw new ApiError(
+      refreshed.terminal ? 401 : refreshed.status ?? 503,
+      refreshed.terminal
+        ? "Session expired. Please log in again."
+        : "Could not reach the server. Please try again.",
+      { retryAfterSeconds: refreshed.retryAfterSeconds },
+    );
+  },
+
+  /** Ask the server to clear the httpOnly refresh cookie. */
+  async logout(): Promise<void> {
+    // _retried: never retry/redirect on 401 — the cookie is already gone.
+    await request<void>("/auth/logout", { method: "POST", _retried: true });
+  },
 };
 
 export const documents = {
@@ -123,18 +478,53 @@ export const documents = {
     return request<Document>("/documents/", { method: "POST", body: formData });
   },
 
+  /** Upload several files in one request. Returns per-file results (partial success is normal). */
+  async uploadMany(files: File[]): Promise<BulkUploadResponse> {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append("files", file);
+    }
+    return request<BulkUploadResponse>("/documents/bulk", { method: "POST", body: formData });
+  },
+
   async delete(id: string): Promise<void> {
     await request<{ message: string }>(`/documents/${id}`, { method: "DELETE" });
   },
 
+  /** Re-enqueue a failed (or ready) document for processing. */
+  async reprocess(id: string): Promise<{
+    message: string;
+    document_id: string;
+    status: string;
+  }> {
+    return request<{ message: string; document_id: string; status: string }>(
+      `/documents/${id}/reprocess`,
+      { method: "POST" },
+    );
+  },
+
   async getDownloadUrl(id: string): Promise<{ id: string; filename: string; download_url: string }> {
     return request(`/documents/${id}/download`);
+  },
+
+  /** Presigned URL of the document's rendered thumbnail (404 when none). */
+  async getThumbnailUrl(id: string): Promise<ThumbnailUrlResponse> {
+    return request<ThumbnailUrlResponse>(`/documents/${id}/thumbnail`);
+  },
+
+  async preview(id: string): Promise<DocumentPreview> {
+    return request<DocumentPreview>(`/documents/${id}/preview`);
   },
 };
 
 export const statistics = {
   async getMe(): Promise<StatisticsResponse> {
     return request<StatisticsResponse>("/statistics/me");
+  },
+
+  /** System-wide aggregates — admin only (403 for customers). */
+  async getAdmin(): Promise<AdminStatisticsResponse> {
+    return request<AdminStatisticsResponse>("/statistics/admin");
   },
 };
 
@@ -171,8 +561,55 @@ export const users = {
     });
   },
 
+  async updateUserActive(userId: string, isActive: boolean): Promise<User> {
+    return request<User>(`/users/${userId}/active`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_active: isActive }),
+    });
+  },
+
   async deleteUser(userId: string): Promise<void> {
     await request<void>(`/users/${userId}`, { method: "DELETE" });
+  },
+
+  /** Delete the current user's own account. */
+  async deleteMe(): Promise<void> {
+    await request<void>("/users/me", { method: "DELETE" });
+  },
+};
+
+export interface UpdateWebhookInput {
+  url?: string;
+  events?: WebhookEvent[];
+  is_active?: boolean;
+}
+
+export const webhooks = {
+  async list(): Promise<WebhookSubscription[]> {
+    return request<WebhookSubscription[]>("/webhooks/");
+  },
+
+  async create(url: string, events: WebhookEvent[]): Promise<WebhookSubscription> {
+    return request<WebhookSubscription>("/webhooks/", {
+      method: "POST",
+      body: JSON.stringify({ url, events }),
+    });
+  },
+
+  async update(id: string, input: UpdateWebhookInput): Promise<WebhookSubscription> {
+    return request<WebhookSubscription>(`/webhooks/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async remove(id: string): Promise<void> {
+    await request<void>(`/webhooks/${id}`, { method: "DELETE" });
+  },
+
+  /** Deliver a one-off ping to verify the receiver endpoint. */
+  async test(id: string): Promise<WebhookTestResult> {
+    return request<WebhookTestResult>(`/webhooks/${id}/test`, { method: "POST" });
   },
 };
 
@@ -181,15 +618,56 @@ export const search = {
     query: string,
     topK = 5,
     documentIds: string[] = [],
+    offset = 0,
   ): Promise<SearchResponse> {
     return request<SearchResponse>("/search/", {
       method: "POST",
       body: JSON.stringify({
         query,
         top_k: topK,
+        offset,
         document_ids: documentIds.length > 0 ? documentIds : null,
       }),
     });
+  },
+
+  /** Download a search's results as a CSV or JSON file. */
+  async exportResults(
+    query: string,
+    format: "csv" | "json",
+    documentIds: string[] = [],
+    topK = 5,
+  ): Promise<void> {
+    // Goes through fetchWithAuth so the 401-refresh-replay and auth header
+    // logic is shared with every other API call.
+    const response = await fetchWithAuth("/search/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query,
+        top_k: topK,
+        offset: 0,
+        document_ids: documentIds.length > 0 ? documentIds : null,
+        format,
+      }),
+    });
+
+    if (!response.ok) {
+      throw await parseError(response, "Export failed");
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    const filename =
+      disposition.match(/filename="?([^";]+)"?/)?.[1] ?? `search_results.${format}`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   },
 };
 
@@ -204,12 +682,16 @@ export const qa = {
     documentIds?: string[],
     model?: string,
   ): Promise<QAResponse> {
+    // Bring-your-own-key: send the user's key (stored in localStorage by
+    // the Settings page) so the backend can route this request through it.
+    const apiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
     return request<QAResponse>("/qa/ask", {
       method: "POST",
       body: JSON.stringify({
         question,
         document_ids: documentIds || null,
         model: model ?? null,
+        api_key: apiKey || null,
       }),
     });
   },

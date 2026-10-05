@@ -1,0 +1,24 @@
+# mise (https://mise.jdx.dev) — single source of truth for development tools.
+#
+# Used on the host (`make host-tools` → `mise install`) and mirrored inside
+# the dev image (see Dockerfile: `mise install --system` + symlinks into
+# /usr/local/bin). Python is deliberately NOT managed by mise — the backend
+# manages it via uv (requires-python) and the baked /opt/backend-venv.
+#
+# Run `mise install` once on the host and commit the generated mise.lock so
+# tool versions are reproducible for everyone.
+
+[tools]
+# Runtime toolchain (dev image + host)
+node = "22"
+uv = "latest"
+gh = "2.101.0"
+
+# Host-only Kubernetes toolchain (infra/scripts, `make k8s-*`, DevSpace
+# inner loop). Not installed into the dev image — it is only needed on the
+# host. DevSpace resolves via the ubi backend (GitHub release binaries).
+kind = "latest"
+kubectl = "latest"
+kustomize = "latest"
+helm = "latest"
+devspace = "ubi:devspace-sh/devspace"

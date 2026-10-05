@@ -1,30 +1,129 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { QAPage } from "./QAPage";
-import { documents, qa } from "../services/api";
+import { renderWithClient } from "../test/renderWithClient";
+import { ApiError, documents, qa } from "../services/api";
+import type { QAResponse } from "../types";
 
-vi.mock("../services/api", () => ({
-  qa: { ask: vi.fn() },
-  documents: { list: vi.fn() },
+const navigateMock = vi.hoisted(() => vi.fn());
+
+vi.mock("react-router-dom", () => ({
+  useNavigate: () => navigateMock,
 }));
+
+// Only the network calls are mocked. `rateLimitFrom` and `describeRateLimit`
+// are pure functions under test here, and stubbing them would let the page
+// tests pass while the notice said nothing.
+vi.mock("../services/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/api")>();
+  return {
+    ...actual,
+    qa: { ask: vi.fn(), getModels: vi.fn() },
+    documents: { list: vi.fn() },
+  };
+});
 
 const mockedAsk = vi.mocked(qa.ask);
 const mockedList = vi.mocked(documents.list);
+const mockedGetModels = vi.mocked(qa.getModels);
+
+/** Matches full textContent — needed when the preview is split into
+ *  <mark>/<span> children by query-term highlighting. */
+function byFullText(text: string) {
+  return (_content: string, element: Element | null) =>
+    element?.textContent === text;
+}
+
+function ask(
+  question: string,
+  answer: string,
+  model: string | null,
+  sources: QAResponse["sources"] = [],
+  mode: QAResponse["mode"] = "semantic",
+) {
+  mockedAsk.mockResolvedValue({
+    question,
+    answer,
+    sources,
+    model,
+    mode,
+  });
+}
+
+async function askQuestion(question: string) {
+  renderWithClient(<QAPage />);
+  fireEvent.change(
+    screen.getByPlaceholderText("Ask a question about your documents..."),
+    { target: { value: question } },
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await act(async () => {});
+}
+
+describe("the question length limit", () => {
+  // The limit lives in `backend/src/app/schemas/qa.py` and nowhere on the
+  // client, so these tests pin the two halves that make it discoverable: an
+  // input that cannot over-run, and a count that appears before the cap is hit.
+  const type = (question: string) =>
+    fireEvent.change(screen.getByLabelText(/ask a question/i), {
+      target: { value: question },
+    });
+
+  beforeEach(() => {
+    mockedAsk.mockReset();
+    mockedGetModels.mockReset();
+    mockedGetModels.mockResolvedValue({ free: [], paid: [] } as never);
+    mockedList.mockResolvedValue([] as never);
+    renderWithClient(<QAPage />);
+  });
+
+  it("caps the input at the limit the backend enforces", () => {
+    const input = screen.getByLabelText(/ask a question/i);
+    expect(input).toHaveAttribute("maxlength", "2000");
+  });
+
+  it("keeps the count out of the way while the question is short", () => {
+    type("what is the retention policy?");
+    expect(screen.queryByText(/\/\s*2000/)).toBeNull();
+  });
+
+  it("shows the count as the cap is approached", () => {
+    // 1800 of 2000: the point where a user is about to be surprised, and the
+    // last moment the warning can be cheap rather than an error.
+    type("a".repeat(1800));
+    expect(screen.getByText("1800 / 2000")).toBeInTheDocument();
+  });
+
+  it("shows the count for an over-long paste rather than swallowing it", () => {
+    // jsdom's `maxLength` does not truncate programmatic values, so a paste
+    // longer than the cap renders here. The count must report what the user
+    // actually has, not clamp the number to look tidy.
+    type("a".repeat(2400));
+    expect(screen.getByText("2400 / 2000")).toBeInTheDocument();
+  });
+
+  it("hides the count again when the question is cut back", () => {
+    type("a".repeat(1900));
+    expect(screen.getByText("1900 / 2000")).toBeInTheDocument();
+    type("short");
+    expect(screen.queryByText("1900 / 2000")).toBeNull();
+  });
+
+  it("is not announced on every keystroke", () => {
+    type("a".repeat(1850));
+    // Polite, not assertive: the count changes per character, and asserting it
+    // would talk over the question being typed.
+    expect(screen.getByText("1850 / 2000")).toHaveAttribute("aria-live", "polite");
+  });
+});
 
 describe("QAPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.removeItem("askdocs-model");
     mockedList.mockResolvedValue([]);
+    mockedGetModels.mockResolvedValue({ free: [], paid: [] });
   });
-
-  function ask(question: string, answer: string, model: string | null) {
-    mockedAsk.mockResolvedValue({
-      question,
-      answer,
-      sources: [],
-      model,
-    });
-  }
 
   it("renders the user question, the answer, and the answering model", async () => {
     ask(
@@ -33,7 +132,7 @@ describe("QAPage", () => {
       "gpt-4o-mini",
     );
 
-    render(<QAPage />);
+    renderWithClient(<QAPage />);
 
     fireEvent.change(
       screen.getByPlaceholderText("Ask a question about your documents..."),
@@ -53,7 +152,7 @@ describe("QAPage", () => {
   it("omits the model badge when the model is null", async () => {
     ask("Hi", "Hello! How can I help?", null);
 
-    render(<QAPage />);
+    renderWithClient(<QAPage />);
 
     fireEvent.change(
       screen.getByPlaceholderText("Ask a question about your documents..."),
@@ -63,5 +162,639 @@ describe("QAPage", () => {
 
     expect(await screen.findByText("Hello! How can I help?")).toBeInTheDocument();
     expect(screen.queryByText(/Answered by/)).not.toBeInTheDocument();
+  });
+
+  it("shows an empty state before any question is asked", () => {
+    renderWithClient(<QAPage />);
+    expect(screen.getByText("No messages yet")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Ask a question about your documents to get started.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("disables Send when the input is empty or whitespace", () => {
+    renderWithClient(<QAPage />);
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toBeDisabled();
+
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+      { target: { value: "   " } },
+    );
+    expect(send).toBeDisabled();
+
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+      { target: { value: "hello" } },
+    );
+    expect(send).toBeEnabled();
+  });
+
+  it("does not call ask for an empty or whitespace-only input", async () => {
+    renderWithClient(<QAPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await act(async () => {});
+    expect(mockedAsk).not.toHaveBeenCalled();
+  });
+
+  it("clears the input after submitting", async () => {
+    ask("Hello", "Hi there!", null);
+    await askQuestion("Hello");
+    expect(
+      (screen.getByPlaceholderText(
+        "Ask a question about your documents...",
+      ) as HTMLInputElement).value,
+    ).toBe("");
+  });
+
+  it("shows a loading indicator while waiting for the answer", async () => {
+    let resolveAsk: (value: QAResponse) => void;
+    mockedAsk.mockReturnValue(
+      new Promise<QAResponse>((resolve) => {
+        resolveAsk = resolve;
+      }),
+    );
+
+    renderWithClient(<QAPage />);
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+      { target: { value: "Loading?" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(screen.getByText("Thinking…")).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Thinking" })).toBeTruthy();
+    // Fields are disabled while the request is in flight.
+    expect(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+
+    await act(async () => {
+      resolveAsk!({
+        question: "Loading?",
+        answer: "Done.",
+        sources: [],
+        model: null,
+      });
+    });
+  });
+
+  it("surfaces an error message when the request fails", async () => {
+    mockedAsk.mockRejectedValue(new Error("AI service unavailable"));
+    await askQuestion("Will this fail?");
+    expect(screen.getByText("AI service unavailable")).toBeTruthy();
+  });
+
+  it("clears a previous error before the next request", async () => {
+    mockedAsk
+      .mockRejectedValueOnce(new Error("AI service unavailable"))
+      .mockResolvedValueOnce({
+        question: "Retry",
+        answer: "Recovered.",
+        sources: [],
+        model: null,
+      });
+
+    await askQuestion("First");
+    expect(screen.getByText("AI service unavailable")).toBeTruthy();
+
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+      { target: { value: "Retry" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await act(async () => {});
+
+    expect(screen.queryByText("AI service unavailable")).toBeNull();
+    expect(await screen.findByText("Recovered.")).toBeTruthy();
+  });
+
+  it("renders the cited sources with their document filenames", async () => {
+    const sources = [
+      {
+        chunk_id: "chunk-1",
+        document_id: "doc-1",
+        document_filename: "annual-report.pdf",
+        content: "Revenue grew by 20% in Q4 across all segments.",
+        score: 0.93,
+        metadata_: null,
+      },
+    ];
+    ask("What is the revenue growth?", "20% in Q4.", "gpt-4o-mini", sources);
+
+    renderWithClient(<QAPage />);
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+      { target: { value: "What is the revenue growth?" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText(/Sources — why this document/)).toBeTruthy();
+    expect(screen.getByText("annual-report.pdf")).toBeTruthy();
+    // 0.93 distance → 7% similarity → the weak tone chip.
+    expect(screen.getByText("7% match")).toBeTruthy();
+    expect(
+      screen.getByText(/closest semantic match to your question/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(byFullText("Revenue grew by 20% in Q4 across all segments.")),
+    ).toBeTruthy();
+  });
+
+  it("omits the sources section when the answer has no sources", async () => {
+    ask("Hi", "No sources here", null);
+    await askQuestion("Hi");
+    expect(screen.queryByText(/Sources — why this document/)).not.toBeInTheDocument();
+  });
+
+  it("passes the persisted model from localStorage to the API", async () => {
+    localStorage.setItem("askdocs-model", "gpt-4-turbo");
+    mockedAsk.mockResolvedValue({
+      question: "Model?",
+      answer: "gpt-4-turbo",
+      sources: [],
+      model: "gpt-4-turbo",
+    });
+
+    await askQuestion("Model?");
+    expect(mockedAsk).toHaveBeenCalledWith(
+      "Model?",
+      undefined,
+      "gpt-4-turbo",
+    );
+  });
+
+  it("sends undefined model when nothing is saved in localStorage", async () => {
+    ask("Default model?", "The default.", null);
+    await askQuestion("Default model?");
+    expect(mockedAsk).toHaveBeenCalledWith("Default model?", undefined, undefined);
+  });
+
+  it("highlights the question terms inside the source preview", async () => {
+    const sources: QAResponse["sources"] = [
+      {
+        chunk_id: "chunk-2",
+        document_id: "doc-2",
+        document_filename: "notes.txt",
+        content: "Q3 planning meeting notes about revenue and growth.",
+        score: 0.08,
+        metadata_: null,
+      },
+    ];
+    ask("What about Q3?", "Revenue grew.", null, sources);
+    await askQuestion("What about Q3?");
+
+    // The preview is clipped to 240 chars and query terms are <mark>ed
+    // (tokens shorter than 3 chars like "Q3" are skipped by the matcher).
+    expect(
+      screen.getByText(byFullText("Q3 planning meeting notes about revenue and growth.")),
+    ).toBeTruthy();
+    const marks = document.querySelectorAll("mark");
+    expect(marks.length).toBeGreaterThan(0);
+    expect(marks[0]!.textContent).toBe("about");
+  });
+
+  it("navigates to a search scoped to the source document on click", async () => {
+    const sources: QAResponse["sources"] = [
+      {
+        chunk_id: "chunk-3",
+        document_id: "doc-9",
+        document_filename: "security.txt",
+        content: "Security policies live in the handbook.",
+        score: 0.2,
+        metadata_: null,
+      },
+    ];
+    ask("Where is security covered?", "In the handbook.", null, sources);
+    await askQuestion("Where is security covered?");
+
+    fireEvent.click(screen.getByRole("button", { name: /security\.txt/ }));
+    expect(navigateMock).toHaveBeenCalledWith(
+      "/app/search?q=Where%20is%20security%20covered%3F&doc=doc-9",
+    );
+  });
+
+  it("limits the question to the selected documents from the filter", async () => {
+    mockedList.mockResolvedValue([
+      {
+        id: "doc-1",
+        owner_id: "user-1",
+        filename: "report.pdf",
+        object_key: "k1",
+        mime_type: "application/pdf",
+        status: "ready",
+        error_message: null,
+        has_thumbnail: true,
+        created_at: "2026-09-08T00:00:00Z",
+        updated_at: "2026-09-08T00:00:00Z",
+      },
+    ]);
+    ask("Only this doc?", "Yes.", null);
+
+    renderWithClient(<QAPage />);
+    await act(async () => {});
+
+    fireEvent.click(await screen.findByRole("button", { name: /report.pdf/ }));
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+      { target: { value: "Only this doc?" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await act(async () => {});
+
+    expect(mockedAsk).toHaveBeenCalledWith("Only this doc?", ["doc-1"], undefined);
+  });
+
+  it("accumulates multiple turns as a conversation", async () => {
+    ask("First?", "First answer.", null);
+    await askQuestion("First?");
+
+    ask("Second?", "Second answer.", null);
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+      { target: { value: "Second?" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await act(async () => {});
+
+    expect(screen.getByText("First answer.")).toBeTruthy();
+    expect(screen.getByText("Second answer.")).toBeTruthy();
+    // Empty state disappears once the conversation starts.
+    expect(screen.queryByText("No messages yet")).not.toBeInTheDocument();
+  });
+
+  it("renders assistant answers as markdown", async () => {
+    ask("Format?", "**bold** and `code`", null);
+
+    renderWithClient(<QAPage />);
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+      { target: { value: "Format?" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText("bold")).toBeInTheDocument();
+    expect(screen.getByText("code")).toBeInTheDocument();
+  });
+
+  it("distinguishes user messages from assistant messages", async () => {
+    ask("Who are you?", "An assistant.", null);
+
+    renderWithClient(<QAPage />);
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+      { target: { value: "Who are you?" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText("Who are you?")).toBeTruthy();
+    // Both avatars render: U for the user, AI for the assistant.
+    expect(screen.getAllByText("U").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("AI").length).toBeGreaterThan(0);
+  });
+
+  it("renders the model picker with free and paid models", async () => {
+    // Mirrors the backend registry's tiering: gpt-4o-mini is paid, so it must
+    // not appear in the free group.
+    mockedGetModels.mockResolvedValue({
+      free: ["openai/gpt-oss-120b", "llama-3.3-70b-versatile"],
+      paid: ["gpt-4o-mini", "gpt-4o"],
+    });
+
+    renderWithClient(<QAPage />);
+    await act(async () => {});
+
+    const select = screen.getByLabelText("Model");
+    expect(
+      screen.getByRole("option", { name: "openai/gpt-oss-120b" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: "llama-3.3-70b-versatile" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: "gpt-4o-mini" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("option", { name: "gpt-4o" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Provider default" })).toBeTruthy();
+    expect((select as HTMLSelectElement).value).toBe("");
+  });
+
+  it("persists a selected model and passes it to ask", async () => {
+    mockedGetModels.mockResolvedValue({ free: ["gpt-4o-mini"], paid: [] });
+    ask("Model picker?", "Picked gpt-4o-mini.", "gpt-4o-mini");
+
+    renderWithClient(<QAPage />);
+    await act(async () => {});
+
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: { value: "gpt-4o-mini" },
+    });
+    expect(localStorage.getItem("askdocs-model")).toBe("gpt-4o-mini");
+
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+      { target: { value: "Model picker?" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await act(async () => {});
+
+    expect(mockedAsk).toHaveBeenCalledWith(
+      "Model picker?",
+      undefined,
+      "gpt-4o-mini",
+    );
+  });
+
+  it("submits a suggested question from the empty state", async () => {
+    ask("Which documents mention security?", "Security is covered.", null);
+
+    renderWithClient(<QAPage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Which documents mention security?" }),
+    );
+    await act(async () => {});
+
+    expect(mockedAsk).toHaveBeenCalledWith(
+      "Which documents mention security?",
+      undefined,
+      undefined,
+    );
+    expect(screen.getByText("Security is covered.")).toBeTruthy();
+  });
+
+  it("offers follow-up chips after an answer and appends them", async () => {
+    ask("First?", "First answer.", null);
+    await askQuestion("First?");
+
+    ask("Can you elaborate on that?", "Elaboration.", null);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Can you elaborate on that?" }),
+    );
+    await act(async () => {});
+
+    expect(mockedAsk).toHaveBeenLastCalledWith(
+      "Can you elaborate on that?",
+      undefined,
+      undefined,
+    );
+    // Both turns remain on screen.
+    expect(screen.getByText("First answer.")).toBeTruthy();
+    expect(screen.getByText("Elaboration.")).toBeTruthy();
+    expect(
+      screen.getByText("What are the key takeaways?"),
+    ).toBeTruthy();
+  });
+
+  it("copies an answer to the clipboard with feedback", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    ask("Copy?", "Copyable answer text.", null);
+
+    renderWithClient(<QAPage />);
+    fireEvent.change(
+      screen.getByPlaceholderText("Ask a question about your documents..."),
+      { target: { value: "Copy?" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy answer" }));
+    await act(async () => {});
+
+    expect(writeText).toHaveBeenCalledWith("Copyable answer text.");
+    expect(screen.getByText("Copied!")).toBeTruthy();
+  });
+
+  it("starts a new conversation with the New chat button", async () => {
+    ask("Greeting?", "Hello!", null);
+    await askQuestion("Greeting?");
+
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await act(async () => {});
+
+    expect(screen.getByText("No messages yet")).toBeTruthy();
+    expect(screen.queryByText("Hello!")).not.toBeInTheDocument();
+  });
+});
+describe("QAPage keyword-only retrieval", () => {
+  beforeEach(() => {
+    mockedList.mockResolvedValue([]);
+    mockedGetModels.mockResolvedValue({ free: [], paid: [] });
+  });
+
+  it("warns that the answer was grounded in literal matches", async () => {
+    // An answer that quietly missed the relevant passage is indistinguishable
+    // from a model that was simply wrong, so the cause has to be on screen.
+    ask("q", "A", "llama3.2:1b", [], "keyword");
+
+    await askQuestion("q");
+
+    const notice = document.querySelector(".search-mode-notice");
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent).toContain("Keyword-only retrieval");
+    expect(notice?.getAttribute("role")).toBe("status");
+  });
+
+  it("says which key costs money and which do not", async () => {
+    // The notice used to name only OPENAI_API_KEY, which is the paid one, and
+    // said nothing about the two free paths — so a reader could reasonably
+    // assume the key it named was the free option.
+    ask("q", "A", "llama3.2:1b", [], "keyword");
+
+    await askQuestion("q");
+
+    const text = document.querySelector(".search-mode-notice")?.textContent ?? "";
+    expect(text).toContain("bills your OpenAI account");
+    expect(text).toContain("GROQ_API_KEY");
+    expect(text).toContain("LOCAL_LLM_ENABLED=true");
+    // Groq serves chat models, not embeddings. Promising otherwise would send
+    // the reader to set a key that cannot fix the notice.
+    expect(text).toContain("cannot supply embeddings");
+  });
+
+  it("offers the local model server as a free way to get semantic retrieval", async () => {
+    // The inverse, and the reason the copy was rewritten: the local provider
+    // serves embeddings too, so telling a zero-cost reader that its only free
+    // option cannot fix the notice was simply wrong.
+    ask("q", "A", "llama3.2:1b", [], "keyword");
+
+    await askQuestion("q");
+
+    const text = document.querySelector(".search-mode-notice")?.textContent ?? "";
+    expect(text).toMatch(
+      /LOCAL_LLM_ENABLED=true[\s\S]*local model server[\s\S]*free/i
+    );
+    // The limitation must be attributed to Groq, not left with no subject.
+    expect(text).toMatch(/GROQ_API_KEY[\s\S]*cannot supply embeddings/i);
+  });
+
+  it("says nothing when retrieval was semantic", async () => {
+    ask("q", "A", "gpt-4o-mini", [], "semantic");
+
+    await askQuestion("q");
+
+    expect(document.querySelector(".search-mode-notice")).toBeNull();
+  });
+
+  it("says nothing when an older backend omits the mode", async () => {
+    mockedAsk.mockResolvedValue({
+      question: "q",
+      answer: "A",
+      sources: [],
+      model: "gpt-4o-mini",
+    });
+
+    await askQuestion("q");
+
+    expect(document.querySelector(".search-mode-notice")).toBeNull();
+  });
+});
+
+describe("QAPage rate limits (#499)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.removeItem("askdocs-model");
+    mockedList.mockResolvedValue([]);
+    mockedGetModels.mockResolvedValue({ free: [], paid: [] });
+  });
+
+  /** The error the backend sends for a question the provider refused. */
+  function rateLimited(retryAfterSeconds = 17) {
+    return new ApiError(
+      429,
+      "The groq provider is rate limited. Please retry in 17 seconds.",
+      {
+        code: "provider_rate_limited",
+        details: {
+          provider: "groq",
+          scope: "minute",
+          limit: 30,
+          used: 30,
+          source: "provider",
+          retry_after: retryAfterSeconds,
+        },
+        retryAfterSeconds,
+      },
+    );
+  }
+
+  it("shows a temporary notice with the wait, not the provider's message", async () => {
+    mockedAsk.mockRejectedValue(rateLimited());
+
+    await askQuestion("What is the refund window?");
+
+    const notice = document.querySelector(".rate-limit-notice");
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent).toMatch(/17 seconds/);
+    expect(notice?.textContent).toMatch(/temporary/i);
+    // The backend message names the provider, which means nothing to a user and
+    // makes a healthy system look broken.
+    expect(notice?.textContent).not.toMatch(/groq/i);
+  });
+
+  it("does not render a rate limit as an error alert", async () => {
+    mockedAsk.mockRejectedValue(rateLimited());
+
+    await askQuestion("q");
+
+    // role="status" is a polite condition; role="alert" interrupts as a fault.
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("puts the question back in the box so retrying is one action", async () => {
+    mockedAsk.mockRejectedValue(rateLimited());
+
+    await askQuestion("What is the refund window?");
+
+    const input = screen.getByPlaceholderText(
+      "Ask a question about your documents...",
+    ) as HTMLTextAreaElement;
+    expect(input.value).toBe("What is the refund window?");
+  });
+
+  it("keeps the question in the transcript as well as the input", async () => {
+    mockedAsk.mockRejectedValue(rateLimited());
+
+    await askQuestion("What is the refund window?");
+
+    expect(screen.getByText("What is the refund window?")).toBeInTheDocument();
+  });
+
+  it("clears the notice once the next question succeeds", async () => {
+    // One render, two asks: `askQuestion` renders a fresh page each time, so a
+    // second call would mount a second copy and the queries would match both.
+    renderWithClient(<QAPage />);
+    const box = () =>
+      screen.getByPlaceholderText("Ask a question about your documents...");
+    const send = async (question: string) => {
+      fireEvent.change(box(), { target: { value: question } });
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      await act(async () => {});
+    };
+
+    mockedAsk.mockRejectedValueOnce(rateLimited());
+    await send("first question");
+    expect(document.querySelector(".rate-limit-notice")).not.toBeNull();
+
+    ask("second question", "An answer.", "gpt-4o-mini");
+    await send("second question");
+
+    expect(document.querySelector(".rate-limit-notice")).toBeNull();
+    expect(screen.getByText("An answer.")).toBeInTheDocument();
+  });
+
+  it("still renders an ordinary failure as an error alert", async () => {
+    // A non-rate-limit error must be unaffected by all of the above.
+    mockedAsk.mockRejectedValue(new Error("Network request failed"));
+
+    await askQuestion("q");
+
+    const alert = document.querySelector('[role="alert"]');
+    expect(alert?.textContent).toBe("Network request failed");
+    expect(document.querySelector(".rate-limit-notice")).toBeNull();
+  });
+
+  it("describes an exhausted daily allowance as a spent day, not a busy minute", async () => {
+    // 15 hours is what the backend sends when the daily cap is hit mid-morning,
+    // so the notice is rendered from a real daily-cap refusal rather than a
+    // missing wait.
+    mockedAsk.mockRejectedValue(
+      new ApiError(429, "rate limited", {
+        code: "provider_rate_limited",
+        details: { provider: "groq", scope: "tokens", source: "app" },
+        retryAfterSeconds: 52200,
+      }),
+    );
+
+    await askQuestion("q");
+
+    const notice = document.querySelector(".rate-limit-notice");
+    // "daily" and "resets", not "today" and "temporary": a half-day wait is not
+    // a temporary blip, and what comes back is a fresh allowance, not a retry.
+    expect(notice?.textContent).toMatch(/daily/i);
+    expect(notice?.textContent).toMatch(/resets/i);
+    expect(notice?.textContent).toMatch(/15 hours/);
+    expect(notice?.textContent).not.toMatch(/temporary/i);
+    expect(notice?.textContent).not.toMatch(/groq/i);
+  });
+
+  it("handles the app's own per-IP limiter with the same notice", async () => {
+    mockedAsk.mockRejectedValue(
+      new ApiError(429, "Too many requests", { code: "rate_limit_exceeded" }),
+    );
+
+    await askQuestion("q");
+
+    const notice = document.querySelector(".rate-limit-notice");
+    expect(notice?.textContent).toMatch(/wait a moment/i);
+    // No number was sent, so the sentence must not claim one.
+    expect(notice?.textContent).not.toMatch(/undefined|NaN|second/);
   });
 });

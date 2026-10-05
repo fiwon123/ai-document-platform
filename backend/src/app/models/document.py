@@ -1,15 +1,15 @@
-import enum
 import uuid
 from datetime import UTC, datetime
+from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.db import Base
 
 
-class DocumentStatus(str, enum.Enum):
+class DocumentStatus(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
     READY = "ready"
@@ -19,14 +19,35 @@ class DocumentStatus(str, enum.Enum):
 class DocumentDB(Base):
     __tablename__ = "documents"
 
+    # Mirrors migration 004: per-user document listing queries on
+    # WHERE owner_id = ? ORDER BY created_at DESC, which PostgreSQL serves
+    # with a backward scan of this composite index (the owner_id index
+    # alone would need a sort of every row of the user).
+    __table_args__ = (
+        Index(
+            "ix_documents_owner_id_created_at",
+            "owner_id",
+            "created_at",
+        ),
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
     )
 
+    # ON DELETE CASCADE is what makes deleting an account actually delete its
+    # documents (#495). It is declared on the column rather than as an ORM
+    # relationship on purpose: a relationship makes SQLAlchemy load and
+    # delete-or-nullify the children itself, and with a NOT NULL owner_id that
+    # raises `NotNullViolation` instead of cascading — the same trap that needed
+    # `passive_deletes=True` on the document -> chunks relationship. Leaving the
+    # cascade to the database means there is no ORM path that can break it.
+    # `document_chunks` follows through the cascade migration 002 established.
     owner_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -59,6 +80,14 @@ class DocumentDB(Base):
     error_message: Mapped[str | None] = mapped_column(
         String,
         nullable=True,
+    )
+
+    # True once the worker rendered a visual thumbnail (PDFs only) and
+    # stored it next to the original in object storage.
+    has_thumbnail: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
     )
 
     created_at: Mapped[datetime] = mapped_column(

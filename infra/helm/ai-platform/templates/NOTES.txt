@@ -1,0 +1,43 @@
+The AI Document Intelligence Platform has been deployed.
+
+Release name: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+Get the application URL:
+{{- if .Values.ingress.enabled }}
+  http://{{ .Values.ingress.host }}
+{{- else if eq .Values.service.type "NodePort" }}
+  Frontend: http://<node-ip>:{{ .Values.service.nodePorts.frontend }}
+  Backend API: http://<node-ip>:{{ .Values.service.nodePorts.backend }}/v1/health
+{{- else }}
+  kubectl port-forward svc/{{ include "ai-platform.fullname" . }}-frontend 5175:{{ .Values.service.frontendPort }}
+{{- end }}
+
+Components:
+  - backend (FastAPI)   -> svc/{{ include "ai-platform.fullname" . }}-backend
+  - worker (arq)        -> deploy/{{ include "ai-platform.fullname" . }}-worker
+  - frontend (SPA)      -> svc/{{ include "ai-platform.fullname" . }}-frontend
+  - postgres (pgvector) -> svc/{{ include "ai-platform.fullname" . }}-postgres
+  - redis               -> svc/{{ include "ai-platform.fullname" . }}-redis
+  - minio               -> svc/{{ include "ai-platform.fullname" . }}-minio
+
+Notes:
+  - Migrations run automatically via the one-shot Job
+    ({{ include "ai-platform.fullname" . }}-migrate); backend and worker
+    gate startup on it completing.
+  - The bundled Secret ({{ .Values.secrets.name }}) contains DEV placeholder
+    credentials (docker-compose defaults). For real environments either
+    - set the value-based secrets.subkeys (jwtSecretKey, postgresPassword,
+      minioAccessKey, minioSecretKey) via --set / user-supplied values, or
+    - set secrets.external=true, create your own Secret named
+      {{ .Values.secrets.name }} with the keys SECRET_KEY, POSTGRES_PASSWORD,
+      MINIO_ACCESS_KEY, MINIO_SECRET_KEY, DATABASE_URL (e.g. via External
+      Secrets), and helm will not render the bundled one.
+  - OPENAI_API_KEY / GROQ_API_KEY are NOT bundled; provide them through
+    secrets.external or backend.extraEnv / worker.extraEnv.
+  - Health check: curl http://<endpoint>/v1/health
+
+Upgrade:
+  helm upgrade {{ .Release.Name }} infra/helm/ai-platform \
+    --namespace {{ .Release.Namespace }} \
+    --reuse-values [--set ...]

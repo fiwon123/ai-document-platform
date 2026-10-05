@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentFilter } from "./DocumentFilter";
+import { renderWithClient } from "../test/renderWithClient";
 import type { Document } from "../types";
 
 const docs: Document[] = [
@@ -12,6 +13,7 @@ const docs: Document[] = [
     mime_type: "application/pdf",
     status: "ready",
     error_message: null,
+    has_thumbnail: true,
     created_at: "2026-09-08T00:00:00Z",
     updated_at: "2026-09-08T00:00:00Z",
   },
@@ -23,6 +25,7 @@ const docs: Document[] = [
     mime_type: "text/plain",
     status: "failed",
     error_message: "No text content could be extracted",
+    has_thumbnail: false,
     created_at: "2026-09-08T00:00:00Z",
     updated_at: "2026-09-08T00:00:00Z",
   },
@@ -31,9 +34,6 @@ const docs: Document[] = [
 vi.mock("../services/api", () => ({
   documents: {
     list: vi.fn(),
-    getStatus: vi.fn(),
-    upload: vi.fn(),
-    delete: vi.fn(),
   },
 }));
 
@@ -52,22 +52,29 @@ describe("DocumentFilter", () => {
 
   function renderFilter(selected: string[] = []) {
     const onChange = vi.fn();
-    render(<DocumentFilter selected={selected} onChange={onChange} />);
+    renderWithClient(<DocumentFilter selected={selected} onChange={onChange} />);
     return onChange;
   }
 
-  it("lists the user's documents", async () => {
+  it("lists the user's documents as chips", async () => {
     renderFilter();
 
-    expect(await screen.findByText("report.pdf")).toBeTruthy();
-    expect(screen.getByText("notes.txt")).toBeTruthy();
-    expect(screen.getByLabelText("All documents")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /report.pdf/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /notes.txt/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /All documents/ })).toBeTruthy();
+  });
+
+  it("marks the All documents chip selected when nothing else is", async () => {
+    renderFilter();
+
+    const allChip = await screen.findByRole("button", { name: /All documents/ });
+    expect(allChip.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("reports a selected document via onChange", async () => {
     const onChange = renderFilter();
 
-    fireEvent.click(await screen.findByLabelText("report.pdf"));
+    fireEvent.click(await screen.findByRole("button", { name: /report.pdf/ }));
 
     expect(onChange).toHaveBeenCalledWith(["doc-a"]);
   });
@@ -75,7 +82,7 @@ describe("DocumentFilter", () => {
   it("removes a document from the selection on second click", async () => {
     const onChange = renderFilter(["doc-a", "doc-b"]);
 
-    fireEvent.click(await screen.findByLabelText("report.pdf"));
+    fireEvent.click(await screen.findByRole("button", { name: /report.pdf/ }));
 
     expect(onChange).toHaveBeenCalledWith(["doc-b"]);
   });
@@ -83,14 +90,14 @@ describe("DocumentFilter", () => {
   it("clears the selection when All documents is clicked", async () => {
     const onChange = renderFilter(["doc-a"]);
 
-    fireEvent.click(await screen.findByLabelText("All documents"));
+    fireEvent.click(await screen.findByRole("button", { name: /All documents/ }));
 
     expect(onChange).toHaveBeenCalledWith([]);
   });
 
   it("renders nothing when the user has no documents", async () => {
     mockedList.mockResolvedValue([]);
-    const { container } = render(<DocumentFilter selected={[]} onChange={vi.fn()} />);
+    const { container } = renderWithClient(<DocumentFilter selected={[]} onChange={vi.fn()} />);
 
     await act(async () => {});
 

@@ -23,24 +23,27 @@ The platform allows users to:
 
 ## Main features
 
-- User authentication
-- JWT-based authorization
-- Document upload
+- User authentication (JWT with refresh-token rotation)
+- Document upload, including bulk upload
 - Asynchronous document processing
 - Text extraction and chunking
 - Embedding generation
-- Semantic search
-- Document question answering
+- Semantic search with pagination and per-document filtering
+- Search result export (CSV/JSON, formula-injection safe)
+- Document question answering (OpenAI or Groq, optional bring-your-own-key)
 - Document processing status
+- PDF first-page thumbnails
+- Semantic caching (QA answers, dashboard statistics)
+- User and admin dashboards with system-wide statistics
 - User-specific document isolation
+- Public marketing site (product, company, and legal pages; no auth)
 - Rate limiting
-- Caching
 - Error handling and retries
 - Monitoring and logging
 
 ## Technology stack
 
-- Frontend: React
+- Frontend: React 19, TypeScript, Vite
 - Backend: Python and FastAPI
 - Database: PostgreSQL
 - ORM: SQLAlchemy
@@ -49,7 +52,7 @@ The platform allows users to:
 - Background jobs: Redis-based worker system
 - Containers: Docker
 - Authentication: JWT
-- AI integration: OpenAI or another compatible LLM API
+- AI integration: OpenAI or another compatible LLM API (e.g. Groq)
 
 ## System architecture
 
@@ -73,82 +76,118 @@ LLM and Embedding APIs
 ├── backend/                    # FastAPI application
 │   ├── src/app/               # Application source code
 │   │   ├── main.py            # FastAPI app entry point
+│   │   ├── database/          # SQLAlchemy engine/session setup (db.py)
 │   │   ├── models/            # SQLAlchemy ORM models
-│   │   │   ├── __init__.py    # Model exports
 │   │   │   ├── user.py        # UserDB model
 │   │   │   ├── document.py    # DocumentDB model
 │   │   │   ├── chunk.py       # DocumentChunk model
+│   │   │   ├── webhook.py     # WebhookSubscription model
 │   │   │   └── search.py      # SearchHistory model
 │   │   ├── routes/            # API route handlers
-│   │   │   ├── __init__.py    # Route exports
-│   │   │   ├── auth.py        # Authentication routes
-│   │   │   ├── document.py    # Document routes
-│   │   │   ├── search.py      # Search routes
-│   │   │   ├── qa.py          # Q&A routes
+│   │   │   ├── auth.py        # Authentication routes (register/login/refresh/logout/me)
+│   │   │   ├── users.py       # User admin + self-management routes
+│   │   │   ├── document.py    # Document routes (upload, bulk, CRUD, status, preview, download, thumbnail)
+│   │   │   ├── search.py      # Search + export routes
+│   │   │   ├── qa.py          # Q&A routes (ask, models)
+│   │   │   ├── statistics.py  # Statistics routes (/me, /admin)
+│   │   │   ├── webhook.py     # Webhook routes (list, create, update, delete, test)
 │   │   │   └── health.py      # Health check routes
 │   │   ├── schemas/           # Pydantic request/response models
-│   │   │   ├── __init__.py    # Schema exports
 │   │   │   ├── user.py        # User schemas
-│   │   │   └── document.py    # Document/Search/QA schemas
+│   │   │   ├── document.py    # Document/Search/QA schemas
+│   │   │   ├── statistics.py  # Statistics schemas
+│   │   │   ├── webhook.py     # Webhook schemas
+│   │   │   └── error.py       # Error response schema
 │   │   ├── services/          # Business logic layer
-│   │   │   ├── __init__.py    # Service exports
 │   │   │   ├── user.py        # User service
 │   │   │   ├── document.py    # Document service
-│   │   │   ├── search.py      # Search service
-│   │   │   ├── qa.py          # Q&A service
+│   │   │   ├── search.py      # Search service (incl. cache-version helpers)
+│   │   │   ├── qa.py          # Q&A service (OpenAI/Groq, BYOK, answer caching)
+│   │   │   ├── statistics.py  # Statistics service (cached summaries)
+│   │   │   ├── webhook.py     # Webhook signing, delivery, retries
 │   │   │   ├── embedding.py   # Embedding generation
 │   │   │   ├── text_extraction.py  # Text extraction
-│   │   │   └── chunking.py    # Text chunking
+│   │   │   ├── chunking.py    # Text chunking
+│   │   │   └── thumbnail.py   # PDF first-page thumbnail rendering (PyMuPDF)
 │   │   ├── repositories/      # Database query layer
-│   │   │   ├── __init__.py    # Repository exports
 │   │   │   ├── user.py        # User repository
 │   │   │   ├── document.py    # Document repository
-│   │   │   └── search.py      # Search repository
+│   │   │   ├── search.py      # Search repository
+│   │   │   ├── statistics.py  # Statistics repository
+│   │   │   └── webhook.py     # Webhook repository
 │   │   ├── storage/           # MinIO/S3 client
-│   │   │   ├── __init__.py    # Storage exports
 │   │   │   └── storage.py     # MinioStorage class
 │   │   ├── cache/             # Redis client
-│   │   │   ├── __init__.py    # Cache exports
 │   │   │   └── redis.py       # RedisClient class
-│   │   ├── middleware/         # FastAPI middleware
-│   │   │   ├── __init__.py    # Middleware exports
+│   │   ├── middleware/        # FastAPI middleware
 │   │   │   ├── rate_limit.py  # Rate limiting
 │   │   │   └── logging.py     # Request logging
-│   │   └── worker/            # Background job processing
-│   │       └── __init__.py    # Worker implementation
+│   │   └── worker/            # Arq background processor
+│   │       └── __init__.py    # WorkerSettings + document pipeline (chunking, embeddings, thumbnails)
+│   ├── scripts/               # Operator CLIs (not part of the API surface)
+│   │   └── backfill_embeddings.py  # Re-embed chunks left unsearchable by migration 008
 │   ├── migrations/            # Alembic migrations
 │   │   ├── env.py             # Migration environment
 │   │   └── versions/          # Migration versions
 │   │       ├── 001_initial_migration.py
-│   │       └── 002_add_chunks_search_pgvector.py
-│   └── pyproject.toml         # Python dependencies (uv)
-├── frontend/                   # React application
+│   │       ├── 002_add_chunks_search_pgvector.py
+│   │       ├── 003_add_document_thumbnail.py
+│   │       ├── 004_add_documents_composite_index.py
+│   │       ├── 005_align_models_with_schema.py
+│   │       ├── 006_webhook_subscriptions.py
+│   │       ├── 007_keyword_search_index.py  # GIN index for keyword search
+│   │       └── 008_local_embedding_space.py  # local embedding space + per-row model
+│   ├── tests/                 # pytest suite (conftest fixtures; document, search, qa,
+│   │                          # user, worker, status, cache, webhook, thumbnail,
+│   │                          # statistics, embedding-space tests)
+│   ├── pyproject.toml         # Python dependencies (uv)
+│   └── uv.lock                # Locked dependency versions
+├── frontend/                   # React 19 / Vite / TypeScript SPA
 │   ├── src/                   # Source code
-│   │   ├── components/        # React components
-│   │   │   ├── Navbar.tsx     # Navigation bar
-│   │   │   └── ProtectedRoute.tsx  # Auth route guard
-│   │   ├── pages/             # Page components
-│   │   │   ├── LoginPage.tsx  # Login page
-│   │   │   ├── RegisterPage.tsx  # Registration page
-│   │   │   ├── DocumentsPage.tsx  # Document management
-│   │   │   ├── SearchPage.tsx # Search page
-│   │   │   └── QAPage.tsx     # Q&A chat interface
-│   │   ├── hooks/             # Custom React hooks
-│   │   │   └── useAuth.tsx    # Authentication hook
-│   │   ├── services/          # API client functions
-│   │   │   └── api.ts         # API client
-│   │   ├── types/             # TypeScript type definitions
-│   │   │   └── index.ts       # Type exports
-│   │   ├── App.tsx            # Main app with routing
-│   │   ├── App.css            # Global styles
-│   │   ├── index.css          # Base styles
-│   │   └── main.tsx           # Entry point
+│   │   ├── components/        # Navbar, ProtectedRoute, DocumentFilter, EmptyState,
+│   │   │                      # LandingNavbar, LandingFooter, PageLayout,
+│   │   │                      # LegalDocument, Markdown, Skeleton, Spinner
+│   │   ├── content/           # marketing.ts — single source for marketing copy,
+│   │   │                      # navigation, the route list, and pricing data;
+│   │   │                      # legal.ts — all four legal documents, with
+│   │   │                      # NAV_LEGAL derived from them
+│   │   ├── context/           # ToastContext (toast notifications)
+│   │   ├── pages/             # Landing, Login, Register, Documents, Search, QA,
+│   │   │                      # Dashboard, Admin, Profile, Settings, Webhooks,
+│   │   │                      # Demo, NotFound
+│   │   │                      # Marketing: Product, Features, HowItWorks, Pricing,
+│   │   │                      # Company, About, Blog, Careers, Contact
+│   │   │                      # Legal: Privacy, Terms, Security, GDPR
+│   │   ├── hooks/             # useAuth, useTheme
+│   │   ├── services/api.ts    # Typed API client (auth, documents, search, qa, statistics, users)
+│   │   ├── types/index.ts     # Shared TypeScript types
+│   │   ├── App.tsx            # Main app with routing (public marketing routes +
+│   │   │                      # LandingGate guard component)
+│   │   ├── App.css, index.css # Styles
+│   │   ├── main.tsx           # Entry point
+│   │   └── *.test.ts(x)       # Colocated Vitest tests
+│   ├── nginx.conf             # Production SPA config (serving + /v1 proxy) for the Docker image
 │   ├── index.html             # HTML entry point
-│   ├── vite.config.ts         # Vite configuration
+│   ├── vite.config.ts         # Vite configuration (proxies /v1 to the backend)
 │   ├── tsconfig.json          # TypeScript configuration
-│   └── package.json           # Node.js dependencies
-├── docker-compose.yml         # Docker Compose configuration
-├── .devcontainer/             # Dev Container setup
+│   └── package.json           # Node.js dependencies (+ package-lock.json)
+├── infra/                     # Production deployment (Docker + Kubernetes)
+│   ├── docker/                # Multi-stage production Dockerfiles (backend, worker, frontend)
+│   ├── k8s/                   # Kustomize base + dev/production overlays
+│   ├── helm/ai-platform/      # Standalone Helm chart
+│   ├── kind/                  # Local Kind cluster config
+│   └── scripts/               # build-images.sh, setup-kind.sh, kind-load-images.sh, teardown-kind.sh
+├── Dockerfile                 # Dev sandbox image (mise runtime + deps baked)
+├── docker-compose.yaml        # Dev sandbox: dev (uvicorn+vite), worker, postgres, redis, minio
+├── dev-entrypoint.sh          # Dev sandbox entrypoint (alembic + uvicorn + vite, hot reload)
+├── Makefile                   # Dev workflow targets (dev-up, dev-restart, opencode, sandbox, check, ...)
+├── mise.toml                  # Tool versions (node/uv/gh)
+├── scripts/                   # Host helper scripts (open-in-sandbox.sh)
+├── .github/                   # GitHub Actions CI (backend tests + ruff; frontend lint/build/tests)
+│   ├── workflows/ci.yml
+│   └── dependabot.yml
+├── DEVELOPMENT.md             # Daily-loop cheatsheet (golden rules, sandboxed AI agent)
+├── PROJECT_CONTEXT.md         # This document
 └── AGENTS.md                  # Development guidelines
 ```
 
@@ -163,6 +202,43 @@ LLM and Embedding APIs
 - `created_at`: registration timestamp
 - `updated_at`: last update timestamp
 
+### RefreshSession
+The server-side state that makes refresh-token rotation enforceable. A refresh
+token is a signed JWT, so the service can verify it but cannot take it back; this
+table is what lets rotation and logout mean something.
+
+- `jti`: primary key — the `jti` claim of one issued refresh token
+- `user_id`: UUID of the owning user (foreign key, cascade delete)
+- `expires_at`: the token's own `exp`, so the row can be reclaimed without
+  verifying anything
+- `rotated_at`: set when the token was exchanged for a successor. A token that is
+  already rotated is **replayed**, not refreshed, and is refused with 401
+- `revoked_at`: set by logout
+- `created_at`: issuance timestamp
+
+A client only ever holds the newest token, so a second presentation of the same
+token means a copy is in circulation. Rows are swept daily by an arq cron
+(`sweep_expired_refresh_sessions`): the table otherwise grows forever, since
+every login and every rotation adds a row and nothing else removes one.
+
+Changing a password revokes **every** session the account holds, including the
+one that made the request. The refresh cookie is scoped to `/v1/auth`, so it is
+not sent to `PUT /v1/users/me` and the server cannot tell which session is asking
+— ending all of them is what "I think this account is compromised" means anyway.
+A username change revokes nothing, and validation runs first so a rejected change
+does not log anyone out.
+
+A valid, unexpired token with **no** row is adopted rather than refused, so
+deploying the table does not sign out everyone who logged in beforehand. It is
+still retired on adoption, so an adopted token is no more replayable than any
+other. A token with no `jti` at all is refused outright — nothing this service
+signs omits it.
+
+The refresh cookie is scoped to `/v1/auth`, not to `/v1/auth/refresh`: a browser
+sends a cookie only to paths at or below its own, so the narrower scope meant
+`/v1/auth/logout` never received the token and could not revoke it. It is still
+excluded from document, search and QA requests.
+
 ### Document
 - `id`: UUID primary key
 - `owner_id`: UUID (user who owns the document)
@@ -171,6 +247,7 @@ LLM and Embedding APIs
 - `mime_type`: MIME type
 - `status`: processing status (pending/processing/ready/failed)
 - `error_message`: error details if processing failed
+- `has_thumbnail`: whether a rendered first-page PNG preview exists
 - `created_at`: upload timestamp
 - `updated_at`: last update timestamp
 
@@ -179,9 +256,48 @@ LLM and Embedding APIs
 - `document_id`: foreign key to Document
 - `content`: extracted text content
 - `chunk_index`: position in document
-- `embedding`: vector embedding (1536 dimensions for OpenAI)
-- `metadata`: JSON metadata (page number, section, etc.)
+- `embedding`: OpenAI-space vector (`vector(1536)`, the only ANN-indexed column)
+- `embedding_local`: local-space vector, unconstrained width, for Ollama models
+  that are 384/768/1024-wide
+- `embedding_model`: the model that produced this row's vector, or NULL. A vector
+  is only comparable with vectors from the same model, so a search filters on
+  this; a NULL row (everything written before migration 008) is deliberately
+  invisible to vector search rather than relabelled with a guess
+- `metadata_`: JSON metadata (page number, section, etc.)
 - `created_at`: creation timestamp
+
+A row may hold a vector in **one** space or the other, never both — a CHECK
+constraint (`ck_document_chunks_single_embedding_space`) enforces it, because a
+row with two vectors makes every later search ambiguous and nothing in the query
+would reveal it.
+
+#### Why two columns (measured on pgvector 0.8.6)
+
+pgvector can only index vectors of a single width, which is three refusals
+rather than an assumption:
+
+```sql
+CREATE INDEX ... USING ivfflat (embedding vector_cosine_ops);  -- unconstrained column
+ERROR:  column does not have dimensions
+INSERT 3-wide value into a vector(5) column
+ERROR:  different vector dimensions 3 and 5
+SELECT ... ORDER BY a::vector(4) over a 3-wide row
+ERROR:  expected 4 dimensions, not 3
+```
+
+So a single unconstrained column could hold both providers but could not be
+indexed, and a single width-typed column would reject the other provider's
+vectors outright. One column per embedding *space* keeps `embedding` exactly as
+it was — still `vector(1536)`, still ivfflat-indexed, no behaviour change for a
+deployment with an OpenAI key.
+
+`embedding_model` is load-bearing rather than bookkeeping, for a second reason
+the type system cannot catch: `text-embedding-ada-002` and
+`text-embedding-3-small` are **both** 1536-wide, so a same-space model swap is
+invisible to a width check, to the column type and to the database — and cosine
+distance across unrelated spaces returns a confident, wrong number rather than
+an error. Filtering on the model is what prevents it, and it is also what makes
+the unconstrained local column safe to search.
 
 ### SearchHistory
 - `id`: UUID primary key
@@ -190,28 +306,155 @@ LLM and Embedding APIs
 - `results_count`: number of results returned
 - `created_at`: search timestamp
 
+### WebhookSubscription
+- `id`: UUID primary key
+- `user_id`: UUID of the owning user (foreign key to User, cascade delete)
+- `url`: receiver endpoint (http/https only)
+- `events`: JSONB list of subscribed event names (document.processing,
+  document.ready, document.failed, document.deleted)
+- `secret`: HMAC-SHA256 signing secret (shown once in the UI, used to verify
+  `X-Webhook-Signature` payload signatures)
+- `is_active`: whether deliveries are currently sent
+- `last_status`: outcome of the most recent delivery attempt (success/failed)
+- `last_status_code`: HTTP status returned by the receiver
+- `last_delivered_at`: timestamp of the most recent delivery
+- `failure_count`: consecutive failed deliveries (3 attempts with exponential
+  backoff are made per event)
+- `created_at`, `updated_at`: timestamps
+
 ## API endpoints
 
 ### Authentication
 - `POST /v1/auth/register` - User registration
 - `POST /v1/auth/login` - User login (OAuth2 form)
+- `POST /v1/auth/refresh` - Refresh access token via cookie
+- `POST /v1/auth/logout` - Revoke the presented refresh token and clear its cookie (idempotent; other sessions of the same user stay live)
 - `GET /v1/auth/me` - Get current user profile
+
+### Users (self-service)
+- `PUT /v1/users/me` - Update own username/password (a password change ends every session)
+- `DELETE /v1/users/me` - Delete own account
+
+### Users (admin only)
+- `GET /v1/users/` - List all users
+- `PATCH /v1/users/{id}/role` - Change a user's role (customer/admin)
+- `PATCH /v1/users/{id}/active` - Enable/disable a user account
+- `DELETE /v1/users/{id}` - Delete a user
 
 ### Documents
 - `POST /v1/documents/` - Upload document
+- `POST /v1/documents/bulk` - Bulk upload multiple documents (JSON error reporting per file)
 - `GET /v1/documents/` - List user documents
 - `GET /v1/documents/{id}` - Get document details
-- `GET /v1/documents/{id}/download` - Get presigned download URL
+- `GET /v1/documents/{id}/status` - Get processing status (also reports `has_thumbnail`)
+- `GET /v1/documents/{id}/preview` - Get extracted text preview
+- `GET /v1/documents/{id}/download` - Get a time-limited signed URL for the
+  original file (JWT required, like every other document route)
+- `GET /v1/documents/{id}/thumbnail` - Get a time-limited signed URL for the
+  first-page preview (404 when none)
+- `GET /v1/documents/{id}/content?kind=original|thumbnail&token=...` - Stream
+  the bytes themselves. **No JWT header**: the `token` *is* the credential, and
+  it is scoped to one document and one `kind`, which is why a preview link
+  cannot be edited into a download of the file
 - `DELETE /v1/documents/{id}` - Delete document
 
 ### Search
-- `POST /v1/search/` - Semantic search
+- `POST /v1/search/` - Semantic search (supports `top_k`, `offset` for
+  pagination, and `document_ids` filtering; returns `total_count` and
+  `has_more`)
+- `POST /v1/search/export` - Export search results as CSV or JSON
+  (formula-injection safe; skips search-history recording)
+
+**The `score` field is a distance, not a similarity.** Results are ordered by
+it ascending, so **smaller is the better match** and 1.0 is the furthest
+possible match. Convert it to a match percentage with `(1 - score) * 100`,
+which is what the UI shows. The field has always been called `score`, which is
+what makes it easy to read backwards — it is documented in the schema, so the
+OpenAPI document and `/docs` carry the same warning. The metric behind it
+depends on the response's `mode`: `semantic` reports a cosine distance between
+embeddings, `keyword` reports a full-text rank distance, so only the ordering
+*within one result set* is meaningful.
+
+The CSV export heads that column `distance` and adds `match_percent` (the UI's
+value), so a spreadsheet sorts high-to-low on the column that means "better"
+without anyone having to know the direction of the underlying number.
+
+### Webhooks
+- `GET /v1/webhooks/` - List the current user's webhook subscriptions
+- `POST /v1/webhooks/` - Create a subscription (validates URL + non-empty events)
+- `PUT /v1/webhooks/{id}` - Update URL, events, or active state
+- `DELETE /v1/webhooks/{id}` - Delete a subscription
+- `POST /v1/webhooks/{id}/test` - Deliver a one-off ping and report the outcome
 
 ### Question Answering
-- `POST /v1/qa/ask` - Ask question about documents
+- `POST /v1/qa/ask` - Ask question about documents (OpenAI or Groq;
+  optional bring-your-own-key; answers are cached per user)
+- `GET /v1/qa/models` - List available QA models
+
+A bring-your-own-key is pasted on the Settings page and kept in `localStorage`
+under `askdocs-api-key`, then sent per request. It is a **paid secret for an
+external provider and does not expire**, so it is not treated like a device
+preference: signing out or deleting the account removes it alongside the access
+token (`clearPersistedSession` in `frontend/src/services/api.ts`, #522). The
+storage key names live in that one module for the same reason — the set of keys
+that gets written has to be the set that gets cleared, and when the name was
+duplicated in two files the clearing code had no reference to it.
+
+### Statistics
+- `GET /v1/statistics/me` - Dashboard summary for the current user
+  (documents by status, chunks, recent documents)
+- `GET /v1/statistics/admin` - System-wide aggregates (admin only):
+  users active/disabled, documents by status, chunks, searches
 
 ### Health
-- `GET /v1/health` - Health check endpoint
+- `GET /v1/health` - Health check endpoint (checks PostgreSQL, Redis, MinIO)
+
+## Public marketing routes (frontend, no API)
+
+Served by the SPA at the site root (the backend mounts API routes under `/v1`
+only). Every route below is public — no auth — and every one is reachable from
+the header or footer.
+
+| Section | Route | Page |
+|---|---|---|
+| — | `/` | Landing (hero, features, pipeline, pricing, FAQ) |
+| — | `/demo` | Live demo |
+| Product | `/product` | Product hub |
+| Product | `/features` | Feature catalogue |
+| Product | `/how-it-works` | Pipeline walkthrough |
+| Product | `/pricing` | Plans, limits, comparison, FAQ |
+| Company | `/company` | Company hub |
+| Company | `/about` | About |
+| Company | `/blog` | Blog (index; no posts published yet) |
+| Company | `/careers` | Open roles and working model |
+| Company | `/contact` | Contact (GitHub + `mailto:`) |
+| Legal | `/privacy` | Privacy Policy |
+| Legal | `/terms` | Terms of Service |
+| Legal | `/security` | Security |
+| Legal | `/gdpr` | GDPR |
+
+Navigation rules:
+
+- **Header** carries Product and Company only, as disclosure menus. Legal pages
+  are footer-only by design.
+- **Footer** carries all three columns, each starting with its section overview.
+- `frontend/src/content/marketing.ts` is the single source for the route list,
+  the navigation, and the marketing copy, so the header, footer, hub pages, and
+  the routing test cannot disagree about what exists.
+- `frontend/src/content/legal.ts` is the single source for **all four legal
+  documents**. Each page file (`PrivacyPage`, `TermsPage`, `SecurityPage`,
+  `GdprPage`) is a thin wrapper that looks its document up by route, and
+  `NAV_LEGAL` is **derived** from the same list rather than hand-written beside
+  it. So the footer column, the navigation, and the pages that exist cannot
+  drift apart, and adding a document is one entry here plus one route in
+  `App.tsx` — not a new page file plus a `marketing.ts` edit plus a footer edit.
+
+> **Before publishing the legal pages**: they are templates and carry a visible
+> review notice. `SITE` in `content/marketing.ts` still holds placeholder
+> values — `*.example` email addresses, the entity name, and the jurisdiction —
+> which must be replaced, and the text reviewed by a qualified lawyer. The text
+> itself now lives in `content/legal.ts`, so that review is done on one file
+> rather than four page components.
 
 ## Environment configuration
 
@@ -223,24 +466,204 @@ LLM and Embedding APIs
 - `POSTGRES_PORT`: Database port (default: 5432)
 - `DATABASE_URL`: Full PostgreSQL connection string (used by Alembic)
 - `REDIS_HOST`: Redis hostname (default: localhost)
-- `REDIS_PORT`: Redis port (default: 6379)
+- `REDIS_PORT`: Redis port (default: 6379; dockerized dev host port: 63790)
+- `REDIS_DB`: Redis logical database (default: 0)
+- `REDIS_PASSWORD`: Redis password (default: none)
+- `REDIS_MAX_CONNECTIONS`: Redis connection pool size (default: 20)
 - `MINIO_ENDPOINT`: MinIO endpoint (default: localhost:9000)
 - `MINIO_ACCESS_KEY`: MinIO access key (default: minioadmin)
 - `MINIO_SECRET_KEY`: MinIO secret key (default: minioadmin)
 - `MINIO_BUCKET`: Bucket name (default: documents)
-- `SECRET_KEY`: JWT signing key (required)
+- `MINIO_SECURE`: Use TLS for MinIO connections (default: false in dev)
+- `MINIO_REGION`: MinIO region (default: us-east-1)
+- `SECRET_KEY`: JWT signing key (required). Startup **fails** if it is empty *or*
+  equal to a value this repository publishes (`PUBLISHED_SECRET_KEYS` in
+  `app/config.py`: the compose/kustomize default and the Helm chart default). A
+  committed signing key is not a secret — anyone who can read the repo can mint an
+  access token for any user id, and a forged token is never tracked server-side,
+  so it also defeats refresh rotation, logout and revocation. Staging was found
+  inheriting the base placeholder with no real secret injected (#524).
+- `ALLOW_PLACEHOLDER_SECRET_KEY`: set to `1`/`true`/`yes`/`on` to boot **anyway**
+  with a published signing key. Local development only — the dev sandbox and the
+  Kind dev overlay set it, staging and production must not. Truthy spelling
+  matters: anything else, including an empty value, is treated as "not
+  acknowledged"
 - `ALGORITHM`: JWT algorithm (default: HS256)
-- `ACCESS_TOKEN_EXPIRE_MINUTES`: Token expiration (default: 30)
+- `ACCESS_TOKEN_EXPIRE_MINUTES`: Access-token expiration (default: 30)
+- `REFRESH_TOKEN_EXPIRE_DAYS`: Refresh-token expiration in days (default: 7)
+- `REFRESH_COOKIE_SECURE`: Send refresh cookie only over HTTPS (default: true)
 - `OPENAI_API_KEY`: OpenAI API key (for embeddings/LLM)
-- `OPENAI_MODEL`: Model name (default: gpt-4)
-- `EMBEDDING_MODEL`: Embedding model (default: text-embedding-ada-002)
+- `GROQ_API_KEY`: Groq API key (alternative LLM provider for Q&A). The free
+  tier's default QA model is `openai/gpt-oss-120b`; Groq serves chat only, so
+  `OPENAI_API_KEY` is still required for semantic search
+- `LOCAL_LLM_ENABLED`, `LOCAL_LLM_BASE_URL` (default:
+  http://localhost:11434/v1), `LOCAL_LLM_MODEL` (default: llama3.2:1b): opt-in
+  keyless provider for a local OpenAI-compatible server (Ollama)
+- `QA_MODEL`: pin the default QA model. Unset, the resolver is free-first and
+  takes the first free model whose provider is configured — Groq before local,
+  and a paid OpenAI model only when nothing free is available
+- `QA_MAX_TOKENS`: answer length cap (default: 1000). Lower it for a CPU-only
+  local model, where generation runs at a few tokens per second
+- `GROQ_REQUESTS_PER_MINUTE` (default: 30) and `GROQ_TOKENS_PER_DAY`
+  (default: 200000): the ceilings the QA service enforces on Groq before sending
+  a call, matching that provider's free tier. Exceeding either returns
+  `provider_rate_limited` (HTTP 429) with `source: "app"`. A value of 0 or less
+  means "no ceiling" — a literal zero would otherwise be indistinguishable from a
+  typo and would take Q&A offline entirely
+- `PROVIDER_QUOTA_ENABLED` (default: true): kill switch for the ceilings above.
+  Set it to `false`/`0`/`no`/`off` to stop enforcing, which puts a Groq
+  deployment back at the mercy of the provider's own 429s. Redis failures also
+  fail **open**: a quota layer that cannot be reached must not take Q&A down
+- `OPENAI_MODEL`: Model name (default: gpt-4). A blank value means "not
+  chosen" and a value naming no known model is ignored; both fall back to the
+  cheapest available model rather than failing the request
+- `EMBEDDING_MODEL`: OpenAI-space embedding model (default: text-embedding-ada-002)
+- `EMBEDDING_DIMENSIONS`: the width that model's vectors must be (default: 1536).
+  Set together with `EMBEDDING_MODEL`: a vector of any other width cannot be
+  written or compared, so the service refuses it and says so rather than storing
+  it
+- `LOCAL_EMBEDDING_MODEL`: local-space embedding model (default: nomic-embed-text)
+- `LOCAL_EMBEDDING_DIMENSIONS`: the width that model's vectors must be (default:
+  768; all-minilm is 384, mxbai-embed-large 1024)
 - `RATE_LIMIT_REQUESTS`: Rate limit requests (default: 100)
 - `RATE_LIMIT_WINDOW`: Rate limit window in seconds (default: 60)
+- `TRUST_PROXY_HEADERS`: trust `X-Forwarded-For` for client identification
+  (default: **off**, and set in no shipped config). Off is correct for a directly
+  exposed app: with no proxy, the socket peer *is* the client, and a trusted
+  header would just be a header the client writes. Turn it on when a reverse
+  proxy fronts the app, so limits are counted per real client rather than per
+  proxy. Safe behind a proxy that **overwrites** the header (nginx,
+  `frontend/nginx.conf`) or **appends** the address it saw
+  (`$proxy_add_x_forwarded_for`, k8s ingress): only the **rightmost** entry is
+  read, and that is the one a client cannot choose. Still unsafe behind a proxy
+  that forwards the header through untouched — then the client picks even the last
+  entry, so the limiter is bypassable. With two trusted proxies stacked, the
+  rightmost entry is the inner proxy's own address and everything behind it
+  shares one bucket; that is deliberate, since an imprecise limit cannot be
+  escaped, and overwriting the header in the proxy restores per-client precision
+- `CORS_ORIGINS`: Comma-separated allowed CORS origins (defaults to the dev
+  ports 5173/5175/3000; `*` forces a wildcard — dev/testing only, and it
+  disables credentialed requests)
 
 ### Frontend
 - No additional environment variables required (uses proxy)
 
+### Dev sandbox (gitignored root `.env`)
+
+The sandbox does **not** read `backend/src/app/.env` — `docker-compose.yaml`
+sets the `dev`/`worker` environment inline and passes the LLM provider
+variables through. Supply them from a gitignored root `.env` (Compose reads it
+for `${VAR:-...}` substitution); no compose edit is needed:
+- `OPENAI_API_KEY`, `GROQ_API_KEY`: provider credentials (both optional)
+- `LOCAL_LLM_ENABLED`, `LOCAL_LLM_BASE_URL`, `LOCAL_LLM_MODEL`, `QA_MODEL`,
+  `QA_MAX_TOKENS`, `GROQ_REQUESTS_PER_MINUTE`, `GROQ_TOKENS_PER_DAY`,
+  `PROVIDER_QUOTA_ENABLED` — see the backend list above
+- `OPENAI_BASE_URL`: the OpenAI SDK's own default, so it redirects **both**
+  embeddings and the OpenAI QA provider (also the way to point at a local server
+  or a test stub)
+
+Each Compose default equals the application's `os.getenv` fallback, because
+`load_dotenv()` does not override real environment variables — an empty value
+from Compose would otherwise beat both `.env` and the code default. Variables are
+read at process start, so a config change needs `make dev-restart`.
+
+To reach a model server on the **host** from the sandbox, set
+`LOCAL_LLM_BASE_URL=http://host.docker.internal:11434/v1`. Both services map that
+name via `extra_hosts: host.docker.internal:host-gateway`, because Docker Desktop
+injects it but plain Linux Docker does not, and `tests/test_compose_env.py` fails
+if the mapping is dropped. The host daemon must also be listening on a
+non-loopback address (`OLLAMA_HOST=0.0.0.0:11434` in Ollama's systemd drop-in —
+it is a daemon setting, not an app variable). Full walkthrough, including the
+`OLLAMA_NUM_THREADS` / `OLLAMA_ORIGINS` notes and measured CPU throughput, in
+`DEVELOPMENT.md` → *Using a local model (Ollama)*.
+
+The same variables are settable in Kubernetes — `QA_MODEL`, `QA_MAX_TOKENS`, the
+three `LOCAL_LLM_*` values and the four `*EMBEDDING*` ones are present in both
+the Helm configmap (`config.ai.*` / `config.ai.localEmbedding.*`) and the
+Kustomize base, so neither the keyless local path nor the local embedding space
+is sandbox-only. A pod's `localhost` is the pod itself, so `LOCAL_LLM_BASE_URL`
+there must name a Service or node IP rather than `127.0.0.1`.
+
+### Which embedding provider is used
+
+`app.services.embedding` resolves one active space, and the order is deliberate
+rather than "newest wins":
+
+1. `OPENAI_API_KEY` set → the **OpenAI** space, exactly as before. A deployment
+   that has always embedded with OpenAI keeps doing so even if the operator also
+   runs Ollama for chat; switching it silently would strand every vector it owns,
+   and nothing would say so.
+2. No key, but `LOCAL_LLM_ENABLED` → the **local** space (`nomic-embed-text`,
+   768-wide by default). This is what makes a zero-cost deployment's semantic
+   search work at all.
+3. Neither → no provider, and search reports its documented `keyword` mode.
+
+Every vector is width-checked on the way out against the space's configured
+width, and refused loudly (`EmbeddingDimensionMismatch`, naming both widths) if
+it does not match — because the local column is unconstrained and a mixed-width
+column makes the *query* fail rather than the insert.
+
+### Chunks that are invisible to vector search
+
+Everything written before migration 008 has `embedding_model = NULL`, and a NULL
+row is **deliberately excluded from vector search** — a vector is only
+comparable with vectors from the same model, and relabelling an existing vector
+with the currently configured model would produce confident, wrong rankings
+rather than an error. So those documents are keyword-searchable only until they
+are re-embedded.
+
+`backend/scripts/backfill_embeddings.py` is the way back. It **recomputes** each
+vector from the chunk's `content` (the source of truth) and writes it together
+with the model that produced it, so it cannot be wrong about who wrote a vector.
+Attributing an existing vector to a new model is exactly the guess 008 refused,
+and the tool has no option to do it.
+
+```bash
+cd backend
+uv run python scripts/backfill_embeddings.py                    # dry run: the plan, no writes
+uv run python scripts/backfill_embeddings.py --limit 50 --apply  # write at most 50 chunks
+uv run python scripts/backfill_embeddings.py --apply            # write everything waiting
+```
+
+`--limit` bounds a **write** run; in a dry run it only reports what a bounded
+run would cover, because the plan is a count of the whole corpus rather than a
+selection from it.
+
+- **Dry run by default.** The work costs money, takes longer than a request, and
+  is not undone by anything except re-processing the documents.
+- **One space per run**, because the active space is resolved at import. Filling
+  the other space is a config change plus a second run.
+- **It refuses three things rather than writing them**: a row already holding
+  the other space's vector (`ck_document_chunks_single_embedding_space` forbids
+  it), a row with no text, and any run past a dimension mismatch (a config error
+  that would otherwise repeat on every page).
+- **Idempotent.** A second run is a no-op, not a relabel — so it is safe to
+  re-run after a fix.
+
+On a deployment that predates 008, run it once per space. It reports what it
+skipped, and a skipped row is still unsearchable by vector: re-upload or
+re-process that document.
+
 ## Development workflow
+
+Golden rules: `make dev-up` → `make dev-log` (2nd terminal) → `make dev-down`
+when done; `make check` before every push; only `dev-up` requires opencode
+(`infra-up` + host loop don't). Full cheatsheet: `DEVELOPMENT.md`.
+
+### Dev sandbox (recommended)
+
+1. `make dev-up` — builds the dev image and starts uvicorn (`--reload`) + Vite
+   (HMR) + arq worker + postgres + redis + minio
+2. Open http://localhost:5175 (frontend) / http://localhost:8001/docs (API)
+3. `make dev-log` tails sandbox logs; `make dev-down` stops it (volumes kept);
+   `make dev-restart` stops + starts in one step
+4. Code with AI inside the sandbox: `make opencode` (agent TUI, runs with
+   `--auto` — permission prompts auto-approved) or `make sandbox` (plain
+   shell); the dev container mounts the host opencode binary + config, git
+   identity, gh auth, and Docker socket (trusted-agent model — see
+   `DEVELOPMENT.md`)
+
+### Host-native (fallback)
 
 1. **Setup**: Start infrastructure with `docker compose up -d postgres redis minio`
 2. **Backend**: Run `uv run uvicorn app.main:app --reload` in backend directory
@@ -255,8 +678,59 @@ LLM and Embedding APIs
 - **Async processing**: Document processing handled in background workers to avoid blocking API
 - **Vector embeddings**: Stored in PostgreSQL with pgvector for semantic search
 - **Object storage**: MinIO/S3 for document file storage with user isolation
-- **JWT authentication**: Stateless authentication with refresh tokens
+- **JWT authentication**: Stateless authentication with access tokens and rotating refresh tokens (cookie-based)
 - **Pydantic schemas**: Strict request/response validation
+- **Semantic caching**: QA answers and dashboard statistics are cached in Redis with
+  per-user cache versions, so document changes invalidate stale cache entries
+- **PDF thumbnails**: First-page previews rendered with PyMuPDF in the background
+  worker (best-effort; `has_thumbnail` flag on the document)
+- **Document bytes are served by the API, not the object store**: a browser
+  fetching `http://minio:9000/...` — or a presigned URL built for it — works in
+  exactly one topology and silently degrades to a type chip everywhere else
+  (#536). The API streams the bytes behind a short-lived HMAC token bound to
+  one document and one asset kind, so the URL a browser receives is always
+  relative to the API it is already talking to. `MINIO_PUBLIC_ENDPOINT` is gone
+  because there is no longer a browser-facing address to configure
+- **Free-first model resolution**: `resolve_default_model` takes the first *free*
+  registry entry whose provider is configured, so a paid model is never the
+  default while a free one is available. Groq precedes local, because a hosted
+  model answers better than a CPU-only one. **Registry order is the default**, so
+  a new free model is inserted where it should win from, never appended.
+- **Tiers mean "can this cost money"**: `tier: "free"` is usable without paying,
+  not merely cheap — `gpt-4o-mini` bills per token and is therefore `paid`
+  despite the name. The frontend's offline model fallback follows the same
+  classification, so an unreachable `/v1/qa/models` cannot offer a paid model as
+  the free choice
+- **Marketing content in one module**: `frontend/src/content/marketing.ts` holds
+  the route list, navigation, pricing, and copy, so the header, footer, hub
+  pages, and the routing test cannot disagree about what exists
+- **Legal copy is content, not components**: the four legal documents live in
+  `frontend/src/content/legal.ts`, one array the footer column, `NAV_LEGAL` and
+  the pages themselves all read. They were the one place on the site where copy
+  sat inside a `.tsx` file, so the text a lawyer has to review was scattered
+  across four page components with nothing asserting the four even shared a
+  shape — and a page could be added to the router without appearing in the
+  footer, or vice versa
+- **Disclosure menus, not ARIA menus**: Header section menus are a button with
+  `aria-expanded` revealing ordinary links, which needs no roving focus or
+  type-ahead. Open state is derived from the current path rather than reset in an
+  effect, so navigating closes the menu without a second render pass
+- **Honest absent affordances**: Social icons for accounts that do not exist
+  render as non-interactive blocks (no `href`, no tab stop) instead of links
+  that go nowhere; the blog shows an empty state rather than fabricated posts
+- **Production deployment**: Multi-stage production Docker images,
+  Kustomize overlays, and a standalone Helm chart for Kubernetes
+- **A committed signing key fails the boot, loudly**: `app/config.py` holds every
+  JWT signing key this repository publishes and refuses them at both the lifespan
+  gate and `app.routes.auth` import. It is a crash rather than a warning because a
+  known key does not merely expose storage on a network the operator still
+  controls (the MinIO default-credentials check, which stays a warning) — it lets
+  an unauthenticated caller authenticate as any user. The escape hatch is an
+  explicit opt-in rather than an environment sniff, because a guard that only
+  fires in "production-like" environments is bypassed by one variable, which is
+  the same mistake as trusting a header the client writes. The consequence is
+  deliberate: a staging install left with the base Secret now CrashLoops until a
+  real secret is provisioned (#524)
 
 ## Current implementation status
 
@@ -266,34 +740,87 @@ LLM and Embedding APIs
 - [x] FastAPI application skeleton
 - [x] SQLAlchemy models (User, Document, DocumentChunk, SearchHistory)
 - [x] Database migrations (Alembic)
-- [x] User authentication (JWT with registration and login)
-- [x] Document upload, list, download, and delete endpoints
+- [x] User authentication (JWT with refresh-token rotation)
+- [x] Document upload, list, status, preview, download, thumbnail, and delete endpoints
+- [x] Bulk document upload (per-file JSON error reporting)
 - [x] MinIO storage integration
 - [x] Document processing worker (background jobs)
 - [x] Text extraction service (PDF, text, JSON)
 - [x] Document chunking service
-- [x] Embedding generation service (OpenAI)
-- [x] Semantic search with pgvector
-- [x] Question answering with LLM
-- [x] Rate limiting middleware
+- [x] Embedding generation service (OpenAI, or a keyless local model server)
+- [x] Local embedding space (one column per provider, per-row model filter, and a
+      width check that refuses a mismatched vector instead of writing it)
+- [x] Semantic search with pgvector (top_k, offset pagination, document_ids filter)
+- [x] Keyword search fallback with PostgreSQL full-text ranking when no embedding
+      provider is configured (reports `mode: keyword`; stemmed matching, a
+      substring pass for tokens the text search drops, and a GIN index)
+- [x] Search result export (CSV, formula-injection safe; JSON)
+- [x] Question answering with LLM (OpenAI or Groq, optional bring-your-own-key
+  via per-request `api_key`; per-user answer caching)
+- [x] Free and local LLM providers (Groq `openai/gpt-oss-120b` as the free-first
+  default, keyless Ollama reachable from the sandbox and from Kubernetes, and a
+  `QA_MAX_TOKENS` cap for CPU-only local models)
+- [x] PDF first-page thumbnails (PyMuPDF, best-effort in the worker)
+- [x] Semantic caching (QA answers, dashboard statistics)
+- [x] Semantic search result caching (per-user cache versions; search results and
+  document metadata cached in Redis, invalidated on upload/delete/processing)
+- [x] Webhooks for document processing events (HMAC-SHA256 signed payloads with
+  `X-Webhook-Signature`/`X-Webhook-Event` headers, 3 attempts with exponential
+  backoff, per-subscription delivery status, one-off test pings, backend + frontend UI)
+- [x] Production-readiness hardening (CORS via env var with restricted
+  methods/headers, trusted X-Forwarded-For rate limiting, bounded Redis pool,
+  composite owner/created_at index, single-query search counting)
+- [x] Rate limiting middleware (per-user, Redis-backed, X-Forwarded-For aware)
 - [x] Logging middleware
-- [x] CORS configuration
-- [x] Frontend React app with routing
+- [x] CORS configuration (env-driven via `CORS_ORIGINS`; dev ports 5173, 5175, 3000)
+- [x] Frontend React app with routing (landing, login, register, documents, search, QA, dashboard, admin, profile, settings, demo)
+- [x] Multi-page marketing site (13 public routes: Product, Features, How it works,
+      Pricing, Company, About, Blog, Careers, Contact, Privacy, Terms, Security,
+      GDPR) with header disclosure menus and a full footer — see the route table above
 - [x] Frontend auth pages (login/register)
-- [x] Frontend document management page
-- [x] Frontend search UI
+- [x] Frontend document management page (upload incl. bulk, thumbnail previews, delete)
+- [x] Frontend search UI with pagination and CSV/JSON export
 - [x] Frontend Q&A chat interface
+- [x] User admin dashboard (role changes, activation toggle, user deletion, system statistics)
+- [x] User dashboard (documents by status, chunks, recent documents)
+- [x] Testing suite (334 backend tests, 415 frontend tests)
+- [x] CI/CD pipeline (GitHub Actions: backend tests + ruff lint; frontend lint + build + tests)
+- [x] Production Docker images (backend, worker, frontend with nginx)
+- [x] Kubernetes deployment (Kustomize base + dev/production overlays, standalone Helm chart, Kind cluster scripts)
+- [x] Infra CI: kustomize/helm/kubeconform validation + production image builds pushed to ghcr.io — on a `ci`-labelled `dev`→`main` PR or a manual dispatch, **never on a `dev` push** (see *CI triggers* below)
+- [x] Production TLS: cert-manager ClusterIssuers (Let's Encrypt staging/prod + self-signed) with automatic ingress issuance
+- [x] Production secrets: External Secrets Operator (ExternalSecret + ClusterSecretStore) replacing the dev placeholder Secret
+- [x] Production monitoring: Prometheus + Grafana (kube-prometheus-stack) with a backend /metrics endpoint, ServiceMonitor, alert rules, AlertmanagerConfig email routing, and a Grafana dashboard; metrics-server support for HPAs
+- [x] Production logging: Loki (single-binary, filesystem storage, retention) + Promtail DaemonSet collecting pod logs from all namespaces, with a Grafana Loki datasource
+- [x] GitOps deployment: ArgoCD app-of-apps (ApplicationSet per environment tracking the dev/production Kustomize overlays, automated sync + self-heal + prune) validated in the Infra CI
+- [x] Staging overlay: production-like pre-production environment (ghcr.io images, cert-manager staging TLS, moderate replicas, smaller limits) managed by ArgoCD
+- [x] Kind E2E smoke tests: infra/scripts/smoke-test.sh bootstraps the dev stack on a Kind cluster and asserts backend health, frontend reachability and an API round-trip (register → login → upload → status → search); part of the same Infra CI, so it runs under the same triggers
 
-### In Progress
-- [ ] Testing suite
-- [ ] CI/CD pipeline
+### CI triggers (what actually runs, and when)
 
-### Planned
-- [ ] Advanced caching strategies
-- [ ] Document preview/thumbnails
-- [ ] Bulk document upload
-- [ ] Export search results
-- [ ] User admin dashboard
+Both workflows are **label-gated `dev`→`main` PRs plus manual dispatch**. Neither
+runs on a push to `dev`:
+
+| Workflow | Runs on |
+|---|---|
+| `ci.yml` (backend tests + ruff, frontend lint/build/tests) | `ci`-labelled PR to `main`, or `workflow_dispatch` |
+| `infra.yml` (kustomize/helm/kubeconform, image builds → ghcr.io, Kind smoke test) | `ci`-labelled PR to `main`, or `workflow_dispatch`. **Dispatch publishes only from `main`** — any other ref runs validation and the Kind smoke test but skips the image build/push, since that would re-tag the `latest` staging and production follow (#544) |
+
+**What this means for a feature branch: nothing runs automatically.** A branch
+that changes `infra/**`, `backend/**` or `frontend/**` is unverified until
+either the release PR is opened and labelled, or someone dispatches the
+workflow. `infra/**` in particular gets no `kustomize build`, `helm lint` or
+`kubeconform` at all on the way to `dev`.
+
+That is deliberate for the *image build* — publishing to ghcr.io on every dev
+push is neither wanted nor free — but it leaves validation uncovered, so run it
+locally before opening the PR. The exact commands, with the versions the
+workflow pins, are in `DEVELOPMENT.md` → *Validating infra locally*.
+
+### Backlog (not yet started)
+
+None — all previously planned items (semantic search result caching, webhooks for
+document processing events) are implemented.
 
 ## Contributing
 
@@ -328,16 +855,35 @@ LLM and Embedding APIs
    npm run dev
    ```
 
-### Docker Compose (Full Stack)
+### Docker Compose (Dev Sandbox)
 
 ```bash
-docker compose up -d
+make dev-up        # build image + start uvicorn/vite/worker/infra (foreground logs)
+make dev-log       # tail sandbox logs (2nd terminal)
+make dev-restart   # down + up in one step (volumes kept)
+make opencode      # run the AI coding agent inside the dev container (--auto by default)
+make sandbox       # plain shell inside the dev container
+make dev-down      # stop (keeps volumes)
 ```
 
-### Accessing services
+### Production (Docker images + Kubernetes)
 
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:8000
-- API Documentation: http://localhost:8000/docs
+Multi-stage production images live under `infra/docker/` and are built with
+`infra/scripts/build-images.sh [registry] [tag]` (defaults to
+`ai-platform/{backend,worker,frontend}:latest`; the worker reuses the
+`./backend` source tree as its build context and the frontend image serves the
+SPA via `frontend/nginx.conf`, which proxies `/v1` to the backend). Deploy
+with either:
+
+- **Kustomize**: `infra/k8s/` (base + dev/production overlays)
+- **Helm**: `infra/helm/ai-platform/` (standalone chart)
+- **Kind**: `infra/scripts/setup-kind.sh` + `kind-load-images.sh` for a local
+  cluster, `teardown-kind.sh` to remove it
+
+### Accessing services (Docker Compose stack — host ports)
+
+- Frontend: http://localhost:5175
+- Backend API: http://localhost:8001
+- API Documentation: http://localhost:8001/docs
 - MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
 

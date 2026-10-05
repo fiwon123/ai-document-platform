@@ -1,0 +1,54 @@
+# One Application per environment, generated from the git-overlay mapping
+# below. Each Application points ArgoCD at the Kustomize overlay for the
+# environment and syncs automatically (prune + self-heal).
+#
+# - dev:         overlay infra/k8s/overlays/dev,         tracks branch `dev`
+# - staging:     overlay infra/k8s/overlays/staging,     tracks branch `main`
+# - production:  overlay infra/k8s/overlays/production,  tracks branch `main`
+#
+# Image rollout: the Infra CI workflow builds and pushes
+# ghcr.io/fiwon123/ai-platform/{backend,worker,frontend} (SHA + latest) on
+# every dev merge. The production overlay's images are pinned to `latest`,
+# so a merged manifest change + image push triggers an automatic ArgoCD sync.
+# For controlled rollouts, pin the overlay to a SHA tag
+# (kustomize edit set image ...) — rollback is then a git revert.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: ai-platform
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: ai-platform
+spec:
+  goTemplate: true
+  generators:
+    - list:
+        elements:
+          - name: dev
+            overlay: infra/k8s/overlays/dev
+            targetRevision: dev
+          - name: staging
+            overlay: infra/k8s/overlays/staging
+            targetRevision: main
+          - name: production
+            overlay: infra/k8s/overlays/production
+            targetRevision: main
+  template:
+    metadata:
+      name: ai-platform-{{ .name }}
+      namespace: argocd
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/fiwon123/ai-document-platform.git
+        path: "{{ .overlay }}"
+        targetRevision: "{{ .targetRevision }}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: ai-platform
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

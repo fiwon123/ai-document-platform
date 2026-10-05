@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { AdminPage } from "./AdminPage";
+import { renderWithClient } from "../test/renderWithClient";
 import { useAuth } from "../hooks/useAuth";
 import type { User } from "../types";
 
@@ -29,23 +30,43 @@ vi.mock("../hooks/useAuth", () => ({
     register: vi.fn(),
     logout: vi.fn(),
     updateUser: vi.fn(),
+    deleteAccount: vi.fn(),
   })),
 }));
 
 vi.mock("../services/api", () => ({
+  statistics: {
+    getAdmin: vi.fn(),
+  },
   users: {
     listUsers: vi.fn(),
     updateUserRole: vi.fn(),
+    updateUserActive: vi.fn(),
     deleteUser: vi.fn(),
   },
 }));
 
-import { users } from "../services/api";
+import { statistics, users } from "../services/api";
 
 const mockedUseAuth = vi.mocked(useAuth);
+const mockedGetAdmin = vi.mocked(statistics.getAdmin);
 const mockedListUsers = vi.mocked(users.listUsers);
 const mockedUpdateUserRole = vi.mocked(users.updateUserRole);
+const mockedUpdateUserActive = vi.mocked(users.updateUserActive);
 const mockedDeleteUser = vi.mocked(users.deleteUser);
+
+const sampleAdminStats = {
+  total_users: 12,
+  active_users: 10,
+  disabled_users: 2,
+  total_documents: 34,
+  pending_documents: 1,
+  processing_documents: 2,
+  ready_documents: 30,
+  failed_documents: 1,
+  total_chunks: 250,
+  total_searches: 99,
+};
 
 describe("AdminPage", () => {
   beforeEach(() => {
@@ -57,9 +78,12 @@ describe("AdminPage", () => {
       register: vi.fn(),
       logout: vi.fn(),
       updateUser: vi.fn(),
+    deleteAccount: vi.fn(),
     });
     mockedListUsers.mockResolvedValue([adminSelf, alice]);
+    mockedGetAdmin.mockResolvedValue(sampleAdminStats);
     mockedUpdateUserRole.mockResolvedValue({ ...alice, role: "admin" });
+    mockedUpdateUserActive.mockResolvedValue({ ...alice, is_active: false });
     mockedDeleteUser.mockResolvedValue(undefined);
     vi.spyOn(window, "confirm").mockReturnValue(true);
   });
@@ -70,7 +94,7 @@ describe("AdminPage", () => {
   });
 
   async function renderPage() {
-    render(<AdminPage />);
+    renderWithClient(<AdminPage />);
     await act(async () => {});
   }
 
@@ -128,6 +152,49 @@ describe("AdminPage", () => {
     expect((rootSelect as HTMLSelectElement).disabled).toBe(true);
   });
 
+  it("disables a user via the activation toggle", async () => {
+    await renderPage();
+
+    const toggle = screen.getByRole("button", { name: "Disable alice" });
+    fireEvent.click(toggle);
+    await act(async () => {});
+
+    expect(mockedUpdateUserActive).toHaveBeenCalledWith("u-1", false);
+    expect(screen.getByText("disabled")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Enable alice" })).toBeTruthy();
+  });
+
+  it("enables a user via the activation toggle", async () => {
+    mockedListUsers.mockResolvedValue([adminSelf, { ...alice, is_active: false }]);
+    mockedUpdateUserActive.mockResolvedValue({ ...alice, is_active: true });
+    await renderPage();
+
+    const toggle = screen.getByRole("button", { name: "Enable alice" });
+    fireEvent.click(toggle);
+    await act(async () => {});
+
+    expect(mockedUpdateUserActive).toHaveBeenCalledWith("u-1", true);
+    expect(screen.getByRole("button", { name: "Disable alice" })).toBeTruthy();
+  });
+
+  it("does not let admins toggle their own active state", async () => {
+    await renderPage();
+
+    const toggle = screen.getByRole("button", { name: "Disable root" });
+    expect((toggle as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("shows an error when toggling fails", async () => {
+    mockedUpdateUserActive.mockRejectedValue(new Error("Cannot deactivate self"));
+    await renderPage();
+
+    const toggle = screen.getByRole("button", { name: "Disable alice" });
+    fireEvent.click(toggle);
+    await act(async () => {});
+
+    expect(screen.getByText("Cannot deactivate self")).toBeTruthy();
+  });
+
   it("shows an empty state when there are no users", async () => {
     mockedListUsers.mockResolvedValue([]);
     await renderPage();
@@ -138,7 +205,65 @@ describe("AdminPage", () => {
     ).toBeTruthy();
   });
 
-  it("shows an access-denied message for non-admin users", async () => {
+  it("shows system-wide statistics from the admin endpoint", async () => {
+    await renderPage();
+
+    expect(mockedGetAdmin).toHaveBeenCalled();
+    const region = screen.getByRole("region", {
+      name: "System statistics",
+    });
+    const cardValue = (label: string) =>
+      Array.from(region.querySelectorAll(".stat-card")).find((card) =>
+        card.textContent?.includes(label),
+      )?.textContent;
+
+    expect(cardValue("Users")?.includes("12")).toBe(true);
+    expect(cardValue("Active")?.includes("10")).toBe(true);
+    expect(cardValue("Disabled")?.includes("2")).toBe(true);
+    expect(cardValue("Documents")?.includes("34")).toBe(true);
+    expect(cardValue("Ready")?.includes("30")).toBe(true);
+    expect(cardValue("Pending")?.includes("1")).toBe(true);
+    expect(cardValue("Processing")?.includes("2")).toBe(true);
+    expect(cardValue("Failed")?.includes("1")).toBe(true);
+    expect(cardValue("Chunks indexed")?.includes("250")).toBe(true);
+    expect(cardValue("Searches")?.includes("99")).toBe(true);
+  });
+
+  it("renders an icon tile on every system statistics card", async () => {
+    await renderPage();
+
+    const region = screen.getByRole("region", {
+      name: "System statistics",
+    });
+    const cards = region.querySelectorAll(".stat-card");
+    expect(cards.length).toBeGreaterThan(0);
+    cards.forEach((card) => {
+      expect(card.querySelector(".stat-icon svg")).toBeTruthy();
+    });
+  });
+
+  it("shows an initials avatar next to each username", async () => {
+    await renderPage();
+
+    // Avatars are decorative but rendered in the DOM as part of the row.
+    expect(screen.getByText("R")).toBeTruthy();
+    expect(screen.getByText("A")).toBeTruthy();
+    expect(screen.getByText("R").closest("tr")?.textContent).toContain("root");
+  });
+
+  it("resolves the spinner and shows a message when statistics fail", async () => {
+    mockedGetAdmin.mockRejectedValue(new Error("stats down"));
+    await renderPage();
+
+    expect(
+      screen.getByText("System statistics are currently unavailable."),
+    ).toBeTruthy();
+    // The user table still renders — statistics are non-blocking.
+    expect(screen.getByText("alice")).toBeTruthy();
+    expect(mockedListUsers).toHaveBeenCalled();
+  });
+
+  it("does not fetch system statistics for non-admin users", async () => {
     mockedUseAuth.mockReturnValue({
       user: alice,
       token: "t",
@@ -147,11 +272,13 @@ describe("AdminPage", () => {
       register: vi.fn(),
       logout: vi.fn(),
       updateUser: vi.fn(),
+    deleteAccount: vi.fn(),
     });
 
-    render(<AdminPage />);
+    renderWithClient(<AdminPage />);
 
     expect(screen.getByText("Admin privileges required.")).toBeTruthy();
+    expect(mockedGetAdmin).not.toHaveBeenCalled();
     expect(mockedListUsers).not.toHaveBeenCalled();
   });
 });

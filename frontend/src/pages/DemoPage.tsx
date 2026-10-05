@@ -1,7 +1,16 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { LandingNavbar } from "../components/LandingNavbar";
+import { LandingFooter } from "../components/LandingFooter";
 import { Markdown } from "../components/Markdown";
+import { Badge } from "../components/Badge";
+import { HighlightedText } from "../components/HighlightedText";
+import { MatchChip } from "../components/MatchChip";
+import { Tabs } from "../components/Tabs";
+import type { TabDef } from "../components/Tabs";
+import { Walkthrough } from "../components/Walkthrough";
+import { DEMO_DOCUMENTS } from "./demoData";
+import type { DemoSampleDoc } from "./demoData";
 
 /** session-only usage limits for the demo */
 const LIMITS = {
@@ -11,6 +20,18 @@ const LIMITS = {
 
 const KEY_SEARCH = "askdocs-demo-searches";
 const KEY_QA = "askdocs-demo-qa";
+
+/**
+ * Whether the walkthrough has already been shown.
+ *
+ * localStorage, not sessionStorage, deliberately. The counters above are
+ * *session*-only on purpose, but "first visit only" for a tour means once
+ * across visits — a sessionStorage flag would re-nag on every new tab, which is
+ * the behaviour the issue is trying to get rid of. The demo's isolation
+ * guarantee is untouched: this key is written by the walkthrough and read by
+ * nothing else.
+ */
+const KEY_TOUR = "askdocs-demo-tour-seen";
 
 /**
  * All demo counters live in sessionStorage (key prefix `askdocs-demo-*`).
@@ -30,57 +51,6 @@ function incrementCount(key: string): number {
   store.setItem(key, String(next));
   return next;
 }
-
-export interface DemoSampleDoc {
-  id: string;
-  filename: string;
-  mime_type: string;
-  status: "ready";
-  chunks: string[];
-}
-
-/** Pre-seeded sample documents, mocked locally — no API calls in demo mode. */
-export const DEMO_DOCUMENTS: DemoSampleDoc[] = [
-  {
-    id: "demo-company-handbook",
-    filename: "company-handbook.pdf",
-    mime_type: "application/pdf",
-    status: "ready",
-    chunks: [
-      "Welcome to Acme Corp. Our mission is to build reliable, human-friendly software that helps teams stay organized and ship with confidence.",
-      "All employees receive unlimited paid time off, a home office stipend, and health coverage starting on day one. Review the full benefits catalog in Workday.",
-      "Remote-first means meetings are async by default. Team standups happen over Slack, and the weekly demo is recorded for anyone in a different time zone.",
-      "Expense reimbursement is submitted through the Finance portal and approved within five business days. Receipts must show vendor, amount, and currency.",
-      "Security matters: enable two-factor authentication, never share credentials, and report phishing attempts to security@acmecorp.com immediately.",
-    ],
-  },
-  {
-    id: "demo-onboarding-guide",
-    filename: "onboarding-guide.pdf",
-    mime_type: "application/pdf",
-    status: "ready",
-    chunks: [
-      "Day one: your manager will schedule a 1:1, IT will send a laptop, and you will get read access to the engineering wiki and the product roadmap.",
-      "The first week focuses on environment setup: clone the monorepo, install the dev tools, and run the local stack against the staging API.",
-      "By the end of your first sprint you should open your first pull request. Follow the checklist in the contribution guide so CI stays green.",
-      "You are assigned a buddy for your first 30 days — they can unblock you, review your early PRs, and introduce you to the people you will work with.",
-      "When you are stuck, search the internal knowledge base first, then ask in #help. Nobody expects you to know everything on day one.",
-    ],
-  },
-  {
-    id: "demo-design-system",
-    filename: "design-system.md",
-    mime_type: "text/markdown",
-    status: "ready",
-    chunks: [
-      "The design system is built on tokens. Color tokens include ink, paper, surface, muted, line, blue, and green, with dark-theme variants.",
-      "Spacing uses a 4px base scale: 4, 8, 12, 16, 24, 32, 48, and 64. Use tokens instead of magic numbers so dark mode stays consistent.",
-      "Buttons come in three variants: primary for the main action, secondary for alternatives, and danger for destructive edits. Always disable loading buttons.",
-      "Forms use accessible labels with the .form-group wrapper, and inputs show a blue focus ring. Error messages use the danger tokens and role=\"alert\".",
-      "Everything ships with reduced-motion support and prefers-color-scheme. Run the axe scan in CI before merging any UI change.",
-    ],
-  },
-];
 
 interface DemoMessage {
   id: string;
@@ -146,11 +116,48 @@ export function DemoPage() {
   const [qaCount, setQaCount] = useState(() => readCount(KEY_QA));
   const [messages, setMessages] = useState<DemoMessage[]>([]);
   const [qaInput, setQaInput] = useState("");
+  /* Search and Ask are one tablist. All of their state lives here rather than
+     inside the panels: `Tabs` renders only the active panel, so anything kept
+     in a panel's own subtree would be unmounted on a tab switch and lost. */
+  const [activeTab, setActiveTab] = useState("search");
+  const [tourOpen, setTourOpen] = useState(
+    () => window.localStorage.getItem(KEY_TOUR) === null,
+  );
+  const tourTriggerRef = useRef<HTMLButtonElement>(null);
 
   const searchesLeft = Math.max(0, LIMITS.searches - searchCount);
   const qaLeft = Math.max(0, LIMITS.qa - qaCount);
   const searchCapped = searchCount >= LIMITS.searches;
   const qaCapped = qaCount >= LIMITS.qa;
+
+  /**
+   * Reads as a budget rather than a countdown: "3 of 5 questions used" states
+   * the spend *and* the ceiling, where "5 questions left" only states what
+   * remains — so a user who never reaches the end still never learns there is
+   * a ceiling. The remaining count is kept as the non-visual suffix, because
+   * "used" alone loses the same information for a screen reader.
+   *
+   * This is the *only* place the long form appears. The tab strip carries a
+   * short "N left" per tab (so a budget is visible for the tab you are not on)
+   * and the panel counter says nothing at all until the budget runs out. Three
+   * renderings of one number in one screen is noise, and the first draft of
+   * this page had exactly that — the header badge and the panel counter printed
+   * the identical sentence.
+   */
+  function budget(used: number, limit: number, noun: string): string {
+    const left = Math.max(0, limit - used);
+    return `${used} of ${limit} ${noun} used — ${left} left`;
+  }
+
+  function closeTour() {
+    window.localStorage.setItem(KEY_TOUR, "1");
+    setTourOpen(false);
+    /* Returning focus to the control that opened it is what makes dismissal
+       feel like dismissal rather than a teleport. Safe unconditionally: if the
+       walkthrough opened itself on load, the ref is empty and this is a no-op
+       rather than a null deref. */
+    tourTriggerRef.current?.focus();
+  }
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -185,7 +192,7 @@ export function DemoPage() {
     const hits = matchChunks(q);
     let assistant: DemoMessage;
     if (hits.length > 0) {
-      const best = hits[0];
+      const best = hits[0]!;
       assistant = {
         id: nextMessageId(),
         role: "assistant",
@@ -244,12 +251,66 @@ export function DemoPage() {
             Explore the platform with sample documents. Searches and questions are
             limited per session — sign up for unlimited access.
           </p>
-          <p className="demo-usage">
-            <span className="status-badge">{DEMO_DOCUMENTS.length} sample docs</span>
-            <span className="status-badge">{searchesLeft} searches left</span>
-            <span className="status-badge">{qaLeft} questions left</span>
-          </p>
+          <div className="demo-usage">
+            <Badge tone="blue">{DEMO_DOCUMENTS.length} sample docs</Badge>
+            <Badge tone="blue">{budget(searchCount, LIMITS.searches, "searches")}</Badge>
+            <Badge tone="blue">{budget(qaCount, LIMITS.qa, "questions")}</Badge>
+            <button
+              type="button"
+              className="btn btn-secondary demo-tour-button"
+              ref={tourTriggerRef}
+              onClick={() => setTourOpen(true)}
+            >
+              Take the tour
+            </button>
+          </div>
         </header>
+
+        {tourOpen && (
+          <Walkthrough
+            onClose={closeTour}
+            steps={[
+              {
+                title: "Three sample documents, already indexed",
+                body: (
+                  <>
+                    <p>
+                      Each card says what is inside the document and what it is good
+                      for, so you can pick one instead of guessing from a filename.
+                      They are pre-processed — 5 chunks each, status{" "}
+                      <strong>ready</strong> — which is what the real pipeline does
+                      in the background after an upload.
+                    </p>
+                    <p>Try searching for “benefits”, or ask about day one.</p>
+                  </>
+                ),
+              },
+              {
+                title: "Search and Ask are two tabs",
+                body: (
+                  <p>
+                    <strong>Search</strong> returns ranked passages with the matching
+                    terms highlighted. <strong>Ask</strong> answers in prose and cites
+                    the document it drew on. They were stacked vertically, so each
+                    pushed the other off screen; now only one is visible and each keeps
+                    its own results when you switch.
+                  </p>
+                ),
+              },
+              {
+                title: "Ten searches and five questions per session",
+                body: (
+                  <p>
+                    The badges above are a budget, not a countdown: they show what you
+                    have spent and the ceiling. Both counters live in this tab only, so
+                    they reset when you close it — nothing here touches your account,
+                    and no document is uploaded.
+                  </p>
+                ),
+              },
+            ]}
+          />
+        )}
 
         <section aria-label="Sample documents">
           <h2 className="demo-section-title">Sample documents</h2>
@@ -263,12 +324,11 @@ export function DemoPage() {
                     <p>{doc.mime_type}</p>
                   </div>
                 </div>
+                <p className="demo-doc-description">{doc.description}</p>
                 <div className="document-card-body">
                   <div className="status-row">
                     <span>Status:</span>
-                    <span className="status-badge" style={{ backgroundColor: "#16a34a" }}>
-                      {doc.status}
-                    </span>
+                    <Badge tone="green">{doc.status}</Badge>
                   </div>
                   <p className="date">{doc.chunks.length} indexed chunks</p>
                 </div>
@@ -277,126 +337,144 @@ export function DemoPage() {
           </div>
         </section>
 
-        <section aria-label="Search sample documents" className="demo-section">
-          <h2 className="demo-section-title">Search the sample documents</h2>
-          <form onSubmit={handleSearch} className="search-form">
-            <div className="search-input-group">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search sample documents..."
-                aria-label="Search sample documents"
-                className="search-input"
-                disabled={searchCapped}
-              />
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={searchCapped || !searchQuery.trim()}
-              >
-                Search
-              </button>
-            </div>
-            <p className="demo-counter">
-              {searchCapped
-                ? "Search limit reached for this session."
-                : `${searchesLeft} search${searchesLeft === 1 ? "" : "es"} remaining`}
-            </p>
-          </form>
+        <section aria-label="Search and ask" className="demo-section">
+          <Tabs
+            label="Search and ask"
+            activeId={activeTab}
+            onChange={setActiveTab}
+            tabs={[
+              { id: "search", label: "Search", hint: `${searchesLeft} left` },
+              { id: "ask", label: "Ask", hint: `${qaLeft} left` },
+            ] satisfies TabDef[]}
+          >
+            {(active) =>
+              active === "search" ? (
+                <div className="demo-panel">
+                  <form onSubmit={handleSearch} className="search-form">
+                    <div className="search-input-group">
+                      <input
+                        id="demo-search"
+                        name="demo-search"
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search sample documents..."
+                        aria-label="Search sample documents"
+                        autoComplete="off"
+                        className="search-input"
+                        disabled={searchCapped}
+                      />
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={searchCapped || !searchQuery.trim()}
+                      >
+                        Search
+                      </button>
+                    </div>
+                    <p className="demo-counter">
+                      {searchCapped && "Search limit reached for this session."}
+                    </p>
+                  </form>
 
-          {searchCapped && renderSignUpCta("search")}
+                  {searchCapped && renderSignUpCta("search")}
 
-          {!searchCapped && hasSearched && searchResults.length === 0 && (
-            <div className="empty-state">
-              <p>No results found for "{searchQuery}"</p>
-            </div>
-          )}
+                  {!searchCapped && hasSearched && searchResults.length === 0 && (
+                    <div className="empty-state">
+                      <p>No results found for "{searchQuery}"</p>
+                    </div>
+                  )}
 
-          {!searchCapped && searchResults.length > 0 && (
-            <div className="search-results">
-              <h2>Results ({searchResults.length})</h2>
-              {searchResults.map((result) => (
-                <div key={result.chunkId} className="search-result-card">
-                  <div className="result-header">
-                    <span className="result-document">{result.doc.filename}</span>
-                    <span className="result-score">
-                      Score: {(result.score * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  <p className="result-content">{result.chunk}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section aria-label="Ask questions" className="demo-section">
-          <h2 className="demo-section-title">Ask questions</h2>
-          <div className="chat-container">
-            <div className="chat-messages">
-              {messages.length === 0 && !qaCapped && (
-                <div className="empty-state">
-                  <p>Ask about the sample documents to see a demo answer.</p>
-                </div>
-              )}
-
-              {qaCapped && renderSignUpCta("qa")}
-
-              {messages.map((message) => (
-                <div key={message.id} className={`chat-message ${message.role}`}>
-                  <div className="message-avatar">
-                    {message.role === "user" ? "U" : "AI"}
-                  </div>
-                  <div className="message-content">
-                    {message.role === "assistant" ? (
-                      <>
-                        <span className="demo-model-badge">AskDocs demo</span>
-                        <Markdown>{message.content}</Markdown>
-                      </>
-                    ) : (
-                      <p>{message.content}</p>
-                    )}
-                    {message.source && (
-                      <div className="message-sources">
-                        <strong>Source:</strong>
-                        <div className="source-item">
-                          <span className="source-document">{message.source.filename}</span>
-                          <span className="source-preview">{message.source.preview}</span>
+                  {!searchCapped && searchResults.length > 0 && (
+                    <div className="search-results">
+                      <h2>Results ({searchResults.length})</h2>
+                      {searchResults.map((result) => (
+                        <div key={result.chunkId} className="search-result-card">
+                          <div className="result-header">
+                            <span className="result-document">{result.doc.filename}</span>
+                            <MatchChip pct={result.score * 100} />
+                          </div>
+                          <p className="result-content">
+                            <HighlightedText text={result.chunk} query={searchQuery} />
+                          </p>
                         </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="chat-container">
+                  <div className="chat-messages">
+                    {messages.length === 0 && !qaCapped && (
+                      <div className="empty-state">
+                        <p>Ask about the sample documents to see a demo answer.</p>
                       </div>
                     )}
-                  </div>
-                </div>
-              ))}
-            </div>
 
-            <form onSubmit={handleAsk} className="chat-input-form">
-              <input
-                type="text"
-                value={qaInput}
-                onChange={(e) => setQaInput(e.target.value)}
-                placeholder="Ask a question about the sample documents..."
-                aria-label="Ask a question about the sample documents"
-                className="chat-input"
-                disabled={qaCapped}
-              />
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={qaCapped || !qaInput.trim()}
-              >
-                Send
-              </button>
-            </form>
-            <p className="demo-counter">
-              {qaCapped
-                ? "Q&A limit reached for this session."
-                : `${qaLeft} question${qaLeft === 1 ? "" : "s"} remaining`}
-            </p>
-          </div>
+                    {qaCapped && renderSignUpCta("qa")}
+
+                    {messages.map((message) => (
+                      <div key={message.id} className={`chat-message ${message.role}`}>
+                        <div className="message-avatar">
+                          {message.role === "user" ? "U" : "AI"}
+                        </div>
+                        <div className="message-content">
+                          {message.role === "assistant" ? (
+                            <>
+                              <span className="demo-model-badge">AskDocs demo</span>
+                              <Markdown>{message.content}</Markdown>
+                            </>
+                          ) : (
+                            <p>{message.content}</p>
+                          )}
+                          {message.source && (
+                            <div className="message-sources">
+                              <strong>Source:</strong>
+                              <div className="source-item">
+                                <span className="source-document">{message.source.filename}</span>
+                                <span className="source-preview">{message.source.preview}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <form onSubmit={handleAsk} className="chat-input-form">
+                    <input
+                      id="demo-question"
+                      name="demo-question"
+                      type="text"
+                      value={qaInput}
+                      onChange={(e) => setQaInput(e.target.value)}
+                      placeholder="Ask about the sample documents..."
+                      aria-label="Ask a question about the sample documents"
+                      autoComplete="off"
+                      className="chat-input"
+                      disabled={qaCapped}
+                    />
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={qaCapped || !qaInput.trim()}
+                    >
+                      Send
+                    </button>
+                  </form>
+                  <p className="demo-counter">
+                    {qaCapped && "Q&A limit reached for this session."}
+                  </p>
+                </div>
+              )
+            }
+          </Tabs>
         </section>
       </main>
+
+      {/* The demo was the one public page without the footer, so it offered no
+          way to reach Pricing, Contact, or anything legal. */}
+      <LandingFooter />
     </div>
   );
 }

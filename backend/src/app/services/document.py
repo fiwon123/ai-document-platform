@@ -1,5 +1,6 @@
 import logging
 import os
+from io import BytesIO
 from urllib.parse import unquote
 from uuid import UUID, uuid4
 
@@ -8,8 +9,21 @@ from fastapi import HTTPException, UploadFile, status
 from app.cache.redis import redis_client
 from app.models.document import DocumentDB, DocumentStatus
 from app.repositories.document import DocumentRepository
-from app.schemas.document import DocumentStatusResponse, FileResponse
+from app.schemas.document import (
+    BulkUploadFailure,
+    BulkUploadResponse,
+    DocumentPreviewResponse,
+    DocumentStatusResponse,
+    FileResponse,
+)
+from app.services.media_tokens import (
+    KIND_ORIGINAL,
+    KIND_THUMBNAIL,
+    issue_token,
+)
 from app.services.search import invalidate_user_search_cache
+from app.services.text_extraction import TextExtractionService
+from app.services.thumbnail import thumbnail_object_key
 from app.storage.storage import MinioStorage
 from app.worker import process_document_task
 
@@ -17,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 MAX_FILENAME_LENGTH = 255
 MAX_UPLOAD_SIZE = 25 * 1024 * 1024  # 25 MB
+PREVIEW_MAX_CHARS = 5000
 
 # File types the text extraction service can handle (see text_extraction.py).
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".csv", ".html", ".htm", ".json"}
@@ -30,7 +45,12 @@ ALLOWED_MIME_TYPES = {
 }
 
 DOCUMENT_CACHE_TTL_SECONDS = 60
+STATUS_CACHE_TTL_SECONDS = 15
 _DOCUMENT_KEY = "document:{owner_id}:{document_id}"
+_STATUS_KEY = "document:status:{owner_id}:{document_id}"
+
+# Maximum number of files accepted in a single bulk upload request.
+MAX_BULK_UPLOAD_FILES = 20
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -45,14 +65,16 @@ def _sanitize_filename(filename: str) -> str:
 
 
 def invalidate_document_cache(owner_id: UUID, document_id: UUID) -> None:
-    """Drop the cached metadata entry for a document.
+    """Drop the cached metadata + status entries for a document.
 
     Called whenever a document's row changes (status transitions, deletes)
-    so callers never serve stale metadata longer than necessary. The TTL
-    provides a second line of defense if a caller forgets to invalidate.
+    so callers never serve stale metadata or polled status longer than
+    necessary. The TTLs provide a second line of defense if a caller
+    forgets to invalidate.
     """
     try:
         redis_client.delete(_DOCUMENT_KEY.format(owner_id=owner_id, document_id=document_id))
+        redis_client.delete(_STATUS_KEY.format(owner_id=owner_id, document_id=document_id))
     except Exception as e:  # noqa: BLE001 - cache must never break the caller
         logger.warning(f"Document cache invalidation failed: {e}")
 
@@ -70,6 +92,73 @@ class DocumentService:
         owner_id: UUID,
         upload_file: UploadFile,
     ):
+        document = self._upload_one(owner_id=owner_id, upload_file=upload_file)
+
+        # The document set changed: any cached search results for this
+        # user are now stale (the new document is not included) and the
+        # document's own metadata is not cached yet, so only invalidate
+        # the search cache.
+        invalidate_user_search_cache(owner_id)
+
+        return document
+
+    def upload_bulk(
+        self,
+        owner_id: UUID,
+        upload_files: list[UploadFile],
+    ) -> BulkUploadResponse:
+        uploaded: list[FileResponse] = []
+        failed: list[BulkUploadFailure] = []
+        any_uploaded = False
+
+        for upload_file in upload_files:
+            try:
+                document = self._upload_one(
+                    owner_id=owner_id,
+                    upload_file=upload_file,
+                )
+            except HTTPException as e:
+                # FastAPI HTTPException detail is the human-readable message.
+                detail = e.detail
+                if isinstance(detail, str):
+                    message = detail
+                else:
+                    message = "Upload failed"
+                failed.append(
+                    BulkUploadFailure(
+                        filename=_sanitize_filename(
+                            upload_file.filename or "unknown-file"
+                        ),
+                        error=message,
+                    )
+                )
+                continue
+            except Exception as e:  # noqa: BLE001 - per-file isolation
+                safe_name = _sanitize_filename(upload_file.filename or "unknown-file")
+                logger.warning(f"Bulk upload failed for {safe_name}: {e}")
+                failed.append(
+                    BulkUploadFailure(
+                        filename=safe_name,
+                        error="Upload failed. Please try again.",
+                    )
+                )
+                continue
+
+            uploaded.append(FileResponse.model_validate(document))
+            any_uploaded = True
+
+        if any_uploaded:
+            invalidate_user_search_cache(owner_id)
+
+        return BulkUploadResponse(uploaded=uploaded, failed=failed)
+
+    def _upload_one(self, owner_id: UUID, upload_file: UploadFile) -> DocumentDB:
+        """Validate, store, persist, and queue a single file.
+
+        Raises ``HTTPException`` with the same messages as the single-file
+        endpoint. Callers that need per-file error isolation (bulk upload)
+        wrap this in try/except.
+        """
         document_id = uuid4()
         filename = _sanitize_filename(upload_file.filename or "unknown-file")
 
@@ -166,24 +255,19 @@ class DocumentService:
                 detail="Failed to save document metadata. Please try again.",
             ) from e
 
-        # The document set changed: any cached search results for this
-        # user are now stale (the new document is not included) and the
-        # document's own metadata is not cached yet, so only invalidate
-        # the search cache.
-        invalidate_user_search_cache(owner_id)
-
         try:
             process_document_task(document_id)
         except Exception as e:
             # Processing failed even after the inline fallback (e.g. the
             # content could not be extracted). Never leave the document
             # stuck in pending; record the failure and return the
-            # refreshed row so the client sees the final status.
+            # refreshed row so the client sees the final status. The
+            # exception runs to the log, not the API payload.
             logger.warning(f"Processing failed for {document_id}: {e}")
             failed = self.repository.update_status(
                 document_id,
                 DocumentStatus.FAILED,
-                error_message=f"Failed to process document: {e}",
+                error_message="Failed to process document: unexpected processing error",
             )
             if failed is not None:
                 created = failed
@@ -206,7 +290,17 @@ class DocumentService:
         return document
 
     def get_status(self, document_id: UUID, owner_id: UUID):
-        """Return a minimal status object for polling clients."""
+        """Return a minimal status object for polling clients.
+
+        Polling clients hit this endpoint repeatedly while a document is
+        processing, so the response is cached briefly
+        (``STATUS_CACHE_TTL_SECONDS``); every status transition invalidates
+        the entry through ``invalidate_document_cache`` (worker + delete).
+        """
+        cached = self._get_cached_status(owner_id, document_id)
+        if cached is not None:
+            return cached
+
         document = self.repository.get_by_id(
             document_id=document_id,
             owner_id=owner_id,
@@ -214,16 +308,110 @@ class DocumentService:
         if document is None:
             return None
 
-        return DocumentStatusResponse(
+        response = DocumentStatusResponse(
             id=document.id,
             status=document.status,
             error_message=document.error_message,
+            has_thumbnail=document.has_thumbnail,
+            created_at=document.created_at,
+            updated_at=document.updated_at,
+        )
+        self._cache_status(owner_id, document_id, response)
+        return response
+
+    def reprocess(self, document_id: UUID, owner_id: UUID):
+        """Re-enqueue a terminal document (failed or ready) for processing.
+
+        Returns a ``ReprocessDocumentResponse`` payload. Raises
+        ``HTTPException`` 404 when the document is not owned by the user,
+        and 409 when the document is currently pending/processing (a
+        re-enqueue would race the running job).
+        """
+        from app.schemas.document import ReprocessDocumentResponse
+
+        document = self.repository.get_by_id(
+            document_id=document_id,
+            owner_id=owner_id,
+        )
+        if document is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            )
+
+        if document.status in (
+            DocumentStatus.PENDING,
+            DocumentStatus.PROCESSING,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Document is already being processed. "
+                    "Wait for it to finish before retrying."
+                ),
+            )
+
+        # Reset to pending and clear the stale error so the status endpoint
+        # reports a clean in-flight state while the worker runs again.
+        reset = self.repository.update_status(
+            document_id,
+            DocumentStatus.PENDING,
+            error_message=None,
+        )
+        if reset is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            )
+        invalidate_document_cache(owner_id, document_id)
+        invalidate_user_search_cache(owner_id)
+
+        try:
+            process_document_task(document_id)
+        except Exception as e:  # noqa: BLE001 - surface the real processing error
+            logger.warning(f"Reprocessing failed for {document_id}: {e}")
+            failed = self.repository.update_status(
+                document_id,
+                DocumentStatus.FAILED,
+                error_message="Failed to process document: unexpected processing error",
+            )
+            if failed is not None:
+                invalidate_document_cache(owner_id, document_id)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Failed to reprocess the document. Please try again.",
+            ) from e
+
+        return ReprocessDocumentResponse(
+            message="Document reprocessing started",
+            document_id=document_id,
+            status=DocumentStatus.PENDING,
         )
 
     def list(self, owner_id: UUID, skip: int = 0, limit: int = 20):
         return self.repository.get_by_owner(owner_id=owner_id, skip=skip, limit=limit)
 
+    @staticmethod
+    def _asset_url(document_id: UUID, kind: str) -> str:
+        """An API path the browser can always reach, carrying its own authority.
+
+        Deliberately relative: the frontend proxies ``/v1`` to the backend, so a
+        path is correct from the dev server, from a production bundle served by
+        the same nginx, and from the audit's in-container browser — with no
+        knowledge of where the API is hosted. A presigned storage URL had to
+        encode an absolute host, which is a guess about the browser's network
+        and is wrong in every environment but one (#536).
+        """
+        token = issue_token(document_id, kind)
+        return f"/v1/documents/{document_id}/content?kind={kind}&token={token}"
+
     def get_download_url(self, document_id: UUID, owner_id: UUID):
+        """A link to the original file, authorised by a token in the URL.
+
+        ``<img src>`` and a plain download link cannot carry an Authorization
+        header, so the authority travels in the query string instead. The token
+        is short-lived and scoped to this one document.
+        """
         document = self.get(document_id=document_id, owner_id=owner_id)
         if document is None:
             return None
@@ -231,11 +419,146 @@ class DocumentService:
         return {
             "id": document.id,
             "filename": document.filename,
-            "download_url": self.storage.create_download_url(
-                document.object_key,
-                expires_in=3600,
-            ),
+            "download_url": self._asset_url(document.id, KIND_ORIGINAL),
         }
+
+    def get_thumbnail_url(self, document_id: UUID, owner_id: UUID):
+        """Return a fresh link to the document's rendered thumbnail.
+
+        None when the document is not found or has no thumbnail (still
+        pending, a non-PDF, or rendering failed).
+        """
+        document = self.get(document_id=document_id, owner_id=owner_id)
+        if document is None or not document.has_thumbnail:
+            return None
+
+        return {
+            "id": document.id,
+            "thumbnail_url": self._asset_url(document.id, KIND_THUMBNAIL),
+        }
+
+    def open_asset(self, document_id: UUID, kind: str):
+        """Open a document's bytes for a token-authorised request.
+
+        Returns ``(document, body, content_length)``. ``None`` when the token
+        does not authorise this document and kind, or the document is gone, or
+        the asset was never written — the caller answers 403 for the first and
+        404 for the rest, because "your token is not good for this" and "there
+        is nothing here" are different facts for a browser to act on.
+        """
+        document = self.repository.get_by_id(document_id)
+        if document is None:
+            return None
+
+        if kind == KIND_THUMBNAIL:
+            if not document.has_thumbnail:
+                return None
+            object_key = thumbnail_object_key(document.object_key)
+        else:
+            object_key = document.object_key
+
+        try:
+            body, length = self.storage.open_object(object_key)
+        except Exception:  # noqa: BLE001 - a missing object must not 500
+            logger.warning(
+                "Document asset %s (%s) could not be read from storage",
+                document_id,
+                kind,
+                exc_info=True,
+            )
+            return None
+
+        return document, body, length
+
+    def preview(self, document_id: UUID, owner_id: UUID):
+        """Return a truncated text preview of the stored document.
+
+        READY documents are previewed from their stored chunks (no MinIO
+        round-trip or re-extraction); everything else falls back to
+        reading the stored object, which also covers edge cases where a
+        READY document has no chunks yet (e.g. pre-chunking uploads).
+        """
+        document = self.repository.get_by_id(
+            document_id=document_id,
+            owner_id=owner_id,
+        )
+        if document is None:
+            return None
+
+        if document.status == DocumentStatus.READY:
+            preview_text = self._preview_from_chunks(document_id)
+            if preview_text is not None:
+                return DocumentPreviewResponse(
+                    id=document.id,
+                    filename=document.filename,
+                    preview=preview_text[:PREVIEW_MAX_CHARS],
+                    truncated=len(preview_text) > PREVIEW_MAX_CHARS,
+                )
+
+        try:
+            body = self.storage.download(document.object_key)
+            try:
+                raw = body.read()
+            finally:
+                # Close the streaming body so the connection is released.
+                body.close()
+        except Exception as e:
+            logger.warning(f"Preview storage read failed for {document_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Document storage is temporarily unavailable. Please try again.",
+            ) from e
+
+        try:
+            text = TextExtractionService().extract_text(
+                BytesIO(raw),
+                document.mime_type,
+            )
+        except Exception as e:
+            logger.warning(f"Preview extraction failed for {document_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Could not extract text for preview.",
+            ) from e
+
+        return DocumentPreviewResponse(
+            id=document.id,
+            filename=document.filename,
+            preview=text[:PREVIEW_MAX_CHARS],
+            truncated=len(text) > PREVIEW_MAX_CHARS,
+        )
+
+    def _preview_from_chunks(self, document_id: UUID) -> str | None:
+        """Rebuild the start of a READY document from its stored chunks.
+
+        Chunks are extracted-text windows produced with a fixed overlap;
+        the duplicated window is cut when stitching so the result matches
+        the original extraction (approximate for tiny edge fragments).
+        Returns ``None`` when the document has no chunks, so callers can
+        fall back to the storage-based path.
+        """
+        contents = self.repository.get_preview_chunks(
+            document_id, max_chars=PREVIEW_MAX_CHARS
+        )
+        if not contents:
+            return None
+
+        # Mirrors ChunkingService default overlap (see get_preview_chunks).
+        overlap = 200
+        stitched = contents[0]
+        for content in contents[1:]:
+            if not content:
+                continue
+            drop = min(overlap, len(content))
+            for n in range(drop, 0, -1):
+                if stitched.endswith(content[:n]):
+                    stitched += content[n:]
+                    break
+            else:
+                stitched += content
+            if len(stitched) > PREVIEW_MAX_CHARS:
+                break
+        return stitched
 
     def delete(self, document_id: UUID, owner_id: UUID):
         # Fetch a fresh ORM row directly: the cached FileResponse is not a
@@ -247,10 +570,32 @@ class DocumentService:
         if document is None:
             return None
 
+        # Snapshot the fields webhook payloads need *before* the delete
+        # commit: the ORM instance is expired afterwards and the row is
+        # gone, so detached-safe plain values must be captured while the
+        # session can still read them.
+        from app.services.webhook import document_event_info
+
+        delete_info = document_event_info(document)
+
         self.storage.delete(document.object_key)
+        # The thumbnail lives in the document's storage folder; removing it
+        # keeps delete idempotent and prevents orphaned objects.
+        try:
+            self.storage.delete(thumbnail_object_key(document.object_key))
+        except Exception as e:  # noqa: BLE001 - delete is already in flight
+            logger.warning(
+                f"Thumbnail cleanup failed for {document.object_key}: {e}"
+            )
         self.repository.delete(document)
         invalidate_document_cache(owner_id, document_id)
         invalidate_user_search_cache(owner_id)
+        # Notify webhook subscribers without blocking the response: the
+        # delivery runs in a daemon thread and never raises into the
+        # request cycle.
+        from app.services.webhook import fire_webhook_background
+
+        fire_webhook_background("document.deleted", delete_info)
         return document
 
     def _get_cached_document(self, owner_id: UUID, document_id: UUID) -> FileResponse | None:
@@ -275,3 +620,32 @@ class DocumentService:
             )
         except Exception as e:  # noqa: BLE001 - cache write must never break reads
             logger.warning(f"Document cache write failed: {e}")
+
+    def _get_cached_status(
+        self, owner_id: UUID, document_id: UUID
+    ) -> DocumentStatusResponse | None:
+        try:
+            payload = redis_client.get_json(
+                _STATUS_KEY.format(owner_id=owner_id, document_id=document_id)
+            )
+            if payload is None:
+                return None
+            return DocumentStatusResponse.model_validate(payload)
+        except Exception as e:  # noqa: BLE001 - fall back to the database
+            logger.warning(f"Status cache read failed: {e}")
+            return None
+
+    def _cache_status(
+        self,
+        owner_id: UUID,
+        document_id: UUID,
+        response: DocumentStatusResponse,
+    ) -> None:
+        try:
+            redis_client.set_json(
+                _STATUS_KEY.format(owner_id=owner_id, document_id=document_id),
+                response.model_dump(mode="json"),
+                ex=STATUS_CACHE_TTL_SECONDS,
+            )
+        except Exception as e:  # noqa: BLE001 - cache write must never break reads
+            logger.warning(f"Status cache write failed: {e}")

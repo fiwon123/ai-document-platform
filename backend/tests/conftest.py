@@ -20,15 +20,33 @@ PG_USER = os.getenv("POSTGRES_USER", "postgres")
 PG_PASSWORD = os.getenv("POSTGRES_PASSWORD", "mysecretpassword")
 
 # App modules read environment variables at import time:
-# - auth.py raises if SECRET_KEY is empty
+# - auth.py raises if SECRET_KEY is empty or is the published placeholder
 # - database/db.py builds the engine from POSTGRES_* vars
 # Configure everything before any `app.*` import.
 os.environ["POSTGRES_DB"] = TEST_DB_NAME
-os.environ.setdefault("SECRET_KEY", "test-only-secret-key")
+# The app engine requires POSTGRES_PASSWORD (no default is baked in
+# anymore); align it with the maintenance-connection password so the
+# suite runs without extra environment configuration.
+os.environ.setdefault("POSTGRES_PASSWORD", PG_PASSWORD)
+# Forced, not setdefault: a developer shell that exports the project's
+# placeholder SECRET_KEY (the docker-compose default) would otherwise leak into
+# the suite and trip the startup guard in app/config.py, failing every test that
+# imports app.routes.auth. The suite must not depend on ambient configuration.
+os.environ["SECRET_KEY"] = "test-only-secret-key"
 # Keep the in-memory rate limiter from tripping during long test runs.
 os.environ.setdefault("RATE_LIMIT_REQUESTS", "10000")
+# httpx (TestClient) never sends Secure cookies over plain http:// — disable
+# the Secure flag in tests so the refresh-cookie flow is exercised end-to-end.
+os.environ.setdefault("REFRESH_COOKIE_SECURE", "false")
+# Run against a dedicated Redis database so the autouse flush fixture can
+# fully isolate tests from the development cache (and from each other).
+# Forced (not setdefault) so a stray REDIS_DB in the environment cannot
+# point the flush at the developer's live cache database.
+os.environ["REDIS_DB"] = "15"
 
-from sqlalchemy import create_engine, text
+# NOTE: imports must stay below the env setup above — app modules read
+# the environment at import time.
+from sqlalchemy import create_engine, text  # noqa: E402
 
 
 def _server_engine():
@@ -86,6 +104,75 @@ def _truncate_all(engine) -> None:
     with engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             conn.execute(table.delete())
+
+
+@pytest.fixture(autouse=True)
+def isolate_qa_model_env(monkeypatch):
+    """Stop QA tests from inheriting the developer's model selection.
+
+    ``resolve_default_model()`` reads ``QA_MODEL`` and ``OPENAI_MODEL`` live
+    from the environment on every call, by design so a config change applies
+    without a restart. That makes it the one piece of configuration a test
+    cannot control by patching a module attribute, and it meant any test which
+    called ``ask()`` without naming a model had its provider picked by whatever
+    the machine happened to export: ``QA_MODEL=llama-3.3-70b-versatile`` in a
+    developer's shell made the "local provider" and BYOK tests resolve to Groq
+    and fail on a suite that was green in CI.
+
+    Both are blanked to "" -- *set*, not deleted, because ``load_dotenv()``
+    (override=False) leaves an existing variable alone and would otherwise
+    re-supply them from ``backend/src/app/.env``. A test that needs one of
+    them sets it with ``monkeypatch.setenv`` in its own body, which runs after
+    this fixture, so the test always has the last word.
+
+    The import-time provider clients are a separate concern, handled per-test
+    by ``_patch_llm_client`` (see #478).
+    """
+    monkeypatch.setenv("QA_MODEL", "")
+    monkeypatch.setenv("OPENAI_MODEL", "")
+
+
+@pytest.fixture(autouse=True)
+def isolate_secret_key_acknowledgement(monkeypatch):
+    """Stop the signing-key guard tests from inheriting the dev sandbox's opt-in.
+
+    ``ensure_secret_key_acceptable`` refuses every key this repository
+    publishes, and the tests that assert it must therefore run with the
+    bypass *off* -- otherwise they are not testing the guard, they are testing
+    the environment. ``docker-compose.yaml`` sets
+    ``ALLOW_PLACEHOLDER_SECRET_KEY=1`` on the dev and worker services on
+    purpose (that sandbox is knowingly running with the published key), so
+    inside the container five guard tests were red: green on a developer
+    machine, red where the work actually happens (#534).
+
+    Blank to "" -- *set*, not deleted, for the same reason as
+    ``isolate_qa_model_env``: ``load_dotenv()`` (override=False) leaves an
+    existing variable alone and would re-supply it from
+    ``backend/src/app/.env``. An empty value is a real configuration here, not
+    a missing one -- the guard documents that anything which is not truthy is
+    treated as "not acknowledged". A test that needs the opt-in sets it with
+    ``monkeypatch.setenv`` in its own body, which runs after this fixture, so
+    the test always has the last word.
+    """
+    monkeypatch.setenv("ALLOW_PLACEHOLDER_SECRET_KEY", "")
+
+
+@pytest.fixture(autouse=True)
+def flush_test_redis():
+    """Wipe the dedicated test Redis database before every test.
+
+    Caching tests that do not use the in-memory ``fake_redis`` fixture
+    (e.g. statistics route tests) must never observe keys left behind by
+    an earlier test. When Redis is unreachable this is a no-op — the
+    caching code paths already fall back gracefully.
+    """
+    from app.cache.redis import redis_client
+
+    try:
+        redis_client.client.flushdb()
+    except Exception:  # noqa: BLE001, S110 - Redis is optional in tests
+        pass
+    yield
 
 
 @pytest.fixture()
@@ -150,3 +237,21 @@ def auth_headers(client):
 
     token = login.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
+def pdf_bytes() -> bytes:
+    """A real, valid PDF built in memory (used by thumbnail rendering tests).
+
+    PyMuPDF is a hard dependency, so importing it here is safe; no external
+    services or fixture files are involved.
+    """
+    import fitz
+
+    document = fitz.open()
+    try:
+        page = document.new_page()
+        page.insert_text((72, 72), "Hello thumbnail")
+        return document.tobytes()
+    finally:
+        document.close()

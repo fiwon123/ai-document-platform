@@ -1,0 +1,83 @@
+# External Secrets Operator resources for the production overlay.
+#
+# Prerequisite: ESO installed in the cluster:
+#   helm repo add external-secrets https://charts.external-secrets.io
+#   helm install external-secrets external-secrets/external-secrets -n external-secrets --create-namespace
+#
+# Model: a ClusterSecretStore reads from AWS Secrets Manager and an
+# ExternalSecret materializes the well-known `app-secrets` Secret (same name
+# and keys the base Deployments consume via envFrom — no app changes).
+#
+# AWS alternative shorthand: when the ESO controller runs inside EKS you can
+# drop the auth.secretRef below and rely on IRSA / the node IAM profile (set
+# spec.provider.aws.auth.jwt or omit auth entirely). For other providers
+# (GCP Secret Manager, Vault, ...) swap the provider block; the ExternalSecret
+# below is provider-agnostic.
+apiVersion: external-secrets.io/v1beta1
+kind: ClusterSecretStore
+metadata:
+  name: aws-secretsmanager
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: us-east-1
+      auth:
+        secretRef:
+          accessKeyIDSecretRef:
+            name: eso-aws-creds
+            namespace: ai-platform
+            key: access-key-id
+          secretAccessKeySecretRef:
+            name: eso-aws-creds
+            namespace: ai-platform
+            key: secret-access-key
+---
+# Expected layout in Secrets Manager: a single secret named
+#   ai-platform/production/backend
+# with the properties SECRET_KEY, POSTGRES_PASSWORD, MINIO_ACCESS_KEY,
+# MINIO_SECRET_KEY, DATABASE_URL, OPENAI_API_KEY, GROQ_API_KEY.
+# (Alternatively switch to `dataFrom` + JSON extraction: set `extract` on the
+# remote key and ESO maps every JSON field to a same-named secret key.)
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: app-secrets
+  namespace: ai-platform
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: aws-secretsmanager
+    kind: ClusterSecretStore
+  target:
+    name: app-secrets
+    creationPolicy: Owner
+  data:
+    - secretKey: SECRET_KEY
+      remoteRef:
+        key: ai-platform/production/backend
+        property: SECRET_KEY
+    - secretKey: POSTGRES_PASSWORD
+      remoteRef:
+        key: ai-platform/production/backend
+        property: POSTGRES_PASSWORD
+    - secretKey: MINIO_ACCESS_KEY
+      remoteRef:
+        key: ai-platform/production/backend
+        property: MINIO_ACCESS_KEY
+    - secretKey: MINIO_SECRET_KEY
+      remoteRef:
+        key: ai-platform/production/backend
+        property: MINIO_SECRET_KEY
+    - secretKey: DATABASE_URL
+      remoteRef:
+        key: ai-platform/production/backend
+        property: DATABASE_URL
+    - secretKey: OPENAI_API_KEY
+      remoteRef:
+        key: ai-platform/production/backend
+        property: OPENAI_API_KEY
+    - secretKey: GROQ_API_KEY
+      remoteRef:
+        key: ai-platform/production/backend
+        property: GROQ_API_KEY
