@@ -117,6 +117,45 @@ MIGRATE_WATCH_PID=$!
 wait_for_rollout() {
   local target="$1" timeout_secs="$2" out=""
   local deadline=$(( SECONDS + timeout_secs ))
+
+  # `kubectl rollout status` has no status viewer for Job.batch. It returns
+  # "no status viewer has been implemented for Job.batch" whatever the Job is
+  # actually doing, so this check could never pass -- and after the full budget it
+  # printed that error as if it were the Job's status, which reads like a failed
+  # migration when the migration is fine. Cost five minutes per run to be wrong
+  # about a Job that completed (run 37315248854, #673).
+  #
+  # Jobs are therefore waited on with `kubectl wait --for=condition=complete`,
+  # the same gate the backend and worker init containers already use
+  # (backend.yaml:61-73).
+  case "${target}" in
+    job/*)
+      local name="${target#job/}"
+      while [ "${SECONDS}" -lt "${deadline}" ]; do
+        if kubectl -n "${NAMESPACE}" wait --for=condition=complete "${target}" \
+            --timeout=5s >/dev/null 2>&1; then
+          printf '%s\n' "job/${name} completed"
+          return 0
+        fi
+        # Deliberately the `Failed` condition and NOT `status.failed`: this Job is
+        # `backoffLimit: 3` with `restartPolicy: OnFailure`, so `status.failed`
+        # counts retries and is non-zero on a Job that goes on to succeed. Reading
+        # it as terminal would fail a healthy migration. The condition is only set
+        # once the retries are exhausted -- the point at which waiting out the
+        # remaining budget is pure delay.
+        if [ "$(kubectl -n "${NAMESPACE}" get job "${name}" \
+                -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' \
+                2>/dev/null)" = "True" ]; then
+          printf '%s\n' "job/${name} failed (backoffLimit exhausted)" >&2
+          return 1
+        fi
+        sleep 2
+      done
+      printf 'job/%s did not complete within %ss\n' "${name}" "${timeout_secs}" >&2
+      return 1
+      ;;
+  esac
+
   while [ "${SECONDS}" -lt "${deadline}" ]; do
     if out="$(kubectl -n "${NAMESPACE}" rollout status "${target}" --timeout=10s 2>&1)"; then
       printf '%s\n' "${out}"
