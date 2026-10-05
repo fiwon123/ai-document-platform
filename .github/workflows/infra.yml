@@ -227,6 +227,11 @@ jobs:
         uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: ghcr.io/fiwon123/ai-platform/minio:${{ needs.build-images.outputs.tag }}
+          # Same pin as the other three scan steps, and for the same reason:
+          # unpinned, setup-trivy resolves "latest" via the trivy repo's git
+          # tags, which landed on v0.65.0 — a tag whose release assets have been
+          # deleted, so the installer 404s and exits 1 silently (#652).
+          version: v0.75.0
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
