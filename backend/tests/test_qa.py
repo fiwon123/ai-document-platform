@@ -1557,6 +1557,32 @@ def _empty_search():
     return fake_search
 
 
+def _own_quota_window(monkeypatch):
+    """Give this test its own provider-quota window.
+
+    `provider_quota._minute_key` derives the counter's Redis key from the wall
+    clock (`int(now // 60)`), which is correct — one window shared by every
+    process is the point. It does mean a test that spends the only slot and then
+    makes the call it expects to be refused depends on **both** reserves landing
+    in the same minute. A boundary between them addresses a different key, so
+    the request starts a fresh counter at 1, that is within a ceiling of 1, and
+    the call is admitted: a 1-in-60 failure that reached CI as a bare
+    `assert 200 == 429`.
+
+    The window is unique per call, which also stops the two tests that spend a
+    groq slot from exhausting each other's budget when they run inside the same
+    minute — the counter is process-wide, not per-test.
+    """
+    from app.services import provider_quota
+
+    window = f"test-{uuid4()}"
+    monkeypatch.setattr(
+        provider_quota,
+        "_minute_key",
+        lambda _provider, _now: f"provider-quota:{window}",
+    )
+
+
 class TestProviderRateLimitIsA429:
     """A provider ceiling must not arrive as a 200 carrying a failure string.
 
@@ -1645,6 +1671,7 @@ class TestProviderRateLimitIsA429:
         from app.services import provider_quota
         from app.services.provider_quota import ProviderRateLimited
 
+        _own_quota_window(monkeypatch)
         monkeypatch.setitem(
             provider_quota.PROVIDER_LIMITS,
             "groq",
@@ -1747,6 +1774,7 @@ class TestRateLimit429Response:
             ProviderLimits,
         )
 
+        _own_quota_window(monkeypatch)
         monkeypatch.setitem(
             provider_quota.PROVIDER_LIMITS,
             "groq",
