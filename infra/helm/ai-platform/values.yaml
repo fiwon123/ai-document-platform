@@ -222,7 +222,10 @@ redis:
 
 minio:
   enabled: true
-  image: minio/minio:latest
+  # Built from infra/docker/Dockerfile.minio; the official `minio/minio` image is
+  # no longer published anywhere anonymously pullable (#646). Override this to
+  # point at a MinIO distribution you host or license yourself.
+  image: ai-platform/minio:latest
   storage: 10Gi
   resources:
     requests:

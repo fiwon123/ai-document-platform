@@ -334,7 +334,14 @@ services:
       - default
 
   minio:
-    image: minio/minio:latest
+    # Built, not pulled: the official `minio/minio` image is no longer
+    # obtainable (Docker Hub repo deleted, quay.io requires auth, dl.min.io
+    # answers 410 Gone), so `make dev-up` could not start storage at all.
+    # See infra/docker/Dockerfile.minio and #646.
+    build:
+      context: ./infra/docker
+      dockerfile: Dockerfile.minio
+    image: ai-platform/minio:latest
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -345,7 +352,11 @@ services:
       - minio_data:/data
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # Was `["CMD", "mc", "ready", "local"]`, which required the `mc` client to
+      # be present in the image. The image carries only the MinIO server binary,
+      # so readiness is polled over the health endpoint instead — `/ready` is the
+      # server-side equivalent of `mc ready local`.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9000/minio/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 5

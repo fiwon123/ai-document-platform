@@ -31,7 +31,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # (the containerd mirror configured in kind-config.yaml).
 # Deployments must reference images as localhost:5000/<name>:latest and set
 # imagePullPolicy: IfNotPresent.
-for img in backend worker frontend; do
+for img in backend worker frontend minio; do
   echo "==> Pushing localhost:${REGISTRY_PORT}/${img}:latest to local registry"
   docker push "localhost:${REGISTRY_PORT}/${img}:latest"
 done
