@@ -77,6 +77,9 @@ echo "==> Applying the dev overlay"
 kubectl config use-context "kind-${CLUSTER_NAME}" >/dev/null
 kustomize build "${ROOT_DIR}/infra/k8s/overlays/dev" | kubectl apply -f -
 
+# Start watcher as early as possible to capture migrate logs
+watch_migrate_logs &
+
 # Re-capture on every pass, so a poll taken while the pod is alive is never
 # overwritten by the "container not found" error from a poll taken after it was
 # collected. Run in the background for the whole test: it is the only thing that
@@ -107,10 +110,6 @@ watch_migrate_logs() {
   done
 }
 
-# Started before anything waits on a rollout, because the migrate Job's pod does
-# not survive the backend's own 300s rollout wait.
-watch_migrate_logs &
-MIGRATE_WATCH_PID=$!
 
 # Poll rather than block in one long `rollout status`, so a failing Job exits this
 # loop early instead of always burning the full timeout.
