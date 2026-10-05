@@ -30,6 +30,12 @@ FAILED=0
 fail() { echo "FAIL: $*" >&2; FAILED=1; }
 ok()   { echo "ok:   $*"; }
 
+# Most recent migrate Job logs seen while its pod still existed. A Job with
+# `backoffLimit` deletes its pod once the retries are exhausted, so the reason a
+# migration failed is only readable *during* the wait — by the time the rollout
+# gives up, `kubectl logs` has nothing left to return (#655).
+MIGRATE_LOG_SNAPSHOT=""
+
 for cmd in docker kind kubectl kustomize curl python3; do
   command -v "${cmd}" >/dev/null 2>&1 || { echo "ERROR: '${cmd}' is required but not installed"; exit 1; }
 done
@@ -48,6 +54,43 @@ echo "==> Building + loading images into the cluster"
 echo "==> Applying the dev overlay"
 kubectl config use-context "kind-${CLUSTER_NAME}" >/dev/null
 kustomize build "${ROOT_DIR}/infra/k8s/overlays/dev" | kubectl apply -f -
+
+# Keep the newest non-blank capture, so a poll taken after the pod vanished
+# cannot overwrite a good one with an error message.
+snapshot_migrate_logs() {
+  local pod out
+  pod="$(kubectl -n "${NAMESPACE}" get pods -l job-name=migrate \
+    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+  [ -n "${pod}" ] || return 0
+
+  # `--previous` matters as much as the current container: a failing Job restarts
+  # in place, so the crashed attempt is usually the one holding the reason.
+  out="$(kubectl -n "${NAMESPACE}" logs "${pod}" --all-containers --tail=60 2>&1 || true)"
+  out="${out}"$'\n'"$(kubectl -n "${NAMESPACE}" logs "${pod}" --all-containers \
+    --tail=60 --previous 2>&1 || true)"
+  [ -n "$(printf '%s' "${out}" | tr -d '[:space:]')" ] || return 0
+
+  MIGRATE_LOG_SNAPSHOT="(pod ${pod})
+${out}"
+}
+
+# Poll rather than block in one long `rollout status`, so snapshot_migrate_logs
+# can run while the pod is still there. A failing Job also exits this loop early
+# instead of always burning the full timeout.
+wait_for_rollout() {
+  local target="$1" timeout_secs="$2" out=""
+  local deadline=$(( SECONDS + timeout_secs ))
+  while [ "${SECONDS}" -lt "${deadline}" ]; do
+    if out="$(kubectl -n "${NAMESPACE}" rollout status "${target}" --timeout=10s 2>&1)"; then
+      printf '%s\n' "${out}"
+      return 0
+    fi
+    if [ "${target}" = "job/migrate" ]; then snapshot_migrate_logs; fi
+    sleep 2
+  done
+  printf '%s\n' "${out}" >&2
+  return 1
+}
 
 # Dump why a workload is not coming up. Without this the only evidence a rollout
 # failed is the word "timed out": no pod state, no events, no container output.
@@ -82,6 +125,15 @@ dump_diagnostics() {
     kubectl -n "${NAMESPACE}" logs "${pod}" --all-containers --tail=60 \
       --previous >&2 2>&1 || true
   done
+
+  # Last, because it is the answer to "why did the migration fail" — and the only
+  # section that still exists after the Job's pod has been garbage collected.
+  if [ -n "${MIGRATE_LOG_SNAPSHOT}" ]; then
+    echo "--- logs job/migrate (captured while the pod still existed) ---" >&2
+    printf '%s\n' "${MIGRATE_LOG_SNAPSHOT}" >&2
+  else
+    echo "--- logs job/migrate: no snapshot was captured ---" >&2
+  fi
 }
 
 echo "==> Waiting for backend/frontend rollouts"
@@ -89,7 +141,7 @@ ROLLOUT_FAILED=0
 # Every workload is attempted and every failure reported: `set -e` would abort on
 # the first one, so a single bad workload hid the state of the other two.
 for target in deploy/backend deploy/worker deploy/frontend job/migrate; do
-  if kubectl -n "${NAMESPACE}" rollout status "${target}" --timeout=300s; then
+  if wait_for_rollout "${target}" 300; then
     ok "rollout ${target}"
   else
     fail "rollout ${target} did not complete"
