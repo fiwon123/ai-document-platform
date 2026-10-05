@@ -49,11 +49,60 @@ echo "==> Applying the dev overlay"
 kubectl config use-context "kind-${CLUSTER_NAME}" >/dev/null
 kustomize build "${ROOT_DIR}/infra/k8s/overlays/dev" | kubectl apply -f -
 
+# Dump why a workload is not coming up. Without this the only evidence a rollout
+# failed is the word "timed out": no pod state, no events, no container output.
+# That matters more than usual here, because neither workflow runs on a `dev`
+# push — a broken overlay is invisible until a release PR, and then each attempt
+# costs a 7-minute cycle with nothing in the log to act on.
+dump_diagnostics() {
+  local why="$1"
+  echo "" >&2
+  echo "==> DIAGNOSTICS: ${why}" >&2
+  echo "--- pods ---" >&2
+  kubectl -n "${NAMESPACE}" get pods -o wide >&2 2>&1 || true
+  echo "--- events (most recent first) ---" >&2
+  kubectl -n "${NAMESPACE}" get events --sort-by=.lastTimestamp >&2 2>&1 \
+    | tail -40 || true
+
+  # Anything not Running/Ready, plus the migrate job — a failed migration leaves
+  # the backend waiting on a schema that does not exist, and that job's own logs
+  # are the only place the reason appears.
+  local pod
+  for pod in $(kubectl -n "${NAMESPACE}" get pods \
+      --field-selector=status.phase!=Succeeded \
+      -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+    case "$(kubectl -n "${NAMESPACE}" get pod "${pod}" \
+            -o jsonpath='{.status.phase}/{.status.containerStatuses[*].ready}' 2>/dev/null)" in
+      Running/True*|Succeeded/*) continue ;;
+    esac
+    echo "--- describe ${pod} ---" >&2
+    kubectl -n "${NAMESPACE}" describe pod "${pod}" >&2 2>&1 \
+      | sed -n '/^Events:/,$p' | tail -25 || true
+    echo "--- logs ${pod} (previous) ---" >&2
+    kubectl -n "${NAMESPACE}" logs "${pod}" --all-containers --tail=60 \
+      --previous >&2 2>&1 || true
+  done
+}
+
 echo "==> Waiting for backend/frontend rollouts"
-kubectl -n "${NAMESPACE}" rollout status deploy/backend --timeout=300s
-kubectl -n "${NAMESPACE}" rollout status deploy/worker --timeout=300s
-kubectl -n "${NAMESPACE}" rollout status deploy/frontend --timeout=300s
-kubectl -n "${NAMESPACE}" rollout status job/migrate --timeout=300s 2>/dev/null || true
+ROLLOUT_FAILED=0
+# Every workload is attempted and every failure reported: `set -e` would abort on
+# the first one, so a single bad workload hid the state of the other two.
+for target in deploy/backend deploy/worker deploy/frontend job/migrate; do
+  if kubectl -n "${NAMESPACE}" rollout status "${target}" --timeout=300s; then
+    ok "rollout ${target}"
+  else
+    fail "rollout ${target} did not complete"
+    ROLLOUT_FAILED=1
+  fi
+done
+
+if [ "${ROLLOUT_FAILED}" = "1" ]; then
+  dump_diagnostics "at least one rollout did not complete"
+  echo "" >&2
+  echo "SMOKE TEST FAILED ✘ (rollouts did not complete; see diagnostics above)" >&2
+  exit 1
+fi
 
 echo "==> Smoke: backend health"
 BACKEND_HEALTH=$(curl -sS -o /dev/null -w '%{http_code}' --retry 20 --retry-delay 3 \
