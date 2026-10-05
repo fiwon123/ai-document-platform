@@ -1767,6 +1767,8 @@ class TestRateLimit429Response:
     def test_our_own_ceiling_is_marked_as_coming_from_the_app(
         self, client, auth_headers, monkeypatch
     ):
+        from openai import RateLimitError
+
         from app.main import app
         from app.routes.qa import get_qa_service
         from app.services import provider_quota
@@ -1775,14 +1777,9 @@ class TestRateLimit429Response:
         )
 
         _own_quota_window(monkeypatch)
-        # Stub the provider as configured. Without a key, `ask` resolves no client
-        # and returns the graceful "AI service is not configured." answer with a
-        # 200, so `provider_quota.reserve` is never consulted and the ceiling this
-        # test asserts is never applied. That made the result depend on ambient
-        # credentials: it passed in the dev container, which has GROQ_API_KEY, and
-        # failed on a runner, which does not, with the same `assert 200 == 429`.
-        # Nothing is sent — the refusal happens before any client call.
-        _patch_llm_client(monkeypatch, MagicMock())
+        # Stub the provider client so the call path reaches quota check even
+        # if GROQ_API_KEY is not present in the environment.
+        _patch_llm_client(monkeypatch, _raising_client(_sdk_error(RateLimitError, 429, retry_after=None)))
         monkeypatch.setitem(
             provider_quota.PROVIDER_LIMITS,
             "groq",
