@@ -32,6 +32,7 @@ import re
 from functools import cache
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -39,6 +40,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CI_PATH = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
 PACKAGE_JSON_PATH = REPO_ROOT / "frontend" / "package.json"
+
+#: Docs that spell out what `make check` runs in a trailing comment.
+#:
+#: Kept in step with the gate on purpose: a doc that lists only lint, tests and
+#: build becomes false the moment the gate gains a step — which is what happened
+#: to the CI-trigger claims in #680, where three files asserted something the
+#: workflows had not done for some time.
+CHECK_DOC_PATHS = ["AGENTS.md", "DEVELOPMENT.md", "CONTRIBUTING.md"]
 
 #: The job that lints the frontend, and therefore the job that owns the check.
 CI_JOB = "frontend-lint"
@@ -181,3 +190,22 @@ class TestFormatTargetsCoverTheFrontend:
             f"frontend/package.json format is {scripts.get('format')!r}; "
             "'make format' calls it by name"
         )
+
+
+class TestDocsDescribeTheGateAccurately:
+    """A doc listing lint/tests/build for `make check` is false once the gate
+    gains a step. #680's stale CI claims were exactly that."""
+
+    @pytest.mark.parametrize("path", CHECK_DOC_PATHS)
+    def test_a_make_check_comment_that_names_lint_also_names_format(self, path):
+        for line in (REPO_ROOT / path).read_text().splitlines():
+            if "make check" not in line or "#" not in line:
+                continue
+            # Only composition descriptions — a prose line like "run `make check`
+            # before every push" carries no component list to keep in step.
+            if "lint" not in line:
+                continue
+            assert "format" in line, (
+                f"{path}: {line.strip()!r} describes what `make check` runs but omits "
+                "`format`, while the gate depends on `format-check` (#690)"
+            )
