@@ -19,10 +19,18 @@ concurrency:
   group: infra-${{ github.ref }}
   cancel-in-progress: true
 
-# Mirrors the label-gating convention of ci.yml: validation runs only when
-# the `ci` label is on a PR. No Actions run on pushes to `dev` — infra checks
-# and image builds happen only on dev→main PRs (label-gated) or manual
-# dispatch, so merged dev work is never re-verified or published on dev.
+# Mirrors the label-gating convention of ci.yml: jobs run only when the `ci`
+# label is on a PR, so infra checks and image builds happen only on dev→main PRs
+# or manual dispatch.
+#
+# Note what a push to `dev` does reach (#680). A push is not itself a trigger,
+# but it advances the head of any *open* dev→main PR, which fires
+# `synchronize` — declared below — and therefore both workflows. Whether the
+# jobs inside then do anything is the label gate: without `ci`, every job comes
+# back `skipped`. That is a triggered run that verifies nothing, and `skipped`
+# is not `passed` (#675, #676, #677 all reached main that way). So a dev→main PR
+# without the label is not a gate — which is why merged dev work must not be
+# *assumed* verified, and must not be published on dev.
 #
 # `packages: write` is deliberately NOT granted workflow-wide (#544). It is
 # scoped to the single job that pushes, so a job that merely validates cannot
