@@ -1,6 +1,6 @@
 .PHONY: help setup host-tools infra-up infra-down check-identity check-gh-token preflight dev-up dev-build dev-down dev-restart \
         dev-log dev-exec dev-agent opencode shell sandbox reset \
-        test test-backend test-frontend lint lint-fix format typecheck build check
+        test test-backend test-frontend lint lint-fix format format-check typecheck build check
 
 COMPOSE := docker compose
 
@@ -165,8 +165,12 @@ lint-fix: ## Auto-fix lint issues
 	cd $(BACKEND_DIR) && uv run ruff check --fix src/
 	cd $(FRONTEND_DIR) && npm run lint:fix
 
-format: ## Format backend code (ruff format)
+format: ## Format backend (ruff format) + frontend (oxfmt)
 	cd $(BACKEND_DIR) && uv run ruff format src/
+	cd $(FRONTEND_DIR) && npm run format
+
+format-check: ## Verify frontend formatting (oxfmt). Backend ruff format is not yet enforced.
+	cd $(FRONTEND_DIR) && npm run format:check
 
 # --- Build / typecheck ----------------------------------------------------------
 typecheck: ## Frontend typecheck + build (tsc -b && vite build)
@@ -174,4 +178,4 @@ typecheck: ## Frontend typecheck + build (tsc -b && vite build)
 
 build: typecheck ## Build the frontend
 
-check: lint test build ## Full local gate: lint + tests + build
+check: lint format-check test build ## Full local gate: lint + format + tests + build
