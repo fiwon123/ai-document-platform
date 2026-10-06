@@ -41,7 +41,7 @@ jobs:
       # code (frontend-only work is validated by the frontend jobs).
       - name: Detect backend changes
         id: changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             backend:
