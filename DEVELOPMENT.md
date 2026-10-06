@@ -198,6 +198,54 @@ make build        # frontend typecheck + production build
 - Existing root-owned files from pre-migration sandboxes are covered by the
   one-time repair above; new sandbox writes use the host developer's ownership.
 
+### The backend suite drops tables — never point it at real data
+
+The backend suite calls `create_all` and `drop_all` on the engine it is given,
+so **whatever database it connects to, it empties.** It targets `mydb_test`.
+
+Run it normally. No override is needed, inside the sandbox included:
+
+```bash
+cd backend && uv run pytest
+```
+
+`tests/conftest.py` forces `DATABASE_URL` to the test database before importing
+any app module, because `app/database/db.py` resolves `DATABASE_URL` **first**
+and falls back to the `POSTGRES_*` parts only when it is unset. The dev sandbox
+exports `DATABASE_URL` pointing at `mydb`, so isolation via `POSTGRES_DB` alone
+was inert there — every full-suite run inside the container emptied the
+development database, silently, while still reporting green (#683).
+
+`_assert_test_database` refuses to start if the engine is connected to anything
+other than the test database, **or** if `TEST_DB_NAME` names the database the
+application itself uses. If you ever see:
+
+```text
+RuntimeError: Refusing to run: the test engine is bound to database 'mydb', expected 'mydb_test'.
+```
+
+you are one step from deleting real data, and the suite stops instead of doing it.
+
+### Recovering a database the suite emptied
+
+The damage is recognisable and total: `alembic_version` survives while every app
+table is gone, because `drop_all` only drops tables in `Base.metadata` and
+`alembic_version` is not one.
+
+**`alembic upgrade head` will not fix it** — Alembic reads the stamp, concludes
+it is already at head, and applies nothing. Restarting the sandbox will not fix
+it either. Clear the stale stamp, then migrate for real:
+
+```bash
+cd backend
+uv run python -c "from sqlalchemy import text; from app.database.db import engine; \
+  c=engine.begin(); c.__enter__().execute(text('DROP TABLE IF EXISTS alembic_version CASCADE'))"
+uv run alembic upgrade head
+```
+
+Anything the database held is gone. In a dev sandbox that is usually nothing;
+anywhere else it is data loss, so treat it as the incident it is.
+
 ## Browser checks (headless Chromium is baked into the dev image)
 
 The dev sandbox ships Playwright's headless Chromium plus Lighthouse, so

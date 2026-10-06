@@ -19,10 +19,50 @@ PG_PORT = os.getenv("POSTGRES_PORT", "5432")
 PG_USER = os.getenv("POSTGRES_USER", "postgres")
 PG_PASSWORD = os.getenv("POSTGRES_PASSWORD", "mysecretpassword")
 
+
+def test_database_url() -> str:
+    """Connection URL for the test database, as a URL not a bare name."""
+    return f"postgresql://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{TEST_DB_NAME}"
+
+
+# The database the application itself points at, captured before anything below
+# overrides it. Recorded so the guard in _assert_test_database can refuse the
+# case where the test database *is* the development one: TEST_DB_NAME=mydb
+# satisfies a plain name comparison while still emptying real data. A second
+# way to aim the suite at the wrong place, and the reason that comparison alone
+# is not a sufficient check.
+AMBIENT_POSTGRES_DB = os.getenv("POSTGRES_DB", "mydb")
+AMBIENT_DATABASE_URL = os.getenv("DATABASE_URL")
+
+
+def application_database_name() -> str:
+    """Name of the database the app would use with no test override in place."""
+    if AMBIENT_DATABASE_URL:
+        try:
+            return make_url(AMBIENT_DATABASE_URL).database or AMBIENT_POSTGRES_DB
+        except Exception:  # noqa: BLE001 - a malformed URL is not this check's job
+            return AMBIENT_POSTGRES_DB
+    return AMBIENT_POSTGRES_DB
+
+
 # App modules read environment variables at import time:
 # - auth.py raises if SECRET_KEY is empty or is the published placeholder
-# - database/db.py builds the engine from POSTGRES_* vars
+# - database/db.py builds the engine from DATABASE_URL, falling back to POSTGRES_*
 # Configure everything before any `app.*` import.
+#
+# DATABASE_URL is forced, and it is load-bearing: db.py:16 prefers it over the
+# individual POSTGRES_* parts, so setting only POSTGRES_DB left the isolation
+# below dead in any environment that exports DATABASE_URL. Inside the dev
+# sandbox compose does exactly that, pointing at the *development* database --
+# so create_all/drop_all ran against it and every full-suite run wiped the
+# developer's data, silently, while still reporting green (#683).
+#
+# Forced, not setdefault, for the same reason as SECRET_KEY below: the value
+# must come from the test configuration, never from whatever the ambient shell
+# happens to export.
+os.environ["DATABASE_URL"] = test_database_url()
+# Kept in step so anything reading POSTGRES_DB directly still sees the test
+# database rather than the ambient one.
 os.environ["POSTGRES_DB"] = TEST_DB_NAME
 # The app engine requires POSTGRES_PASSWORD (no default is baked in
 # anymore); align it with the maintenance-connection password so the
@@ -47,6 +87,7 @@ os.environ["REDIS_DB"] = "15"
 # NOTE: imports must stay below the env setup above — app modules read
 # the environment at import time.
 from sqlalchemy import create_engine, text  # noqa: E402
+from sqlalchemy.engine import make_url  # noqa: E402
 
 
 def _server_engine():
@@ -72,6 +113,41 @@ def _ensure_test_database() -> None:
         engine.dispose()
 
 
+def _assert_test_database(engine) -> None:
+    """Refuse to run against anything but the test database.
+
+    The suite calls ``create_all`` and ``drop_all`` on this engine, so pointing
+    it at the wrong database is destructive and, until #683, silent: the run
+    passed, the tables were gone, and the only symptom was a 500 on login some
+    time later.
+
+    This is the belt to the ``DATABASE_URL`` braces above. Setting the variable
+    correctly is a claim about how ``db.py`` resolves its URL -- a claim that
+    #664 already invalidated once, by making ``DATABASE_URL`` win over
+    ``POSTGRES_*`` without updating this file. Checking the *connected*
+    database instead of the configured one cannot go stale that way, because it
+    tests the thing that actually matters rather than the thing that was set.
+    """
+    actual = engine.url.database
+    if actual == TEST_DB_NAME:
+        app_db = application_database_name()
+        if app_db and actual == app_db:
+            raise RuntimeError(
+                f"Refusing to run: TEST_DB_NAME is {actual!r}, which is also the "
+                f"database the application uses. This suite drops every table in "
+                f"the database it connects to, so running it here would delete "
+                f"real data. Set TEST_DB_NAME to a separate database."
+            )
+        return
+
+    raise RuntimeError(
+        f"Refusing to run: the test engine is bound to database {actual!r}, "
+        f"expected {TEST_DB_NAME!r}. This suite drops every table in the "
+        f"database it connects to, so running it here would delete real data. "
+        f"Set TEST_DB_NAME to the intended test database."
+    )
+
+
 @pytest.fixture(scope="session")
 def db_engine():
     """Engine bound to the test database; skips tests when PG is down."""
@@ -82,6 +158,8 @@ def db_engine():
 
     from app.database.db import Base
     from app.database.db import engine as app_engine
+
+    _assert_test_database(app_engine)
 
     with app_engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))

@@ -15,6 +15,13 @@
 - **Run with verbose**: `cd backend && uv run pytest -v`
 - **Run specific test**: `cd backend && uv run pytest tests/test_document.py`
 
+> ⚠️ **The backend suite drops every table in the database it connects to.** It
+> targets `mydb_test`; `conftest.py` forces `DATABASE_URL` there and
+> `_assert_test_database` refuses to run against anything else. Do not "fix" a
+> failing suite by exporting a `DATABASE_URL` pointing at `mydb` — that empties
+> the dev database, silently, while the suite still reports green (#683).
+> Recovery steps are in `DEVELOPMENT.md` → *Recovering a database the suite emptied*.
+
 #### Test Structure
 
 ```
