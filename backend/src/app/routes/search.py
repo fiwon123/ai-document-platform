@@ -77,9 +77,7 @@ def export_search_results(
         return Response(
             content=payload,
             media_type="application/json",
-            headers={
-                "Content-Disposition": 'attachment; filename="search_results.json"'
-            },
+            headers={"Content-Disposition": 'attachment; filename="search_results.json"'},
         )
 
     return Response(

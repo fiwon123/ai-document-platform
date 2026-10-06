@@ -23,10 +23,7 @@ class WebhookSubscriptionCreate(BaseModel):
     url: str = Field(
         min_length=1,
         max_length=2000,
-        description=(
-            "HTTP(S) endpoint that receives notifications. Scheme must be "
-            "http or https."
-        ),
+        description=("HTTP(S) endpoint that receives notifications. Scheme must be http or https."),
     )
     events: list[WebhookEvent] = Field(
         min_length=1,

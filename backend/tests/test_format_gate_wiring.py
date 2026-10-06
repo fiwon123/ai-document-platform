@@ -21,10 +21,10 @@ Assertions are made against **whole command strings and whole prerequisite
 tokens**, never substrings — `npm run format` is a substring of `npm run
 format:check`, so an `in` check on the former cannot distinguish the two.
 
-Deliberately **not** asserted: that the backend is ruff-formatted.
-`ruff format --check src/` fails on 43 files today and is ungated on purpose
-(see #690) — pinning the frontend gate must not smuggle in a backend gate that
-nothing has run yet. If that changes, it gets its own issue and its own test.
+Deliberately **not** asserted here: backend formatting. The backend gate once
+had no wiring of its own — `ruff format --check src/` failed on 43 files and
+nothing called it (see #690) — but it is now gated and pinned by its own test
+file, `test_backend_format_gate_wiring.py` (#692).
 """
 
 import json

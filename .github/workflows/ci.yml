@@ -75,6 +75,11 @@ jobs:
         run: uv run ruff check src/
         working-directory: backend
 
+      - name: Format check (ruff)
+        if: steps.changes.outputs.backend == 'true'
+        run: uv run ruff format --check src/
+        working-directory: backend
+
   backend-test:
     name: Backend (pytest)
     if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))

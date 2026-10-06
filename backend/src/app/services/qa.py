@@ -181,6 +181,7 @@ MODEL_REGISTRY: list[dict] = [
     },
 ]
 
+
 def _dedupe_local_entries(registry: list[dict]) -> list[dict]:
     """Drop a local entry whose model id collides with a hosted one.
 
@@ -227,14 +228,10 @@ _MODEL_BY_ID = {entry["id"]: entry for entry in MODEL_REGISTRY}
 _CLIENT_RETRIES = 0
 
 _openai_client = (
-    OpenAI(api_key=OPENAI_API_KEY, max_retries=_CLIENT_RETRIES)
-    if OPENAI_API_KEY
-    else None
+    OpenAI(api_key=OPENAI_API_KEY, max_retries=_CLIENT_RETRIES) if OPENAI_API_KEY else None
 )
 _groq_client = (
-    OpenAI(
-        api_key=GROQ_API_KEY, base_url=GROQ_BASE_URL, max_retries=_CLIENT_RETRIES
-    )
+    OpenAI(api_key=GROQ_API_KEY, base_url=GROQ_BASE_URL, max_retries=_CLIENT_RETRIES)
     if GROQ_API_KEY
     else None
 )
@@ -606,9 +603,7 @@ class QAService:
         # The cache version is resolved ONCE so the read and write share a
         # version — an invalidation landing mid-request then only ever
         # orphanages the (already stale) old-version entry.
-        cache_version: str | None = (
-            user_cache_version(user_id) if api_key is None else None
-        )
+        cache_version: str | None = user_cache_version(user_id) if api_key is None else None
         if cache_version is not None:
             cached = _get_cached_qa(
                 user_id,
@@ -681,8 +676,7 @@ class QAService:
             "paid": [m for m in AVAILABLE_MODELS if m not in FREE_MODELS],
             "default": resolve_default_model(),
             "quotas": {
-                provider: provider_quota.snapshot(provider)
-                for provider in sorted(providers)
+                provider: provider_quota.snapshot(provider) for provider in sorted(providers)
             },
             "models": [
                 {
@@ -703,8 +697,7 @@ class QAService:
         context_parts = []
         for i, result in enumerate(results, 1):
             context_parts.append(
-                f"[Source {i}] Document: {result.document_filename}\n"
-                f"{result.content}"
+                f"[Source {i}] Document: {result.document_filename}\n{result.content}"
             )
 
         return "\n\n".join(context_parts)
@@ -722,11 +715,7 @@ class QAService:
         # A user-supplied key wins over the server-configured key for this
         # request only (bring-your-own-key). Without one, fall back to the
         # server-level client for the provider.
-        client = (
-            _client_for_api_key(api_key, provider)
-            if api_key
-            else _client
-        )
+        client = _client_for_api_key(api_key, provider) if api_key else _client
 
         if client is None:
             return unconfigured_provider_hint(provider)
@@ -825,7 +814,5 @@ class QAService:
             )
             return "Could not generate an answer with the AI provider. Please try again."
 
-        provider_quota.record_tokens(
-            provider, _total_tokens(response), account=charged
-        )
+        provider_quota.record_tokens(provider, _total_tokens(response), account=charged)
         return response.choices[0].message.content or "No answer generated."

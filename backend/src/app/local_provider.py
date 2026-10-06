@@ -45,6 +45,5 @@ LOCAL_LLM_ENABLED = os.getenv("LOCAL_LLM_ENABLED", "").strip().lower() in (
 # `app.services.embedding` calls `drop_blank_provider_vars()`, so a cleanup
 # there would arrive too late to matter.
 LOCAL_LLM_BASE_URL = (
-    (os.getenv("LOCAL_LLM_BASE_URL", "") or "").strip()
-    or "http://localhost:11434/v1"
-)
+    os.getenv("LOCAL_LLM_BASE_URL", "") or ""
+).strip() or "http://localhost:11434/v1"

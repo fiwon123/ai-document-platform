@@ -22,9 +22,7 @@ class RefreshSessionRepository:
     def get(self, jti: str) -> RefreshSessionDB | None:
         return self.db.get(RefreshSessionDB, jti)
 
-    def create(
-        self, jti: str, user_id: UUID, expires_at: datetime
-    ) -> RefreshSessionDB:
+    def create(self, jti: str, user_id: UUID, expires_at: datetime) -> RefreshSessionDB:
         row = RefreshSessionDB(jti=jti, user_id=user_id, expires_at=expires_at)
         self.db.add(row)
         self.db.commit()
@@ -85,8 +83,6 @@ class RefreshSessionRepository:
         Bounded by ``expires_at`` alone, so the sweep never has to verify a token
         to know the row is pointless.
         """
-        result = self.db.execute(
-            delete(RefreshSessionDB).where(RefreshSessionDB.expires_at <= now)
-        )
+        result = self.db.execute(delete(RefreshSessionDB).where(RefreshSessionDB.expires_at <= now))
         self.db.commit()
         return int(result.rowcount or 0)

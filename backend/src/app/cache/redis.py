@@ -27,9 +27,7 @@ class RedisClient:
     def get(self, key: str) -> str | None:
         return self.client.get(key)
 
-    def set(
-        self, key: str, value: str, ex: int | None = None
-    ) -> bool:
+    def set(self, key: str, value: str, ex: int | None = None) -> bool:
         return self.client.set(key, value, ex=ex)
 
     def delete(self, key: str) -> bool:

@@ -55,18 +55,14 @@ class StatisticsRepository:
     def user_status_counts(self) -> dict[bool, int]:
         """Count users by is_active flag across the whole system."""
         rows = self.db.execute(
-            select(UserDB.is_active, func.count(UserDB.id)).group_by(
-                UserDB.is_active
-            )
+            select(UserDB.is_active, func.count(UserDB.id)).group_by(UserDB.is_active)
         ).all()
         return dict(rows)
 
     def all_status_counts(self) -> dict[DocumentStatus, int]:
         """Count documents per status across all users."""
         rows = self.db.execute(
-            select(DocumentDB.status, func.count(DocumentDB.id)).group_by(
-                DocumentDB.status
-            )
+            select(DocumentDB.status, func.count(DocumentDB.id)).group_by(DocumentDB.status)
         ).all()
         return dict(rows)
 

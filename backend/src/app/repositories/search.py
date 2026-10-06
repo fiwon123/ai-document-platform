@@ -151,11 +151,7 @@ class SearchRepository:
         # One vector per candidate, in the order they were passed in, so the
         # result can be mapped straight back onto the terms. `strict` makes a
         # row-count mismatch an error instead of a silently short list.
-        return [
-            term
-            for term, (_position, vector) in zip(terms, rows, strict=True)
-            if vector
-        ]
+        return [term for term, (_position, vector) in zip(terms, rows, strict=True) if vector]
 
     def search(
         self,
@@ -261,15 +257,12 @@ class SearchRepository:
         when, and only when, the page comes back empty. The common path still
         costs one round trip.
         """
-        query = (
-            self.db.query(
-                DocumentChunk,
-                DocumentDB.filename,
-                score_expr.label("score"),
-                func.count().over().label("total_count"),
-            )
-            .join(DocumentDB, DocumentChunk.document_id == DocumentDB.id)
-        )
+        query = self.db.query(
+            DocumentChunk,
+            DocumentDB.filename,
+            score_expr.label("score"),
+            func.count().over().label("total_count"),
+        ).join(DocumentDB, DocumentChunk.document_id == DocumentDB.id)
         query = self._apply_user_filter(query, user_id, document_ids)
         query = query.filter(where)
 
@@ -282,9 +275,7 @@ class SearchRepository:
             # ordering turns the page query into the plain count it now needs to
             # be; the filters are untouched, so this answers "how many matched",
             # not "how many exist".
-            total_count = (
-                query.with_entities(func.count()).order_by(None).scalar() or 0
-            )
+            total_count = query.with_entities(func.count()).order_by(None).scalar() or 0
 
         return (
             [

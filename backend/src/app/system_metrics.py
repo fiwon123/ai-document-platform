@@ -74,9 +74,7 @@ def _stale_documents() -> float:
                 select(func.count())
                 .select_from(DocumentDB)
                 .where(
-                    DocumentDB.status.in_(
-                        [DocumentStatus.PENDING, DocumentStatus.PROCESSING]
-                    ),
+                    DocumentDB.status.in_([DocumentStatus.PENDING, DocumentStatus.PROCESSING]),
                     DocumentDB.updated_at < threshold,
                 )
             )

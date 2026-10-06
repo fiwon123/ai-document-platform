@@ -19,9 +19,12 @@ RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
 # rightmost entry is read -- see _client_ip. Still unsafe behind a proxy that
 # forwards the header through untouched, since then the client chooses even the
 # last entry.
-TRUST_PROXY_HEADERS = (
-    os.getenv("TRUST_PROXY_HEADERS", "").strip().lower() in {"1", "true", "yes", "on"}
-)
+TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 # Upper bound on distinct client buckets held by the in-memory fallback so
 # an unreachable Redis can never grow the process memory without limit.
@@ -176,9 +179,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if client_ip not in self.clients and len(self.clients) >= MAX_IN_MEMORY_CLIENTS:
                 self.clients.pop(next(iter(self.clients)))
 
-            history = [
-                t for t in self.clients.get(client_ip, []) if now - t < self.window
-            ]
+            history = [t for t in self.clients.get(client_ip, []) if now - t < self.window]
 
             if len(history) >= self.requests:
                 return self._too_many_response()

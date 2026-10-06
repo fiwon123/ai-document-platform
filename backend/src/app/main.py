@@ -66,18 +66,17 @@ def _validate_environment() -> None:
     if not os.getenv("SECRET_KEY"):
         missing.append("SECRET_KEY (JWT signing key)")
     if missing:
-        raise RuntimeError(
-            "Missing required environment variables: " + ", ".join(missing)
-        )
+        raise RuntimeError("Missing required environment variables: " + ", ".join(missing))
 
     # A present-but-published signing key is a vulnerability rather than a
     # missing value, so it gets its own message: the operator has to choose a
     # real key or acknowledge the placeholder explicitly (#524).
     ensure_secret_key_acceptable(os.getenv("SECRET_KEY", ""))
 
-    if os.getenv("MINIO_ACCESS_KEY", "minioadmin") == "minioadmin" or os.getenv(
-        "MINIO_SECRET_KEY", "minioadmin"
-    ) == "minioadmin":
+    if (
+        os.getenv("MINIO_ACCESS_KEY", "minioadmin") == "minioadmin"
+        or os.getenv("MINIO_SECRET_KEY", "minioadmin") == "minioadmin"
+    ):
         logger.warning(
             "MinIO is using the default admin credentials — override "
             "MINIO_ACCESS_KEY/MINIO_SECRET_KEY in non-local environments"

@@ -76,9 +76,7 @@ def _validate_password_strength(password: str) -> str:
         )
 
     if password.casefold() in COMMON_PASSWORDS:
-        raise ValueError(
-            "Password is too common; choose something harder to guess"
-        )
+        raise ValueError("Password is too common; choose something harder to guess")
 
     return password
 

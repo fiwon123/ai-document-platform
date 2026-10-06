@@ -23,9 +23,7 @@ class UserRepository:
         Only the primary object key is returned; the caller derives each
         thumbnail key from it the same way document deletion does.
         """
-        rows = self.db.execute(
-            select(DocumentDB.object_key).where(DocumentDB.owner_id == id)
-        )
+        rows = self.db.execute(select(DocumentDB.object_key).where(DocumentDB.owner_id == id))
         return [row[0] for row in rows]
 
     def get_by_id(self, id: UUID):

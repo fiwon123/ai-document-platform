@@ -36,9 +36,7 @@ else:
             "set DATABASE_URL or configure the POSTGRES_* variables"
         )
 
-    SQLALCHEMY_DATABASE_URL = (
-        f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
-    )
+    SQLALCHEMY_DATABASE_URL = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
 # Connection-pool tuning, all env-configurable so operators can size the pool
 # per deployment without a code change. Defaults match the previous
@@ -50,9 +48,7 @@ DB_POOL_TIMEOUT = int(os.getenv("DB_POOL_TIMEOUT", "30"))
 _DB_POOL_RECYCLE_RAW = os.getenv("DB_POOL_RECYCLE", "1800").strip().lower()
 # Accept 0 / -1 / "none" / "" as "no recycle" for SQLAlchemy-null semantics.
 DB_POOL_RECYCLE = (
-    None
-    if _DB_POOL_RECYCLE_RAW in {"", "0", "-1", "none"}
-    else int(_DB_POOL_RECYCLE_RAW)
+    None if _DB_POOL_RECYCLE_RAW in {"", "0", "-1", "none"} else int(_DB_POOL_RECYCLE_RAW)
 )
 
 engine = create_engine(

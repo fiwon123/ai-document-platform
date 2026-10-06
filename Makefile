@@ -169,7 +169,8 @@ format: ## Format backend (ruff format) + frontend (oxfmt)
 	cd $(BACKEND_DIR) && uv run ruff format src/
 	cd $(FRONTEND_DIR) && npm run format
 
-format-check: ## Verify frontend formatting (oxfmt). Backend ruff format is not yet enforced.
+format-check: ## Verify formatting (ruff format backend + oxfmt frontend)
+	cd $(BACKEND_DIR) && uv run ruff format --check src/
 	cd $(FRONTEND_DIR) && npm run format:check
 
 # --- Build / typecheck ----------------------------------------------------------
