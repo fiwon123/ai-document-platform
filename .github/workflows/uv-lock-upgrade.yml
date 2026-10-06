@@ -1,0 +1,127 @@
+name: uv lock upgrade
+
+# Dependabot's `pip` ecosystem edits `backend/pyproject.toml` but never the
+# lockfile, so every backend PR it opens arrives unmergeable until a human
+# regenerates `uv.lock` (#696; measured across all 8 merges of the #695
+# batch). This workflow removes the human: on a schedule (and on demand),
+# it regenerates the lock to the newest compatible versions, verifies the
+# result with the same postgres+redis suite CI runs, and opens a PR against
+# `dev` carrying a consistent `uv.lock` — which supersedes whatever raw
+# dependabot pip PRs are open at the time.
+#
+# If `uv sync --locked` or the suite fails with the new lock, the job fails
+# and **no PR is opened**: a pre-locked but broken `dev` is the exact
+# regression class #683 and #697 guard against. A red scheduled run is the
+# honest signal to fix the dependency before touching dev.
+
+on:
+  schedule:
+    # Mondays 03:00 UTC — new versions rarely need faster distribution.
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: uv-lock-upgrade
+  cancel-in-progress: true
+
+permissions:
+  # The job pushes the regenerated lock to a branch and opens the PR itself.
+  contents: write
+  pull-requests: write
+
+jobs:
+  upgrade:
+    name: Regenerate uv.lock and open a PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      # Same service set as ci.yml's backend-test job: the suite needs a
+      # pgvector-enabled Postgres and Redis, not just a resolution.
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: mysecretpassword
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Scheduled runs checkout the default branch; every PR must branch from
+      # `dev` (dependabot targets it for the same reason, #693).
+      - name: Branch from dev
+        run: |
+          git fetch origin dev
+          git checkout -B "chore/uv-lock-upgrade-$(date +%F)" origin/dev
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.14
+
+      - name: Regenerate the lockfile (newest compatible)
+        run: uv lock --upgrade
+        working-directory: backend
+
+      - name: Detect lockfile changes
+        id: diff
+        run: |
+          git diff --exit-code -- uv.lock pyproject.toml >/dev/null 2>&1 \
+            && echo "has_changes=false" >> "$GITHUB_OUTPUT" \
+            || echo "has_changes=true" >> "$GITHUB_OUTPUT"
+        working-directory: backend
+
+      - name: Sync and test with the new lock
+        if: steps.diff.outputs.has_changes == 'true'
+        run: |
+          uv sync --locked
+          uv run pytest -q
+        working-directory: backend
+
+      - name: Commit and push
+        if: steps.diff.outputs.has_changes == 'true'
+        # Unique branch per run: the PR stands alone, supersedes earlier
+        # ones, and a force-push race between overlapping runs is impossible.
+        run: |
+          git add uv.lock pyproject.toml
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "chore: bump uv.lock to newest compatible versions"
+          git push origin "HEAD:chore/uv-lock-upgrade-$(date +%F)"
+
+      - name: Open PR against dev
+        if: steps.diff.outputs.has_changes == 'true'
+        # The body lives in a separate file: a long multi-paragraph --body
+        # inside the YAML block kept tripping the scalars' indentation, and
+        # --body-file is what gh itself recommends for prose this long.
+        run: |
+          gh pr create \
+            --base dev \
+            --head "chore/uv-lock-upgrade-$(date +%F)" \
+            --title "chore: bump uv.lock to newest compatible versions" \
+            --body-file "$GITHUB_WORKSPACE/.github/workflows/uv-lock-upgrade-body.md" \
+            --label chore \
+            --assignee fiwon123
