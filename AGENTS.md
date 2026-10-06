@@ -375,23 +375,12 @@ If the user explicitly permits reading environment configuration:
 - Branch types: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/`, `ci/`
 - Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `ci:`
 - All testing is local for feature branches — CI only runs on `dev` → `main` PRs
-<<<<<<< HEAD
   (or a manual dispatch), never on a push to `dev`
-=======
-<<<<<<< HEAD
-  (or a manual dispatch), never on a push to `dev`
-=======
->>>>>>> f91498b (refactor: adopt two-tier branch model (main <- dev <- features))
->>>>>>> origin/main
 - Do NOT merge pull requests unless explicitly instructed
 - Do NOT automatically create release PRs or merge to main — user must explicitly request
 - Always return to `dev` branch after completing any merge
 - Every change is tracked on GitHub: **issue → branch → PR → merge**
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> origin/main
 ### CI triggers (read this before claiming a change is verified)
 
 Both workflows are **label-gated `dev`→`main` PRs plus manual dispatch**. A push
@@ -410,11 +399,6 @@ locally*). Publishing images to ghcr.io on every dev push is deliberately
 avoided; the validation that *should* have covered it is a separate concern from
 the release publish, and conflating them is what let the gap go unnoticed.
 
-<<<<<<< HEAD
-=======
-=======
->>>>>>> f91498b (refactor: adopt two-tier branch model (main <- dev <- features))
->>>>>>> origin/main
 ### Branch Strategy
 
 ```text
