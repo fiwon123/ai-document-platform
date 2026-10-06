@@ -55,7 +55,7 @@ jobs:
       # (code-only release PRs are validated by the image-build job).
       - name: Detect infra changes
         id: changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             infra:
