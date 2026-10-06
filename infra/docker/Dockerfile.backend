@@ -29,7 +29,7 @@ WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
-# System deps needed to compile native wheels (psycopg2 etc.).
+# System deps needed to compile native wheels (psycopg etc.).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gcc libpq-dev \
     && rm -rf /var/lib/apt/lists/*

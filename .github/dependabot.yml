@@ -37,7 +37,6 @@ updates:
           - "fastapi"
           - "sqlalchemy"
           - "alembic"
-          - "psycopg2-binary"
       ai:
         patterns:
           - "openai"

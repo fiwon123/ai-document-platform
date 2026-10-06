@@ -452,7 +452,7 @@ def process_document_sync(document_id: UUID) -> None:
     except Exception as e:  # noqa: BLE001 - record the failure then re-raise
         # The detail goes to the log; the document gets the same generic message
         # the arq path records, because `error_message` is returned by the API
-        # and rendered on the documents page. A psycopg2 or boto3 exception names
+        # and rendered on the documents page. A psycopg or boto3 exception names
         # the database host, its container IP, the port and the database user —
         # none of which the user can act on.
         logger.error(f"Synchronous processing failed for {document_id}: {e}")
