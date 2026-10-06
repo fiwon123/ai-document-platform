@@ -12,17 +12,19 @@ dependencies = [
     "bcrypt==4.0.1",
     "passlib>=1.7.4",
     "pgvector>=0.5.0",
-    "psycopg2-binary>=2.9.13",
+    # psycopg3 (import `psycopg`) is the driver SQLAlchemy 2.1+ uses by
+    # default for driverless `postgresql://` URLs, which is how this app and
+    # its tests build them (database/db.py, tests/conftest.py). The old
+    # psycopg2-binary dependency was dropped when the stack moved to it (#697).
+    "psycopg[binary]>=3.2.0",
     # pypdf is the maintained continuation of PyPDF2 (the project was
     # renamed; PyPDF2 3.0.1 was the last release under that name).
     "pypdf>=4.0.0",
     "python-jose[cryptography]>=3.5.0",
     "redis>=5.0.0",
-    # Capped below 2.1 (#145): 2.1 switched the default `postgresql://`
-    # dialect from psycopg2 to psycopg3, and this app ships psycopg2-binary
-    # with driverless URLs (tests/conftest.py). Lift the cap when the stack
-    # moves to psycopg3.
-    "sqlalchemy>=2.0.52,<2.1",
+    # psycopg3 is the default driver for driverless postgresql:// URLs since
+    # 2.1 — see the psycopg[binary] entry above (#697).
+    "sqlalchemy>=2.1",
     "openai>=3.13.0",
     "arq>=0.28.0",
     "pymupdf>=1.28.2",
