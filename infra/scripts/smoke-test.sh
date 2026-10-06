@@ -281,7 +281,7 @@ printf 'smoke test document content\n' > /tmp/smoke.txt
 UPLOAD_CODE=$(curl -sS -o /tmp/smoke-upload.json -w '%{http_code}' \
   -X POST "${BACKEND_URL}/v1/documents/" \
   -H "Authorization: Bearer ${TOKEN}" \
-  -F "file=@/tmp/smoke.txt" || echo 000)
+  -F "upload_file=@/tmp/smoke.txt" || echo 000)
 DOC_ID=$(python3 -c "import json;print(json.load(open('/tmp/smoke-upload.json')).get('id',''))" 2>/dev/null || true)
 if [ "${UPLOAD_CODE}" = "201" ] && [ -n "${DOC_ID}" ]; then ok "upload -> ${UPLOAD_CODE} (id ${DOC_ID})";
 else fail "upload -> ${UPLOAD_CODE} (id: ${DOC_ID:-none})"; fi
