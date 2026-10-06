@@ -234,13 +234,68 @@ table is gone, because `drop_all` only drops tables in `Base.metadata` and
 
 **`alembic upgrade head` will not fix it** — Alembic reads the stamp, concludes
 it is already at head, and applies nothing. Restarting the sandbox will not fix
-it either. Clear the stale stamp, then migrate for real:
+it either.
+
+Clear the surviving objects, then migrate for real:
 
 ```bash
 cd backend
-uv run python -c "from sqlalchemy import text; from app.database.db import engine; \
-  c=engine.begin(); c.__enter__().execute(text('DROP TABLE IF EXISTS alembic_version CASCADE'))"
+uv run python -c "
+from sqlalchemy import text
+from app.database.db import engine
+with engine.begin() as c:
+    c.execute(text('DROP TABLE IF EXISTS alembic_version CASCADE'))
+    for t in ('role', 'documentstatus'):
+        c.execute(text(f'DROP TYPE IF EXISTS {t} CASCADE'))
+"
 uv run alembic upgrade head
+```
+
+**The enum types are required, not optional.** `drop_all` drops *tables* from
+`Base.metadata`; Postgres enum types are not tables, so `role` and
+`documentstatus` survive alongside `alembic_version` — as does anything else a
+migration created outside `Base.metadata`. Migration 001 then runs
+`CREATE TYPE role AS ENUM (...)` against a type that already exists and aborts:
+
+```text
+[SQL: CREATE TYPE role AS ENUM ('customer', 'admin')]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+```
+
+`CREATE TYPE` is not idempotent, unlike `CREATE TABLE IF NOT EXISTS`, so a
+surviving type is a hard failure rather than a skipped step. Any future migration
+that creates an object outside `Base.metadata` needs adding to that loop.
+
+> **Dropping the stamp first is one-way.** If `alembic upgrade head` then fails,
+> there is no stamp left to migrate from. Check for surviving objects first:
+> ```bash
+> uv run python -c "
+> from sqlalchemy import text
+> from app.database.db import engine
+> with engine.connect() as c:
+>     print('tables', [r[0] for r in c.execute(text(\"select tablename from pg_tables where schemaname='public' order by 1\"))])
+>     print('enums ', [r[0] for r in c.execute(text(\"select typname from pg_type t join pg_namespace n on n.oid=t.typnamespace where n.nspname='public' and t.typtype='e' order by 1\"))])
+> "
+> ```
+> In the emptied state this prints `tables ['alembic_version']` and
+> `enums ['documentstatus', 'role']` — the types with no table beside them are
+> the leftovers to drop. When in doubt, or on a database where you do not need
+> anything, reset the schema outright:
+> ```bash
+> uv run python -c "
+> from sqlalchemy import text
+> from app.database.db import engine
+> with engine.begin() as c:
+>     c.execute(text('DROP SCHEMA public CASCADE'))
+>     c.execute(text('CREATE SCHEMA public'))
+> "
+> uv run alembic upgrade head
+> ```
+
+Verify afterwards — you want 7 tables and the stamp at `010`:
+
+```bash
+uv run alembic current
 ```
 
 Anything the database held is gone. In a dev sandbox that is usually nothing;
