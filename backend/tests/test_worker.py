@@ -22,9 +22,11 @@ from app.models.document import DocumentDB, DocumentStatus
 from app.models.user import UserDB
 from app.services.chunking import TextChunk
 from app.worker import (
+    MAX_RETRIES,
     STALE_RECOVER_COUNTER_TTL_SECONDS,
     STALE_RECOVER_MAX_ATTEMPTS,
     WORKER_HEALTH_CHECK_KEY,
+    WORKER_JOB_TIMEOUT_SECONDS,
     WorkerSettings,
     _recovery_timeout_minutes,
     _worker_is_alive,
@@ -707,8 +709,6 @@ class TestRecoverStaleDocuments:
         """The recovery cutoff must never preempt jobs that are still
         legitimately retrying (job_timeout × max_tries), and an explicit
         larger override is honored."""
-        from app.worker import MAX_RETRIES, WORKER_JOB_TIMEOUT_SECONDS
-
         default_floor = (WORKER_JOB_TIMEOUT_SECONDS // 60 + 1) * MAX_RETRIES
         assert _recovery_timeout_minutes() >= default_floor
 
@@ -719,6 +719,75 @@ class TestRecoverStaleDocuments:
         # An override smaller than the floor is clamped up to it.
         monkeypatch.setenv("WORKER_RECOVERY_TIMEOUT_MINUTES", "1")
         assert _recovery_timeout_minutes() == default_floor
+
+    def test_clamping_an_override_is_logged_not_silently_discarded(
+        self, monkeypatch, caplog
+    ):
+        """A clamped override must be visible (#688).
+
+        The unset default used to be the literal 30, which the 48-minute floor
+        always overrode — so the only number in the source read as "reclaimed
+        after 30 minutes", and #688 looked like a missing reclaim path when a
+        worker killed mid-job was correctly observed still PROCESSING at 30.
+
+        Only the *log* is asserted. The returned value is 48 either way, so a
+        test on the value passes for both implementations — it cannot tell the
+        misleading default from the honest one. The dropped literal is a
+        readability fix, not a behaviour change, and is not claimed as otherwise.
+        """
+        floor = (WORKER_JOB_TIMEOUT_SECONDS // 60 + 1) * MAX_RETRIES
+        assert floor > 30, "the default this replaces was 30"
+
+        monkeypatch.setenv("WORKER_RECOVERY_TIMEOUT_MINUTES", "30")
+
+        with caplog.at_level("WARNING", logger="app.worker"):
+            assert _recovery_timeout_minutes() == floor
+
+        assert "WORKER_RECOVERY_TIMEOUT_MINUTES" in caplog.text
+        assert "floor" in caplog.text
+
+    def test_an_unset_override_is_not_reported_as_a_clamp(
+        self, monkeypatch, caplog
+    ):
+        """Nothing to clamp means nothing to say."""
+        monkeypatch.delenv("WORKER_RECOVERY_TIMEOUT_MINUTES", raising=False)
+
+        with caplog.at_level("WARNING", logger="app.worker"):
+            floor = (WORKER_JOB_TIMEOUT_SECONDS // 60 + 1) * MAX_RETRIES
+            assert _recovery_timeout_minutes() == floor
+
+        assert "WORKER_RECOVERY_TIMEOUT_MINUTES" not in caplog.text
+
+    def test_a_killed_worker_leaves_no_document_permanently_processing(
+        self, db_session, monkeypatch
+    ):
+        """Criterion 3 of #688: the stuck document reaches a terminal state.
+
+        #688 OOM-killed the worker mid-chunking, so the process died rather than
+        raising — arq's MAX_RETRIES never advanced and nothing set an error. The
+        document stayed PROCESSING. The recovery cron is the only thing that can
+        end that, so this walks it to exhaustion the way the real cron would
+        (one tick every 5 minutes) and asserts the document does not stay
+        PROCESSING for ever.
+        """
+        doc = self._seed(db_session, DocumentStatus.PROCESSING, 120)
+        redis = _FakeRedis(health_key=True)
+        enqueued = []
+        _patch_enqueue(monkeypatch, enqueued)
+
+        ticks = 0
+        while doc.status == DocumentStatus.PROCESSING and ticks <= 10:
+            asyncio.run(recover_stale_documents({"redis": redis}))
+            db_session.refresh(doc)
+            ticks += 1
+
+        assert doc.status == DocumentStatus.FAILED, (
+            f"still {doc.status.value} after {ticks} recovery ticks — a worker "
+            f"killed mid-job would strand the document for ever"
+        )
+        # Bounded, so it cannot spin either.
+        assert enqueued == [doc.id] * STALE_RECOVER_MAX_ATTEMPTS
+        assert ticks == STALE_RECOVER_MAX_ATTEMPTS + 1
 
     def test_marks_old_pending_and_processing_as_failed(self, db_session):
         # Seeded well beyond the recovery floor (job_timeout × retries).
