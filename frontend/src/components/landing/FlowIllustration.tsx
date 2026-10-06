@@ -60,15 +60,7 @@ export function FlowIllustration() {
 
       {/* 1. The whole document: a page with lines of text. */}
       <g transform="translate(28 44)" data-accent="blue">
-        <rect
-          x="0"
-          y="0"
-          width="124"
-          height="112"
-          rx="8"
-          fill="currentColor"
-          opacity="0.08"
-        />
+        <rect x="0" y="0" width="124" height="112" rx="8" fill="currentColor" opacity="0.08" />
         <rect
           x="0"
           y="0"
@@ -131,15 +123,7 @@ export function FlowIllustration() {
           search actually runs in. Positions are fixed, not random, so the
           figure is identical on every render. */}
       <g transform="translate(348 34)" data-accent="green">
-        <rect
-          x="0"
-          y="0"
-          width="144"
-          height="132"
-          rx="8"
-          fill="currentColor"
-          opacity="0.05"
-        />
+        <rect x="0" y="0" width="144" height="132" rx="8" fill="currentColor" opacity="0.05" />
         <rect
           x="0"
           y="0"

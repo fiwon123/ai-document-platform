@@ -120,14 +120,8 @@ describe("app route tree", () => {
   it("gives the public 404 a route back to the marketing pages", () => {
     render(<AppRoutes path="/nope" />);
     expect(screen.getByLabelText("AskDocs home")).toBeTruthy();
-    const hrefs = screen
-      .getAllByRole("link")
-      .map((link) => link.getAttribute("href"));
-    for (const { label, to } of [
-      ...NAV_PRODUCT,
-      ...NAV_COMPANY,
-      ...NAV_LEGAL,
-    ]) {
+    const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
+    for (const { label, to } of [...NAV_PRODUCT, ...NAV_COMPANY, ...NAV_LEGAL]) {
       expect(hrefs, `the 404 should link to ${to} (${label})`).toContain(to);
     }
   });

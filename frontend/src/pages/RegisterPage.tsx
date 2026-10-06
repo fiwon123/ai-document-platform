@@ -36,8 +36,7 @@ function usePasswordChecks(password: string) {
   const lit = segments.filter(Boolean).length;
   const level =
     lit === 0 ? "none" : lit === 1 ? "weak" : lit === 2 ? "fair" : lit === 3 ? "good" : "strong";
-  const label =
-    lit === 0 ? "No password yet" : `Password strength: ${level}`;
+  const label = lit === 0 ? "No password yet" : `Password strength: ${level}`;
   const percent = Math.round((lit / segments.length) * 100);
   return { checks, lit, level, label, percent };
 }
@@ -104,10 +103,7 @@ function RegisterFields({
           aria-valuenow={percent}
         >
           {[0, 1, 2, 3].map((index) => (
-            <span
-              key={index}
-              className={`strength-seg${index < lit ? " lit" : ""}`}
-            />
+            <span key={index} className={`strength-seg${index < lit ? " lit" : ""}`} />
           ))}
         </div>
       )}
@@ -136,10 +132,7 @@ function RegisterFields({
       />
 
       {showMatch && (
-        <p
-          className={`match-indicator ${passwordsMatch ? "match-ok" : "match-bad"}`}
-          role="status"
-        >
+        <p className={`match-indicator ${passwordsMatch ? "match-ok" : "match-bad"}`} role="status">
           {passwordsMatch ? (
             <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
               <path
@@ -181,13 +174,19 @@ function RegisterFields({
           I agree to the Terms of Service and Privacy Policy.
         </label>
       </div>
-      {termsError && <p className="error-message" role="alert">{termsError}</p>}
+      {termsError && (
+        <p className="error-message" role="alert">
+          {termsError}
+        </p>
+      )}
 
-      {error && <p className="error-message" role="alert">{error}</p>}
+      {error && (
+        <p className="error-message" role="alert">
+          {error}
+        </p>
+      )}
 
-      <FormSubmitButton pendingLabel="Creating account...">
-        Register
-      </FormSubmitButton>
+      <FormSubmitButton pendingLabel="Creating account...">Register</FormSubmitButton>
     </>
   );
 }
@@ -219,11 +218,7 @@ export function RegisterPage() {
     }
 
     try {
-      await register(
-        String(formData.get("username") ?? ""),
-        nextPassword,
-        nextConfirm,
-      );
+      await register(String(formData.get("username") ?? ""), nextPassword, nextConfirm);
       navigate("/login");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");

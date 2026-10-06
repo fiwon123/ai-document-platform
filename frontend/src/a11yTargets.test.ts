@@ -55,10 +55,14 @@ function ruleComment(selector: string): string {
 
 /** The smallest min-height any rule for `selector` declares, in px. */
 function minHeight(selector: string): number {
-  const values = [...declarationsOnly.matchAll(new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"))]
+  const values = [
+    ...declarationsOnly.matchAll(new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")),
+  ]
     .map((m) => declarationsOnly.slice(m.index))
     .map((region) => /\{([^}]*)\}/.exec(region)?.[1] ?? "")
-    .flatMap((body) => [...body.matchAll(/min-height:\s*(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1])));
+    .flatMap((body) =>
+      [...body.matchAll(/min-height:\s*(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1])),
+    );
   return values.length ? Math.min(...values) : 0;
 }
 

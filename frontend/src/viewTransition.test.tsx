@@ -2,19 +2,10 @@ import { act, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { lazy, startTransition, Suspense, useState, type ReactNode } from "react";
-import {
-  MemoryRouter,
-  Route,
-  Routes,
-  useLocation,
-  useNavigate,
-} from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ViewTransitionRoutes } from "./App";
-import {
-  getViewTransitionStart,
-  ignoreTransitionRejection,
-} from "./lib/viewTransition";
+import { getViewTransitionStart, ignoreTransitionRejection } from "./lib/viewTransition";
 
 /**
  * A skipped view transition is normal, not a failure.
@@ -76,9 +67,7 @@ describe("ignoreTransitionRejection", () => {
     // transition from throwing on a missing promise.
     const unhandled = await watchUnhandledRejections(async () => {
       ignoreTransitionRejection({
-        finished: Promise.reject(
-          new DOMException("Transition was skipped", "AbortError"),
-        ),
+        finished: Promise.reject(new DOMException("Transition was skipped", "AbortError")),
       });
       await Promise.resolve();
     });
@@ -101,11 +90,7 @@ describe("ignoreTransitionRejection", () => {
 
     ignoreTransitionRejection(transition);
     await expect(
-      Promise.all([
-        transition.updateCallbackDone,
-        transition.ready,
-        transition.finished,
-      ]),
+      Promise.all([transition.updateCallbackDone, transition.ready, transition.finished]),
     ).resolves.toEqual([undefined, undefined, undefined]);
   });
 });
@@ -224,7 +209,6 @@ describe("navigation under a skipped view transition", () => {
   });
 });
 
-
 /* ---------------------------------------------------------------------------
    #436: navigating to a route must not blank the page while its chunk loads.
 
@@ -249,9 +233,7 @@ describe("the location commit is a transition (#436)", () => {
   it("commits the new location inside startTransition", () => {
     // Synchronous commit => the suspension surfaces at the boundary above the
     // router and the whole tree becomes "Loading page…".
-    expect(source).toMatch(
-      /startTransition\s*\(\s*\(\s*\)\s*=>\s*setDisplayLocation\(/,
-    );
+    expect(source).toMatch(/startTransition\s*\(\s*\(\s*\)\s*=>\s*setDisplayLocation\(/);
   });
 
   it("does not force the commit synchronous with flushSync", () => {

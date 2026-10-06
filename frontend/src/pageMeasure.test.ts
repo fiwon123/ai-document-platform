@@ -44,7 +44,6 @@ import { describe, expect, it } from "vitest";
  * directly rather than through a character budget.
  */
 
-
 const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8").replace(
   /\/\*[\s\S]*?\*\//g,
   "",
@@ -177,9 +176,7 @@ describe("marketing measure (#440)", () => {
     const other = maybeDeclaration(maybeGroupedRuleBody(".page-body ul"), "max-width");
     const pipeline = maybeDeclaration(maybeRuleBody("\\.page-body ol\\.pipeline"), "max-width");
 
-    expect(measurePx(pipeline, container)).toBeGreaterThanOrEqual(
-      measurePx(other, container),
-    );
+    expect(measurePx(pipeline, container)).toBeGreaterThanOrEqual(measurePx(other, container));
   });
 
   it("caps the pipeline cards at one measure, so the border has no dead interior", () => {

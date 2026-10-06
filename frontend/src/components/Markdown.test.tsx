@@ -11,9 +11,7 @@ describe("Markdown", () => {
 
   it("renders GitHub-flavored markdown (tables, links)", () => {
     render(
-      <Markdown>
-        {"[AskDocs](https://example.com)\n\n| A | B |\n| - | - |\n| 1 | 2 |"}
-      </Markdown>,
+      <Markdown>{"[AskDocs](https://example.com)\n\n| A | B |\n| - | - |\n| 1 | 2 |"}</Markdown>,
     );
     expect(screen.getByRole("link", { name: "AskDocs" })).toHaveProperty(
       "href",
@@ -22,13 +20,11 @@ describe("Markdown", () => {
     expect(screen.getByRole("table")).toBeTruthy();
   });
 
-it("does not render raw HTML (XSS safe)", () => {
-  const { container } = render(
-    <Markdown>{"Hello <img src=x onerror=alert(1)>"}</Markdown>,
-  );
-  // Raw HTML is escaped to literal text, never inserted as a real element.
-  expect(container.querySelector("img")).toBeNull();
-  expect(container.querySelector("script")).toBeNull();
-  expect(screen.getByText(/Hello/)).toBeTruthy();
-});
+  it("does not render raw HTML (XSS safe)", () => {
+    const { container } = render(<Markdown>{"Hello <img src=x onerror=alert(1)>"}</Markdown>);
+    // Raw HTML is escaped to literal text, never inserted as a real element.
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("script")).toBeNull();
+    expect(screen.getByText(/Hello/)).toBeTruthy();
+  });
 });

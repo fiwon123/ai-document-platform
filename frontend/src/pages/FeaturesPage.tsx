@@ -1,10 +1,5 @@
 import { Link } from "react-router-dom";
-import {
-  PageCardIcon,
-  PageCta,
-  PageLayout,
-  PageSection,
-} from "../components/PageLayout";
+import { PageCardIcon, PageCta, PageLayout, PageSection } from "../components/PageLayout";
 import { FeatureIcon } from "../components/landing/FeatureIcon";
 import { ArchitectureDiagram } from "../components/landing/ArchitectureDiagram";
 import { balancedGridClass } from "../utils/gridCols";
@@ -24,8 +19,7 @@ export function FeaturesPage() {
       eyebrow="Product"
       title={
         <>
-          Everything you need to{" "}
-          <span className="gradient-text">know your documents</span>
+          Everything you need to <span className="gradient-text">know your documents</span>
         </>
       }
       subtitle="Upload, search, and ask — one private workspace per user. This page is the long version of the feature grid on the home page."
@@ -70,18 +64,16 @@ export function FeaturesPage() {
         <div className="page-split">
           <div className="page-split-prose">
             <p>
-              The features above are not independent add-ons — they are stages of one
-              pipeline. Uploading starts an asynchronous job; extraction and chunking
-              run in a background worker; embeddings are written to{" "}
-              <code>pgvector</code>; search and Q&amp;A both read from that index.
-              Nothing in the request path waits on a model call, which is what keeps
-              the workspace responsive while a large upload is still being processed.
+              The features above are not independent add-ons — they are stages of one pipeline.
+              Uploading starts an asynchronous job; extraction and chunking run in a background
+              worker; embeddings are written to <code>pgvector</code>; search and Q&amp;A both read
+              from that index. Nothing in the request path waits on a model call, which is what
+              keeps the workspace responsive while a large upload is still being processed.
             </p>
-        <p>
-              The <Link to="/how-it-works">How it works</Link> page walks through
-              each stage with the detail. If you are evaluating rather than
-              learning, <Link to="/pricing">Pricing</Link> is usually the faster
-              read.
+            <p>
+              The <Link to="/how-it-works">How it works</Link> page walks through each stage with
+              the detail. If you are evaluating rather than learning,{" "}
+              <Link to="/pricing">Pricing</Link> is usually the faster read.
             </p>
           </div>
           <ArchitectureDiagram />
@@ -92,7 +84,6 @@ export function FeaturesPage() {
         title="See it on your own documents"
         body="Create a workspace, upload a handful of files, and ask something only your documents can answer."
       />
-
     </PageLayout>
   );
 }

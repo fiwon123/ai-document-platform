@@ -31,8 +31,10 @@ export function useScrollReveal<T extends HTMLElement = HTMLDivElement>(
   const [canReveal] = useState(
     () =>
       typeof IntersectionObserver === "function" &&
-      !(typeof window.matchMedia === "function" &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches),
+      !(
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ),
   );
 
   useEffect(() => {

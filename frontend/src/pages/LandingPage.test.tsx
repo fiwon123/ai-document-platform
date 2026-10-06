@@ -40,7 +40,9 @@ describe("LandingPage", () => {
     renderPage();
     expect(screen.getAllByRole("link", { name: "Try the live demo" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("link", { name: "Create free account" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("No credit card required. Try it without an account.").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("No credit card required. Try it without an account.").length,
+    ).toBeGreaterThan(0);
   });
 
   it("lists three plans with differing limits", () => {
@@ -115,13 +117,10 @@ describe("LandingPage", () => {
     // This asserts the ordering, not the literals, so retuning the timings does
     // not break it. A render test cannot see it: the durations are consumed by
     // the interval, and the same three final strings appear either way.
-    const source = readFileSync(
-      resolve(process.cwd(), "src", "pages", "LandingPage.tsx"),
-      "utf8",
+    const source = readFileSync(resolve(process.cwd(), "src", "pages", "LandingPage.tsx"), "utf8");
+    const durations = [...source.matchAll(/<CountUp\b[^>]*durationMs=\{(\d+)\}/g)].map((m) =>
+      Number(m[1]),
     );
-    const durations = [
-      ...source.matchAll(/<CountUp\b[^>]*durationMs=\{(\d+)\}/g),
-    ].map((m) => Number(m[1]));
 
     expect(durations).toHaveLength(3);
     // Strictly increasing: equal durations collapse the stagger back into a
@@ -150,9 +149,7 @@ describe("LandingPage", () => {
     // The copy count and the keyframe percentage must be changed together.
     const { container } = renderPage();
     const strip = container.querySelector(".logo-strip")!;
-    const marks = [...strip.querySelectorAll(".logo-mark")].map(
-      (m) => m.textContent,
-    );
+    const marks = [...strip.querySelectorAll(".logo-mark")].map((m) => m.textContent);
     const third = marks.length / 3;
     expect(marks.length).toBeGreaterThan(0);
     expect(marks.length % 3).toBe(0);
@@ -163,12 +160,10 @@ describe("LandingPage", () => {
   it("gives the closing CTA band a supporting line under the heading", () => {
     renderPage();
     const band = document.querySelector(".landing-cta-band")!;
-    expect(band.querySelector("h2")?.textContent).toBe(
-      "Ready to find answers in your documents?",
+    expect(band.querySelector("h2")?.textContent).toBe("Ready to find answers in your documents?");
+    expect(band.querySelector(".landing-cta-band-sub")?.textContent).toContain(
+      "first three documents are free",
     );
-    expect(
-      band.querySelector(".landing-cta-band-sub")?.textContent,
-    ).toContain("first three documents are free");
   });
 
   it("organizes features into core and secondary groups", () => {
@@ -240,9 +235,7 @@ describe("LandingPage", () => {
     // nowhere. They are now non-interactive blocks: no href, no tab stop, no
     // click handler, so there is nothing for a keyboard user to activate.
     for (const network of ["Twitter", "LinkedIn"] as const) {
-      const placeholder = screen.getByLabelText(
-        new RegExp(`AskDocs on ${network}`),
-      );
+      const placeholder = screen.getByLabelText(new RegExp(`AskDocs on ${network}`));
       expect(placeholder.tagName).not.toBe("A");
       expect(placeholder).not.toHaveAttribute("href");
       expect(placeholder).not.toHaveAttribute("tabindex");
@@ -266,20 +259,9 @@ describe("LandingPage", () => {
       "/pricing",
       "/demo",
     ]);
-    expect(hrefsIn("Company")).toEqual([
-      "/company",
-      "/about",
-      "/blog",
-      "/careers",
-      "/contact",
-    ]);    // The old footer pointed every Legal link at "/", so a visitor could never
+    expect(hrefsIn("Company")).toEqual(["/company", "/about", "/blog", "/careers", "/contact"]); // The old footer pointed every Legal link at "/", so a visitor could never
     // leave the landing page from there.
-    expect(hrefsIn("Legal")).toEqual([
-      "/privacy",
-      "/terms",
-      "/security",
-      "/gdpr",
-    ]);
+    expect(hrefsIn("Legal")).toEqual(["/privacy", "/terms", "/security", "/gdpr"]);
   });
 
   /* The accent system (#377) drives every per-card color from a
@@ -289,8 +271,7 @@ describe("LandingPage", () => {
   it("tags each core feature card with its own accent", () => {
     renderPage();
     const grid = document.querySelector(".landing-grid-core") as HTMLElement;
-    const card = (title: string) =>
-      within(grid).getByText(title).closest("article") as HTMLElement;
+    const card = (title: string) => within(grid).getByText(title).closest("article") as HTMLElement;
 
     expect(card("Upload anything").dataset.accent).toBe("blue");
     expect(card("Semantic search").dataset.accent).toBe("violet");
@@ -302,8 +283,7 @@ describe("LandingPage", () => {
     // Scoped to the grid: "Bulk upload" and "Webhook notifications" also
     // appear as rows in the pricing comparison table.
     const grid = document.querySelector(".landing-grid-secondary") as HTMLElement;
-    const card = (title: string) =>
-      within(grid).getByText(title).closest("article") as HTMLElement;
+    const card = (title: string) => within(grid).getByText(title).closest("article") as HTMLElement;
 
     expect(card("Private by design").dataset.accent).toBe("blue");
     expect(card("Blazing fast").dataset.accent).toBe("amber");
@@ -314,9 +294,7 @@ describe("LandingPage", () => {
 
   it("tags each how-it-works step with its accent in order", () => {
     renderPage();
-    const steps = Array.from(
-      document.querySelectorAll(".landing-step"),
-    ) as HTMLElement[];
+    const steps = Array.from(document.querySelectorAll(".landing-step")) as HTMLElement[];
 
     expect(steps).toHaveLength(3);
     expect(steps.map((s) => s.dataset.accent)).toEqual(["blue", "violet", "green"]);
@@ -332,9 +310,7 @@ describe("LandingPage", () => {
     renderPage();
     // "Included" is the shared aria-label on the check glyph; the pricing
     // table uses the same icon, so scope the query to the badge list.
-    const badges = Array.from(
-      document.querySelectorAll(".trust-badges li"),
-    ) as HTMLElement[];
+    const badges = Array.from(document.querySelectorAll(".trust-badges li")) as HTMLElement[];
 
     expect(badges).toHaveLength(4);
     for (const badge of badges) {

@@ -35,9 +35,7 @@ const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8").repla
 
 /** The `@media (prefers-reduced-motion: reduce)` blocks, in source order. */
 const reducedMotionBlocks: string[] = [
-  ...css.matchAll(
-    /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\n\}/g,
-  ),
+  ...css.matchAll(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\n\}/g),
 ]
   .map((m) => m[1] ?? "")
   .filter(Boolean);
@@ -57,7 +55,10 @@ const reducedMotionRules = (() => {
   const map = new Map<string, string>();
   for (const block of reducedMotionBlocks) {
     for (const m of block.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      const selectors = (m[1] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+      const selectors = (m[1] ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
       for (const selector of selectors) {
         map.set(selector, `${map.get(selector) ?? ""}${m[2] ?? ""}`);
       }
@@ -74,11 +75,7 @@ const reducedMotionRules = (() => {
  * and count-up also branch in JS on the same media feature, so their CSS rule
  * is the belt to that JS braces.
  */
-const MUST_STOP = [
-  ".hero-mesh",
-  ".landing-preview",
-  ".landing-cta-band",
-];
+const MUST_STOP = [".hero-mesh", ".landing-preview", ".landing-cta-band"];
 
 describe("decorative animations honour prefers-reduced-motion", () => {
   it("finds the reduced-motion blocks at all", () => {

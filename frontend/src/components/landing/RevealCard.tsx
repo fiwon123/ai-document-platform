@@ -32,12 +32,7 @@ interface RevealCardProps {
  * stay on screen for the whole session, so promoting each to its own compositor
  * layer costs memory for no benefit.
  */
-export function RevealCard({
-  delay = 0,
-  className = "",
-  accent,
-  children,
-}: RevealCardProps) {
+export function RevealCard({ delay = 0, className = "", accent, children }: RevealCardProps) {
   const { ref, isVisible } = useScrollReveal<HTMLElement>();
   const style: CSSProperties | undefined =
     delay > 0 ? ({ "--reveal-delay": `${delay}ms` } as CSSProperties) : undefined;
@@ -45,9 +40,7 @@ export function RevealCard({
   return (
     <article
       ref={ref as never}
-      className={`reveal-card${isVisible ? " is-revealed" : ""}${
-        className ? ` ${className}` : ""
-      }`}
+      className={`reveal-card${isVisible ? " is-revealed" : ""}${className ? ` ${className}` : ""}`}
       data-accent={accent}
       style={style}
     >

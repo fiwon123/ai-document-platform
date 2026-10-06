@@ -61,20 +61,13 @@ export function PreviewModal({ preview, onClose }: PreviewModalProps) {
       >
         <div className="modal-header">
           <h2 id="preview-modal-title">{preview.filename}</h2>
-          <button
-            ref={closeRef}
-            type="button"
-            className="btn btn-secondary"
-            onClick={onClose}
-          >
+          <button ref={closeRef} type="button" className="btn btn-secondary" onClick={onClose}>
             Close
           </button>
         </div>
         <pre className="preview-text">{preview.preview}</pre>
         {preview.truncated && (
-          <p className="preview-note">
-            Preview truncated to the first 5000 characters.
-          </p>
+          <p className="preview-note">Preview truncated to the first 5000 characters.</p>
         )}
       </div>
     </div>

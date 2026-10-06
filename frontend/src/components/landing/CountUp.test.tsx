@@ -80,10 +80,7 @@ describe("CountUp", () => {
   });
 
   it("applies a custom formatter", () => {
-    vi.stubGlobal(
-      "matchMedia",
-      vi.fn().mockReturnValue({ matches: true }),
-    );
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
     render(<CountUp value={1200} format={(n) => `${n}k`} />);
     expect(screen.getByText("1200k")).toBeTruthy();
   });
@@ -100,9 +97,7 @@ describe("CountUp", () => {
     expect(el.className).toContain("animating");
 
     await vi.advanceTimersByTimeAsync(500);
-    expect(container.querySelector(".count-up")!.className).toContain(
-      "animating",
-    );
+    expect(container.querySelector(".count-up")!.className).toContain("animating");
 
     await vi.advanceTimersByTimeAsync(600);
     const done = container.querySelector(".count-up")!;
@@ -126,9 +121,7 @@ describe("CountUp", () => {
     expect(el.className).not.toContain("animating");
     expect(el.textContent).toBe("512");
     await vi.advanceTimersByTimeAsync(1200);
-    expect(container.querySelector(".count-up")!.className).not.toContain(
-      "animating",
-    );
+    expect(container.querySelector(".count-up")!.className).not.toContain("animating");
   });
 
   it("never marks the number as animating without IntersectionObserver", () => {
@@ -214,6 +207,8 @@ describe("CountUp", () => {
 
     vi.unstubAllGlobals();
     const none = render(<CountUp value={42} suffix="%" />);
-    expect(none.container.querySelector(".count-up")!.getAttribute("data-count-state")).toBe("done");
+    expect(none.container.querySelector(".count-up")!.getAttribute("data-count-state")).toBe(
+      "done",
+    );
   });
 });

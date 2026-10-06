@@ -81,11 +81,7 @@ export const TESTS_FIELD: ChallengeField = {
 
 /** Render order for the form. Built from the three above, so the array and the
  *  named exports cannot drift apart. */
-export const CHALLENGE_FIELDS: ChallengeField[] = [
-  TASK_FIELD,
-  PROMPT_FIELD,
-  TESTS_FIELD,
-];
+export const CHALLENGE_FIELDS: ChallengeField[] = [TASK_FIELD, PROMPT_FIELD, TESTS_FIELD];
 
 /** Empty state for `/challenges`, shown because there is genuinely no data. */
 export const CHALLENGES_EMPTY = {

@@ -8,13 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import {
-  BrowserRouter,
-  Route,
-  Routes,
-  useLocation,
-  type Location,
-} from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation, type Location } from "react-router-dom";
 import { AuthProvider } from "./hooks/AuthProvider";
 import { ToastProvider } from "./context/ToastProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -22,25 +16,18 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Navbar } from "./components/Navbar";
 import { MarketingShell } from "./components/PageLayout";
 import { queryClient } from "./lib/queryClient";
-import {
-  getViewTransitionStart,
-  ignoreTransitionRejection,
-} from "./lib/viewTransition";
+import { getViewTransitionStart, ignoreTransitionRejection } from "./lib/viewTransition";
 import "./App.css";
 
 // Route pages are code-split so each loads on demand.
 const LandingPage = lazy(() =>
   import("./pages/LandingPage").then((m) => ({ default: m.LandingPage })),
 );
-const LoginPage = lazy(() =>
-  import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })),
-);
+const LoginPage = lazy(() => import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() =>
   import("./pages/RegisterPage").then((m) => ({ default: m.RegisterPage })),
 );
-const DemoPage = lazy(() =>
-  import("./pages/DemoPage").then((m) => ({ default: m.DemoPage })),
-);
+const DemoPage = lazy(() => import("./pages/DemoPage").then((m) => ({ default: m.DemoPage })));
 /* Marketing pages. Each is its own chunk so the landing page's first paint does
    not carry a dozen pages of legal prose it will never render. */
 const ProductPage = lazy(() =>
@@ -58,12 +45,8 @@ const PricingPage = lazy(() =>
 const CompanyPage = lazy(() =>
   import("./pages/CompanyPage").then((m) => ({ default: m.CompanyPage })),
 );
-const AboutPage = lazy(() =>
-  import("./pages/AboutPage").then((m) => ({ default: m.AboutPage })),
-);
-const BlogPage = lazy(() =>
-  import("./pages/BlogPage").then((m) => ({ default: m.BlogPage })),
-);
+const AboutPage = lazy(() => import("./pages/AboutPage").then((m) => ({ default: m.AboutPage })));
+const BlogPage = lazy(() => import("./pages/BlogPage").then((m) => ({ default: m.BlogPage })));
 const CareersPage = lazy(() =>
   import("./pages/CareersPage").then((m) => ({ default: m.CareersPage })),
 );
@@ -73,15 +56,11 @@ const ContactPage = lazy(() =>
 const PrivacyPage = lazy(() =>
   import("./pages/PrivacyPage").then((m) => ({ default: m.PrivacyPage })),
 );
-const TermsPage = lazy(() =>
-  import("./pages/TermsPage").then((m) => ({ default: m.TermsPage })),
-);
+const TermsPage = lazy(() => import("./pages/TermsPage").then((m) => ({ default: m.TermsPage })));
 const SecurityPage = lazy(() =>
   import("./pages/SecurityPage").then((m) => ({ default: m.SecurityPage })),
 );
-const GdprPage = lazy(() =>
-  import("./pages/GdprPage").then((m) => ({ default: m.GdprPage })),
-);
+const GdprPage = lazy(() => import("./pages/GdprPage").then((m) => ({ default: m.GdprPage })));
 /* Challenges. Its own chunk, and two pages rather than one because the form is
    only reachable from the index — the copy for both lives in content/challenges. */
 const ChallengesPage = lazy(() =>
@@ -99,15 +78,11 @@ const DashboardPage = lazy(() =>
 const ProfilePage = lazy(() =>
   import("./pages/ProfilePage").then((m) => ({ default: m.ProfilePage })),
 );
-const AdminPage = lazy(() =>
-  import("./pages/AdminPage").then((m) => ({ default: m.AdminPage })),
-);
+const AdminPage = lazy(() => import("./pages/AdminPage").then((m) => ({ default: m.AdminPage })));
 const SearchPage = lazy(() =>
   import("./pages/SearchPage").then((m) => ({ default: m.SearchPage })),
 );
-const QAPage = lazy(() =>
-  import("./pages/QAPage").then((m) => ({ default: m.QAPage })),
-);
+const QAPage = lazy(() => import("./pages/QAPage").then((m) => ({ default: m.QAPage })));
 const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
 );

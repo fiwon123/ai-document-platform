@@ -183,11 +183,15 @@ function onSegment(point: Point, seg: Segment): boolean {
   const [x, y] = point;
   if (seg.x1 === seg.x2) {
     return (
-      Math.abs(seg.x1 - x) < EPS && y >= Math.min(seg.y1, seg.y2) - EPS && y <= Math.max(seg.y1, seg.y2) + EPS
+      Math.abs(seg.x1 - x) < EPS &&
+      y >= Math.min(seg.y1, seg.y2) - EPS &&
+      y <= Math.max(seg.y1, seg.y2) + EPS
     );
   }
   return (
-    Math.abs(seg.y1 - y) < EPS && x >= Math.min(seg.x1, seg.x2) - EPS && x <= Math.max(seg.x1, seg.x2) + EPS
+    Math.abs(seg.y1 - y) < EPS &&
+    x >= Math.min(seg.x1, seg.x2) - EPS &&
+    x <= Math.max(seg.x1, seg.x2) + EPS
   );
 }
 
@@ -270,8 +274,8 @@ describe("page figure geometry", () => {
           const cy = dot.y + dot.h / 2;
           return Math.hypot(point[0] - cx, point[1] - cy) <= stroke / 2 + 2;
         });
-        const onOther = geometry.some((segs, j) =>
-          j !== i && segs.some((s) => onSegment(point, s)),
+        const onOther = geometry.some(
+          (segs, j) => j !== i && segs.some((s) => onSegment(point, s)),
         );
 
         expect(
@@ -294,11 +298,11 @@ describe("page figure geometry", () => {
         for (const seg of segments(d)) points.push([seg.x2, seg.y2]);
         const stroke = Number(path.getAttribute("stroke-width") ?? 1.8);
         const pad = stroke / 2 + EPS;
-        const contained = boxes.some(
-          (b) =>
-            points.every(
-              ([px, py]) => px >= b.x - pad && px <= b.x + b.w + pad && py >= b.y - pad && py <= b.y + b.h + pad,
-            ),
+        const contained = boxes.some((b) =>
+          points.every(
+            ([px, py]) =>
+              px >= b.x - pad && px <= b.x + b.w + pad && py >= b.y - pad && py <= b.y + b.h + pad,
+          ),
         );
         if (!contained) {
           failures.push(`${name}: mark is not inside any box — "${d}"`);
@@ -480,7 +484,9 @@ describe("page figure accessibility and theming", () => {
       for (const r of svg.querySelectorAll("rect[opacity]")) {
         const a = Number(r.getAttribute("opacity"));
         if (a <= WASH) continue;
-        expect(a, `${name}: a faded fill at ${a} is below the 3:1 floor`).toBeGreaterThanOrEqual(0.5);
+        expect(a, `${name}: a faded fill at ${a} is below the 3:1 floor`).toBeGreaterThanOrEqual(
+          0.5,
+        );
       }
     }
   });

@@ -87,8 +87,8 @@ export function NewChallengePage() {
         <p className="challenge-intro">{NEW_CHALLENGE_INTRO}</p>
 
         <TemplateNotice>
-          This form is not connected to a server yet. It validates what you type
-          and reports back, but nothing is stored, queued, or sent to a model.
+          This form is not connected to a server yet. It validates what you type and reports back,
+          but nothing is stored, queued, or sent to a model.
         </TemplateNotice>
 
         <form className="challenge-form" onSubmit={handleSubmit} noValidate>
@@ -122,9 +122,7 @@ export function NewChallengePage() {
                   autoComplete="off"
                   aria-invalid={error ? true : undefined}
                   aria-describedby={
-                    [helpId, error ? errorId : null]
-                      .filter(Boolean)
-                      .join(" ") || undefined
+                    [helpId, error ? errorId : null].filter(Boolean).join(" ") || undefined
                   }
                   onChange={(event) => setField(field.name, event.target.value)}
                 />
@@ -158,8 +156,7 @@ export function NewChallengePage() {
 
         {submitted && (
           <aside className="challenge-notice" role="status">
-            <strong>{CHALLENGES_NOT_SAVED.title}</strong>{" "}
-            {CHALLENGES_NOT_SAVED.body}
+            <strong>{CHALLENGES_NOT_SAVED.title}</strong> {CHALLENGES_NOT_SAVED.body}
           </aside>
         )}
       </PageSection>

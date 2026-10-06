@@ -68,9 +68,7 @@ export function Tabs({
       tabindex is for. Selected by data attribute rather than `#id`, so a tab id
       containing a character that needs `CSS.escape` cannot silently drop
       focus. */
-    listRef.current
-      ?.querySelector<HTMLButtonElement>(`[data-tab="${target.id}"]`)
-      ?.focus();
+    listRef.current?.querySelector<HTMLButtonElement>(`[data-tab="${target.id}"]`)?.focus();
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {

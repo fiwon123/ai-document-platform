@@ -62,9 +62,7 @@ describe("ProfilePage", () => {
 
   it("pre-fills the username from the current user", () => {
     renderWithClient(<ProfilePage />);
-    expect((screen.getByLabelText("Username") as HTMLInputElement).value).toBe(
-      "alice",
-    );
+    expect((screen.getByLabelText("Username") as HTMLInputElement).value).toBe("alice");
   });
 
   it("shows a profile hero with initials, role badge, and member-since date", () => {
@@ -73,10 +71,10 @@ describe("ProfilePage", () => {
     expect(screen.getByText("A")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "alice" })).toBeTruthy();
     expect(screen.getByText("customer")).toBeTruthy();
-    const joined = new Date(alice.created_at as string).toLocaleDateString(
-      undefined,
-      { year: "numeric", month: "long" },
-    );
+    const joined = new Date(alice.created_at as string).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+    });
     expect(screen.getByText(`Member since ${joined}`)).toBeTruthy();
   });
 
@@ -101,9 +99,7 @@ describe("ProfilePage", () => {
     await act(async () => {});
 
     expect(mockedUpdateMe).toHaveBeenCalledWith({ username: "alice_new" });
-    expect(updateUser).toHaveBeenCalledWith(
-      expect.objectContaining({ username: "alice_new" }),
-    );
+    expect(updateUser).toHaveBeenCalledWith(expect.objectContaining({ username: "alice_new" }));
     expect(screen.getByText("Profile updated")).toBeTruthy();
   });
 

@@ -34,19 +34,13 @@ export function LegalDocument({
   sections: LegalSection[];
 }) {
   return (
-    <PageLayout
-      eyebrow={eyebrow}
-      title={title}
-      subtitle={intro}
-    >
+    <PageLayout eyebrow={eyebrow} title={title} subtitle={intro}>
       <TemplateNotice>
-        This page is a starting template, not a reviewed legal document. It
-        describes how {SITE.name} is built and is not legal advice. Have a
-        qualified lawyer adapt it — in particular the processor/subprocessor
-        list, retention periods, and the jurisdiction and governing-law
-        clauses — before publishing it or relying on it. Several placeholders
-        below ({SITE.entity}, {SITE.jurisdiction}, the contact addresses) must
-        be replaced first.
+        This page is a starting template, not a reviewed legal document. It describes how{" "}
+        {SITE.name} is built and is not legal advice. Have a qualified lawyer adapt it — in
+        particular the processor/subprocessor list, retention periods, and the jurisdiction and
+        governing-law clauses — before publishing it or relying on it. Several placeholders below (
+        {SITE.entity}, {SITE.jurisdiction}, the contact addresses) must be replaced first.
       </TemplateNotice>
 
       <p className="legal-updated">Last updated: {SITE.updated}</p>
@@ -55,8 +49,7 @@ export function LegalDocument({
         {sections.map((section, index) => (
           <section key={section.heading} className="legal-section">
             <h2>
-              <span className="legal-section-number">{index + 1}.</span>{" "}
-              {section.heading}
+              <span className="legal-section-number">{index + 1}.</span> {section.heading}
             </h2>
             {section.body.map((paragraph) => (
               <p key={paragraph.slice(0, 40)}>{paragraph}</p>

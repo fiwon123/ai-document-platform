@@ -30,8 +30,7 @@ export function CompanyPage() {
       eyebrow="Company"
       title={
         <>
-          The people behind{" "}
-          <span className="gradient-text">AskDocs</span>
+          The people behind <span className="gradient-text">AskDocs</span>
         </>
       }
       subtitle="A small open-source project built around a simple idea: your documents should be answerable by the people who own them."
@@ -54,20 +53,18 @@ export function CompanyPage() {
         <div className="page-split">
           <div className="page-split-prose">
             <p>
-              Three things run through most of the decisions in this codebase.
-              First, <strong>grounding beats fluency</strong>: an answer that cites
-              the passage it came from is worth more than a smoother answer with no
-              provenance, so retrieval happens before generation and the retrieved
-              context is what the model sees. Second,{" "}
-              <strong>isolation is a property of the data model</strong>, not a
-              filter someone remembers to apply — ownership is part of every query.
-              Third, <strong>asynchronous work stays asynchronous</strong>: a slow
-              embedding call belongs in a worker, not in someone's HTTP request.
+              Three things run through most of the decisions in this codebase. First,{" "}
+              <strong>grounding beats fluency</strong>: an answer that cites the passage it came
+              from is worth more than a smoother answer with no provenance, so retrieval happens
+              before generation and the retrieved context is what the model sees. Second,{" "}
+              <strong>isolation is a property of the data model</strong>, not a filter someone
+              remembers to apply — ownership is part of every query. Third,{" "}
+              <strong>asynchronous work stays asynchronous</strong>: a slow embedding call belongs
+              in a worker, not in someone's HTTP request.
             </p>
             <p>
-              The project is open source and the full history is public. If
-              something here is wrong or could be simpler, an issue is more useful
-              than an email.
+              The project is open source and the full history is public. If something here is wrong
+              or could be simpler, an issue is more useful than an email.
             </p>
           </div>
           <CompanyVisual />

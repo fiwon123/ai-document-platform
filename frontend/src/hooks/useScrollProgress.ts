@@ -37,8 +37,10 @@ export function useScrollProgress<T extends HTMLElement = HTMLDivElement>(
     () =>
       typeof window !== "undefined" &&
       typeof window.requestAnimationFrame === "function" &&
-      !(typeof window.matchMedia === "function" &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches),
+      !(
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ),
   );
 
   useEffect(() => {

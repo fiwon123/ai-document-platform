@@ -62,9 +62,9 @@ describe("SettingsPage", () => {
     await act(async () => {});
 
     expect(screen.getByText("alice")).toBeTruthy();
-    expect(
-      screen.getByRole("link", { name: "Edit profile" }).getAttribute("href"),
-    ).toBe("/app/profile");
+    expect(screen.getByRole("link", { name: "Edit profile" }).getAttribute("href")).toBe(
+      "/app/profile",
+    );
   });
 
   it("renders an icon next to each settings section heading", async () => {
@@ -97,13 +97,9 @@ describe("SettingsPage", () => {
     // hardcoding an id: this test failed when the free list was reclassified
     // and the checked radio moved out from under a hardcoded name.
     const freeGroup = screen.getByText("Free models").parentElement;
-    const firstFree = freeGroup?.querySelector<HTMLInputElement>(
-      "input[type=radio]",
-    );
+    const firstFree = freeGroup?.querySelector<HTMLInputElement>("input[type=radio]");
     const paidGroup = screen.getByText("Paid models").parentElement;
-    const anyPaid = paidGroup?.querySelector<HTMLInputElement>(
-      "input[type=radio]",
-    );
+    const anyPaid = paidGroup?.querySelector<HTMLInputElement>("input[type=radio]");
 
     expect(firstFree?.checked).toBe(true);
     expect(anyPaid?.checked).toBe(false);
@@ -120,9 +116,7 @@ describe("SettingsPage", () => {
        which is what `name` resolves through, and what a screen reader gets.
        Using the text matcher here would assert something the browser never
        exposes. */
-    expect(
-      (screen.getByRole("radio", { name: "gpt-4" }) as HTMLInputElement).checked,
-    ).toBe(true);
+    expect((screen.getByRole("radio", { name: "gpt-4" }) as HTMLInputElement).checked).toBe(true);
   });
 
   it("persists the selected model to localStorage on change", async () => {
@@ -211,7 +205,9 @@ describe("SettingsPage", () => {
     const checks = document.querySelectorAll(".settings-model-option-check");
     expect(checks).toHaveLength(1);
     expect(
-      screen.getByRole("radio", { name: chosen }).closest("label")
+      screen
+        .getByRole("radio", { name: chosen })
+        .closest("label")
         ?.querySelector(".settings-model-option-check"),
     ).not.toBeNull();
     /* Decorative — the radio already reports `checked` itself. */
@@ -220,16 +216,16 @@ describe("SettingsPage", () => {
     /* The accessible name carries no glyph, so a screen reader announces the
        model and nothing else. Asserted rather than assumed — this is the whole
        reason the glyph is `aria-hidden`. */
-    expect(
-      screen.getByRole("radio", { name: other }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: other })).toBeInTheDocument();
 
     // Selecting a different model moves the mark rather than adding one.
     fireEvent.click(screen.getByRole("radio", { name: other }));
     await act(async () => {});
     expect(document.querySelectorAll(".settings-model-option-check")).toHaveLength(1);
     expect(
-      screen.getByRole("radio", { name: other }).closest("label")
+      screen
+        .getByRole("radio", { name: other })
+        .closest("label")
         ?.querySelector(".settings-model-option-check"),
     ).not.toBeNull();
   });
@@ -314,9 +310,7 @@ describe("SettingsPage — model option styling", () => {
     "",
   );
   const ruleBody = (selector: string): string => {
-    const esc = selector
-      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-      .replace(/\s+/g, "\\s*");
+    const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s*");
     const m = css.match(new RegExp(`(?:^|[}\\n])\\s*${esc}\\s*\\{([^}]*)\\}`));
     if (!m?.[1]) throw new Error(`no ${selector} block in the stylesheet`);
     return m[1];

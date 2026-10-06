@@ -10,8 +10,7 @@ vi.mock("../services/api", async (importOriginal) => {
   // decides "is this an auth failure?" with `error instanceof ApiError`, and a
   // stub class would make that check silently wrong — which is precisely the
   // distinction these tests exist to pin down.
-  const actual =
-    await importOriginal<typeof import("../services/api")>();
+  const actual = await importOriginal<typeof import("../services/api")>();
   return {
     ...actual,
     auth: {
@@ -48,8 +47,7 @@ function makeToken(expiresIn: number): string {
 
 /** Exposes the auth context through DOM nodes + buttons for assertions. */
 function Harness() {
-  const { user, token, isLoading, login, register, logout, deleteAccount } =
-    useAuth();
+  const { user, token, isLoading, login, register, logout, deleteAccount } = useAuth();
   return (
     <div>
       <span data-testid="user">{user ? user.username : "none"}</span>
@@ -85,9 +83,7 @@ describe("useAuth", () => {
   });
 
   it("throws when used outside of an AuthProvider", () => {
-    expect(() => render(<Harness />)).toThrow(
-      "useAuth must be used within an AuthProvider",
-    );
+    expect(() => render(<Harness />)).toThrow("useAuth must be used within an AuthProvider");
   });
 
   it("renders children and exposes no session when there is no token", async () => {
@@ -121,9 +117,7 @@ describe("useAuth", () => {
     // A 401 — the server saying this token is not valid. This used to be a
     // bare `new Error("Session expired")`, which is precisely the bug: with no
     // status to read, every failure looked like an invalid session (#579).
-    mockedGetMe.mockRejectedValue(
-      new ApiError(401, "Could not validate credentials"),
-    );
+    mockedGetMe.mockRejectedValue(new ApiError(401, "Could not validate credentials"));
 
     renderAuth();
 
@@ -537,9 +531,7 @@ describe("AuthProvider — a transient /auth/me failure is not a sign-out", () =
 
   it("DOES sign the user out when /auth/me answers 401", async () => {
     localStorage.setItem("token", makeToken(1_800));
-    mockedGetMe.mockRejectedValue(
-      new ApiError(401, "Could not validate credentials"),
-    );
+    mockedGetMe.mockRejectedValue(new ApiError(401, "Could not validate credentials"));
 
     renderAuth();
     await act(async () => {});

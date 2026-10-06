@@ -34,21 +34,12 @@ interface SearchResultCardProps {
  * highlighted snippet re-renders, but unrelated page state (export toggles,
  * filters) does not force every card to rebuild.
  */
-const SearchResultCard = memo(function SearchResultCard({
-  result,
-  query,
-}: SearchResultCardProps) {
+const SearchResultCard = memo(function SearchResultCard({ result, query }: SearchResultCardProps) {
   return (
     <div className="search-result-card">
       <div className="result-header">
         <span className="result-document">
-          <svg
-            viewBox="0 0 24 24"
-            width="15"
-            height="15"
-            aria-hidden="true"
-            focusable="false"
-          >
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
             <path
               d="M6 3h8l4 4v14H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"
               fill="none"
@@ -136,9 +127,7 @@ export function SearchPage() {
   // Deep-link support: `?q=<query>&doc=<document-id>` restores an exact
   // search scope (QA "why this source" links navigate here). Read once at
   // construction — afterwards search state owns the URL.
-  const initialQ = useRef(
-    urlParams.get("q") ?? "",
-  ).current;
+  const initialQ = useRef(urlParams.get("q") ?? "").current;
   const initialIds = useRef(
     (urlParams.get("doc") ?? urlParams.get("ids") ?? "")
       .split(",")
@@ -165,8 +154,7 @@ export function SearchPage() {
   const idKey = selectedIds.join(",");
   const searchQuery = useInfiniteQuery({
     queryKey: [...SEARCH_QUERY_KEY, searchParams.q, searchParams.ids],
-    queryFn: ({ pageParam }) =>
-      search.search(searchParams.q, PAGE_SIZE, selectedIds, pageParam),
+    queryFn: ({ pageParam }) => search.search(searchParams.q, PAGE_SIZE, selectedIds, pageParam),
     initialPageParam: 0,
     // Search only starts once the user has actually searched something.
     enabled: searchParams.q.trim().length > 0,
@@ -191,9 +179,7 @@ export function SearchPage() {
   const hasSearched = searchParams.q.trim().length > 0;
   const isLoading = searchQuery.isPending && hasSearched;
   const isLoadingMore = searchQuery.isFetchingNextPage;
-  const searchError = searchQuery.isError
-    ? (searchQuery.error as Error).message
-    : null;
+  const searchError = searchQuery.isError ? (searchQuery.error as Error).message : null;
   const errorMessage = searchError ?? error;
 
   // Debounced auto-search as the user types or changes the document filter.
@@ -266,8 +252,7 @@ export function SearchPage() {
   }
 
   // Suggest example queries until a search returns results (or errors).
-  const showSuggestions =
-    hasSearched && !isLoading && !errorMessage && results.length === 0;
+  const showSuggestions = hasSearched && !isLoading && !errorMessage && results.length === 0;
 
   return (
     <div className="page">
@@ -289,11 +274,7 @@ export function SearchPage() {
             autoComplete="off"
             className="search-input"
           />
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={isLoading || !query.trim()}
-          >
+          <button type="submit" className="btn btn-primary" disabled={isLoading || !query.trim()}>
             {isLoading ? "Searching..." : "Search"}
           </button>
         </div>
@@ -303,7 +284,7 @@ export function SearchPage() {
         <EmptyState
           title="Search your documents"
           description="Find anything across your uploads in natural language — try one of these:"
-          >
+        >
           <div className="search-suggestions">
             {SUGGESTIONS.map((suggestion) => (
               <button
@@ -325,19 +306,21 @@ export function SearchPage() {
         <SuggestionChips onPick={handleSuggestion} disabled={isLoading} />
       )}
 
-      {errorMessage && <p className="error-message" role="alert">{errorMessage}</p>}
+      {errorMessage && (
+        <p className="error-message" role="alert">
+          {errorMessage}
+        </p>
+      )}
 
       {isLoading && <SearchSkeletons />}
 
       {isKeywordOnly && (
         <p className="search-mode-notice" role="status">
-          <strong>Keyword-only search.</strong> No embedding provider is
-          configured, so matches are literal rather than semantic and relevant
-          passages can be missed. Semantic search needs either{" "}
-          <code>OPENAI_API_KEY</code>, which bills your OpenAI account per
-          token, or <code>LOCAL_LLM_ENABLED=true</code> with a local model
-          server, which is free. A free <code>GROQ_API_KEY</code> serves chat
-          models only — it cannot supply embeddings.
+          <strong>Keyword-only search.</strong> No embedding provider is configured, so matches are
+          literal rather than semantic and relevant passages can be missed. Semantic search needs
+          either <code>OPENAI_API_KEY</code>, which bills your OpenAI account per token, or{" "}
+          <code>LOCAL_LLM_ENABLED=true</code> with a local model server, which is free. A free{" "}
+          <code>GROQ_API_KEY</code> serves chat models only — it cannot supply embeddings.
         </p>
       )}
 
@@ -395,11 +378,7 @@ export function SearchPage() {
             </span>
           </p>
           {results.map((result) => (
-            <SearchResultCard
-              key={result.chunk_id}
-              result={result}
-              query={query}
-            />
+            <SearchResultCard key={result.chunk_id} result={result} query={query} />
           ))}
           {hasMore && (
             <div className="search-load-more">

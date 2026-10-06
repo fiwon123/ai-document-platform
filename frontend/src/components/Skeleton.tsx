@@ -60,13 +60,7 @@ export function SkeletonList({ rows = 3 }: { rows?: number }) {
 
 /** A table-shaped skeleton: a header row plus body rows with column gutters —
  * useful for admin and list pages that render real tables. */
-export function SkeletonTable({
-  rows = 3,
-  columns = 4,
-}: {
-  rows?: number;
-  columns?: number;
-}) {
+export function SkeletonTable({ rows = 3, columns = 4 }: { rows?: number; columns?: number }) {
   return (
     <div className="skeleton-table" role="status" aria-label="Loading">
       <div className="skeleton-table-header">

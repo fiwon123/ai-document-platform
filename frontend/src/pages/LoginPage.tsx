@@ -84,7 +84,11 @@ function LoginFields({
         </button>
       </div>
 
-      {error && <p className="error-message" role="alert">{error}</p>}
+      {error && (
+        <p className="error-message" role="alert">
+          {error}
+        </p>
+      )}
 
       <FormSubmitButton pendingLabel="Signing in...">Sign In</FormSubmitButton>
 
@@ -137,13 +141,9 @@ function LoginFields({
 }
 
 export function LoginPage() {
-  const [username, setUsername] = useState(
-    () => localStorage.getItem(REMEMBER_KEY) ?? "",
-  );
+  const [username, setUsername] = useState(() => localStorage.getItem(REMEMBER_KEY) ?? "");
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(
-    () => localStorage.getItem(REMEMBER_KEY) !== null,
-  );
+  const [remember, setRemember] = useState(() => localStorage.getItem(REMEMBER_KEY) !== null);
   const [error, setError] = useState<string | null>(null);
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -158,10 +158,7 @@ export function LoginPage() {
     }
 
     try {
-      await login(
-        usernameValue,
-        String(formData.get("password") ?? ""),
-      );
+      await login(usernameValue, String(formData.get("password") ?? ""));
       navigate("/app");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");

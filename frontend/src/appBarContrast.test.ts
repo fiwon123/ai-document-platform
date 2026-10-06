@@ -45,7 +45,10 @@ const parseColor = (value: string): [number, number, number] => {
   if (hex) {
     const full =
       hex.length === 3
-        ? hex.split("").map((c) => c + c).join("")
+        ? hex
+            .split("")
+            .map((c) => c + c)
+            .join("")
         : hex;
     return [
       parseInt(full.slice(0, 2), 16),
@@ -70,9 +73,7 @@ const luminance = ([r, g, b]: [number, number, number]): number => {
 };
 
 const contrast = (a: string, b: string): number => {
-  const sorted = [luminance(parseColor(a)), luminance(parseColor(b))].sort(
-    (x, y) => y - x,
-  );
+  const sorted = [luminance(parseColor(a)), luminance(parseColor(b))].sort((x, y) => y - x);
   // tsconfig has noUncheckedIndexedAccess, so the destructured pair is
   // `number | undefined` even though the sort always yields two entries.
   const hi = sorted[0];
@@ -111,10 +112,7 @@ describe("workspace app bar", () => {
       ["light", light],
       ["dark", dark],
     ] as const) {
-      const ratio = contrast(
-        token(body, "--appbar-active-fg"),
-        token(body, "--appbar-active-bg"),
-      );
+      const ratio = contrast(token(body, "--appbar-active-fg"), token(body, "--appbar-active-bg"));
       expect(
         ratio,
         `${theme} active tab is ${ratio.toFixed(2)}:1, needs 4.5:1`,
@@ -143,8 +141,7 @@ describe("workspace app bar", () => {
       ["dark", dark],
     ] as const) {
       const bg = luminance(parseColor(token(body, "--appbar-bg")));
-      expect(bg, `${theme} app bar is not dark (luminance ${bg.toFixed(3)})`)
-        .toBeLessThan(0.05);
+      expect(bg, `${theme} app bar is not dark (luminance ${bg.toFixed(3)})`).toBeLessThan(0.05);
     }
   });
 

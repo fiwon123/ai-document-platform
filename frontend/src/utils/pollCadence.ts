@@ -66,9 +66,7 @@ export function advanceCadence(
   options: CadenceOptions & { changed: boolean; now: number },
 ): PollCadence {
   const { baseMs, maxMs, changed, now } = options;
-  const intervalMs = changed
-    ? baseMs
-    : Math.min(maxMs, previous.intervalMs * 2);
+  const intervalMs = changed ? baseMs : Math.min(maxMs, previous.intervalMs * 2);
   return { intervalMs, nextDueAt: now + intervalMs };
 }
 

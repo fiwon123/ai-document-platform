@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  advanceCadence,
-  earliestDue,
-  initialCadence,
-} from "./pollCadence";
+import { advanceCadence, earliestDue, initialCadence } from "./pollCadence";
 
 const OPTIONS = { baseMs: 3000, maxMs: 30_000 };
 
@@ -36,16 +32,18 @@ describe("advanceCadence", () => {
     // nextDueAt: now would make the document due again on the spot and spin the
     // scheduler in a tight loop.
     const backedOff = { intervalMs: 30_000, nextDueAt: 60_000 };
-    expect(
-      advanceCadence(backedOff, { ...OPTIONS, changed: true, now: 60_000 }),
-    ).toEqual({ intervalMs: 3000, nextDueAt: 63_000 });
+    expect(advanceCadence(backedOff, { ...OPTIONS, changed: true, now: 60_000 })).toEqual({
+      intervalMs: 3000,
+      nextDueAt: 63_000,
+    });
   });
 
   it("resets to the base period when the document changes", () => {
     const backedOff = { intervalMs: 24_000, nextDueAt: 54_000 };
-    expect(
-      advanceCadence(backedOff, { ...OPTIONS, changed: true, now: 54_000 }),
-    ).toEqual({ intervalMs: 3000, nextDueAt: 57_000 });
+    expect(advanceCadence(backedOff, { ...OPTIONS, changed: true, now: 54_000 })).toEqual({
+      intervalMs: 3000,
+      nextDueAt: 57_000,
+    });
   });
 
   it("caps the period at maxMs", () => {
@@ -91,10 +89,9 @@ describe("advanceCadence", () => {
 
     const moving = initialCadence(0, OPTIONS);
     for (let i = 0; i < 4; i += 1) {
-      expect(
-        advanceCadence(moving, { ...OPTIONS, changed: true, now: i * 3000 })
-          .intervalMs,
-      ).toBe(3000);
+      expect(advanceCadence(moving, { ...OPTIONS, changed: true, now: i * 3000 }).intervalMs).toBe(
+        3000,
+      );
     }
   });
 

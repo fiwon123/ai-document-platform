@@ -15,10 +15,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { CORE_FEATURES, SECONDARY_FEATURES } from "./marketing";
 
-const landing = readFileSync(
-  resolve(process.cwd(), "src", "pages", "LandingPage.tsx"),
-  "utf8",
-);
+const landing = readFileSync(resolve(process.cwd(), "src", "pages", "LandingPage.tsx"), "utf8");
 const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8");
 
 /** The source of the grid that opens the first `className` containing `marker`,
@@ -76,9 +73,9 @@ describe("reveal-card", () => {
   /** The body of the first rule whose selector list contains `selector`. */
   function ruleBody(selector: string): string {
     const re = new RegExp(`([^{}]*\\${selector}[^{}]*)\\{([^}]*)\\}`);
-const m = css.match(re);
-  expect(m, `${selector} has no rule in App.css`).not.toBeNull();
-  return m?.[2] ?? "";
+    const m = css.match(re);
+    expect(m, `${selector} has no rule in App.css`).not.toBeNull();
+    return m?.[2] ?? "";
   }
 
   it("starts hidden and resolves to visible, like .reveal", () => {
@@ -97,7 +94,9 @@ const m = css.match(re);
     const body = ruleBody(".reveal-card");
     expect(body).toMatch(/opacity:\s*0/);
     // The override itself must resolve to visible.
-    const m = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.reveal-card\s*\{([^}]*)\}/);
+    const m = css.match(
+      /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.reveal-card\s*\{([^}]*)\}/,
+    );
     expect(m, "no reduced-motion block sets .reveal-card").not.toBeNull();
     expect(m![1]).toMatch(/opacity:\s*1/);
   });
