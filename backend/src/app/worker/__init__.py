@@ -49,12 +49,27 @@ def _recovery_timeout_minutes() -> int:
     The floor is derived from the job timeout × retries so the recovery cron
     never marks a job failed while it is still legitimately retrying; an
     explicit WORKER_RECOVERY_TIMEOUT_MINUTES still wins when it is larger.
+
+    The floor is not optional in practice: at the defaults it is 48 minutes
+    (900s job timeout × 3 retries), so a document whose worker was killed
+    mid-job is reclaimed at ~48 minutes and reaches FAILED by ~68. This function
+    used to fall back to the literal 30, which the floor always overrode — a
+    number that read as "reclaimed after 30 minutes" and sent an operator
+    looking for a missing reclaim path that was working exactly as designed
+    (#688). A clamped override is now logged rather than silently discarded.
     """
     min_floor = (WORKER_JOB_TIMEOUT_SECONDS // 60 + 1) * MAX_RETRIES
-    return max(
-        int(os.getenv("WORKER_RECOVERY_TIMEOUT_MINUTES", "30")),
-        min_floor,
-    )
+    configured = os.getenv("WORKER_RECOVERY_TIMEOUT_MINUTES")
+    override = int(configured) if configured else 0
+    if override < min_floor:
+        if configured:
+            logger.warning(
+                f"WORKER_RECOVERY_TIMEOUT_MINUTES={override} is below the "
+                f"{min_floor}-minute floor (job timeout × retries); using the "
+                f"floor instead."
+            )
+        return min_floor
+    return override
 
 
 RECOVERY_TIMEOUT_MINUTES = _recovery_timeout_minutes()
