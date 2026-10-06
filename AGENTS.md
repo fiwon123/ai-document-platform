@@ -99,7 +99,7 @@ make dev-log              # Tail dev sandbox logs
 make dev-build            # Rebuild the dev image (after pyproject/uv.lock changes)
 make dev-down             # Stop the sandbox (keeps volumes)
 make reset                # Stop everything and wipe volumes (clean slate)
-make check                # Full local gate: lint + tests + build
+make check                # Full local gate: lint + format + tests + build
 ```
 
 ### Docker Compose (dev sandbox)

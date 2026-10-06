@@ -179,15 +179,17 @@ blocks `make dev-up`. To pin a specific token: `make dev-up GH_TOKEN=<pat>`.
 make infra-up             # infra services only (detached)
 cd backend && uv run uvicorn app.main:app --reload   # backend on :8000
 cd frontend && npm run dev                           # vite on :5173
-make check                # lint + tests + build (no containers needed)
+make check                # lint + format + tests + build (no containers needed)
 ```
 
 ## Tests / lint / build (host-native — no sandbox required)
 
 ```bash
-make check        # = lint (ruff + oxlint) + tests (pytest + vitest) + build
+make check        # = lint (ruff + oxlint) + format (oxfmt) + tests (pytest + vitest) + build
 make test         # test-backend (pytest) + test-frontend (vitest)
 make lint         # ruff + oxlint
+make format       # ruff format (backend) + oxfmt (frontend)
+make format-check # oxfmt --check — the frontend formatting gate `make check` runs
 make build        # frontend typecheck + production build
 ```
 
