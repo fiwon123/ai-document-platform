@@ -374,8 +374,9 @@ If the user explicitly permits reading environment configuration:
 - Branch naming: `<type>/<issue-number>-<slug>` (e.g., `feat/42-document-chunking`)
 - Branch types: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/`, `ci/`
 - Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `ci:`
-- All testing is local for feature branches — CI only runs on `dev` → `main` PRs
-  (or a manual dispatch), never on a push to `dev`
+- All testing is local for feature branches — CI runs on `dev` → `main` PRs
+  (or a manual dispatch); a push to `dev` reaches those PRs via `synchronize`,
+  so see *CI triggers* below before assuming a run either happened or passed
 - Do NOT merge pull requests unless explicitly instructed
 - Do NOT automatically create release PRs or merge to main — user must explicitly request
 - Always return to `dev` branch after completing any merge
@@ -383,21 +384,41 @@ If the user explicitly permits reading environment configuration:
 
 ### CI triggers (read this before claiming a change is verified)
 
-Both workflows are **label-gated `dev`→`main` PRs plus manual dispatch**. A push
-to `dev` triggers neither, and a `dev` push is not a CI event at all:
+Both workflows are **label-gated `dev`→`main` PRs plus manual dispatch**:
 
 | Workflow | Runs on |
 |---|---|
 | `ci.yml` — backend tests + ruff, frontend lint/build/tests | `ci`-labelled PR to `main`, or `workflow_dispatch` |
 | `infra.yml` — kustomize/helm/kubeconform, image builds → ghcr.io, Kind smoke test | `ci`-labelled PR to `main`, or `workflow_dispatch`. **Dispatch publishes only from `main`**: a dispatch of any other ref runs `validate` and the Kind smoke test but **skips the image build/push**, because those re-tag the floating `latest` that staging and production follow (#544) |
 
-So a feature branch is **unverified** until the release PR is opened and
-labelled, or someone dispatches the workflow. A change touching `infra/**`
-receives no `kustomize build`, `helm lint` or `kubeconform` anywhere on its way
-to `dev` — validate it locally first (`DEVELOPMENT.md` → *Validating infra
-locally*). Publishing images to ghcr.io on every dev push is deliberately
-avoided; the validation that *should* have covered it is a separate concern from
-the release publish, and conflating them is what let the gap go unnoticed.
+**A push to `dev` can and does reach both workflows** (#680). A push is not
+itself a trigger, but it advances the head of any *open* `dev`→`main` PR, which
+fires `synchronize` — and `synchronize` is a declared trigger of both files. So
+a merged feature runs CI whenever all three of these hold:
+
+1. an open `dev`→`main` PR exists, **and**
+2. it carries the `ci` label, **and**
+3. the push touches a path in that workflow's `paths:` filter
+
+Miss (2) and you get a run that is **triggered but verifies nothing**: every job
+comes back `skipped`, because the label gate lives in each job's `if:`.
+**Skipped is not passed.** #675, #676 and #677 each reached `main` that way, and
+a `skipped` row in the run list is easy to misread as coverage — the same trap
+as #638, where `Scan images` was skipped rather than passed and `exit-code: "1"`
+had never blocked anything.
+
+So a feature branch is **unverified** until the release PR is open, labelled
+`ci`, and the change is in the filter — or someone dispatches the workflow. A
+change touching `infra/**` receives no `kustomize build`, `helm lint` or
+`kubeconform` anywhere on its way to `dev` — validate it locally first
+(`DEVELOPMENT.md` → *Validating infra locally*). Publishing images to ghcr.io on
+every dev push is deliberately avoided; the validation that *should* have
+covered it is a separate concern from the release publish, and conflating them is
+what let the gap go unnoticed.
+
+Note that **watch the `pull_request` run, not a manual dispatch**. A dispatch
+from a non-`main` ref duplicates the run and skips the image build (#544), so it
+exercises stale ghcr images.
 
 ### Branch Strategy
 
