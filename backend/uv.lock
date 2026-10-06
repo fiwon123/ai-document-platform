@@ -97,9 +97,9 @@ requires-dist = [
     { name = "bcrypt", specifier = "==4.0.1" },
     { name = "boto3", specifier = ">=1.43.92" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.140.13" },
-    { name = "openai", specifier = ">=1.0.0" },
+    { name = "openai", specifier = ">=3.13.0" },
     { name = "passlib", specifier = ">=1.7.4" },
-    { name = "pgvector", specifier = ">=0.3.6" },
+    { name = "pgvector", specifier = ">=0.5.0" },
     { name = "prometheus-client", specifier = ">=0.20.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
     { name = "pymupdf", specifier = ">=1.28.2" },
@@ -781,7 +781,7 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "3.8.0"
+version = "3.25.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -791,9 +791,9 @@ dependencies = [
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f2/b0/1100c93f93e1c174205ce8d15a049a446f0dc88e9262c1f1f223fe6b9493/openai-3.8.0.tar.gz", hash = "sha256:6138a5a1333a1be9e4d1edea2d160b311542787b029543f87de4961c66358d16", size = 1473819, upload-time = "2026-09-03T19:51:10.495Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/54/32/26dbdc23d8abfdb8c0a070ce0fda0761550baa8f7729944f1061573e4892/openai-3.25.0.tar.gz", hash = "sha256:3dabc85a408ee7196aa03dfbe68b5177530aa1543282c2ed692be2e531e31e94", size = 1809327, upload-time = "2026-10-06T18:04:05.824Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/a4/c7e89d3bfb8b7c7ffa38ec9fe527bccf4df723f752fb11bdb3da6c750b76/openai-3.8.0-py3-none-any.whl", hash = "sha256:514736aa1e4ef1033c1209ad53897392845ccd4f2c4fae6413b2cf5f91c2c926", size = 1740349, upload-time = "2026-09-03T19:51:08.596Z" },
+    { url = "https://files.pythonhosted.org/packages/43/ee/c7387195e39970a20fa914f13ad36d1b7216a23c5bfd1b8daf6d5f00af31/openai-3.25.0-py3-none-any.whl", hash = "sha256:31ae9e63134f0bdb4440feca994ceeb0feeeaec88197e0fc011fcc49ff491e70", size = 2140042, upload-time = "2026-10-06T18:04:03.822Z" },
 ]
 
 [[package]]
