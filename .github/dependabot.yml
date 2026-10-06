@@ -1,8 +1,18 @@
 version: 2
 updates:
+  # Every update below targets `dev`, not the default branch. Dependabot falls
+  # back to the repository default (`main`) when `target-branch` is omitted, and
+  # a dependency PR merged straight into `main` would land in production without
+  # ever passing through the integration branch — and would leave `main` ahead of
+  # `dev`, so the next release PR would appear to revert it. See issue #693.
+  #
+  # Retargeting does NOT move PRs that are already open; those are handled
+  # separately. Only the branch *future* PRs open against is set here.
+
   # Backend Python dependencies (uv/pyproject.toml)
   - package-ecosystem: "pip"
     directory: "/backend"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -42,6 +52,7 @@ updates:
   # Frontend npm dependencies
   - package-ecosystem: "npm"
     directory: "/frontend"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -73,6 +84,7 @@ updates:
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
