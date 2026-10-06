@@ -70,14 +70,10 @@ export function WebhooksPage() {
   // re-render optimistically.
   const [, startTransition] = useTransition();
   const isLoading = webhooksQuery.isPending && !webhooksQuery.data;
-  const loadError = webhooksQuery.isError
-    ? (webhooksQuery.error as Error).message
-    : null;
+  const loadError = webhooksQuery.isError ? (webhooksQuery.error as Error).message : null;
 
   const [urlDraft, setUrlDraft] = useState("");
-  const [selectedEvents, setSelectedEvents] = useState<WebhookEvent[]>([
-    "document.ready",
-  ]);
+  const [selectedEvents, setSelectedEvents] = useState<WebhookEvent[]>(["document.ready"]);
   const [isCreating, setIsCreating] = useState(false);
   const [creatingError, setCreatingError] = useState<string | null>(null);
 
@@ -89,9 +85,7 @@ export function WebhooksPage() {
      "delivered 3 minutes ago" next to an undated "Test: ok" reads as a
      contradiction rather than as two events. The time is taken when the
      response arrives. */
-  const [testResults, setTestResults] = useState<
-    Record<string, { message: string; at: Date }>
-  >({});
+  const [testResults, setTestResults] = useState<Record<string, { message: string; at: Date }>>({});
   // The "How webhooks work" card auto-expands while the user has no
   // subscriptions and collapses as soon as they create one. Closing it
   // manually stays respected even with an empty list.
@@ -100,9 +94,7 @@ export function WebhooksPage() {
 
   function toggleEvent(event: WebhookEvent) {
     setSelectedEvents((current) =>
-      current.includes(event)
-        ? current.filter((e) => e !== event)
-        : [...current, event],
+      current.includes(event) ? current.filter((e) => e !== event) : [...current, event],
     );
   }
 
@@ -244,9 +236,8 @@ export function WebhooksPage() {
             <div>
               <strong>Create a subscription</strong>
               <p>
-                Paste the receiver URL that accepts HTTP POST requests and pick
-                the events that matter to you — for example{" "}
-                <code>document.ready</code>.
+                Paste the receiver URL that accepts HTTP POST requests and pick the events that
+                matter to you — for example <code>document.ready</code>.
               </p>
             </div>
           </li>
@@ -255,10 +246,9 @@ export function WebhooksPage() {
             <div>
               <strong>We deliver signed events</strong>
               <p>
-                Whenever one of those events fires, we POST the JSON payload to
-                your URL with the <code>X-Webhook-Signature</code> header — an
-                HMAC-SHA256 of the raw request body signed with your
-                subscription secret.
+                Whenever one of those events fires, we POST the JSON payload to your URL with the{" "}
+                <code>X-Webhook-Signature</code> header — an HMAC-SHA256 of the raw request body
+                signed with your subscription secret.
               </p>
             </div>
           </li>
@@ -267,9 +257,8 @@ export function WebhooksPage() {
             <div>
               <strong>Verify before you trust</strong>
               <p>
-                Recompute the HMAC on your side and compare it with the
-                signature. If they match, the payload really came from the
-                platform and was not tampered with.
+                Recompute the HMAC on your side and compare it with the signature. If they match,
+                the payload really came from the platform and was not tampered with.
               </p>
             </div>
           </li>
@@ -290,9 +279,9 @@ export function WebhooksPage() {
       <section className="settings-card">
         <h2>New webhook</h2>
         <p className="settings-desc">
-          Receive a signed HTTP POST whenever a document event occurs. Verify
-          payloads with the <code>X-Webhook-Signature</code> header
-          (HMAC-SHA256 of the raw body using your subscription secret).
+          Receive a signed HTTP POST whenever a document event occurs. Verify payloads with the{" "}
+          <code>X-Webhook-Signature</code> header (HMAC-SHA256 of the raw body using your
+          subscription secret).
         </p>
 
         <form className="webhook-form" onSubmit={handleCreate}>
@@ -333,11 +322,7 @@ export function WebhooksPage() {
               {creatingError}
             </p>
           )}
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={isCreating}
-          >
+          <button type="submit" className="btn btn-primary" disabled={isCreating}>
             {isCreating ? "Creating…" : "Create webhook"}
           </button>
         </form>
@@ -387,11 +372,7 @@ export function WebhooksPage() {
                 <dl className="webhook-meta">
                   <div>
                     <dt>Last delivery</dt>
-                    <dd
-                      className={
-                        sub.last_status === "failed" ? "webhook-delivery-failed" : ""
-                      }
-                    >
+                    <dd className={sub.last_status === "failed" ? "webhook-delivery-failed" : ""}>
                       {sub.last_status === null
                         ? "Never"
                         : `${sub.last_status}${sub.last_status_code ? ` (HTTP ${sub.last_status_code})` : ""}`}
@@ -403,7 +384,11 @@ export function WebhooksPage() {
                   </div>
                   <div>
                     <dt>Last delivered</dt>
-                    <dd>{sub.last_delivered_at ? new Date(sub.last_delivered_at).toLocaleString() : "—"}</dd>
+                    <dd>
+                      {sub.last_delivered_at
+                        ? new Date(sub.last_delivered_at).toLocaleString()
+                        : "—"}
+                    </dd>
                   </div>
                 </dl>
 
@@ -436,9 +421,7 @@ export function WebhooksPage() {
                       <span className="webhook-test-result-time">
                         Test sent {testResult.at.toLocaleTimeString()}
                       </span>
-                      <span className="webhook-test-result-message">
-                        {testResult.message}
-                      </span>
+                      <span className="webhook-test-result-message">{testResult.message}</span>
                     </span>
                   )}
                   <button
@@ -450,7 +433,7 @@ export function WebhooksPage() {
                   </button>
                 </div>
               </article>
-              );
+            );
           })
         )}
       </section>

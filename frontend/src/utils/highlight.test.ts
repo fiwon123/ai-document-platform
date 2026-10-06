@@ -3,9 +3,7 @@ import { highlightParts } from "./highlight";
 
 describe("highlightParts", () => {
   it("returns the whole text as a plain part for an empty query", () => {
-    expect(highlightParts("hello world", "")).toEqual([
-      { text: "hello world", highlight: false },
-    ]);
+    expect(highlightParts("hello world", "")).toEqual([{ text: "hello world", highlight: false }]);
     expect(highlightParts("hello world", "   ")).toEqual([
       { text: "hello world", highlight: false },
     ]);
@@ -47,8 +45,6 @@ describe("highlightParts", () => {
   });
 
   it("returns plain single part when no term matches", () => {
-    expect(highlightParts("hello", "zzz")).toEqual([
-      { text: "hello", highlight: false },
-    ]);
+    expect(highlightParts("hello", "zzz")).toEqual([{ text: "hello", highlight: false }]);
   });
 });

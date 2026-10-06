@@ -13,13 +13,7 @@ import { FlowIllustration } from "../components/landing/FlowIllustration";
 import { RevealCard } from "../components/landing/RevealCard";
 import { CheckIcon, FeatureIcon } from "../components/landing/FeatureIcon";
 import { useAuth } from "../hooks/useAuth";
-import {
-  CORE_FEATURES,
-  SECONDARY_FEATURES,
-  STEPS,
-  PLANS,
-  FAQ_ITEMS,
-} from "../content/marketing";
+import { CORE_FEATURES, SECONDARY_FEATURES, STEPS, PLANS, FAQ_ITEMS } from "../content/marketing";
 
 /* ------------------------------------------------------------- landing data */
 
@@ -46,24 +40,12 @@ const SCREENSHOTS = [
   },
 ];
 
-const LOGOS = [
-  "Northwind",
-  "Lumina",
-  "Vertex Labs",
-  "Bluepeak",
-  "Tesseract",
-  "mina",
-];
+const LOGOS = ["Northwind", "Lumina", "Vertex Labs", "Bluepeak", "Tesseract", "mina"];
 
 /* Claim strip under the stats. Phrased as targets rather than certifications —
    a badge that overstates what has been audited is worse than no badge, and the
    Security page is explicit that SOC 2 is not yet held. */
-const TRUST_BADGES = [
-  "SOC 2 ready",
-  "GDPR compliant",
-  "Open source",
-  "AES-256 at rest",
-];
+const TRUST_BADGES = ["SOC 2 ready", "GDPR compliant", "Open source", "AES-256 at rest"];
 
 /* ------------------------------------------------------------ landing page */
 
@@ -103,8 +85,8 @@ export function LandingPage() {
             </Reveal>
             <Reveal variant="up" delay={160}>
               <p className="landing-sub">
-                Upload files, search them semantically, and get grounded answers
-                from your own knowledge base — in seconds.
+                Upload files, search them semantically, and get grounded answers from your own
+                knowledge base — in seconds.
               </p>
             </Reveal>
             <Reveal variant="up" delay={240}>
@@ -115,9 +97,7 @@ export function LandingPage() {
                 {secondaryCta}
               </div>
               {!user && (
-                <p className="landing-note">
-                  No credit card required. Try it without an account.
-                </p>
+                <p className="landing-note">No credit card required. Try it without an account.</p>
               )}
             </Reveal>
           </div>
@@ -195,8 +175,7 @@ export function LandingPage() {
               </div>
             </div>
             <p className="stats-demo-note">
-              Sample figures shown for illustration — your workspace shows your
-              real numbers.
+              Sample figures shown for illustration — your workspace shows your real numbers.
             </p>
             <ul className="trust-badges">
               {TRUST_BADGES.map((badge) => (
@@ -236,9 +215,7 @@ export function LandingPage() {
             ))}
           </div>
           <Reveal variant="up" delay={60}>
-            <h3 className="feature-category feature-category-secondary">
-              More to explore
-            </h3>
+            <h3 className="feature-category feature-category-secondary">More to explore</h3>
           </Reveal>
           {/* RevealCard rather than Reveal: a Reveal wrapper box would collapse each
               card back to its own content height and leave the row's bottom edge
@@ -305,9 +282,7 @@ export function LandingPage() {
         <section id="pricing" className="landing-section">
           <Reveal variant="up">
             <h2>Pricing that grows with you</h2>
-            <p className="landing-section-sub">
-              Start free, upgrade when your team needs more.
-            </p>
+            <p className="landing-section-sub">Start free, upgrade when your team needs more.</p>
           </Reveal>
 
           <Reveal variant="up" delay={80}>
@@ -322,10 +297,7 @@ export function LandingPage() {
                 >
                   {plan.featured && <span className="plan-badge">Most Popular</span>}
                   <h3>{plan.name}</h3>
-                  <PlanPrice
-                    price={annual ? plan.annual : plan.monthly}
-                    period={plan.period}
-                  />
+                  <PlanPrice price={annual ? plan.annual : plan.monthly} period={plan.period} />
                   <Link
                     to={user ? "/app" : "/register"}
                     className={`btn ${plan.featured ? "btn-primary" : "btn-secondary"}`}
@@ -345,9 +317,7 @@ export function LandingPage() {
         <section id="faq" className="landing-section landing-section-alt">
           <Reveal variant="up">
             <h2>Frequently asked questions</h2>
-            <p className="landing-section-sub">
-              Everything else — just ask us.
-            </p>
+            <p className="landing-section-sub">Everything else — just ask us.</p>
           </Reveal>
           <Reveal variant="up" delay={80}>
             <div className="faq-wrap">
@@ -360,8 +330,8 @@ export function LandingPage() {
           <Reveal variant="up">
             <h2>Ready to find answers in your documents?</h2>
             <p className="landing-cta-band-sub">
-              Upload a file and ask a question in under a minute. No credit card,
-              no setup — your first three documents are free.
+              Upload a file and ask a question in under a minute. No credit card, no setup — your
+              first three documents are free.
             </p>
             <div className="landing-ctas">
               <Link to="/demo" className="btn btn-primary btn-lg">

@@ -20,11 +20,7 @@ function renderPage() {
   );
 }
 
-async function submitRegistration(
-  username: string,
-  password: string,
-  confirmPassword: string,
-) {
+async function submitRegistration(username: string, password: string, confirmPassword: string) {
   renderPage();
   fireEvent.change(screen.getByLabelText("Username"), {
     target: { value: username },
@@ -51,9 +47,7 @@ describe("RegisterPage", () => {
     expect(screen.getByLabelText("Username")).toBeTruthy();
     expect(screen.getByLabelText("Password")).toBeTruthy();
     expect(screen.getByLabelText("Confirm Password")).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Register" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Register" })).toBeTruthy();
     expect(screen.getByLabelText(/I agree/)).toBeTruthy();
   });
 

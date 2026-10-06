@@ -40,14 +40,9 @@ function EmptyStateIcon() {
   );
 }
 
-function isActionObject(
-  action: EmptyStateProps["action"],
-): action is EmptyStateAction {
+function isActionObject(action: EmptyStateProps["action"]): action is EmptyStateAction {
   return (
-    typeof action === "object" &&
-    action !== null &&
-    !Array.isArray(action) &&
-    "label" in action
+    typeof action === "object" && action !== null && !Array.isArray(action) && "label" in action
   );
 }
 
@@ -71,13 +66,7 @@ function renderAction(action: EmptyStateProps["action"]): ReactNode {
   );
 }
 
-export function EmptyState({
-  icon,
-  title,
-  description,
-  action,
-  children,
-}: EmptyStateProps) {
+export function EmptyState({ icon, title, description, action, children }: EmptyStateProps) {
   const renderedAction = renderAction(action);
   const hasAction = renderedAction !== null || children !== undefined;
 
@@ -85,9 +74,7 @@ export function EmptyState({
     <div className="empty-state">
       <div className="empty-state-icon">{icon ?? <EmptyStateIcon />}</div>
       <h3 className="empty-state-title">{title}</h3>
-      {description ? (
-        <p className="empty-state-description">{description}</p>
-      ) : null}
+      {description ? <p className="empty-state-description">{description}</p> : null}
       {hasAction ? (
         <div className="empty-state-action">
           {renderedAction}

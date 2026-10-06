@@ -185,9 +185,7 @@ describe("WebhooksPage", () => {
     const actions = screen.getByRole("status").closest(".webhook-actions")!;
     const kids = [...actions.children];
     const resultIdx = kids.indexOf(screen.getByRole("status"));
-    const sendIdx = kids.findIndex((el) =>
-      (el as HTMLElement).textContent?.includes("Send test"),
-    );
+    const sendIdx = kids.findIndex((el) => (el as HTMLElement).textContent?.includes("Send test"));
     const deleteIdx = kids.findIndex((el) => (el as HTMLElement).textContent?.includes("Delete"));
     expect(sendIdx).toBeGreaterThanOrEqual(0);
     expect(resultIdx).toBe(sendIdx + 1);
@@ -216,9 +214,7 @@ describe("WebhooksPage", () => {
       /\/\*[\s\S]*?\*\//g,
       "",
     );
-    expect(css).toMatch(
-      /\.webhook-test-result-time::after\s*\{[^}]*content:\s*"·"/,
-    );
+    expect(css).toMatch(/\.webhook-test-result-time::after\s*\{[^}]*content:\s*"·"/);
   });
 
   it("keeps the tutorial callout on the same measure as the cards (#588)", () => {
@@ -246,9 +242,7 @@ describe("WebhooksPage", () => {
     await settle();
 
     expect(mockedRemove).toHaveBeenCalledWith("wh-1");
-    expect(
-      screen.queryByText("https://example.com/hook"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("https://example.com/hook")).not.toBeInTheDocument();
   });
 
   it("auto-expands the tutorial when there are no subscriptions", async () => {
@@ -256,9 +250,7 @@ describe("WebhooksPage", () => {
     renderWithClient(<WebhooksPage />);
     await settle();
 
-    const details = screen
-      .getByText("How webhooks work")
-      .closest("details") as HTMLDetailsElement;
+    const details = screen.getByText("How webhooks work").closest("details") as HTMLDetailsElement;
     expect(details.open).toBe(true);
     expect(screen.getByText(/Create a subscription/)).toBeTruthy();
   });
@@ -267,9 +259,7 @@ describe("WebhooksPage", () => {
     renderWithClient(<WebhooksPage />);
     await settle();
 
-    const details = screen
-      .getByText("How webhooks work")
-      .closest("details") as HTMLDetailsElement;
+    const details = screen.getByText("How webhooks work").closest("details") as HTMLDetailsElement;
     expect(details.open).toBe(false);
     // The summary stays visible so users can still open the card.
     expect(screen.getByText("How webhooks work")).toBeTruthy();
@@ -280,9 +270,7 @@ describe("WebhooksPage", () => {
     renderWithClient(<WebhooksPage />);
     await settle();
 
-    const details = screen
-      .getByText("How webhooks work")
-      .closest("details") as HTMLDetailsElement;
+    const details = screen.getByText("How webhooks work").closest("details") as HTMLDetailsElement;
     expect(details.open).toBe(true);
 
     fireEvent.click(screen.getByText("How webhooks work"));

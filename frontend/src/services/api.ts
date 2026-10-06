@@ -128,10 +128,7 @@ function num(details: ErrorDetails | undefined, key: string): number | undefined
  */
 export function rateLimitFrom(error: unknown): RateLimitInfo | null {
   if (!(error instanceof ApiError)) return null;
-  if (
-    error.code !== "provider_rate_limited" &&
-    error.code !== "rate_limit_exceeded"
-  ) {
+  if (error.code !== "provider_rate_limited" && error.code !== "rate_limit_exceeded") {
     return null;
   }
   return {
@@ -259,10 +256,7 @@ function getRefreshPromise(): Promise<RefreshOutcome> {
  * replays the original request once). Every API call — JSON or file download —
  * flows through here so the refresh logic lives in exactly one place.
  */
-async function fetchWithAuth(
-  path: string,
-  options: RequestOptions = {},
-): Promise<Response> {
+async function fetchWithAuth(path: string, options: RequestOptions = {}): Promise<Response> {
   const token = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
 
   const headers: Record<string, string> = {
@@ -273,11 +267,7 @@ async function fetchWithAuth(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  if (
-    options.body &&
-    !(options.body instanceof FormData) &&
-    !headers["Content-Type"]
-  ) {
+  if (options.body && !(options.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -309,14 +299,10 @@ async function fetchWithAuth(
       // nothing about whether this token is still valid, so the session is
       // kept and the transient failure is surfaced instead of being turned into
       // a sign-out (#579).
-      throw new ApiError(
-        refreshed.status ?? 503,
-        "Could not reach the server. Please try again.",
-        {
-          code: refreshed.status === 429 ? "rate_limit_exceeded" : "server_unreachable",
-          retryAfterSeconds: refreshed.retryAfterSeconds,
-        },
-      );
+      throw new ApiError(refreshed.status ?? 503, "Could not reach the server. Please try again.", {
+        code: refreshed.status === 429 ? "rate_limit_exceeded" : "server_unreachable",
+        retryAfterSeconds: refreshed.retryAfterSeconds,
+      });
     }
     localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
     window.location.href = "/login";
@@ -342,7 +328,7 @@ async function fetchWithAuth(
 function describeValidationError(details: unknown): string | undefined {
   if (!details || typeof details !== "object" || Array.isArray(details)) return undefined;
   const fields = Object.entries(details as Record<string, unknown>).filter(
-    ([, reason]) => typeof reason === "string" && reason.length > 0
+    ([, reason]) => typeof reason === "string" && reason.length > 0,
   );
   if (fields.length === 0) return undefined;
   const shown = fields.slice(0, 3).map(([field, reason]) => `${field}: ${reason}`);
@@ -382,15 +368,11 @@ async function parseError(response: Response, fallback: string): Promise<ApiErro
     // precedence here — rather than in each caller — means `retryAfterSeconds`
     // means "how long to wait" whichever source answered.
     retryAfterSeconds:
-      parseRetryAfter(response.headers.get("retry-after")) ??
-      num(details, "retry_after"),
+      parseRetryAfter(response.headers.get("retry-after")) ?? num(details, "retry_after"),
   });
 }
 
-async function request<T>(
-  path: string,
-  options: RequestOptions = {},
-): Promise<T> {
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const response = await fetchWithAuth(path, options);
 
   if (!response.ok) {
@@ -417,11 +399,7 @@ export const auth = {
     });
   },
 
-  async register(
-    username: string,
-    password: string,
-    confirmPassword: string,
-  ): Promise<User> {
+  async register(username: string, password: string, confirmPassword: string): Promise<User> {
     return request<User>("/auth/register", {
       method: "POST",
       body: JSON.stringify({
@@ -444,7 +422,7 @@ export const auth = {
     // connection is reported as itself, so the caller can tell "sign out" from
     // "try again in a moment" (#589 shares this path).
     throw new ApiError(
-      refreshed.terminal ? 401 : refreshed.status ?? 503,
+      refreshed.terminal ? 401 : (refreshed.status ?? 503),
       refreshed.terminal
         ? "Session expired. Please log in again."
         : "Could not reach the server. Please try again.",
@@ -503,7 +481,9 @@ export const documents = {
     );
   },
 
-  async getDownloadUrl(id: string): Promise<{ id: string; filename: string; download_url: string }> {
+  async getDownloadUrl(
+    id: string,
+  ): Promise<{ id: string; filename: string; download_url: string }> {
     return request(`/documents/${id}/download`);
   },
 
@@ -658,8 +638,7 @@ export const search = {
 
     const blob = await response.blob();
     const disposition = response.headers.get("Content-Disposition") ?? "";
-    const filename =
-      disposition.match(/filename="?([^";]+)"?/)?.[1] ?? `search_results.${format}`;
+    const filename = disposition.match(/filename="?([^";]+)"?/)?.[1] ?? `search_results.${format}`;
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -677,11 +656,7 @@ export interface QAModels {
 }
 
 export const qa = {
-  async ask(
-    question: string,
-    documentIds?: string[],
-    model?: string,
-  ): Promise<QAResponse> {
+  async ask(question: string, documentIds?: string[], model?: string): Promise<QAResponse> {
     // Bring-your-own-key: send the user's key (stored in localStorage by
     // the Settings page) so the backend can route this request through it.
     const apiKey = localStorage.getItem(API_KEY_STORAGE_KEY);

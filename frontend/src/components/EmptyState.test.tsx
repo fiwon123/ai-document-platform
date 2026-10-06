@@ -28,9 +28,7 @@ describe("EmptyState", () => {
   });
 
   it("renders custom action nodes", () => {
-    render(
-      <EmptyState title="Empty" action={<span>custom action</span>} />,
-    );
+    render(<EmptyState title="Empty" action={<span>custom action</span>} />);
     expect(screen.getByText("custom action")).toBeTruthy();
   });
 

@@ -17,9 +17,5 @@ export function createTestQueryClient(): QueryClient {
 
 /** Renders `ui` inside a QueryClientProvider with a fresh client. */
 export function renderWithClient(ui: ReactElement): ReturnType<typeof render> {
-  return render(
-    <QueryClientProvider client={createTestQueryClient()}>
-      {ui}
-    </QueryClientProvider>,
-  );
+  return render(<QueryClientProvider client={createTestQueryClient()}>{ui}</QueryClientProvider>);
 }

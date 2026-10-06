@@ -40,10 +40,7 @@ export function ChallengesPage() {
             hero, directly above this, and a second identical CTA a scroll
             away reads as two different offers rather than one. This block's
             job is to explain why the list is empty. */}
-        <EmptyState
-          title={CHALLENGES_EMPTY.title}
-          description={CHALLENGES_EMPTY.body}
-        />
+        <EmptyState title={CHALLENGES_EMPTY.title} description={CHALLENGES_EMPTY.body} />
       </PageSection>
     </PageLayout>
   );

@@ -1,9 +1,5 @@
 import { Link } from "react-router-dom";
-import {
-  PageCta,
-  PageLayout,
-  PageSection,
-} from "../components/PageLayout";
+import { PageCta, PageLayout, PageSection } from "../components/PageLayout";
 import { PipelineTrack } from "../components/howItWorks/PipelineTrack";
 import { STEPS } from "../content/marketing";
 
@@ -21,8 +17,7 @@ export function HowItWorksPage() {
       eyebrow="Product"
       title={
         <>
-          From upload to{" "}
-          <span className="gradient-text">grounded answer</span>
+          From upload to <span className="gradient-text">grounded answer</span>
         </>
       }
       subtitle="Six stages, one of which is slow on purpose. Here is what happens to a file after you drop it in."
@@ -36,8 +31,7 @@ export function HowItWorksPage() {
               <strong>{step.title}</strong>
             </span>
           ))}
-          . The other three happen in the background, and they are what make
-          the first three work.
+          . The other three happen in the background, and they are what make the first three work.
         </p>
       </PageSection>
 
@@ -47,32 +41,28 @@ export function HowItWorksPage() {
 
       <PageSection title="Why processing is asynchronous" centered>
         <p>
-          Embedding a large PDF is the expensive step — it can take longer than
-          the upload itself. Running it inside the request would mean either a
-          timeout for the user or a slow API for everyone. Instead the upload
-          returns immediately, a worker picks the job up, and the document
-          reports <code>pending</code> → <code>processing</code> →{" "}
-          <code>ready</code> (or <code>failed</code>, with the reason attached)
-          as it moves.
+          Embedding a large PDF is the expensive step — it can take longer than the upload itself.
+          Running it inside the request would mean either a timeout for the user or a slow API for
+          everyone. Instead the upload returns immediately, a worker picks the job up, and the
+          document reports <code>pending</code> → <code>processing</code> → <code>ready</code> (or{" "}
+          <code>failed</code>, with the reason attached) as it moves.
         </p>
         <p>
-          A failed document is never silently retried forever: the error is
-          stored on the document so you can see what went wrong, and the rest of
-          the workspace keeps working.
+          A failed document is never silently retried forever: the error is stored on the document
+          so you can see what went wrong, and the rest of the workspace keeps working.
         </p>
       </PageSection>
 
       <PageSection title="What this means for privacy" centered>
         <p>
-          Chunks, embeddings, and answers are all scoped to the owning user, and
-          object storage paths are namespaced per user ID. Search and Q&amp;A
-          queries filter on that owner, so one account can never retrieve
-          another account's documents — not through the UI, and not by guessing
-          a document ID.
+          Chunks, embeddings, and answers are all scoped to the owning user, and object storage
+          paths are namespaced per user ID. Search and Q&amp;A queries filter on that owner, so one
+          account can never retrieve another account's documents — not through the UI, and not by
+          guessing a document ID.
         </p>
         <p>
-          The <Link to="/security">Security</Link> page covers this in more
-          depth, and <Link to="/gdpr">GDPR</Link> covers the data-subject side.
+          The <Link to="/security">Security</Link> page covers this in more depth, and{" "}
+          <Link to="/gdpr">GDPR</Link> covers the data-subject side.
         </p>
       </PageSection>
 

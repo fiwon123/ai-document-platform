@@ -43,7 +43,12 @@ const NAV_LINKS: NavLinkDef[] = [
     label: "Webhooks",
     isActive: (pathname) => pathname.startsWith("/app/webhooks"),
   },
-  { to: "/app/admin", label: "Users", isActive: (p) => p.startsWith("/app/admin"), adminOnly: true },
+  {
+    to: "/app/admin",
+    label: "Users",
+    isActive: (p) => p.startsWith("/app/admin"),
+    adminOnly: true,
+  },
 ];
 
 /**
@@ -74,9 +79,7 @@ export const Navbar = memo(function Navbar() {
   // focus (trapping would strand keyboard users from the toggle).
   useEffect(() => {
     if (!menuOpen) return;
-    menuRef.current
-      ?.querySelector<HTMLElement>("a[href], button:not([disabled])")
-      ?.focus();
+    menuRef.current?.querySelector<HTMLElement>("a[href], button:not([disabled])")?.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -95,11 +98,7 @@ export const Navbar = memo(function Navbar() {
           made it read as one more workspace page and broke the brand lockup.
           It is rendered before the brand and stays out of NAV_LINKS so it can
           never pick up the active-page treatment. */}
-      <Link
-        to="/"
-        className="navbar-back-link"
-        onClick={closeMenu}
-      >
+      <Link to="/" className="navbar-back-link" onClick={closeMenu}>
         <ArrowLeftIcon />
         <span className="navbar-back-link-text">Back to site</span>
       </Link>
@@ -131,22 +130,20 @@ export const Navbar = memo(function Navbar() {
         className={`navbar-links${menuOpen ? " navbar-links-open" : ""}`}
         id="navbar-links"
       >
-        {NAV_LINKS.filter((link) => !link.adminOnly || user?.role === "admin").map(
-          (link) => {
-            const active = link.isActive(pathname);
-            return (
-              <Link
-                key={link.to}
-                to={link.to}
-                onClick={closeMenu}
-                className={active ? "active" : undefined}
-                aria-current={active ? "page" : undefined}
-              >
-                {link.label}
-              </Link>
-            );
-          },
-        )}
+        {NAV_LINKS.filter((link) => !link.adminOnly || user?.role === "admin").map((link) => {
+          const active = link.isActive(pathname);
+          return (
+            <Link
+              key={link.to}
+              to={link.to}
+              onClick={closeMenu}
+              className={active ? "active" : undefined}
+              aria-current={active ? "page" : undefined}
+            >
+              {link.label}
+            </Link>
+          );
+        })}
         {user && (
           <div className="navbar-user-mobile">
             <Link to="/app/profile" onClick={closeMenu}>

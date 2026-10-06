@@ -1,9 +1,5 @@
 import { Link } from "react-router-dom";
-import {
-  PageCta,
-  PageLayout,
-  PageSection,
-} from "../components/PageLayout";
+import { PageCta, PageLayout, PageSection } from "../components/PageLayout";
 import { AboutVisual } from "../components/company/PageVisuals";
 import { balancedGridClass } from "../utils/gridCols";
 import { SITE } from "../content/marketing";
@@ -51,17 +47,15 @@ export function AboutPage() {
         <div className="page-split">
           <div className="page-split-prose">
             <p>
-              AskDocs turns a pile of documents into something you can query. You
-              upload files, a background pipeline extracts and embeds their
-              contents, and from that point you can search by meaning or ask
-              questions that get answered from your own material.
+              AskDocs turns a pile of documents into something you can query. You upload files, a
+              background pipeline extracts and embeds their contents, and from that point you can
+              search by meaning or ask questions that get answered from your own material.
             </p>
             <p>
-              The interesting part is not the chat box. It is the pipeline
-              underneath: asynchronous processing, chunking that preserves
-              provenance, a vector index that supports filtering, and answers
-              constrained to retrieved context. The interface is the smallest part
-              of the problem.
+              The interesting part is not the chat box. It is the pipeline underneath: asynchronous
+              processing, chunking that preserves provenance, a vector index that supports
+              filtering, and answers constrained to retrieved context. The interface is the smallest
+              part of the problem.
             </p>
           </div>
           <AboutVisual />
@@ -81,10 +75,9 @@ export function AboutPage() {
 
       <PageSection title="How it is built">
         <p>
-          {SITE.name} is a full-stack monorepo: a FastAPI service with an
-          asynchronous worker, a React front end, and a PostgreSQL database
-          extended with <code>pgvector</code>. It runs locally under Docker
-          Compose and deploys to Kubernetes.
+          {SITE.name} is a full-stack monorepo: a FastAPI service with an asynchronous worker, a
+          React front end, and a PostgreSQL database extended with <code>pgvector</code>. It runs
+          locally under Docker Compose and deploys to Kubernetes.
         </p>
         <dl className="stack-list">
           {STACK.map((row) => (
@@ -107,8 +100,7 @@ export function AboutPage() {
         <p>
           <Link to="/how-it-works">How it works</Link> explains the pipeline,
           <Link to="/security"> Security</Link> covers how data is handled, and
-          <Link to="/contact"> Contact</Link> is the best way to reach the
-          maintainers.
+          <Link to="/contact"> Contact</Link> is the best way to reach the maintainers.
         </p>
       </PageSection>
 

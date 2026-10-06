@@ -21,8 +21,7 @@ function Harness({ initial = "search" }: { initial?: string }) {
 }
 
 const tabs = () => screen.getAllByRole("tab");
-const tab = (name: string) =>
-  screen.getByRole("tab", { name: new RegExp(`^${name}`) });
+const tab = (name: string) => screen.getByRole("tab", { name: new RegExp(`^${name}`) });
 
 describe("Tabs", () => {
   it("exposes the tab pattern rather than just the tablist role", () => {

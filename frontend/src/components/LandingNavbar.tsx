@@ -89,9 +89,7 @@ export function LandingNavbar() {
   // it must NOT trap focus or a keyboard user could never leave it.
   useEffect(() => {
     if (!menuOpen) return;
-    menuRef.current
-      ?.querySelector<HTMLElement>("a[href], button:not([disabled])")
-      ?.focus();
+    menuRef.current?.querySelector<HTMLElement>("a[href], button:not([disabled])")?.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;

@@ -56,9 +56,7 @@ describe("PipelineTrack", () => {
       // summary that merely restates the mechanism would satisfy a count but
       // not the point, so each outcome must be its own sentence rather than a
       // copy of the detail text.
-      const outcome = document.querySelector(
-        `.pipeline-outcome`,
-      )?.textContent;
+      const outcome = document.querySelector(`.pipeline-outcome`)?.textContent;
       expect(outcome).toContain("You get");
       expect(stage.outcome.length).toBeGreaterThan(20);
     }
@@ -91,10 +89,7 @@ describe("PipelineTrack", () => {
     const { container } = render(<PipelineTrack />);
     // Purely visual: the sequence is already carried by the list, and each
     // illustration restates a caption that is on the card in words.
-    expect(container.querySelector(".pipeline-rail")).toHaveAttribute(
-      "aria-hidden",
-      "true",
-    );
+    expect(container.querySelector(".pipeline-rail")).toHaveAttribute("aria-hidden", "true");
     for (const node of container.querySelectorAll(".pipeline-node")) {
       expect(node).toHaveAttribute("aria-hidden", "true");
     }
@@ -123,14 +118,7 @@ describe("PipelineTrack", () => {
 });
 
 describe("StageIllustration", () => {
-  const keys = [
-    "upload",
-    "extract",
-    "chunk",
-    "embed",
-    "search",
-    "ask",
-  ] as const;
+  const keys = ["upload", "extract", "chunk", "embed", "search", "ask"] as const;
 
   it("draws every stage's own scene rather than one repeated glyph", () => {
     const seen = new Set<string>();
@@ -149,9 +137,7 @@ describe("StageIllustration", () => {
 
   it("themes from the accent system instead of a literal colour", () => {
     for (const stage of keys) {
-      const { container, unmount } = render(
-        <StageIllustration stage={stage} accent="violet" />,
-      );
+      const { container, unmount } = render(<StageIllustration stage={stage} accent="violet" />);
       const wrap = container.querySelector(".stage-illustration") as HTMLElement;
       expect(wrap).toHaveAttribute("data-accent", "violet");
       // No hard-coded hex anywhere: every tone is `currentColor`, resolved from

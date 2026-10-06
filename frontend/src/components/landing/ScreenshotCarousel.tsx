@@ -84,9 +84,7 @@ export function ScreenshotCarousel({
             aria-hidden={i !== index}
           >
             <img src={slide.src} alt={slide.alt} loading="lazy" />
-            {slide.caption && (
-              <figcaption className="carousel-caption">{slide.caption}</figcaption>
-            )}
+            {slide.caption && <figcaption className="carousel-caption">{slide.caption}</figcaption>}
           </figure>
         ))}
       </div>
@@ -103,7 +101,14 @@ export function ScreenshotCarousel({
             onClick={() => goTo(index - 1)}
           >
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
-              <path d="M15 4l-8 8 8 8" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M15 4l-8 8 8 8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
           <button
@@ -113,7 +118,14 @@ export function ScreenshotCarousel({
             onClick={() => goTo(index + 1)}
           >
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
-              <path d="M9 4l8 8-8 8" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M9 4l8 8-8 8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
           {/* A labelled group of buttons, not a tablist. role="tablist"

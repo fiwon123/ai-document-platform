@@ -27,19 +27,19 @@ backend at `http://localhost:8000` by default (override with
 
 ## Pages
 
-| Route | Page | Description |
-|-------|------|-------------|
-| `/` | Landing | Marketing page with features, pricing, demo CTA |
-| `/login` / `/register` | Auth | Login / registration |
-| `/demo` | Demo | Public interactive demo (client-side only) |
-| `/app` | Dashboard | Personal stats + recent documents |
-| `/app/documents` | Documents | Upload (single/bulk), manage, thumbnail previews |
-| `/app/search` | Search | Semantic search with pagination + CSV/JSON export |
-| `/app/qa` | Q&A | Chat-style question answering with source citations |
-| `/app/settings` | Settings | QA model selection + bring-your-own-key |
-| `/app/profile` | Profile | Update username/password |
-| `/app/admin` | Admin | User management + system statistics (admin only) |
-| `/app/webhooks` | Webhooks | Subscribe to document-processing events |
+| Route                  | Page      | Description                                         |
+| ---------------------- | --------- | --------------------------------------------------- |
+| `/`                    | Landing   | Marketing page with features, pricing, demo CTA     |
+| `/login` / `/register` | Auth      | Login / registration                                |
+| `/demo`                | Demo      | Public interactive demo (client-side only)          |
+| `/app`                 | Dashboard | Personal stats + recent documents                   |
+| `/app/documents`       | Documents | Upload (single/bulk), manage, thumbnail previews    |
+| `/app/search`          | Search    | Semantic search with pagination + CSV/JSON export   |
+| `/app/qa`              | Q&A       | Chat-style question answering with source citations |
+| `/app/settings`        | Settings  | QA model selection + bring-your-own-key             |
+| `/app/profile`         | Profile   | Update username/password                            |
+| `/app/admin`           | Admin     | User management + system statistics (admin only)    |
+| `/app/webhooks`        | Webhooks  | Subscribe to document-processing events             |
 
 All `/app/*` routes are guarded by `ProtectedRoute` and require auth.
 

@@ -11,24 +11,16 @@ describe("MatchChip", () => {
   it("clamps out-of-range percentages", () => {
     const { container } = render(<MatchChip pct={140} />);
     expect(screen.getByText("100% match")).toBeTruthy();
-    expect((container.firstChild as HTMLElement).title).toBe(
-      "Similarity: 100.0%",
-    );
+    expect((container.firstChild as HTMLElement).title).toBe("Similarity: 100.0%");
   });
 
   it("classes the tone by strength: strong, partial, weak", () => {
     const { rerender, container } = render(<MatchChip pct={80} />);
-    expect(container.querySelector(".result-match-chip")?.className).toContain(
-      "tone-strong",
-    );
+    expect(container.querySelector(".result-match-chip")?.className).toContain("tone-strong");
     rerender(<MatchChip pct={50} />);
-    expect(container.querySelector(".result-match-chip")?.className).toContain(
-      "tone-partial",
-    );
+    expect(container.querySelector(".result-match-chip")?.className).toContain("tone-partial");
     rerender(<MatchChip pct={20} />);
-    expect(container.querySelector(".result-match-chip")?.className).toContain(
-      "tone-weak",
-    );
+    expect(container.querySelector(".result-match-chip")?.className).toContain("tone-weak");
   });
 
   it("exposes the exact similarity in the tooltip", () => {

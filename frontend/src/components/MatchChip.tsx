@@ -22,10 +22,7 @@ export function MatchChip({ pct }: MatchChipProps) {
   const clamped = Math.min(100, Math.max(0, pct));
   const tone = clamped >= 65 ? "strong" : clamped >= 35 ? "partial" : "weak";
   return (
-    <span
-      className={`result-match-chip tone-${tone}`}
-      title={`Similarity: ${clamped.toFixed(1)}%`}
-    >
+    <span className={`result-match-chip tone-${tone}`} title={`Similarity: ${clamped.toFixed(1)}%`}>
       {Math.round(clamped)}% match
     </span>
   );

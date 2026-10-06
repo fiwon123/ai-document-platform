@@ -60,7 +60,8 @@ export const DOCUMENT_STATUS_META: Record<DocumentStatus, DocumentStatusMeta> = 
     label: "Failed",
     meaning: "Processing stopped before the document became searchable.",
     doingNow: "Nothing — it needs another attempt.",
-    nextStep: "Use Retry to run it again. If it keeps failing, the file may be corrupt or unreadable.",
+    nextStep:
+      "Use Retry to run it again. If it keeps failing, the file may be corrupt or unreadable.",
   },
 };
 

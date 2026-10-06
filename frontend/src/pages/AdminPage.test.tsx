@@ -78,7 +78,7 @@ describe("AdminPage", () => {
       register: vi.fn(),
       logout: vi.fn(),
       updateUser: vi.fn(),
-    deleteAccount: vi.fn(),
+      deleteAccount: vi.fn(),
     });
     mockedListUsers.mockResolvedValue([adminSelf, alice]);
     mockedGetAdmin.mockResolvedValue(sampleAdminStats);
@@ -123,9 +123,7 @@ describe("AdminPage", () => {
     await renderPage();
 
     const deleteButtons = screen.getAllByText("Delete") as HTMLButtonElement[];
-    const aliceRow = deleteButtons.find(
-      (b) => b.closest("tr")?.textContent?.includes("alice"),
-    );
+    const aliceRow = deleteButtons.find((b) => b.closest("tr")?.textContent?.includes("alice"));
     expect(aliceRow).toBeTruthy();
     aliceRow?.click();
 
@@ -140,15 +138,11 @@ describe("AdminPage", () => {
     await renderPage();
 
     const deleteButtons = screen.getAllByText("Delete") as HTMLButtonElement[];
-    const rootRow = deleteButtons.find(
-      (b) => b.closest("tr")?.textContent?.includes("root"),
-    );
+    const rootRow = deleteButtons.find((b) => b.closest("tr")?.textContent?.includes("root"));
     expect((rootRow as HTMLButtonElement).disabled).toBe(true);
 
     const roleSelects = screen.getAllByRole("combobox") as HTMLSelectElement[];
-    const rootSelect = roleSelects.find((s) =>
-      s.closest("tr")?.textContent?.includes("root"),
-    );
+    const rootSelect = roleSelects.find((s) => s.closest("tr")?.textContent?.includes("root"));
     expect((rootSelect as HTMLSelectElement).disabled).toBe(true);
   });
 
@@ -200,9 +194,7 @@ describe("AdminPage", () => {
     await renderPage();
 
     expect(screen.getByText("No users found")).toBeTruthy();
-    expect(
-      screen.getByText("There are no user accounts yet."),
-    ).toBeTruthy();
+    expect(screen.getByText("There are no user accounts yet.")).toBeTruthy();
   });
 
   it("shows system-wide statistics from the admin endpoint", async () => {
@@ -255,9 +247,7 @@ describe("AdminPage", () => {
     mockedGetAdmin.mockRejectedValue(new Error("stats down"));
     await renderPage();
 
-    expect(
-      screen.getByText("System statistics are currently unavailable."),
-    ).toBeTruthy();
+    expect(screen.getByText("System statistics are currently unavailable.")).toBeTruthy();
     // The user table still renders — statistics are non-blocking.
     expect(screen.getByText("alice")).toBeTruthy();
     expect(mockedListUsers).toHaveBeenCalled();
@@ -272,7 +262,7 @@ describe("AdminPage", () => {
       register: vi.fn(),
       logout: vi.fn(),
       updateUser: vi.fn(),
-    deleteAccount: vi.fn(),
+      deleteAccount: vi.fn(),
     });
 
     renderWithClient(<AdminPage />);

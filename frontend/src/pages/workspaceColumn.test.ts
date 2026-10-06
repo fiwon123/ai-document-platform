@@ -24,9 +24,7 @@ const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8").repla
 /* Whitespace in a selector is not significant to CSS but it is to a regex:
    `.page-column,\n.page-column--wide` is written across two lines. */
 const ruleBody = (selector: string): string => {
-  const esc = selector
-    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/\s+/g, "\\s*");
+  const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s*");
   const m = css.match(new RegExp(`(?:^|[}\\n])\\s*${esc}\\s*\\{([^}]*)\\}`));
   if (!m?.[1]) throw new Error(`no ${selector} block in the stylesheet`);
   return m[1];
@@ -73,10 +71,7 @@ describe("workspace column", () => {
        the failure this guards against is one route keeping the class and the
        other dropping it — invisible in a single-file test. */
     for (const file of ["SettingsPage.tsx", "WebhooksPage.tsx"]) {
-      const source = readFileSync(
-        resolve(process.cwd(), "src", "pages", file),
-        "utf8",
-      );
+      const source = readFileSync(resolve(process.cwd(), "src", "pages", file), "utf8");
       expect(source, file).toMatch(/className="page page-column/);
     }
     /* Webhooks additionally takes the wider variant. */

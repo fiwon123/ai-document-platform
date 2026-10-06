@@ -47,9 +47,7 @@ export function DocumentViewToggle({
         // direction is computed from the selected one instead of the one the
         // key was pressed on.
         const active = document.activeElement;
-        const activeIndex = order.findIndex(
-          (v) => active?.id === `${groupId}-${v}`,
-        );
+        const activeIndex = order.findIndex((v) => active?.id === `${groupId}-${v}`);
         const i = activeIndex >= 0 ? activeIndex : Math.max(0, order.indexOf(view));
         const step =
           e.key === "ArrowRight" || e.key === "ArrowDown"
@@ -100,9 +98,18 @@ export function DocumentViewToggle({
 
 function GridIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-      strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"
-      aria-hidden="true" focusable="false">
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.9}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
       <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
       <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
       <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
@@ -113,9 +120,18 @@ function GridIcon() {
 
 function TableIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-      strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"
-      aria-hidden="true" focusable="false">
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.9}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
       <rect x="3" y="4" width="18" height="16" rx="2" />
       <path d="M3 9.5h18M3 15h18M9.5 9.5V20" />
     </svg>

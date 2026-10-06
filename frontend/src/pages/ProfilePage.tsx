@@ -117,9 +117,7 @@ function PasswordFields({
 
       <Feedback error={error} success={success} />
 
-      <FormSubmitButton pendingLabel="Updating...">
-        Update password
-      </FormSubmitButton>
+      <FormSubmitButton pendingLabel="Updating...">Update password</FormSubmitButton>
     </>
   );
 }
@@ -154,14 +152,10 @@ export function ProfilePage() {
   const [deleting, setDeleting] = useState(false);
 
   const updateMutation = useMutation({
-    mutationFn: (payload: {
-      username?: string;
-      password?: string;
-      confirmPassword?: string;
-    }) => users.updateMe(payload),
+    mutationFn: (payload: { username?: string; password?: string; confirmPassword?: string }) =>
+      users.updateMe(payload),
     onError: (err, variables) => {
-      const message =
-        err instanceof Error ? err.message : "Failed to update profile";
+      const message = err instanceof Error ? err.message : "Failed to update profile";
       if (variables.password !== undefined) {
         setPasswordError(message);
       } else {
@@ -228,9 +222,7 @@ export function ProfilePage() {
     try {
       await users.deleteMe();
     } catch (err) {
-      setDeleteError(
-        err instanceof Error ? err.message : "Failed to delete account",
-      );
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete account");
       setDeleting(false);
       return;
     }
@@ -254,9 +246,7 @@ export function ProfilePage() {
         </span>
         <div className="profile-hero-meta">
           <h2 className="profile-name">{user?.username ?? "—"}</h2>
-          <Badge tone={user?.role === "admin" ? "green" : "blue"}>
-            {user?.role ?? "customer"}
-          </Badge>
+          <Badge tone={user?.role === "admin" ? "green" : "blue"}>{user?.role ?? "customer"}</Badge>
           {joined && <p className="member-since">Member since {joined}</p>}
         </div>
       </section>
@@ -270,15 +260,11 @@ export function ProfilePage() {
 
           <div className="profile-stats">
             <div className="profile-stat">
-              <span className="profile-stat-value">
-                {stats?.total_documents ?? "—"}
-              </span>
+              <span className="profile-stat-value">{stats?.total_documents ?? "—"}</span>
               <span className="profile-stat-label">Documents</span>
             </div>
             <div className="profile-stat">
-              <span className="profile-stat-value">
-                {stats?.total_chunks ?? "—"}
-              </span>
+              <span className="profile-stat-value">{stats?.total_chunks ?? "—"}</span>
               <span className="profile-stat-label">Chunks</span>
             </div>
             <div className="profile-stat">
@@ -300,8 +286,8 @@ export function ProfilePage() {
         <section className="settings-card">
           <h2>Security</h2>
           <p className="settings-desc">
-            Change your account password. You will keep the current password
-            until the change is saved.
+            Change your account password. You will keep the current password until the change is
+            saved.
           </p>
 
           <form action={handleSubmitPassword}>
@@ -319,8 +305,7 @@ export function ProfilePage() {
         <section className="settings-card danger-zone">
           <h2>Danger zone</h2>
           <p className="settings-desc">
-            Permanently delete your account, documents, and search history.
-            This cannot be undone.
+            Permanently delete your account, documents, and search history. This cannot be undone.
           </p>
 
           {!confirmingDelete ? (
@@ -334,8 +319,8 @@ export function ProfilePage() {
           ) : (
             <div className="danger-confirm">
               <p className="danger-warning" role="alert">
-                Are you sure? Deleting the account removes all of your
-                documents and cannot be reversed.
+                Are you sure? Deleting the account removes all of your documents and cannot be
+                reversed.
               </p>
               {deleteError && (
                 <p className="error-message" role="alert">

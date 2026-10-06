@@ -66,8 +66,8 @@ describe("FlowIllustration", () => {
     // `url(#flow-arrow)` is a fragment reference to an element in the same
     // document, not a fetch — the point is that nothing points off-page.
     const markers = new Set([...container.querySelectorAll("marker")].map((m) => m.id));
-    const refs = [...container.querySelectorAll("[marker-end]")].map(
-      (el) => el.getAttribute("marker-end")!,
+    const refs = [...container.querySelectorAll("[marker-end]")].map((el) =>
+      el.getAttribute("marker-end")!,
     );
     expect(refs.length).toBeGreaterThan(0);
     for (const ref of refs) {
@@ -87,10 +87,7 @@ describe("FlowIllustration", () => {
 });
 
 describe("landing page illustration", () => {
-  const landing = readFileSync(
-    resolve(process.cwd(), "src", "pages", "LandingPage.tsx"),
-    "utf8",
-  );
+  const landing = readFileSync(resolve(process.cwd(), "src", "pages", "LandingPage.tsx"), "utf8");
 
   it("uses it in the how-it-works section", () => {
     expect(landing).toMatch(/<FlowIllustration\s*\/>/);

@@ -113,7 +113,10 @@ describe("PlanComparison glyphs", () => {
   it("hardcodes no colour in the comparison markup", () => {
     // #581 established this rule for the architecture diagram: theme values
     // live in App.css, not in a component.
-    const source = readFileSync(resolve(process.cwd(), "src", "components", "landing", "PlanComparison.tsx"), "utf8");
+    const source = readFileSync(
+      resolve(process.cwd(), "src", "components", "landing", "PlanComparison.tsx"),
+      "utf8",
+    );
     expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
   });
 });
@@ -138,7 +141,10 @@ describe("PlanComparison scrolling and focus", () => {
   it("does not make every row a tab stop", () => {
     // 15 focusable rows would be a worse trap than no row highlight. The
     // scroll region above is the single tab stop, and it carries the ring.
-    const source = readFileSync(resolve(process.cwd(), "src", "components", "landing", "PlanComparison.tsx"), "utf8");
+    const source = readFileSync(
+      resolve(process.cwd(), "src", "components", "landing", "PlanComparison.tsx"),
+      "utf8",
+    );
     expect(source).not.toMatch(/<tr[^>]*tabIndex/);
     expect(rule(".landing-table-wrap:focus-visible")).toMatch(/outline:\s*2px solid/);
   });
@@ -203,7 +209,7 @@ describe("PlanComparison scrolling and focus", () => {
     // neighbours and could only be found by its border lines, which is the
     // symptom the `:not()` was added to end. Measured from a capture, not
     // predicted: the fix is in the dark override, not the light 7%.
-    expect(rule(":root[data-theme=\"dark\"] .landing-table .pro-cell")).toMatch(
+    expect(rule(':root[data-theme="dark"] .landing-table .pro-cell')).toMatch(
       /background:\s*color-mix\(in srgb, var\(--blue\) 1[0-9]%, transparent\)/,
     );
     // The light value stays where it was, so this is not a dark-only change
@@ -216,9 +222,7 @@ describe("PlanComparison scrolling and focus", () => {
     // `.landing-table th.pro-head` is (0,2,1), so in dark the band stopped at
     // the header — measured (43,58,85) on all three header cells, against a
     // tinted (203,216,239) in light. Same specificity trap as the zebra pair.
-    expect(rule(":root[data-theme=\"dark\"] .landing-table thead th")).not.toMatch(
-      /:not\(/,
-    );
+    expect(rule(':root[data-theme="dark"] .landing-table thead th')).not.toMatch(/:not\(/);
     expect(
       rule(':root[data-theme="dark"] .landing-table thead th.pro-head'),
       "the dark Pro header has no override of its own",

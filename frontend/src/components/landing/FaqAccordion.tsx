@@ -12,9 +12,7 @@ type FaqAccordionProps = {
 /** Accessible expand/collapse FAQ list. Each button toggles its own panel
  *  (multiple panels may be open at once). */
 export function FaqAccordion({ items }: FaqAccordionProps) {
-  const [openQuestions, setOpenQuestions] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [openQuestions, setOpenQuestions] = useState<Set<string>>(() => new Set());
 
   const toggle = (question: string) => {
     setOpenQuestions((previous) => {
@@ -64,12 +62,7 @@ export function FaqAccordion({ items }: FaqAccordionProps) {
                 </svg>
               </button>
             </h3>
-            <div
-              id={panelId}
-              role="region"
-              aria-labelledby={buttonId}
-              className="faq-answer"
-            >
+            <div id={panelId} role="region" aria-labelledby={buttonId} className="faq-answer">
               <p>{item.answer}</p>
             </div>
           </div>

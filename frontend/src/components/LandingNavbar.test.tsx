@@ -34,10 +34,7 @@ beforeEach(() => {
  * Read from disk rather than Vite's `?raw`: this vitest config stubs CSS, so
  * `?raw` resolves to an empty string.
  */
-const css = readFileSync(resolve(__dirname, "../App.css"), "utf8").replace(
-  /\/\*[\s\S]*?\*\//g,
-  "",
-);
+const css = readFileSync(resolve(__dirname, "../App.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
 /** Body of every `@media (max-width: Npx)` block, with the width it applies to. */
 function maxWidthBlocks(): { width: number; body: string }[] {
@@ -138,10 +135,7 @@ function paddingX(decls: string[]): string {
   if (decl === undefined) {
     throw new Error(`no "padding" in [${decls.join("; ")}]`);
   }
-  return decl
-    .slice("padding:".length)
-    .trim()
-    .split(/\s+/)[1] as string;
+  return decl.slice("padding:".length).trim().split(/\s+/)[1] as string;
 }
 afterEach(() => {
   vi.useRealTimers();
@@ -169,17 +163,9 @@ describe("LandingNavbar", () => {
       ["Pricing", "/pricing"],
       ["Live demo", "/demo"],
     ] as const) {
-      expect(screen.getByRole("link", { name: label }).getAttribute("href"), label).toBe(
-        href,
-      );
+      expect(screen.getByRole("link", { name: label }).getAttribute("href"), label).toBe(href);
     }
   });
-
-
-
-
-
-
 
   it("composes the Overview link instead of adding one to NAV_PRODUCT", () => {
     renderNavbar();
@@ -217,9 +203,7 @@ describe("LandingNavbar", () => {
     // CTA to buy its width — rather than by merely mentioning `.nav-flat`, which
     // the <=900px collapse also does (#557 turned that band into a disclosure
     // panel, so `.nav-flat` is now a stacked list rather than a tightened row).
-    const band = maxWidthBlockWhere((body) =>
-      body.includes(".landing-nav-actions .btn-secondary"),
-    );
+    const band = maxWidthBlockWhere((body) => body.includes(".landing-nav-actions .btn-secondary"));
 
     // Relational, not pinned numbers: any tightening counts, so a later design
     // tweak need not edit this test. What must not happen is the band re-widening
@@ -282,9 +266,7 @@ describe("LandingNavbar", () => {
     // The collapse must actually hide the links, or "the row collapses" would be
     // a comment rather than a fact. `valueOf` is numeric, so read the raw
     // declaration list for a non-numeric value like `none`.
-    expect(declarationsIn(collapse.body, ".landing-nav-links")).toContain(
-      "display: none",
-    );
+    expect(declarationsIn(collapse.body, ".landing-nav-links")).toContain("display: none");
   });
 
   it("keeps the navbar gutter aligned with the page's own gutter", () => {
@@ -294,9 +276,7 @@ describe("LandingNavbar", () => {
     // below them. Asserted as "the same horizontal value", not "6vw", so a
     // deliberate change to both stays legal; and declared exactly once, so no
     // breakpoint can quietly re-narrow one side only.
-    const navbarPads = allDeclarationsFor(".landing-navbar").filter((d) =>
-      d.startsWith("padding"),
-    );
+    const navbarPads = allDeclarationsFor(".landing-navbar").filter((d) => d.startsWith("padding"));
     expect(
       navbarPads,
       "padding declared more than once for .landing-navbar — a breakpoint is re-narrowing the gutter",
@@ -316,9 +296,7 @@ describe("LandingNavbar", () => {
     ] as const) {
       const { unmount } = renderNavbar(path);
       const current = screen.getByRole("link", { name: label });
-      expect(current.getAttribute("aria-current"), `aria-current on ${path}`).toBe(
-        "page",
-      );
+      expect(current.getAttribute("aria-current"), `aria-current on ${path}`).toBe("page");
       expect(current.className, `active class on ${path}`).toMatch(/active/);
       unmount();
     }
@@ -337,9 +315,7 @@ describe("LandingNavbar", () => {
 
   it("leaves nothing marked active on an unrelated route", () => {
     renderNavbar("/privacy");
-    expect(screen.getByRole("link", { name: /Company/ }).className).not.toMatch(
-      /active/,
-    );
+    expect(screen.getByRole("link", { name: /Company/ }).className).not.toMatch(/active/);
     for (const link of document.querySelectorAll(".nav-flat a")) {
       expect(link.className).not.toMatch(/active/);
     }
@@ -362,11 +338,7 @@ describe("LandingNavbar", () => {
     renderNavbar();
     const nav = document.querySelector(".landing-navbar")!;
     const children = [...nav.children].map((el) => el.className.split(" ")[0]);
-    expect(children).toEqual([
-      "landing-brand",
-      "landing-nav-links",
-      "landing-nav-actions",
-    ]);
+    expect(children).toEqual(["landing-brand", "landing-nav-links", "landing-nav-actions"]);
   });
 
   it("keeps every action control in the trailing cluster, none before the links", () => {
@@ -412,9 +384,7 @@ describe("LandingNavbar", () => {
   it("renders Company as a flat link to its hub, not a menu trigger", () => {
     renderNavbar();
     expect(screen.queryByRole("button", { name: /Company/ })).toBeNull();
-    expect(screen.getByRole("link", { name: /Company/ }).getAttribute("href")).toBe(
-      "/company",
-    );
+    expect(screen.getByRole("link", { name: /Company/ }).getAttribute("href")).toBe("/company");
   });
 
   it("leaves no disclosure menu anywhere in the header", () => {
@@ -457,18 +427,14 @@ describe("LandingNavbar", () => {
     const demoLinks = screen.getAllByRole("link", { name: "Try the demo" });
     expect(demoLinks).toHaveLength(1);
     expect(demoLinks[0]!.getAttribute("href")).toBe("/demo");
-    expect(screen.getByRole("link", { name: "Sign up" }).getAttribute("href")).toBe(
-      "/login",
-    );
+    expect(screen.getByRole("link", { name: "Sign up" }).getAttribute("href")).toBe("/login");
   });
 
   it("shows a shortcut back to the app for signed-in visitors", () => {
     user = { username: "alice", role: "customer" };
     renderNavbar();
     expect(screen.queryByRole("link", { name: "Sign up" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Go to app" }).getAttribute("href")).toBe(
-      "/app",
-    );
+    expect(screen.getByRole("link", { name: "Go to app" }).getAttribute("href")).toBe("/app");
     // Exactly one demo CTA in the header, and it points at /demo. The mobile
     // panel has no "Try the demo" button of its own: `NAV_PRODUCT` already puts a
     // "Live demo" link to the same place two rows into the panel, so a second
@@ -491,18 +457,14 @@ describe("LandingNavbar", () => {
     const demoLinks = screen.getAllByRole("link", { name: "Try the demo" });
     expect(demoLinks).toHaveLength(1);
     expect(demoLinks[0]!.getAttribute("href")).toBe("/demo");
-    expect(screen.getByRole("link", { name: "Sign up" }).getAttribute("href")).toBe(
-      "/login",
-    );
+    expect(screen.getByRole("link", { name: "Sign up" }).getAttribute("href")).toBe("/login");
   });
 
   it("shows a shortcut back to the app for signed-in visitors", () => {
     user = { username: "alice", role: "customer" };
     renderNavbar();
     expect(screen.queryByRole("link", { name: "Sign up" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Go to app" }).getAttribute("href")).toBe(
-      "/app",
-    );
+    expect(screen.getByRole("link", { name: "Go to app" }).getAttribute("href")).toBe("/app");
     // Exactly one demo CTA in the header, and it points at /demo. The mobile
     // panel has no "Try the demo" button of its own: `NAV_PRODUCT` already puts a
     // "Live demo" link to the same place two rows into the panel, so a second
@@ -513,7 +475,6 @@ describe("LandingNavbar", () => {
     expect(demoLinks).toHaveLength(1);
     expect(demoLinks[0]!.getAttribute("href")).toBe("/demo");
   });
-
 });
 
 /* ── #557: the mobile disclosure panel ─────────────────────────────────────
@@ -527,8 +488,7 @@ describe("LandingNavbar", () => {
    is testable here is that a control exists, that it is a real disclosure, and
    that the panel's contents are out of the way until it is opened. */
 describe("LandingNavbar mobile panel (#557)", () => {
-  const toggle = () =>
-    screen.getByRole("button", { name: /navigation menu/i });
+  const toggle = () => screen.getByRole("button", { name: /navigation menu/i });
 
   it("exposes the nav links behind a labelled disclosure button", () => {
     renderNavbar();
@@ -546,15 +506,15 @@ describe("LandingNavbar mobile panel (#557)", () => {
     renderNavbar();
     await userEvent.click(toggle());
     expect(toggle().getAttribute("aria-expanded")).toBe("true");
-    expect(
-      document.getElementById("landing-nav-links")?.className,
-    ).toContain("landing-nav-links-open");
+    expect(document.getElementById("landing-nav-links")?.className).toContain(
+      "landing-nav-links-open",
+    );
 
     await userEvent.click(toggle());
     expect(toggle().getAttribute("aria-expanded")).toBe("false");
-    expect(
-      document.getElementById("landing-nav-links")?.className,
-    ).not.toContain("landing-nav-links-open");
+    expect(document.getElementById("landing-nav-links")?.className).not.toContain(
+      "landing-nav-links-open",
+    );
   });
 
   it("moves focus to the first panel link and returns it on Escape", async () => {
@@ -586,9 +546,7 @@ describe("LandingNavbar mobile panel (#557)", () => {
     renderNavbar();
     await userEvent.click(toggle());
     const panel = document.getElementById("landing-nav-links")!;
-    const hrefs = [...panel.querySelectorAll("a[href]")].map((a) =>
-      a.getAttribute("href"),
-    );
+    const hrefs = [...panel.querySelectorAll("a[href]")].map((a) => a.getAttribute("href"));
 
     // The acceptance criterion is reachability, so assert the set of
     // destinations rather than that some links exist.
@@ -626,10 +584,7 @@ describe("LandingNavbar mobile panel (#557)", () => {
     // matching `.navbar-toggle`, so the signal cannot silently disappear.
     for (const child of [1, 2, 3]) {
       const selector = `.landing-nav-toggle[aria-expanded="true"] .landing-nav-toggle-bar:nth-child(${child})`;
-      expect(
-        declarationsFor(selector).join(";"),
-        `open-state bar ${child}`,
-      ).not.toBe("");
+      expect(declarationsFor(selector).join(";"), `open-state bar ${child}`).not.toBe("");
     }
     // The middle bar vanishes and the outer two cross: that pair is the X.
     const top = declarationsFor(
@@ -656,10 +611,9 @@ describe("LandingNavbar mobile panel (#557)", () => {
     // controls were visible by default, the desktop row would show a hamburger
     // and a second theme toggle at every width — and #424 budgeted that row to
     // an exact 80.2/82.2px height that a 44px toggle would grow.
-    expect(
-      declarationsFor(".landing-nav-toggle"),
-      ".landing-nav-toggle display",
-    ).toContain("display: none");
+    expect(declarationsFor(".landing-nav-toggle"), ".landing-nav-toggle display").toContain(
+      "display: none",
+    );
     expect(
       declarationsFor(".landing-nav-panel-actions"),
       ".landing-nav-panel-actions display",
@@ -667,14 +621,10 @@ describe("LandingNavbar mobile panel (#557)", () => {
   });
 
   it("shows the hamburger inside the 900px collapse and nowhere else", () => {
-    const blocks = maxWidthBlocks().filter((b) =>
-      b.body.includes(".landing-nav-toggle"),
-    );
+    const blocks = maxWidthBlocks().filter((b) => b.body.includes(".landing-nav-toggle"));
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.width).toBe(900);
-    expect(blocks[0]!.body).toMatch(
-      /\.landing-nav-toggle\s*\{[^}]*display:\s*inline-flex/,
-    );
+    expect(blocks[0]!.body).toMatch(/\.landing-nav-toggle\s*\{[^}]*display:\s*inline-flex/);
   });
 
   it("moves the row's theme toggle into the panel, because the row cannot hold both", () => {
@@ -684,9 +634,7 @@ describe("LandingNavbar mobile panel (#557)", () => {
     // a 13px overflow at the width this breakpoint exists to serve, and only for
     // signed-in visitors. So the secondary control moves and the primary CTA
     // stays. Pin the direction of that trade so it is not silently reversed.
-    const collapse = maxWidthBlockWhere((body) =>
-      body.includes(".landing-nav-panel-actions"),
-    );
+    const collapse = maxWidthBlockWhere((body) => body.includes(".landing-nav-panel-actions"));
     expect(collapse.width).toBe(900);
     expect(
       declarationsIn(collapse.body, ".landing-nav-actions .theme-toggle"),

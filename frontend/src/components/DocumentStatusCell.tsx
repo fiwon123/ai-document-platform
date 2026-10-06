@@ -69,7 +69,9 @@ export function DocumentStatusCell({
       {/* The label says which line is which. Without it, three sentences of
           status copy read as one undifferentiated paragraph — which is how
           "what can I do about it" becomes invisible next to "what is it doing". */}
-      <dl className={`doc-status-explain ${layout === "inline" && !expanded ? "is-collapsed" : ""}`}>
+      <dl
+        className={`doc-status-explain ${layout === "inline" && !expanded ? "is-collapsed" : ""}`}
+      >
         <div className="doc-status-explain-row">
           <dt>Meaning</dt>
           <dd>{meta.meaning}</dd>
@@ -86,8 +88,7 @@ export function DocumentStatusCell({
 
       {doc.error_message && (
         <p className="error-detail">
-          <span className="doc-status-error-label">Reported error:</span>{" "}
-          {doc.error_message}
+          <span className="doc-status-error-label">Reported error:</span> {doc.error_message}
         </p>
       )}
     </div>

@@ -64,10 +64,7 @@ describe("HighlightedText", () => {
 
   it("does not inject HTML from the text (React children escape it)", () => {
     const { container } = render(
-      <HighlightedText
-        text={'<img src=x onerror="alert(1)"> planning'}
-        query="planning"
-      />,
+      <HighlightedText text={'<img src=x onerror="alert(1)"> planning'} query="planning" />,
     );
     expect(container.querySelector("img")).toBeNull();
     // The raw text is preserved verbatim as text content — never parsed.

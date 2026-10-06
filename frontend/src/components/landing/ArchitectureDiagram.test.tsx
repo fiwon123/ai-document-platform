@@ -217,13 +217,20 @@ describe("ArchitectureDiagram geometry", () => {
       });
 
     const onSomeConnector = (x: number, y: number, self: number) =>
-      geometry.some((segs, i) =>
-        i !== self &&
-        segs.some(
-          (s) =>
-            (s.x1 === s.x2 && s.x1 === x && y >= Math.min(s.y1, s.y2) && y <= Math.max(s.y1, s.y2)) ||
-            (s.y1 === s.y2 && s.y1 === y && x >= Math.min(s.x1, s.x2) && x <= Math.max(s.x1, s.x2)),
-        ),
+      geometry.some(
+        (segs, i) =>
+          i !== self &&
+          segs.some(
+            (s) =>
+              (s.x1 === s.x2 &&
+                s.x1 === x &&
+                y >= Math.min(s.y1, s.y2) &&
+                y <= Math.max(s.y1, s.y2)) ||
+              (s.y1 === s.y2 &&
+                s.y1 === y &&
+                x >= Math.min(s.x1, s.x2) &&
+                x <= Math.max(s.x1, s.x2)),
+          ),
       );
 
     paths.forEach((path, i) => {

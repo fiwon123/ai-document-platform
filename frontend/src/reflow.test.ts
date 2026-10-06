@@ -80,9 +80,7 @@ describe("marketing reflow", () => {
   it("lets the narrow footer column shrink below its content's min-content width", () => {
     // Only the <=820px block collapses to one column, so a bare 1fr there is
     // what let the newsletter form's ~327px min-content widen the page.
-    const narrow = css.match(
-      /@media[^{]*max-width:\s*820px[^{]*\{([\s\S]*?)\n\}/,
-    )?.[1];
+    const narrow = css.match(/@media[^{]*max-width:\s*820px[^{]*\{([\s\S]*?)\n\}/)?.[1];
     expect(narrow, "no @media (max-width: 820px) block in App.css").toBeDefined();
 
     const footer = narrow!.match(/\.footer-cols\s*\{([^}]*)\}/)?.[1];
@@ -98,9 +96,7 @@ describe("marketing reflow", () => {
     // The input has to be the thing that gives way, not the page: a flex item's
     // automatic minimum size is its content width.
     const input = rulesFor(".newsletter-form input")[0] ?? "";
-    expect(input, ".newsletter-form input must keep min-width: 0").toMatch(
-      /min-width\s*:\s*0/,
-    );
+    expect(input, ".newsletter-form input must keep min-width: 0").toMatch(/min-width\s*:\s*0/);
   });
 
   it("does not let the newsletter placeholder fall back to the browser gray", () => {
@@ -131,9 +127,7 @@ describe("marketing reflow", () => {
     // rendered as `you@company.c`, and at 320px even a full-width row is short
     // because the Subscribe button cannot wrap. The row has to become a column,
     // where the input alone takes the whole form width (#573).
-    const narrow = css.match(
-      /@media[^{]*max-width:\s*430px[^{]*\{([\s\S]*?)\n\}/,
-    )?.[1];
+    const narrow = css.match(/@media[^{]*max-width:\s*430px[^{]*\{([\s\S]*?)\n\}/)?.[1];
     expect(narrow, "no @media (max-width: 430px) block in App.css").toBeDefined();
 
     const form = narrow!.match(/\.newsletter-form\s*\{([^}]*)\}/)?.[1];

@@ -76,13 +76,17 @@ const COMPLETE_ROW_NEEDS = 1241;
 const contentFraction = (): number => {
   const shorthand = declaration(".navbar", "padding");
   const parts = shorthand.split(/\s+/);
-  const horizontal = parts.length === 1 ? parts : parts.length <= 3 ? [parts[1]!] : [parts[1]!, parts[3]!];
+  const horizontal =
+    parts.length === 1 ? parts : parts.length <= 3 ? [parts[1]!] : [parts[1]!, parts[3]!];
   const vwValues = horizontal
     .map((v) => v.match(/^([\d.]+)vw$/)?.[1])
     .filter((v): v is string => v !== undefined);
   if (vwValues.length === 0) throw new Error(`.navbar padding has no vw component: ${shorthand}`);
   // The two sides are declared as one value; guard the symmetric case anyway.
-  const perSide = vwValues.length === 1 ? Number.parseFloat(vwValues[0]!) : Math.max(...vwValues.map(Number.parseFloat));
+  const perSide =
+    vwValues.length === 1
+      ? Number.parseFloat(vwValues[0]!)
+      : Math.max(...vwValues.map(Number.parseFloat));
   return 1 - 2 * (perSide / 100);
 };
 
@@ -91,7 +95,8 @@ const viewportRequiredFor = (needs: number): number => Math.ceil(needs / content
 
 const blocksContaining = (needles: string[]): { width: number; body: string }[] => {
   const found = maxWidthBlocks().filter((b) => needles.every((n) => b.body.includes(n)));
-  if (found.length === 0) throw new Error(`no max-width media block contains all of: ${needles.join(" , ")}`);
+  if (found.length === 0)
+    throw new Error(`no max-width media block contains all of: ${needles.join(" , ")}`);
   return found;
 };
 

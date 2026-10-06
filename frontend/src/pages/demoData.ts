@@ -51,7 +51,7 @@ export const DEMO_DOCUMENTS: DemoSampleDoc[] = [
       "The design system is built on tokens. Color tokens include ink, paper, surface, muted, line, blue, and green, with dark-theme variants.",
       "Spacing uses a 4px base scale: 4, 8, 12, 16, 24, 32, 48, and 64. Use tokens instead of magic numbers so dark mode stays consistent.",
       "Buttons come in three variants: primary for the main action, secondary for alternatives, and danger for destructive edits. Always disable loading buttons.",
-      "Forms use accessible labels with the .form-group wrapper, and inputs show a blue focus ring. Error messages use the danger tokens and role=\"alert\".",
+      'Forms use accessible labels with the .form-group wrapper, and inputs show a blue focus ring. Error messages use the danger tokens and role="alert".',
       "Everything ships with reduced-motion support and prefers-color-scheme. Run the axe scan in CI before merging any UI change.",
     ],
   },

@@ -120,9 +120,7 @@ export function DemoPage() {
      inside the panels: `Tabs` renders only the active panel, so anything kept
      in a panel's own subtree would be unmounted on a tab switch and lost. */
   const [activeTab, setActiveTab] = useState("search");
-  const [tourOpen, setTourOpen] = useState(
-    () => window.localStorage.getItem(KEY_TOUR) === null,
-  );
+  const [tourOpen, setTourOpen] = useState(() => window.localStorage.getItem(KEY_TOUR) === null);
   const tourTriggerRef = useRef<HTMLButtonElement>(null);
 
   const searchesLeft = Math.max(0, LIMITS.searches - searchCount);
@@ -248,8 +246,8 @@ export function DemoPage() {
         <header className="page-header">
           <h1>Try the demo</h1>
           <p>
-            Explore the platform with sample documents. Searches and questions are
-            limited per session — sign up for unlimited access.
+            Explore the platform with sample documents. Searches and questions are limited per
+            session — sign up for unlimited access.
           </p>
           <div className="demo-usage">
             <Badge tone="blue">{DEMO_DOCUMENTS.length} sample docs</Badge>
@@ -275,11 +273,10 @@ export function DemoPage() {
                 body: (
                   <>
                     <p>
-                      Each card says what is inside the document and what it is good
-                      for, so you can pick one instead of guessing from a filename.
-                      They are pre-processed — 5 chunks each, status{" "}
-                      <strong>ready</strong> — which is what the real pipeline does
-                      in the background after an upload.
+                      Each card says what is inside the document and what it is good for, so you can
+                      pick one instead of guessing from a filename. They are pre-processed — 5
+                      chunks each, status <strong>ready</strong> — which is what the real pipeline
+                      does in the background after an upload.
                     </p>
                     <p>Try searching for “benefits”, or ask about day one.</p>
                   </>
@@ -289,11 +286,10 @@ export function DemoPage() {
                 title: "Search and Ask are two tabs",
                 body: (
                   <p>
-                    <strong>Search</strong> returns ranked passages with the matching
-                    terms highlighted. <strong>Ask</strong> answers in prose and cites
-                    the document it drew on. They were stacked vertically, so each
-                    pushed the other off screen; now only one is visible and each keeps
-                    its own results when you switch.
+                    <strong>Search</strong> returns ranked passages with the matching terms
+                    highlighted. <strong>Ask</strong> answers in prose and cites the document it
+                    drew on. They were stacked vertically, so each pushed the other off screen; now
+                    only one is visible and each keeps its own results when you switch.
                   </p>
                 ),
               },
@@ -301,10 +297,9 @@ export function DemoPage() {
                 title: "Ten searches and five questions per session",
                 body: (
                   <p>
-                    The badges above are a budget, not a countdown: they show what you
-                    have spent and the ceiling. Both counters live in this tab only, so
-                    they reset when you close it — nothing here touches your account,
-                    and no document is uploaded.
+                    The badges above are a budget, not a countdown: they show what you have spent
+                    and the ceiling. Both counters live in this tab only, so they reset when you
+                    close it — nothing here touches your account, and no document is uploaded.
                   </p>
                 ),
               },
@@ -318,7 +313,9 @@ export function DemoPage() {
             {DEMO_DOCUMENTS.map((doc) => (
               <div key={doc.id} className="document-card">
                 <div className="document-card-header">
-                  <div className="file-icon" aria-hidden="true">FILE</div>
+                  <div className="file-icon" aria-hidden="true">
+                    FILE
+                  </div>
                   <div className="document-info">
                     <h3>{doc.filename}</h3>
                     <p>{doc.mime_type}</p>
@@ -342,10 +339,12 @@ export function DemoPage() {
             label="Search and ask"
             activeId={activeTab}
             onChange={setActiveTab}
-            tabs={[
-              { id: "search", label: "Search", hint: `${searchesLeft} left` },
-              { id: "ask", label: "Ask", hint: `${qaLeft} left` },
-            ] satisfies TabDef[]}
+            tabs={
+              [
+                { id: "search", label: "Search", hint: `${searchesLeft} left` },
+                { id: "ask", label: "Ask", hint: `${qaLeft} left` },
+              ] satisfies TabDef[]
+            }
           >
             {(active) =>
               active === "search" ? (
@@ -415,9 +414,7 @@ export function DemoPage() {
 
                     {messages.map((message) => (
                       <div key={message.id} className={`chat-message ${message.role}`}>
-                        <div className="message-avatar">
-                          {message.role === "user" ? "U" : "AI"}
-                        </div>
+                        <div className="message-avatar">{message.role === "user" ? "U" : "AI"}</div>
                         <div className="message-content">
                           {message.role === "assistant" ? (
                             <>

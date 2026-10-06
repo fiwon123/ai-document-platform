@@ -18,11 +18,7 @@ export function useMyStatistics() {
     refetchOnMount: "always",
     refetchInterval: (query) => {
       const recent = query.state.data?.recent_documents ?? [];
-      return recent.some(
-        (d) => d.status === "pending" || d.status === "processing",
-      )
-        ? 3000
-        : false;
+      return recent.some((d) => d.status === "pending" || d.status === "processing") ? 3000 : false;
     },
   });
 }

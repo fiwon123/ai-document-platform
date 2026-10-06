@@ -68,7 +68,10 @@ export function Walkthrough({
     const last = focusable[focusable.length - 1]!;
 
     // Wrap at both ends; without this, Tab escapes into the page behind.
-    if (e.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+    if (
+      e.shiftKey &&
+      (document.activeElement === first || document.activeElement === dialogRef.current)
+    ) {
       e.preventDefault();
       last.focus();
     } else if (!e.shiftKey && document.activeElement === last) {
@@ -123,7 +126,11 @@ export function Walkthrough({
           </p>
           <div className="tour-actions">
             {index > 0 && (
-              <button type="button" className="btn btn-secondary" onClick={() => setIndex(index - 1)}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setIndex(index - 1)}
+              >
                 Back
               </button>
             )}

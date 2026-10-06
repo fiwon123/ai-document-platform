@@ -17,7 +17,11 @@ describe("Badge", () => {
   });
 
   it("renders a leading dot when asked", () => {
-    const { container } = render(<Badge tone="amber" dot>Pending</Badge>);
+    const { container } = render(
+      <Badge tone="amber" dot>
+        Pending
+      </Badge>,
+    );
     expect(container.querySelector(".badge-dot")).not.toBeNull();
     expect(container.querySelector(".badge")?.classList.contains("badge-with-dot")).toBe(true);
   });
@@ -28,12 +32,20 @@ describe("Badge", () => {
   });
 
   it("passes a title tooltip through", () => {
-    render(<Badge tone="blue" title="processing for 2m">Processing</Badge>);
+    render(
+      <Badge tone="blue" title="processing for 2m">
+        Processing
+      </Badge>,
+    );
     expect(screen.getByText("Processing").getAttribute("title")).toBe("processing for 2m");
   });
 
   it("merges extra className", () => {
-    const { container } = render(<Badge tone="red" className="extra">Failed</Badge>);
+    const { container } = render(
+      <Badge tone="red" className="extra">
+        Failed
+      </Badge>,
+    );
     expect(container.querySelector(".badge")?.classList.contains("extra")).toBe(true);
   });
 });

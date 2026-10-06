@@ -131,17 +131,15 @@ export function PipelineTrack() {
                   If extraction fails
                 </p>
                 <p>
-                  A file that cannot be parsed — an encrypted PDF, a scanned
-                  image with no text layer, a truncated upload — is marked{" "}
-                  <code>failed</code> and the reason is attached to the
-                  document. It is not retried silently forever, and it does not
-                  take the rest of the workspace down with it: search and Q&amp;A
-                  keep serving the documents that did succeed, and a failed
-                  upload can be replaced.
+                  A file that cannot be parsed — an encrypted PDF, a scanned image with no text
+                  layer, a truncated upload — is marked <code>failed</code> and the reason is
+                  attached to the document. It is not retried silently forever, and it does not take
+                  the rest of the workspace down with it: search and Q&amp;A keep serving the
+                  documents that did succeed, and a failed upload can be replaced.
                 </p>
                 <p className="pipeline-failure-states">
-                  <code>pending</code> → <code>processing</code> →{" "}
-                  <code>ready</code>, or <code>failed</code> with a reason
+                  <code>pending</code> → <code>processing</code> → <code>ready</code>, or{" "}
+                  <code>failed</code> with a reason
                 </p>
               </aside>
             )}
