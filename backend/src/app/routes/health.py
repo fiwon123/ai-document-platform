@@ -42,10 +42,7 @@ def health_check(db: Annotated[Session, Depends(get_db)]):
         },
     }
 
-    all_healthy = all(
-        service["status"] == "healthy"
-        for service in checks["services"].values()
-    )
+    all_healthy = all(service["status"] == "healthy" for service in checks["services"].values())
 
     if not all_healthy:
         checks["status"] = "degraded"

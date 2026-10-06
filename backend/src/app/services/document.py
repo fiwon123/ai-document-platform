@@ -78,6 +78,7 @@ def invalidate_document_cache(owner_id: UUID, document_id: UUID) -> None:
     except Exception as e:  # noqa: BLE001 - cache must never break the caller
         logger.warning(f"Document cache invalidation failed: {e}")
 
+
 class DocumentService:
     def __init__(
         self,
@@ -126,9 +127,7 @@ class DocumentService:
                     message = "Upload failed"
                 failed.append(
                     BulkUploadFailure(
-                        filename=_sanitize_filename(
-                            upload_file.filename or "unknown-file"
-                        ),
+                        filename=_sanitize_filename(upload_file.filename or "unknown-file"),
                         error=message,
                     )
                 )
@@ -182,10 +181,7 @@ class DocumentService:
         if extension not in ALLOWED_EXTENSIONS:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Unsupported file type. "
-                    "Allowed types: pdf, txt, md, csv, html, json."
-                ),
+                detail=("Unsupported file type. Allowed types: pdf, txt, md, csv, html, json."),
             )
 
         content_type = upload_file.content_type
@@ -246,8 +242,7 @@ class DocumentService:
                 self.storage.delete(object_key)
             except Exception as cleanup_error:  # noqa: BLE001 - best-effort cleanup
                 logger.warning(
-                    f"Failed to clean up object {object_key} "
-                    f"after DB failure: {cleanup_error}"
+                    f"Failed to clean up object {object_key} after DB failure: {cleanup_error}"
                 )
             logger.warning(f"Document DB create failed: {e}")
             raise HTTPException(
@@ -346,8 +341,7 @@ class DocumentService:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    "Document is already being processed. "
-                    "Wait for it to finish before retrying."
+                    "Document is already being processed. Wait for it to finish before retrying."
                 ),
             )
 
@@ -537,9 +531,7 @@ class DocumentService:
         Returns ``None`` when the document has no chunks, so callers can
         fall back to the storage-based path.
         """
-        contents = self.repository.get_preview_chunks(
-            document_id, max_chars=PREVIEW_MAX_CHARS
-        )
+        contents = self.repository.get_preview_chunks(document_id, max_chars=PREVIEW_MAX_CHARS)
         if not contents:
             return None
 
@@ -584,9 +576,7 @@ class DocumentService:
         try:
             self.storage.delete(thumbnail_object_key(document.object_key))
         except Exception as e:  # noqa: BLE001 - delete is already in flight
-            logger.warning(
-                f"Thumbnail cleanup failed for {document.object_key}: {e}"
-            )
+            logger.warning(f"Thumbnail cleanup failed for {document.object_key}: {e}")
         self.repository.delete(document)
         invalidate_document_cache(owner_id, document_id)
         invalidate_user_search_cache(owner_id)

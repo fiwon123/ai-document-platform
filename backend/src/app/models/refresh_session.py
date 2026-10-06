@@ -38,20 +38,14 @@ class RefreshSessionDB(Base):
     )
     # When the row may be forgotten: the token's own `exp`. Kept so a sweep has a
     # bound that needs no token to verify.
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # Set when this token is exchanged for its successor. A presented token that
     # is already rotated is a replay, because the client only ever holds the
     # newest one.
-    rotated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Set by logout. Kept separate from `rotated_at` so "the user logged out" stays
     # distinguishable from "this token was superseded".
-    revoked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

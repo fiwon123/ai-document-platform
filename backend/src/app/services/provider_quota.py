@@ -106,9 +106,7 @@ def _blank_safe_int(name: str, default: int) -> int:
     try:
         return int(raw)
     except ValueError:
-        logger.warning(
-            "%s=%r is not a whole number; using %d", name, raw, default
-        )
+        logger.warning("%s=%r is not a whole number; using %d", name, raw, default)
         return default
 
 
@@ -154,9 +152,7 @@ DEFAULT_TOKENS_PER_DAY = 200_000
 PROVIDER_LIMITS: dict[str, ProviderLimits] = {
     "groq": ProviderLimits(
         requests_per_minute=_blank_safe_int("GROQ_REQUESTS_PER_MINUTE", DEFAULT_RPM),
-        tokens_per_day=_blank_safe_int(
-            "GROQ_TOKENS_PER_DAY", DEFAULT_TOKENS_PER_DAY
-        ),
+        tokens_per_day=_blank_safe_int("GROQ_TOKENS_PER_DAY", DEFAULT_TOKENS_PER_DAY),
     ),
     # Paid and self-hosted: no local ceiling. Overridable for an operator who
     # has agreed a rate limit with their own provider.
@@ -255,15 +251,11 @@ def _day_key(provider: str, now: datetime) -> str:
 
 def seconds_until_next_minute(now: float) -> int:
     """Whole seconds until the current minute window closes (1..60)."""
-    return int(_MINUTE_WINDOW_SECONDS - (now % _MINUTE_WINDOW_SECONDS)) or (
-        _MINUTE_WINDOW_SECONDS
-    )
+    return int(_MINUTE_WINDOW_SECONDS - (now % _MINUTE_WINDOW_SECONDS)) or (_MINUTE_WINDOW_SECONDS)
 
 
 def _seconds_until_next_utc_day(now: datetime) -> int:
-    tomorrow = (now + timedelta(days=1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     return max(1, int((tomorrow - now).total_seconds()))
 
 
@@ -352,9 +344,7 @@ def check_token_budget(
         limit=cap,
         used=used,
         retry_after=_seconds_until_next_utc_day(now),
-        reason=(
-            f"{provider} allows {cap} tokens/day and {used} are already spent"
-        ),
+        reason=(f"{provider} allows {cap} tokens/day and {used} are already spent"),
     )
 
 
@@ -407,9 +397,7 @@ def snapshot(provider: str) -> dict:
             (limits.requests_per_minute or 0)
             - int(redis_client.get(_minute_key(provider, time.time())) or 0),
         )
-        out["tokens_used_today"] = int(
-            redis_client.get(_day_key(provider, now)) or 0
-        )
+        out["tokens_used_today"] = int(redis_client.get(_day_key(provider, now)) or 0)
     except Exception as e:  # noqa: BLE001 - reporting must never fail the request
         # The caps are still reported; only the live counters are missing, so
         # the endpoint degrades to "here is the ceiling" rather than failing.

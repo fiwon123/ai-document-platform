@@ -70,9 +70,7 @@ EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "2048"))
 # existing try/except remains the last resort: if all attempts fail, the
 # document is still saved without vectors.
 EMBEDDING_RETRY_ATTEMPTS = int(os.getenv("EMBEDDING_RETRY_ATTEMPTS", "2"))
-EMBEDDING_RETRY_BACKOFF_SECONDS = float(
-    os.getenv("EMBEDDING_RETRY_BACKOFF_SECONDS", "1.0")
-)
+EMBEDDING_RETRY_BACKOFF_SECONDS = float(os.getenv("EMBEDDING_RETRY_BACKOFF_SECONDS", "1.0"))
 
 # APITimeoutError subclasses APIConnectionError in the OpenAI SDK, so the
 # tuple covers timeouts, connection resets, 429s and internal errors.
@@ -99,9 +97,7 @@ def _positive_int_env(name: str, default: int) -> int:
     try:
         value = int(raw)
     except ValueError:
-        logger.warning(
-            "%s=%r is not a whole number; using %d", name, raw, default
-        )
+        logger.warning("%s=%r is not a whole number; using %d", name, raw, default)
         return default
     if value < 1:
         logger.warning("%s=%d is below 1; using %d", name, value, default)
@@ -122,9 +118,7 @@ class EmbeddingSpaceConfig:
 # `text-embedding-ada-002`; naming it is what lets the width check below be
 # about *this* model rather than a hardcoded constant, so a deliberate switch
 # to another 1536-wide model is a config change and not a silent one.
-EMBEDDING_MODEL = (os.getenv("EMBEDDING_MODEL", "") or "").strip() or (
-    "text-embedding-ada-002"
-)
+EMBEDDING_MODEL = (os.getenv("EMBEDDING_MODEL", "") or "").strip() or ("text-embedding-ada-002")
 OPENAI_SPACE_CONFIG = EmbeddingSpaceConfig(
     space=OPENAI_EMBEDDING_SPACE,
     model=EMBEDDING_MODEL,
@@ -143,10 +137,7 @@ LOCAL_SPACE_CONFIG = EmbeddingSpaceConfig(
     dimensions=_positive_int_env("LOCAL_EMBEDDING_DIMENSIONS", 768),
 )
 
-SPACE_CONFIGS = {
-    config.space: config
-    for config in (OPENAI_SPACE_CONFIG, LOCAL_SPACE_CONFIG)
-}
+SPACE_CONFIGS = {config.space: config for config in (OPENAI_SPACE_CONFIG, LOCAL_SPACE_CONFIG)}
 
 
 class EmbeddingDimensionMismatch(RuntimeError):

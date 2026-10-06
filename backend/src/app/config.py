@@ -56,9 +56,7 @@ def ensure_secret_key_acceptable(secret_key: str) -> None:
     """
     if not secret_key:
         raise RuntimeError("SECRET_KEY environment variable must be set")
-    if secret_key in PUBLISHED_SECRET_KEYS and not flag_enabled(
-        ALLOW_PLACEHOLDER_ENV_VAR
-    ):
+    if secret_key in PUBLISHED_SECRET_KEYS and not flag_enabled(ALLOW_PLACEHOLDER_ENV_VAR):
         raise RuntimeError(
             f"SECRET_KEY is the value committed to this repository ({secret_key!r}), "
             "so anyone could mint valid access tokens for this deployment. Set a "

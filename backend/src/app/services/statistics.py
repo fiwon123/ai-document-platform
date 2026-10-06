@@ -69,9 +69,7 @@ class StatisticsService:
             ready_documents=counts.get(DocumentStatus.READY, 0),
             failed_documents=counts.get(DocumentStatus.FAILED, 0),
             total_chunks=self.repository.chunk_count(owner_id),
-            recent_documents=[
-                RecentDocument.model_validate(document) for document in recent
-            ],
+            recent_documents=[RecentDocument.model_validate(document) for document in recent],
         )
 
         if key is not None:

@@ -186,6 +186,5 @@ def embedding_column_for(space: str):
         return columns[space]
     except KeyError:
         raise KeyError(
-            f"unknown embedding space {space!r}; "
-            f"expected one of {sorted(columns)}"
+            f"unknown embedding space {space!r}; expected one of {sorted(columns)}"
         ) from None

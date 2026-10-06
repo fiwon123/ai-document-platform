@@ -267,8 +267,10 @@ def get_document_content(
         )
 
     document, body, length = opened
-    media_type = "image/png" if kind == KIND_THUMBNAIL else (
-        document.mime_type or "application/octet-stream"
+    media_type = (
+        "image/png"
+        if kind == KIND_THUMBNAIL
+        else (document.mime_type or "application/octet-stream")
     )
     # `filename` is attacker-influenced (it is whatever the user uploaded), so
     # strip anything that could end the header early or inject a field, and
@@ -283,7 +285,7 @@ def get_document_content(
     disposition = "inline" if kind == KIND_THUMBNAIL else "attachment"
     headers = {
         "Content-Disposition": (
-            f"{disposition}; filename=\"{safe}\"; "
+            f'{disposition}; filename="{safe}"; '
             f"filename*=UTF-8''{quote(document.filename or 'document', safe='')}"
         ),
         # Private: the response is per-user, and a shared cache must not keep a
