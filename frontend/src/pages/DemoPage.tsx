@@ -230,7 +230,7 @@ export function DemoPage() {
     <div className="demo-page">
       <LandingNavbar />
 
-      <div className="demo-banner">
+      <div className="demo-banner forced-dark">
         <p>
           <strong>Demo mode.</strong> Sign up to save your work and access more models.
         </p>
@@ -242,7 +242,7 @@ export function DemoPage() {
         </Link>
       </div>
 
-      <main className="demo-content page">
+      <main className="demo-content page forced-dark">
         <header className="page-header">
           <h1>Try the demo</h1>
           <p>

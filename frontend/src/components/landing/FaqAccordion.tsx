@@ -27,7 +27,7 @@ export function FaqAccordion({ items }: FaqAccordionProps) {
   };
 
   return (
-    <div className="faq-accordion">
+    <div className="faq-accordion forced-dark">
       {items.map((item, index) => {
         const isOpen = openQuestions.has(item.question);
         const panelId = `faq-panel-${index}`;

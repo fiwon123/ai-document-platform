@@ -37,7 +37,7 @@ export function PricingPage() {
       </PageSection>
 
       <PageSection title="Plans">
-        <div className="landing-plans">
+        <div className="landing-plans forced-dark">
           {PLANS.map((plan, i) => (
             <Reveal key={plan.name} variant="up" delay={Math.min(i * 80, 160)}>
               <article
@@ -59,7 +59,9 @@ export function PricingPage() {
       </PageSection>
 
       <PageSection title="What each plan includes">
-        <div className={`${balancedGridClass(PLAN_DETAILS.length)} page-grid-secondary`}>
+        <div
+          className={`${balancedGridClass(PLAN_DETAILS.length)} page-grid-secondary forced-dark`}
+        >
           {PLAN_DETAILS.map((plan) => (
             <article key={plan.name} className="page-card-static">
               <h3>{plan.name}</h3>

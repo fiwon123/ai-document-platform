@@ -63,7 +63,7 @@ export function AboutPage() {
       </PageSection>
 
       <PageSection title="Principles">
-        <div className={`${balancedGridClass(PRINCIPLES.length)} page-grid-secondary`}>
+        <div className={`${balancedGridClass(PRINCIPLES.length)} page-grid-secondary forced-dark`}>
           {PRINCIPLES.map((item) => (
             <article key={item.title} className="page-card-static">
               <h3>{item.title}</h3>

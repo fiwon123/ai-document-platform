@@ -50,7 +50,7 @@ export function CareersPage() {
           space that was empty beside them. */}
       <PageSection title="Open roles">
         <div className="page-split">
-          <div className="contact-list">
+          <div className="contact-list forced-dark">
             {ROLES.map((role) => (
               <div key={role.title} className="contact-row">
                 <h3>

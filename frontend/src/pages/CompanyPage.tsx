@@ -36,7 +36,7 @@ export function CompanyPage() {
       subtitle="A small open-source project built around a simple idea: your documents should be answerable by the people who own them."
     >
       <PageSection title="Where to go next">
-        <div className={`${balancedGridClass(COMPANY_OTHERS.length)}`}>
+        <div className={`${balancedGridClass(COMPANY_OTHERS.length)} forced-dark`}>
           {COMPANY_OTHERS.map((item) => (
             <PageCard
               key={item.to}
