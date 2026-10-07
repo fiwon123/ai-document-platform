@@ -31,9 +31,7 @@ vi.mock("../services/api", () => ({
 async function renderAt(path: string) {
   window.history.pushState({}, "", path);
   const view = render(<App />);
-  await waitFor(() =>
-    expect(view.container.querySelector(".loading")).toBeNull(),
-  );
+  await waitFor(() => expect(view.container.querySelector(".loading")).toBeNull());
   return view;
 }
 
@@ -68,11 +66,12 @@ describe("marketing routes", () => {
       // terms below rather than exempted here, so dropping the eyebrow by
       // accident on some future page is still caught.
       if (route.startsWith("/challenges")) return;
-      const section = route.startsWith("/product") || /features|how-it-works|pricing/.test(route)
-        ? "Product"
-        : /privacy|terms|security|gdpr/.test(route)
-          ? "Legal"
-          : "Company";
+      const section =
+        route.startsWith("/product") || /features|how-it-works|pricing/.test(route)
+          ? "Product"
+          : /privacy|terms|security|gdpr/.test(route)
+            ? "Legal"
+            : "Company";
       expect(screen.getByText(section, { selector: ".landing-eyebrow" })).toBeTruthy();
     },
   );
@@ -109,9 +108,7 @@ describe("marketing routes", () => {
     for (const route of ["/product", "/about", "/privacy"]) {
       const view = await renderAt(route);
       expect(within(view.container).getByLabelText("AskDocs home")).toBeTruthy();
-      expect(
-        within(view.container).getByRole("navigation", { name: "Legal" }),
-      ).toBeTruthy();
+      expect(within(view.container).getByRole("navigation", { name: "Legal" })).toBeTruthy();
       view.unmount();
     }
   });
@@ -124,9 +121,7 @@ describe("marketing routes", () => {
     const view = await renderAt("/this-route-does-not-exist");
     expect(view.container.textContent).toContain("This page could not be found.");
     expect(within(view.container).getByLabelText("AskDocs home")).toBeTruthy();
-    expect(
-      within(view.container).getByRole("navigation", { name: "Legal" }),
-    ).toBeTruthy();
+    expect(within(view.container).getByRole("navigation", { name: "Legal" })).toBeTruthy();
     // Still exactly one main: the shell supplies it, and a nested second one
     // would be the overcorrection (#460).
     expect(view.container.querySelectorAll("main, [role='main']")).toHaveLength(1);
@@ -137,9 +132,7 @@ describe("marketing routes", () => {
   // one click away, not just present on the page.
   it("links the public 404 to every page the navigation advertises", async () => {
     const view = await renderAt("/this-route-does-not-exist");
-    const hrefs = [...view.container.querySelectorAll("a")].map((a) =>
-      a.getAttribute("href"),
-    );
+    const hrefs = [...view.container.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     for (const section of [NAV_PRODUCT, NAV_COMPANY, NAV_LEGAL]) {
       for (const { label, to } of section) {
         expect(hrefs, `the 404 should link to ${to} (${label})`).toContain(to);
@@ -187,9 +180,7 @@ describe("marketing routes", () => {
     ];
     for (const path of paths) {
       const view = await renderAt(path);
-      expect(view.container.textContent).not.toContain(
-        "This page could not be found.",
-      );
+      expect(view.container.textContent).not.toContain("This page could not be found.");
       view.unmount();
     }
   });
@@ -302,9 +293,7 @@ describe("contact page", () => {
   it("points issue and repository links somewhere real", async () => {
     const view = await renderAt("/contact");
     const body = within(view.container.querySelector(".page-body") as HTMLElement);
-    const hrefs = body
-      .getAllByRole("link")
-      .map((link) => link.getAttribute("href") ?? "");
+    const hrefs = body.getAllByRole("link").map((link) => link.getAttribute("href") ?? "");
     for (const href of hrefs) {
       // No dead links, and nothing left pointing at the bare home page.
       expect(href).not.toBe("");
@@ -367,7 +356,10 @@ describe("page figure pairing", () => {
       const lanes = [...split!.children];
       expect(lanes.length, `${route}: split has ${lanes.length} lanes, expected 2`).toBe(2);
       const figureIndex = lanes.findIndex((lane) => lane.classList.contains("page-figure"));
-      expect(figureIndex, `${route}: figure lane not found among the split's children`).toBeGreaterThanOrEqual(0);
+      expect(
+        figureIndex,
+        `${route}: figure lane not found among the split's children`,
+      ).toBeGreaterThanOrEqual(0);
 
       const prose = lanes[figureIndex === 0 ? 1 : 0]!;
       // The prose is still the content. A figure that arrives by displacing the
@@ -378,7 +370,7 @@ describe("page figure pairing", () => {
     }
   });
 
-it("gives each lane the class its content needs", async () => {
+  it("gives each lane the class its content needs", async () => {
     /* Six lanes across the five routes, three kinds, and the class has to follow
        the content rather than being applied uniformly:
          - bare paragraphs → `.page-split-prose` (/company's principles, /about's
@@ -408,7 +400,10 @@ it("gives each lane the class its content needs", async () => {
       const view = await renderAt(route);
       const split = view.container.querySelector(".page-split")!;
       expect(split.querySelector(".contact-list"), `${route}: no card lane`).not.toBeNull();
-      expect(split.querySelector(".page-split-prose"), `${route}: cards in a prose lane`).toBeNull();
+      expect(
+        split.querySelector(".page-split-prose"),
+        `${route}: cards in a prose lane`,
+      ).toBeNull();
     }
 
     const blog = await renderAt("/blog");
@@ -471,9 +466,7 @@ describe("page hero layout", () => {
   }
 
   const valueOf = (decls: string[], prop: string): string | undefined =>
-    decls
-      .filter((d) => d.startsWith(`${prop}:`))
-      .map((d) => d.slice(prop.length + 1).trim())[0];
+    decls.filter((d) => d.startsWith(`${prop}:`)).map((d) => d.slice(prop.length + 1).trim())[0];
 
   it("centres the hero children instead of relying on inherited text-align", () => {
     // `text-align: center` on `.page-hero` only centres a child that fills the
@@ -537,18 +530,16 @@ describe("navigation coverage", () => {
     await renderAt("/");
 
     const footerProduct = within(screen.getByRole("navigation", { name: "Product" }));
-    expect(
-      footerProduct.getByRole("link", { name: "Overview" }).getAttribute("href"),
-    ).toBe("/product");
+    expect(footerProduct.getByRole("link", { name: "Overview" }).getAttribute("href")).toBe(
+      "/product",
+    );
     for (const item of NAV_PRODUCT) {
-      expect(
-        footerProduct.getByRole("link", { name: item.label }).getAttribute("href"),
-      ).toBe(item.to);
+      expect(footerProduct.getByRole("link", { name: item.label }).getAttribute("href")).toBe(
+        item.to,
+      );
     }
 
-    const footerCompany = within(
-      screen.getByRole("navigation", { name: "Company" }),
-    );
+    const footerCompany = within(screen.getByRole("navigation", { name: "Company" }));
     // Company has no separate hub link, so "General" is the only way into
     // /company from here (#584). A `hub: "/company"` left set alongside it would
     // render the same destination twice in one column.
@@ -557,26 +548,22 @@ describe("navigation coverage", () => {
       "the footer's Company column still has its own Overview link",
     ).toBeNull();
     for (const item of NAV_COMPANY) {
-      expect(
-        footerCompany.getByRole("link", { name: item.label }).getAttribute("href"),
-      ).toBe(item.to);
+      expect(footerCompany.getByRole("link", { name: item.label }).getAttribute("href")).toBe(
+        item.to,
+      );
     }
     // One entry per destination, so "General" and a leftover hub cannot both
     // point at /company and read as two different pages.
     // `within()` hands back queries, not the element, so this is not
     // querySelectorAll.
-    const hrefs = footerCompany
-      .getAllByRole("link")
-      .map((a) => a.getAttribute("href"));
-    expect(new Set(hrefs).size, `duplicate footer link in ${hrefs.join(" ")}`).toBe(
-      hrefs.length,
-    );
+    const hrefs = footerCompany.getAllByRole("link").map((a) => a.getAttribute("href"));
+    expect(new Set(hrefs).size, `duplicate footer link in ${hrefs.join(" ")}`).toBe(hrefs.length);
 
     const footerLegal = within(screen.getByRole("navigation", { name: "Legal" }));
     for (const item of NAV_LEGAL) {
-      expect(
-        footerLegal.getByRole("link", { name: item.label }).getAttribute("href"),
-      ).toBe(item.to);
+      expect(footerLegal.getByRole("link", { name: item.label }).getAttribute("href")).toBe(
+        item.to,
+      );
     }
   });
 });

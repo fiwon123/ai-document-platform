@@ -1,10 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  PageCta,
-  PageLayout,
-  PageSection,
-} from "../components/PageLayout";
+import { PageCta, PageLayout, PageSection } from "../components/PageLayout";
 import { PlanComparison } from "../components/landing/PlanComparison";
 import { FaqAccordion } from "../components/landing/FaqAccordion";
 import { BillingToggle } from "../components/landing/BillingToggle";
@@ -31,8 +27,7 @@ export function PricingPage() {
       eyebrow="Product"
       title={
         <>
-          Pricing that{" "}
-          <span className="gradient-text">grows with you</span>
+          Pricing that <span className="gradient-text">grows with you</span>
         </>
       }
       subtitle="Start free. Upgrade when the free limits start costing you more than the subscription."
@@ -50,10 +45,7 @@ export function PricingPage() {
               >
                 {plan.featured && <span className="plan-badge">Most Popular</span>}
                 <h2>{plan.name}</h2>
-                <PlanPrice
-                  price={annual ? plan.annual : plan.monthly}
-                  period={plan.period}
-                />
+                <PlanPrice price={annual ? plan.annual : plan.monthly} period={plan.period} />
                 <Link
                   to={user ? "/app" : "/register"}
                   className={`btn ${plan.featured ? "btn-primary" : "btn-secondary"}`}

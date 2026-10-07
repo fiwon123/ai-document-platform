@@ -10,13 +10,7 @@ const LANGUAGE_LABELS: Record<CodeLanguage, string> = {
  *  same text as a plain <pre><code> — tokens are only wrapped in colored
  *  spans (tok-keyword / tok-string / tok-comment / tok-function / tok-number),
  *  so copy-paste and text content stay intact. */
-export function CodeBlock({
-  code,
-  language,
-}: {
-  code: string;
-  language: CodeLanguage;
-}) {
+export function CodeBlock({ code, language }: { code: string; language: CodeLanguage }) {
   const tokens = useMemo(() => tokenizeCode(code, language), [code, language]);
 
   return (

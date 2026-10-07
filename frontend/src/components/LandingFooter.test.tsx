@@ -70,8 +70,8 @@ describe("LandingFooter social icons", () => {
     // A glyph authored on a different grid than its viewBox is rendered
     // scaled-down and wrong-looking, with no error anywhere. These two are the
     // only two grids in use, so pin the pairing for each.
-    expect(SOCIAL_PATHS.github).toMatch(/^M8 0/);      // 16x16
-    expect(SOCIAL_PATHS.twitter).toMatch(/^M23\.95/);  // 24x24
+    expect(SOCIAL_PATHS.github).toMatch(/^M8 0/); // 16x16
+    expect(SOCIAL_PATHS.twitter).toMatch(/^M23\.95/); // 24x24
     expect(SOCIAL_PATHS.linkedin).toMatch(/^M20\.45/); // 24x24
   });
 
@@ -145,14 +145,11 @@ function allDeclarationsFor(selector: string): string[] {
 /** All values declared for `prop` — a rule may set it more than once across
  *  breakpoints, so this stays a list. */
 const valuesOf = (decls: string[], prop: string): string[] =>
-  decls
-    .filter((d) => d.startsWith(`${prop}:`))
-    .map((d) => d.slice(prop.length + 1).trim());
+  decls.filter((d) => d.startsWith(`${prop}:`)).map((d) => d.slice(prop.length + 1).trim());
 
 /** First value declared for `prop`, for properties that are not breakpoint-
  *  dependent. */
-const valueOf = (decls: string[], prop: string): string | undefined =>
-  valuesOf(decls, prop)[0];
+const valueOf = (decls: string[], prop: string): string | undefined => valuesOf(decls, prop)[0];
 
 describe("LandingFooter social button box", () => {
   it("gives .footer-social an explicitly square box and a fully rounded border", () => {
@@ -187,7 +184,8 @@ describe("LandingFooter social button box", () => {
       if (!/(^|;)\s*width\s*:/.test(body)) continue;
 
       for (const selector of (match[1] ?? "").split(",").map((s) => s.trim())) {
-        const targetsColumnLink = /\.footer-col\b/.test(selector) && /(^|\s)a(\s|$|:|\[|\.)/.test(selector);
+        const targetsColumnLink =
+          /\.footer-col\b/.test(selector) && /(^|\s)a(\s|$|:|\[|\.)/.test(selector);
         // "Scoped to nav" covers both `nav` as its own compound and `nav` as the
         // qualifier on the column's own class: `nav.footer-col a` is the stricter
         // of the two, since the brand column is a `<div>`. Requiring a standalone
@@ -275,18 +273,17 @@ describe("LandingFooter subscribe form", () => {
     // The `&&` chain narrows both to non-null, which the bitwise `&` requires.
     const follows = Boolean(
       socials &&
-        newsletter &&
-        (socials.compareDocumentPosition(newsletter) &
-          Node.DOCUMENT_POSITION_FOLLOWING),
+      newsletter &&
+      socials.compareDocumentPosition(newsletter) & Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(follows, "newsletter follows the social icons").toBe(true);
   });
 
   it("leaves only the columns and the copyright row as the footer's children", () => {
     renderFooter();
-    const order = Array.from(
-      document.querySelectorAll(".landing-footer > *"),
-    ).map((el) => el.className);
+    const order = Array.from(document.querySelectorAll(".landing-footer > *")).map(
+      (el) => el.className,
+    );
 
     // The form is no longer a top-level block, so it must not appear here. An
     // extra sibling would be a new band across the footer — the thing this
@@ -297,9 +294,7 @@ describe("LandingFooter subscribe form", () => {
   it("stacks heading, promise, and form down the column", () => {
     // Each part is a step, so the column reads top to bottom rather than the
     // form sitting beside the copy as a wide two-column band did.
-    expect(valuesOf(declarationsFor(".newsletter"), "flex-direction")).toEqual([
-      "column",
-    ]);
+    expect(valuesOf(declarationsFor(".newsletter"), "flex-direction")).toEqual(["column"]);
   });
 
   it("stays stacked at every breakpoint", () => {
@@ -360,9 +355,7 @@ describe("LandingFooter subscribe form", () => {
     ).toEqual([]);
     expect(valuesOf(base, "width"), "base form width").toEqual(["80%"]);
 
-    const narrow = css.match(
-      /@media[^{]*max-width:\s*430px[^{]*\{([\s\S]*?)\n\}/,
-    )?.[1];
+    const narrow = css.match(/@media[^{]*max-width:\s*430px[^{]*\{([\s\S]*?)\n\}/)?.[1];
     expect(narrow, "no @media (max-width: 430px) block in App.css").toBeDefined();
     const formRule = narrow!.match(/\.newsletter-form\s*\{([^}]*)\}/)?.[1] ?? "";
     expect(formRule, "the narrow form must stack: a row cannot fit the placeholder").toMatch(
@@ -390,8 +383,7 @@ describe("LandingFooter subscribe form", () => {
  */
 describe("LandingFooter newsletter submit", () => {
   const status = () => document.querySelector(".newsletter-status");
-  const emailInput = () =>
-    document.querySelector<HTMLInputElement>('input[name="email"]');
+  const emailInput = () => document.querySelector<HTMLInputElement>('input[name="email"]');
 
   /** Submit the form the way a click does, through RTL so React's own handler
    *  runs. jsdom does not apply interactive validation to a dispatched submit,
@@ -499,7 +491,7 @@ describe("LandingFooter newsletter submit", () => {
     const tokens = (theme: "light" | "dark") => {
       const block =
         theme === "dark"
-          ? css.match(/:root\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/)?.[1] ?? ""
+          ? (css.match(/:root\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/)?.[1] ?? "")
           : (css.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1] ?? "");
       const read = (name: string) =>
         block.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{3,8})`))?.[1] ?? "";
@@ -512,11 +504,8 @@ describe("LandingFooter newsletter submit", () => {
       // element of `[0, 2, 4].map(...)` a `number | undefined`, which fails
       // `tsc -b` while vitest happily runs it.
       const at = (i: number) => parseInt(h.slice(i, i + 2), 16) / 255;
-      const channel = (c: number) =>
-        c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-      return (
-        0.2126 * channel(at(0)) + 0.7152 * channel(at(2)) + 0.0722 * channel(at(4))
-      );
+      const channel = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * channel(at(0)) + 0.7152 * channel(at(2)) + 0.0722 * channel(at(4));
     };
     const ratio = (a: string, b: string) => {
       const hi = Math.max(luminance(a), luminance(b));
@@ -527,9 +516,7 @@ describe("LandingFooter newsletter submit", () => {
     for (const theme of ["light", "dark"] as const) {
       const { dangerText, surface } = tokens(theme);
       expect(dangerText, `${theme} --danger-text`).not.toBe("");
-      expect(ratio(dangerText, surface), `${theme} error text`).toBeGreaterThanOrEqual(
-        4.5,
-      );
+      expect(ratio(dangerText, surface), `${theme} error text`).toBeGreaterThanOrEqual(4.5);
     }
 
     // And the rule actually reaches for the text token, not the fill one.
@@ -545,9 +532,7 @@ describe("LandingFooter newsletter submit", () => {
     // stops a long unbroken message from setting that floor — assert the value,
     // not the property's presence, because `normal` also declares it and wraps
     // nothing.
-    expect(
-      valueOf(declarationsFor(".newsletter-status"), "overflow-wrap"),
-    ).toBe("break-word");
+    expect(valueOf(declarationsFor(".newsletter-status"), "overflow-wrap")).toBe("break-word");
   });
 
   it("reserves no space for the status line while there is nothing to say", () => {
@@ -555,10 +540,9 @@ describe("LandingFooter newsletter submit", () => {
     // the resting gap has to come from the margin instead. `margin-top: 8px` on
     // the base rule would leave a permanent 8px hole under every footer on the
     // site; the `:not(:empty)` rule is what makes the margin conditional.
-    expect(
-      valueOf(declarationsFor(".newsletter-status"), "margin"),
-      "base margin is zeroed",
-    ).toBe("0");
+    expect(valueOf(declarationsFor(".newsletter-status"), "margin"), "base margin is zeroed").toBe(
+      "0",
+    );
     expect(
       valueOf(declarationsFor(".newsletter-status:not(:empty)"), "margin-top"),
       "gap appears only when there is a message",

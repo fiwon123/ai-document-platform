@@ -17,22 +17,13 @@ import { PlanCellValue } from "./FeatureIcon";
 export function PlanComparison() {
   return (
     <div className="landing-table-block">
-      <div
-        className="landing-table-wrap"
-        tabIndex={0}
-        role="region"
-        aria-label="Plan comparison"
-      >
+      <div className="landing-table-wrap" tabIndex={0} role="region" aria-label="Plan comparison">
         <table className="landing-table">
           <thead>
             <tr>
               <th scope="col">Compare plans</th>
               {PLANS.map((plan) => (
-                <th
-                  key={plan.name}
-                  scope="col"
-                  className={plan.featured ? "pro-head" : undefined}
-                >
+                <th key={plan.name} scope="col" className={plan.featured ? "pro-head" : undefined}>
                   {plan.name}
                 </th>
               ))}

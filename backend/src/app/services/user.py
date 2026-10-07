@@ -126,9 +126,7 @@ class UserService:
 
     # --- self-service ------------------------------------------------------
 
-    def update_self(
-        self, current_user: UserDB, request: UpdateUserRequest
-    ) -> UserDB:
+    def update_self(self, current_user: UserDB, request: UpdateUserRequest) -> UserDB:
         """Update the caller's own username and/or password.
 
         A password change also ends every refresh session the account holds.
@@ -147,9 +145,7 @@ class UserService:
 
         if request.username is not None:
             if request.username != current_user.username:
-                self._ensure_username_available(
-                    request.username, current_user.id
-                )
+                self._ensure_username_available(request.username, current_user.id)
             update_data["username"] = request.username
 
         if request.password is not None:
@@ -244,9 +240,7 @@ class UserService:
         self._get_or_404(user_id)
         return self.repo.update(user_id, {"role": Role(request.role)})
 
-    def update_active(
-        self, admin_id: UUID, user_id: UUID, request: UpdateActiveRequest
-    ) -> UserDB:
+    def update_active(self, admin_id: UUID, user_id: UUID, request: UpdateActiveRequest) -> UserDB:
         """Enable or disable an account.
 
         Disabled users can no longer authenticate. Deactivating your own
@@ -286,9 +280,7 @@ class UserService:
             )
         return user
 
-    def _ensure_username_available(
-        self, request_username: str, current_user_id: UUID
-    ) -> None:
+    def _ensure_username_available(self, request_username: str, current_user_id: UUID) -> None:
         existing = self.repo.get_by_username(request_username)
         if existing is not None and existing.id != current_user_id:
             raise HTTPException(

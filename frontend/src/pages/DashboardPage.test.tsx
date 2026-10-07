@@ -106,9 +106,7 @@ describe("DashboardPage", () => {
     await renderPage();
 
     expect(screen.getByText("No documents yet")).toBeTruthy();
-    expect(
-      screen.getByText("Upload your first document to get started."),
-    ).toBeTruthy();
+    expect(screen.getByText("Upload your first document to get started.")).toBeTruthy();
     const uploadLink = screen.getByRole("link", { name: "Upload a document" });
     expect(uploadLink).toHaveAttribute("href", "/app/documents");
   });
@@ -118,12 +116,11 @@ describe("DashboardPage", () => {
 
     const upload = screen.getByRole("link", { name: /Upload document/ });
     expect(upload).toHaveAttribute("href", "/app/documents");
-    expect(
-      screen.getByRole("link", { name: /Search documents/ }),
-    ).toHaveAttribute("href", "/app/search");
-    expect(
-      screen.getByRole("link", { name: /Ask a question/ }),
-    ).toHaveAttribute("href", "/app/qa");
+    expect(screen.getByRole("link", { name: /Search documents/ })).toHaveAttribute(
+      "href",
+      "/app/search",
+    );
+    expect(screen.getByRole("link", { name: /Ask a question/ })).toHaveAttribute("href", "/app/qa");
   });
 
   it("renders skeleton placeholders while statistics load", () => {
@@ -137,9 +134,7 @@ describe("DashboardPage", () => {
       </ToastProvider>,
     );
 
-    expect(
-      screen.getByRole("status", { name: "Loading dashboard" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Loading dashboard" })).toBeTruthy();
   });
 
   it("renders status-toned initial tiles for recent documents", async () => {
@@ -167,9 +162,10 @@ describe("DashboardPage", () => {
       "href",
       "/app/documents",
     );
-    expect(
-      screen.getByRole("link", { name: /View all documents/ }),
-    ).toHaveAttribute("href", "/app/documents");
+    expect(screen.getByRole("link", { name: /View all documents/ })).toHaveAttribute(
+      "href",
+      "/app/documents",
+    );
   });
 
   it("shows progress + elapsed time for pending/processing uploads", async () => {
@@ -182,9 +178,7 @@ describe("DashboardPage", () => {
     );
     await act(async () => {});
 
-    const progressTracks = container.querySelectorAll(
-      ".recent-item .progress-track",
-    );
+    const progressTracks = container.querySelectorAll(".recent-item .progress-track");
     // Only draft.md is pending in the fixture.
     expect(progressTracks.length).toBe(1);
   });
@@ -193,9 +187,7 @@ describe("DashboardPage", () => {
     const user = userEvent.setup();
     await renderPage();
 
-    await user.click(
-      screen.getByRole("button", { name: "Preview guide.pdf" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Preview guide.pdf" }));
     await act(async () => {});
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeTruthy();
@@ -209,9 +201,7 @@ describe("DashboardPage", () => {
     await renderPage();
 
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click");
-    await user.click(
-      screen.getByRole("button", { name: "Download guide.pdf" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Download guide.pdf" }));
     await act(async () => {});
     await waitFor(() => expect(mockedGetDownloadUrl).toHaveBeenCalledWith("doc-1"));
     expect(clickSpy).toHaveBeenCalled();
@@ -225,7 +215,12 @@ describe("DashboardPage", () => {
       ready_documents: 1,
       pending_documents: 0,
       recent_documents: [
-        { id: "doc-9", filename: "broken.pdf", status: "failed", created_at: "2026-09-06T00:00:00Z" },
+        {
+          id: "doc-9",
+          filename: "broken.pdf",
+          status: "failed",
+          created_at: "2026-09-06T00:00:00Z",
+        },
       ],
     });
     const user = userEvent.setup();
@@ -264,9 +259,7 @@ describe("DashboardPage", () => {
   it("polls for fresh statistics while a recent document is still pending", async () => {
     vi.useFakeTimers();
     try {
-      const { renderWithClient: renderShared } = await import(
-        "../test/renderWithClient"
-      );
+      const { renderWithClient: renderShared } = await import("../test/renderWithClient");
       renderShared(
         <ToastProvider>
           <MemoryRouter>

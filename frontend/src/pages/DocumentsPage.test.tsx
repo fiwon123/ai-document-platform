@@ -19,7 +19,12 @@ const pendingDoc: Document = {
   updated_at: "2026-09-08T00:00:00Z",
 };
 
-const readyDoc: Document = { ...pendingDoc, id: "doc-ready", filename: "notes.txt", status: "ready" };
+const readyDoc: Document = {
+  ...pendingDoc,
+  id: "doc-ready",
+  filename: "notes.txt",
+  status: "ready",
+};
 
 const thumbDoc: Document = {
   ...pendingDoc,
@@ -89,16 +94,16 @@ function statusBadges(): string[] {
  * children and `getByText` (exact, per-element) no longer matches it.
  */
 function errorText(): string {
-  return (
-    [...document.querySelectorAll("#documents-list .error-detail")]
-      .map((e) => e.textContent ?? "")
-      .join(" | ")
-  );
+  return [...document.querySelectorAll("#documents-list .error-detail")]
+    .map((e) => e.textContent ?? "")
+    .join(" | ");
 }
 
 describe("DocumentsPage polling", () => {
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    });
   });
 
   afterEach(() => {
@@ -159,10 +164,7 @@ describe("DocumentsPage polling", () => {
 
   it("shows a ticking elapsed label while a document is pending", async () => {
     const now = new Date().toISOString();
-    mockedList.mockResolvedValue([
-      { ...pendingDoc, updated_at: now },
-      readyDoc,
-    ]);
+    mockedList.mockResolvedValue([{ ...pendingDoc, updated_at: now }, readyDoc]);
     mockedGetStatus.mockResolvedValue({
       id: "doc-pending",
       status: "pending",
@@ -259,9 +261,7 @@ describe("DocumentsPage polling", () => {
   it("backs off when a poll reports no change, instead of polling every 3s forever", async () => {
     const now = new Date().toISOString();
     // A document that never moves: every response is identical to the list.
-    mockedList.mockResolvedValue([
-      { ...pendingDoc, status: "processing", updated_at: now },
-    ]);
+    mockedList.mockResolvedValue([{ ...pendingDoc, status: "processing", updated_at: now }]);
     mockedGetStatus.mockResolvedValue({
       id: "doc-pending",
       status: "processing",
@@ -302,9 +302,7 @@ describe("DocumentsPage polling", () => {
 
   it("resets a backed-off document to the base cadence as soon as it changes", async () => {
     const now = new Date().toISOString();
-    mockedList.mockResolvedValue([
-      { ...pendingDoc, status: "processing", updated_at: now },
-    ]);
+    mockedList.mockResolvedValue([{ ...pendingDoc, status: "processing", updated_at: now }]);
     mockedGetStatus.mockResolvedValue({
       id: "doc-pending",
       status: "processing",
@@ -401,9 +399,7 @@ describe("DocumentsPage polling", () => {
 
   it("does not leave a superseded in-flight poll rescheduling itself forever", async () => {
     const now = new Date().toISOString();
-    mockedList.mockResolvedValue([
-      { ...pendingDoc, status: "processing", updated_at: now },
-    ]);
+    mockedList.mockResolvedValue([{ ...pendingDoc, status: "processing", updated_at: now }]);
 
     // The first poll's request is still in flight when the page changes under
     // it: its result must not schedule another timer, or that poll repeats
@@ -455,9 +451,7 @@ describe("DocumentsPage polling", () => {
 
   it("keeps polling after a failed poll, backing off rather than stopping", async () => {
     const now = new Date().toISOString();
-    mockedList.mockResolvedValue([
-      { ...pendingDoc, status: "processing", updated_at: now },
-    ]);
+    mockedList.mockResolvedValue([{ ...pendingDoc, status: "processing", updated_at: now }]);
     mockedGetStatus.mockRejectedValue(new Error("network down"));
 
     renderWithClient(<DocumentsPage />);
@@ -519,9 +513,7 @@ describe("DocumentsPage polling", () => {
     expect(
       screen.getByText("Upload your first document above to start asking questions."),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Upload a document" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Upload a document" })).toBeTruthy();
   });
 });
 
@@ -543,10 +535,9 @@ describe("DocumentsPage filter toolbar", () => {
     expect(screen.getByRole("heading", { name: "notes.txt" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "broken.pdf" })).toBeTruthy();
 
-    fireEvent.change(
-      screen.getByRole("searchbox", { name: "Search documents by filename" }),
-      { target: { value: "pdf" } },
-    );
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search documents by filename" }), {
+      target: { value: "pdf" },
+    });
     await settle();
 
     expect(screen.getByRole("heading", { name: "report.pdf" })).toBeTruthy();
@@ -584,10 +575,9 @@ describe("DocumentsPage filter toolbar", () => {
     renderWithClient(<DocumentsPage />);
     await settle();
 
-    fireEvent.change(
-      screen.getByRole("searchbox", { name: "Search documents by filename" }),
-      { target: { value: "p" } },
-    );
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search documents by filename" }), {
+      target: { value: "p" },
+    });
     // report.pdf (pending) and broken.pdf (failed) both match "p".
     fireEvent.click(screen.getByRole("button", { name: /^Pending/ }));
     await settle();
@@ -603,10 +593,9 @@ describe("DocumentsPage filter toolbar", () => {
     renderWithClient(<DocumentsPage />);
     await settle();
 
-    fireEvent.change(
-      screen.getByRole("searchbox", { name: "Search documents by filename" }),
-      { target: { value: "zzz" } },
-    );
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search documents by filename" }), {
+      target: { value: "zzz" },
+    });
     await settle();
 
     expect(screen.getByText("No documents match your filters")).toBeTruthy();
@@ -678,9 +667,7 @@ describe("DocumentsPage preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Preview document" }));
     await settle();
 
-    expect(
-      screen.getByText("Preview truncated to the first 5000 characters."),
-    ).toBeTruthy();
+    expect(screen.getByText("Preview truncated to the first 5000 characters.")).toBeTruthy();
   });
 
   it("moves focus into the modal on open and restores it on Escape", async () => {
@@ -701,9 +688,7 @@ describe("DocumentsPage preview", () => {
     await settle();
 
     // Focus lands on the modal's Close button (first focusable inside).
-    expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Close" }),
-    );
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close" }));
 
     fireEvent.keyDown(document, { key: "Escape" });
     await settle();
@@ -803,9 +788,7 @@ describe("DocumentsPage thumbnails", () => {
   });
 
   it("renders an indeterminate progress bar while processing", async () => {
-    mockedList.mockResolvedValue([
-      { ...pendingDoc, id: "doc-processing", status: "processing" },
-    ]);
+    mockedList.mockResolvedValue([{ ...pendingDoc, id: "doc-processing", status: "processing" }]);
 
     const { container } = renderWithClient(<DocumentsPage />);
     await settle();
@@ -837,12 +820,24 @@ describe("DocumentsPage thumbnails", () => {
   });
 
   it("retries a failed thumbnail lookup after the backoff window", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    });
     try {
       // doc-a finishes processing (has_thumbnail flips via polling); doc-b
       // keeps polling alive so the docs array keeps changing.
-      const docA: Document = { ...pendingDoc, id: "doc-a", filename: "a.pdf", status: "processing" };
-      const docB: Document = { ...pendingDoc, id: "doc-b", filename: "b.pdf", status: "processing" };
+      const docA: Document = {
+        ...pendingDoc,
+        id: "doc-a",
+        filename: "a.pdf",
+        status: "processing",
+      };
+      const docB: Document = {
+        ...pendingDoc,
+        id: "doc-b",
+        filename: "b.pdf",
+        status: "processing",
+      };
       mockedList.mockResolvedValue([docA, docB]);
       mockedGetStatus.mockImplementation((id: string) => {
         if (id === "doc-a") {
@@ -987,11 +982,7 @@ describe("DocumentsPage busy states", () => {
   });
 
   it("disables the row's download button and shows a spinner while fetching the URL", async () => {
-    let resolveDownload!: (value: {
-      id: string;
-      filename: string;
-      download_url: string;
-    }) => void;
+    let resolveDownload!: (value: { id: string; filename: string; download_url: string }) => void;
     mockedGetDownloadUrl.mockReturnValue(
       new Promise((resolve) => {
         resolveDownload = resolve;
@@ -1004,7 +995,9 @@ describe("DocumentsPage busy states", () => {
     fireEvent.click(screen.getByRole("button", { name: "Download document" }));
 
     // While the download URL request is pending the button is disabled and shows a spinner.
-    const busyButton = screen.getByRole("button", { name: "Download document" }) as HTMLButtonElement;
+    const busyButton = screen.getByRole("button", {
+      name: "Download document",
+    }) as HTMLButtonElement;
     expect(busyButton.disabled).toBe(true);
     expect(screen.getByRole("status", { name: "Downloading" })).toBeTruthy();
 
@@ -1019,12 +1012,17 @@ describe("DocumentsPage busy states", () => {
 
     expect(mockedGetDownloadUrl).toHaveBeenCalledWith("doc-ready");
     // The button returns to its idle state once the URL has been fetched.
-    const idleButton = screen.getByRole("button", { name: "Download document" }) as HTMLButtonElement;
+    const idleButton = screen.getByRole("button", {
+      name: "Download document",
+    }) as HTMLButtonElement;
     expect(idleButton.disabled).toBe(false);
   });
 
   it("dims and disables the dropzone while uploading", async () => {
-    let resolveUpload!: (value: { uploaded: Document[]; failed: { filename: string; error: string }[] }) => void;
+    let resolveUpload!: (value: {
+      uploaded: Document[];
+      failed: { filename: string; error: string }[];
+    }) => void;
     mockedUploadMany.mockReturnValue(
       new Promise((resolve) => {
         resolveUpload = resolve;
@@ -1113,7 +1111,10 @@ describe("DocumentsPage busy states", () => {
     await settle();
 
     // 25 files > the 20-file per-request backend cap => 2 bulk requests.
-    const files = Array.from({ length: 25 }, (_, i) => new File(["x"], `f${i}.txt`, { type: "text/plain" }));
+    const files = Array.from(
+      { length: 25 },
+      (_, i) => new File(["x"], `f${i}.txt`, { type: "text/plain" }),
+    );
     const input = container.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files } });
     await settle();
@@ -1168,9 +1169,11 @@ describe("DocumentsPage reprocess", () => {
   });
 
   it("optimistically flips the failed card to pending while the request is in flight", async () => {
-    let resolveReprocess!: (
-      value: { message: string; document_id: string; status: string },
-    ) => void;
+    let resolveReprocess!: (value: {
+      message: string;
+      document_id: string;
+      status: string;
+    }) => void;
     mockedReprocess.mockReturnValue(
       new Promise((resolve) => {
         resolveReprocess = resolve;
@@ -1408,8 +1411,13 @@ describe("DocumentsPage — layout toggle", () => {
     const table = document.querySelector(".document-table")!;
     expect(table.tagName).toBe("TABLE");
     // Real column headers, so "column 3 of 5" is announced rather than implied.
-    expect([...table.querySelectorAll("thead th")].map((t) => t.getAttribute("scope")))
-      .toEqual(["col", "col", "col", "col", "col"]);
+    expect([...table.querySelectorAll("thead th")].map((t) => t.getAttribute("scope"))).toEqual([
+      "col",
+      "col",
+      "col",
+      "col",
+      "col",
+    ]);
     expect(table.querySelector("caption")).toBeTruthy();
     expect(table.querySelectorAll("tbody tr")).toHaveLength(3);
   });
@@ -1474,9 +1482,7 @@ describe("DocumentsPage — table column sizing", () => {
     /* Whitespace in a selector is not significant to CSS, but it is to a
        regex: `.document-row-thumb, .file-icon--row` is written across two lines
        in the stylesheet, so the literal form never matches. */
-    const esc = selector
-      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-      .replace(/\s+/g, "\\s*");
+    const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s*");
     const m = css.match(new RegExp(`(?:^|[}\\n])\\s*${esc}\\s*\\{([^}]*)\\}`));
     if (!m?.[1]) throw new Error(`no ${selector} block in the stylesheet`);
     return m[1];

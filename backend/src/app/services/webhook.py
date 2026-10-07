@@ -62,29 +62,29 @@ EVENT_HEADER = "X-Webhook-Event"
 # rather than relying on ``ipaddress.is_private`` so new IANA special-use
 # assignments are covered regardless of the stdlib version in use.
 _UNSAFE_IPV4_NETWORKS = [
-    ipaddress.ip_network("0.0.0.0/8"),        # "this" network
-    ipaddress.ip_network("10.0.0.0/8"),       # RFC 1918 private
-    ipaddress.ip_network("100.64.0.0/10"),    # CGNAT
-    ipaddress.ip_network("127.0.0.0/8"),      # loopback
-    ipaddress.ip_network("169.254.0.0/16"),   # link-local (incl. cloud metadata)
-    ipaddress.ip_network("172.16.0.0/12"),    # RFC 1918 private
-    ipaddress.ip_network("192.0.0.0/24"),     # IETF protocol assignments
-    ipaddress.ip_network("192.0.2.0/24"),     # TEST-NET-1
-    ipaddress.ip_network("192.168.0.0/16"),   # RFC 1918 private
-    ipaddress.ip_network("198.18.0.0/15"),    # benchmarking
+    ipaddress.ip_network("0.0.0.0/8"),  # "this" network
+    ipaddress.ip_network("10.0.0.0/8"),  # RFC 1918 private
+    ipaddress.ip_network("100.64.0.0/10"),  # CGNAT
+    ipaddress.ip_network("127.0.0.0/8"),  # loopback
+    ipaddress.ip_network("169.254.0.0/16"),  # link-local (incl. cloud metadata)
+    ipaddress.ip_network("172.16.0.0/12"),  # RFC 1918 private
+    ipaddress.ip_network("192.0.0.0/24"),  # IETF protocol assignments
+    ipaddress.ip_network("192.0.2.0/24"),  # TEST-NET-1
+    ipaddress.ip_network("192.168.0.0/16"),  # RFC 1918 private
+    ipaddress.ip_network("198.18.0.0/15"),  # benchmarking
     ipaddress.ip_network("198.51.100.0/24"),  # TEST-NET-2
-    ipaddress.ip_network("203.0.113.0/24"),   # TEST-NET-3
-    ipaddress.ip_network("224.0.0.0/4"),      # multicast
-    ipaddress.ip_network("240.0.0.0/4"),      # reserved
+    ipaddress.ip_network("203.0.113.0/24"),  # TEST-NET-3
+    ipaddress.ip_network("224.0.0.0/4"),  # multicast
+    ipaddress.ip_network("240.0.0.0/4"),  # reserved
 ]
 
 _UNSAFE_IPV6_NETWORKS = [
-    ipaddress.ip_network("::/128"),           # unspecified
-    ipaddress.ip_network("::1/128"),          # loopback
-    ipaddress.ip_network("fc00::/7"),         # unique local (private)
-    ipaddress.ip_network("fe80::/10"),        # link-local
-    ipaddress.ip_network("ff00::/8"),         # multicast
-    ipaddress.ip_network("2001:db8::/32"),    # documentation
+    ipaddress.ip_network("::/128"),  # unspecified
+    ipaddress.ip_network("::1/128"),  # loopback
+    ipaddress.ip_network("fc00::/7"),  # unique local (private)
+    ipaddress.ip_network("fe80::/10"),  # link-local
+    ipaddress.ip_network("ff00::/8"),  # multicast
+    ipaddress.ip_network("2001:db8::/32"),  # documentation
 ]
 
 # Hostnames that conventionally never resolve to a public, externally
@@ -112,7 +112,8 @@ _INTERNAL_HOSTNAME_SUFFIXES = (
 def _is_unsafe_ip(address: ipaddress._BaseAddress) -> bool:
     """True when ``address`` falls in a network that must never be a target."""
     networks = (
-        _UNSAFE_IPV4_NETWORKS if isinstance(address, ipaddress.IPv4Address)
+        _UNSAFE_IPV4_NETWORKS
+        if isinstance(address, ipaddress.IPv4Address)
         else _UNSAFE_IPV6_NETWORKS
     )
     return any(address in network for network in networks)
@@ -121,9 +122,7 @@ def _is_unsafe_ip(address: ipaddress._BaseAddress) -> bool:
 def _resolve_host(host: str) -> list[ipaddress._BaseAddress]:
     """Resolve a hostname to its IP addresses (integration-resolvable hook)."""
     try:
-        infos = socket.getaddrinfo(
-            host, None, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM
-        )
+        infos = socket.getaddrinfo(host, None, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM)
     except socket.gaierror:
         return []
     addresses: list[ipaddress._BaseAddress] = []
@@ -156,9 +155,7 @@ def document_event_info(document: DocumentDB) -> DocumentEventInfo:
         document_id=document.id,
         filename=document.filename,
         status=(
-            document.status.value
-            if hasattr(document.status, "value")
-            else str(document.status)
+            document.status.value if hasattr(document.status, "value") else str(document.status)
         ),
         owner_id=document.owner_id,
     )
@@ -284,9 +281,7 @@ async def _deliver(subscription: WebhookSubscription, payload: dict) -> tuple[bo
     # re-check before posting so a DNS rebinding change cannot redirect a
     # payload into the internal network.
     if not is_valid_webhook_url(subscription.url):
-        logger.warning(
-            "Blocked webhook delivery to unsafe URL: %s", subscription.url
-        )
+        logger.warning("Blocked webhook delivery to unsafe URL: %s", subscription.url)
         return False, None
     body = json.dumps(payload, separators=(",", ":")).encode()
     signature = sign_payload(subscription.secret, body)
@@ -467,16 +462,11 @@ class WebhookService:
 
     def list_for_user(self, owner_id: UUID) -> list[WebhookSubscriptionResponse]:
         """List a user's subscriptions, newest first, with secrets masked."""
-        return [
-            self._masked(subscription)
-            for subscription in self.repo.list_for_user(owner_id)
-        ]
+        return [self._masked(subscription) for subscription in self.repo.list_for_user(owner_id)]
 
     # --- writes -------------------------------------------------------------
 
-    def create(
-        self, owner_id: UUID, request: WebhookSubscriptionCreate
-    ) -> WebhookSubscription:
+    def create(self, owner_id: UUID, request: WebhookSubscriptionCreate) -> WebhookSubscription:
         """Subscribe a user to document events at a receiver URL.
 
         Returns the ORM object rather than a response schema: this is the
@@ -512,11 +502,7 @@ class WebhookService:
         updated = self.repo.update(
             subscription,
             url=request.url,
-            events=(
-                _events_as_strings(request.events)
-                if request.events is not None
-                else None
-            ),
+            events=(_events_as_strings(request.events) if request.events is not None else None),
             is_active=request.is_active,
         )
         return self._masked(updated)
@@ -527,9 +513,7 @@ class WebhookService:
 
     # --- manual test -------------------------------------------------------
 
-    async def send_test(
-        self, subscription_id: UUID, owner_id: UUID
-    ) -> WebhookTestResponse:
+    async def send_test(self, subscription_id: UUID, owner_id: UUID) -> WebhookTestResponse:
         """Deliver a one-off ``ping`` and record the outcome.
 
         The attempt is recorded in the subscription's delivery stats, so a
@@ -553,9 +537,7 @@ class WebhookService:
 
     # --- internals ---------------------------------------------------------
 
-    def _get_or_404(
-        self, subscription_id: UUID, owner_id: UUID
-    ) -> WebhookSubscription:
+    def _get_or_404(self, subscription_id: UUID, owner_id: UUID) -> WebhookSubscription:
         """Fetch one of the caller's own subscriptions, or raise 404.
 
         Scoping the lookup by owner is what enforces per-user isolation —

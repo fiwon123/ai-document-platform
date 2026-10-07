@@ -25,9 +25,7 @@ def user_cache_version(user_id: UUID) -> str | None:
     unavailable — callers must then bypass the cache.
     """
     try:
-        return (
-            redis_client.get(_SEARCH_VERSION_KEY.format(user_id=user_id)) or "0"
-        )
+        return redis_client.get(_SEARCH_VERSION_KEY.format(user_id=user_id)) or "0"
     except Exception as e:  # noqa: BLE001 - cache must never break callers
         logger.warning(f"Cache version read failed: {e}")
         return None
@@ -142,9 +140,7 @@ class SearchService:
         try:
             query_embedding = self.embedding_service.generate_embedding(query)
         except Exception as e:  # noqa: BLE001 - graceful fallback to text search
-            logger.warning(
-                f"Query embedding unavailable, falling back to text search: {e}"
-            )
+            logger.warning(f"Query embedding unavailable, falling back to text search: {e}")
 
         outcome = self.repository.search(
             user_id=user_id,

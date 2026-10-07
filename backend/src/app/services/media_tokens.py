@@ -130,7 +130,7 @@ def verify_token(
         if not raw_expiry or not signature:
             return False
         expires_at = int(raw_expiry)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
 
     current = time.time() if now is None else now

@@ -41,7 +41,7 @@ jobs:
       # code (frontend-only work is validated by the frontend jobs).
       - name: Detect backend changes
         id: changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             backend:
@@ -73,6 +73,11 @@ jobs:
       - name: Lint (ruff)
         if: steps.changes.outputs.backend == 'true'
         run: uv run ruff check src/
+        working-directory: backend
+
+      - name: Format check (ruff)
+        if: steps.changes.outputs.backend == 'true'
+        run: uv run ruff format --check src/
         working-directory: backend
 
   backend-test:
@@ -126,7 +131,7 @@ jobs:
       # backend code (frontend-only work is validated by the frontend jobs).
       - name: Detect backend changes
         id: changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             backend:
@@ -158,7 +163,7 @@ jobs:
         working-directory: backend
 
   frontend-lint:
-    name: Frontend (oxlint)
+    name: Frontend (oxlint + format)
     if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci') && (github.event.action != 'labeled' || github.event.label.name == 'ci'))
     runs-on: ubuntu-latest
     steps:
@@ -178,6 +183,10 @@ jobs:
 
       - name: Run lint
         run: npm run lint
+        working-directory: frontend
+
+      - name: Run format check
+        run: npm run format:check
         working-directory: frontend
 
   frontend-build:

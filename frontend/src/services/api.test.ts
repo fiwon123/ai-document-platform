@@ -52,10 +52,7 @@ describe("api client request paths", () => {
 
     await documents.list(10, 50);
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      "/v1/documents/?skip=10&limit=50",
-      expect.anything(),
-    );
+    expect(mockFetch).toHaveBeenCalledWith("/v1/documents/?skip=10&limit=50", expect.anything());
   });
 
   it("should use default skip=0 and limit=20 for documents.list", async () => {
@@ -63,10 +60,7 @@ describe("api client request paths", () => {
 
     await documents.list();
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      "/v1/documents/?skip=0&limit=20",
-      expect.anything(),
-    );
+    expect(mockFetch).toHaveBeenCalledWith("/v1/documents/?skip=0&limit=20", expect.anything());
   });
 
   it("should send documents.get to /v1/documents/{id}", async () => {
@@ -169,10 +163,7 @@ describe("api client request paths", () => {
 
     await documents.getDownloadUrl("doc-4");
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      "/v1/documents/doc-4/download",
-      expect.anything(),
-    );
+    expect(mockFetch).toHaveBeenCalledWith("/v1/documents/doc-4/download", expect.anything());
   });
 
   it("should send documents.preview to /v1/documents/{id}/preview", async () => {
@@ -187,10 +178,7 @@ describe("api client request paths", () => {
     const result = await documents.preview("doc-5");
 
     expect(result).toEqual(preview);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "/v1/documents/doc-5/preview",
-      expect.anything(),
-    );
+    expect(mockFetch).toHaveBeenCalledWith("/v1/documents/doc-5/preview", expect.anything());
   });
 
   it("should send documents.reprocess to /v1/documents/{id}/reprocess with POST", async () => {
@@ -232,10 +220,7 @@ describe("api client request paths", () => {
     // job is to hand it to an <img>. It must stay relative — rebuilding it here
     // would be how a storage host crept back into the frontend.
     expect(result.thumbnail_url).toBe("/v1/documents/doc-6/content?kind=thumbnail&token=abc");
-    expect(mockFetch).toHaveBeenCalledWith(
-      "/v1/documents/doc-6/thumbnail",
-      expect.anything(),
-    );
+    expect(mockFetch).toHaveBeenCalledWith("/v1/documents/doc-6/thumbnail", expect.anything());
   });
 
   it("should send auth.login to /v1/auth/login with form-urlencoded body", async () => {
@@ -411,7 +396,13 @@ describe("api client request paths", () => {
   it("should send auth.register to /v1/auth/register with JSON body", async () => {
     mockFetch.mockResolvedValue(
       new Response(
-        JSON.stringify({ id: "u2", username: "bob", is_active: true, role: null, created_at: null }),
+        JSON.stringify({
+          id: "u2",
+          username: "bob",
+          is_active: true,
+          role: null,
+          created_at: null,
+        }),
         { status: 200 },
       ),
     );
@@ -431,7 +422,13 @@ describe("api client request paths", () => {
   it("should send auth.getMe to /v1/auth/me", async () => {
     mockFetch.mockResolvedValue(
       new Response(
-        JSON.stringify({ id: "u1", username: "alice", is_active: true, role: null, created_at: null }),
+        JSON.stringify({
+          id: "u1",
+          username: "alice",
+          is_active: true,
+          role: null,
+          created_at: null,
+        }),
         { status: 200 },
       ),
     );
@@ -558,7 +555,8 @@ describe("api client request paths", () => {
       message: "Document not found",
     });
   });
-});import type { DocumentStatusResponse } from "../types";
+});
+import type { DocumentStatusResponse } from "../types";
 
 describe("documents.getStatus", () => {
   const originalFetch = globalThis.fetch;
@@ -706,11 +704,10 @@ describe("search.search", () => {
       }),
     );
 
-    await expect(search.exportResults("q", "json")).rejects.toThrow(
-      "Export backend down",
-    );
+    await expect(search.exportResults("q", "json")).rejects.toThrow("Export backend down");
   });
-});import type { StatisticsResponse } from "../types";
+});
+import type { StatisticsResponse } from "../types";
 
 const sampleStats: StatisticsResponse = {
   total_documents: 3,
@@ -812,9 +809,7 @@ describe("statistics.getAdmin", () => {
       ),
     );
 
-    await expect(statistics.getAdmin()).rejects.toThrow(
-      "Admin privileges required",
-    );
+    await expect(statistics.getAdmin()).rejects.toThrow("Admin privileges required");
   });
 });
 import type { User } from "../types";
@@ -910,7 +905,13 @@ describe("users admin methods", () => {
   });
 
   it("patches a user role via PATCH /v1/users/{id}/role", async () => {
-    const updated: User = { id: "u-1", username: "alice", is_active: true, role: "admin", created_at: null };
+    const updated: User = {
+      id: "u-1",
+      username: "alice",
+      is_active: true,
+      role: "admin",
+      created_at: null,
+    };
     vi.mocked(globalThis.fetch).mockResolvedValue(
       new Response(JSON.stringify(updated), {
         status: 200,
@@ -928,7 +929,13 @@ describe("users admin methods", () => {
   });
 
   it("patches a user active state via PATCH /v1/users/{id}/active", async () => {
-    const updated: User = { id: "u-1", username: "alice", is_active: false, role: "customer", created_at: null };
+    const updated: User = {
+      id: "u-1",
+      username: "alice",
+      is_active: false,
+      role: "customer",
+      created_at: null,
+    };
     vi.mocked(globalThis.fetch).mockResolvedValue(
       new Response(JSON.stringify(updated), {
         status: 200,
@@ -1122,7 +1129,7 @@ describe("validation error messages", () => {
       new Response(JSON.stringify(body), {
         status: 422,
         headers: { "content-type": "application/json" },
-      })
+      }),
     );
     try {
       await qa.ask("q");
@@ -1143,9 +1150,7 @@ describe("validation error messages", () => {
       },
     });
 
-    expect(error.message).toBe(
-      "question: String should have at most 2000 characters"
-    );
+    expect(error.message).toBe("question: String should have at most 2000 characters");
   });
 
   it("joins every field reason rather than dropping the rest", async () => {
@@ -1157,9 +1162,7 @@ describe("validation error messages", () => {
       },
     });
 
-    expect(error.message).toBe(
-      "top_k: not an integer; document_ids: invalid UUID"
-    );
+    expect(error.message).toBe("top_k: not an integer; document_ids: invalid UUID");
   });
 
   it("summarises past three fields instead of printing a wall", async () => {
@@ -1242,10 +1245,10 @@ describe("rateLimitFrom", () => {
     details: Record<string, unknown>,
     headers: Record<string, string> = {},
   ) {
-    return new Response(
-      JSON.stringify({ error: { code, message: "m", details } }),
-      { status: 429, headers },
-    );
+    return new Response(JSON.stringify({ error: { code, message: "m", details } }), {
+      status: 429,
+      headers,
+    });
   }
 
   it("returns the provider's facts for a provider rate limit", async () => {
@@ -1354,7 +1357,11 @@ describe("describeRateLimit", () => {
     // nothing caught it, because each duration was only tested at the one value
     // the author happened to look at.
     for (const seconds of [61, 300, 3599, 3600, 19800, 52200, 86399]) {
-      const text = describeRateLimit({ scope: "tokens", source: "app", retryAfterSeconds: seconds });
+      const text = describeRateLimit({
+        scope: "tokens",
+        source: "app",
+        retryAfterSeconds: seconds,
+      });
       expect(text).not.toMatch(/\d{3,} seconds/);
       expect(text).not.toMatch(/\bsecond\b/);
     }

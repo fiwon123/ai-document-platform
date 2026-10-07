@@ -47,9 +47,7 @@ const AdminUserRow = memo(function AdminUserRow({
           id={`admin-role-${user.id}`}
           name={`admin-role-${user.id}`}
           value={user.role === "admin" ? "admin" : "customer"}
-          onChange={(e) =>
-            onRoleChange(user.id, e.target.value as Role)
-          }
+          onChange={(e) => onRoleChange(user.id, e.target.value as Role)}
           disabled={isBusy || isCurrentUser}
           aria-label={`Role for ${user.username}`}
           autoComplete="off"
@@ -60,11 +58,7 @@ const AdminUserRow = memo(function AdminUserRow({
       </td>
       <td>
         <div className="user-status-cell">
-          <span
-            className={`user-status ${
-              user.is_active ? "is-active" : "is-disabled"
-            }`}
-          >
+          <span className={`user-status ${user.is_active ? "is-active" : "is-disabled"}`}>
             {user.is_active ? "active" : "disabled"}
           </span>
           <button
@@ -77,11 +71,7 @@ const AdminUserRow = memo(function AdminUserRow({
           </button>
         </div>
       </td>
-      <td>
-        {user.created_at
-          ? new Date(user.created_at).toLocaleDateString()
-          : "—"}
-      </td>
+      <td>{user.created_at ? new Date(user.created_at).toLocaleDateString() : "—"}</td>
       <td>
         <button
           onClick={() => onDelete(user.id, user.username)}
@@ -213,9 +203,7 @@ export function AdminPage() {
         case "delete":
           return state.filter((u) => u.id !== action.userId);
         case "role":
-          return state.map((u) =>
-            u.id === action.userId ? { ...u, role: action.role } : u,
-          );
+          return state.map((u) => (u.id === action.userId ? { ...u, role: action.role } : u));
         case "toggle-active":
           return state.map((u) =>
             u.id === action.user.id ? { ...u, is_active: action.isActive } : u,
@@ -237,69 +225,76 @@ export function AdminPage() {
   // Handlers use functional setState only, so they are stable across renders
   // and memoized rows are not invalidated by parent re-renders. Each one
   // updates the shared users query cache instead of local component state.
-  const handleRoleChange = useCallback((userId: string, role: Role) => {
-    setBusyId(userId);
-    setError(null);
-    startTransition(async () => {
-      addOptimistic({ type: "role", userId, role });
-      try {
-        const updated = await users.updateUserRole(userId, role);
-        queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
-          (prev ?? []).map((u) =>
-            u.id === userId ? { ...u, role: updated.role } : u,
-          ),
-        );
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to update role");
-      } finally {
-        setBusyId(null);
-      }
-    });
-  }, [queryClient, addOptimistic]);
-
-  const handleDelete = useCallback((userId: string, username: string) => {
-    if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
-
-    setBusyId(userId);
-    setError(null);
-    startTransition(async () => {
-      addOptimistic({ type: "delete", userId });
-      try {
-        await users.deleteUser(userId);
-        queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
-          (prev ?? []).filter((u) => u.id !== userId),
-        );
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to delete user");
-      } finally {
-        setBusyId(null);
-      }
-    });
-  }, [queryClient, addOptimistic]);
-
-  const handleToggleActive = useCallback((user: User) => {
-    setBusyId(user.id);
-    setError(null);
-    startTransition(async () => {
-      addOptimistic({
-        type: "toggle-active",
-        user,
-        isActive: !user.is_active,
+  const handleRoleChange = useCallback(
+    (userId: string, role: Role) => {
+      setBusyId(userId);
+      setError(null);
+      startTransition(async () => {
+        addOptimistic({ type: "role", userId, role });
+        try {
+          const updated = await users.updateUserRole(userId, role);
+          queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
+            (prev ?? []).map((u) => (u.id === userId ? { ...u, role: updated.role } : u)),
+          );
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Failed to update role");
+        } finally {
+          setBusyId(null);
+        }
       });
-      try {
-        const updated = await users.updateUserActive(user.id, !user.is_active);
-        queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
-          (prev ?? []).map((u) =>
-            u.id === user.id ? { ...u, is_active: updated.is_active } : u,
-          ),
-        );
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to update status");
-      } finally {
-        setBusyId(null);
-      }
-    });
-  }, [queryClient, addOptimistic]);
+    },
+    [queryClient, addOptimistic],
+  );
+
+  const handleDelete = useCallback(
+    (userId: string, username: string) => {
+      if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+
+      setBusyId(userId);
+      setError(null);
+      startTransition(async () => {
+        addOptimistic({ type: "delete", userId });
+        try {
+          await users.deleteUser(userId);
+          queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
+            (prev ?? []).filter((u) => u.id !== userId),
+          );
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Failed to delete user");
+        } finally {
+          setBusyId(null);
+        }
+      });
+    },
+    [queryClient, addOptimistic],
+  );
+
+  const handleToggleActive = useCallback(
+    (user: User) => {
+      setBusyId(user.id);
+      setError(null);
+      startTransition(async () => {
+        addOptimistic({
+          type: "toggle-active",
+          user,
+          isActive: !user.is_active,
+        });
+        try {
+          const updated = await users.updateUserActive(user.id, !user.is_active);
+          queryClient.setQueryData<User[]>(ADMIN_USERS_QUERY_KEY, (prev) =>
+            (prev ?? []).map((u) =>
+              u.id === user.id ? { ...u, is_active: updated.is_active } : u,
+            ),
+          );
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Failed to update status");
+        } finally {
+          setBusyId(null);
+        }
+      });
+    },
+    [queryClient, addOptimistic],
+  );
 
   if (!isAdmin) {
     return (
@@ -320,7 +315,11 @@ export function AdminPage() {
         <p>Manage accounts and roles</p>
       </header>
 
-      {errorMessage && <p className="error-message" role="alert">{errorMessage}</p>}
+      {errorMessage && (
+        <p className="error-message" role="alert">
+          {errorMessage}
+        </p>
+      )}
 
       <section aria-label="System statistics" className="admin-stats">
         {stats ? (
@@ -390,10 +389,7 @@ export function AdminPage() {
       {usersQuery.isPending ? (
         <SkeletonList rows={4} />
       ) : optimisticUsers.length === 0 ? (
-        <EmptyState
-          title="No users found"
-          description="There are no user accounts yet."
-        />
+        <EmptyState title="No users found" description="There are no user accounts yet." />
       ) : (
         <div className="user-table-wrap">
           <table className="user-table">

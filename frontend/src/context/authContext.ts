@@ -7,11 +7,7 @@ export interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
-  register: (
-    username: string,
-    password: string,
-    confirmPassword: string,
-  ) => Promise<void>;
+  register: (username: string, password: string, confirmPassword: string) => Promise<void>;
   logout: () => void;
   updateUser: (user: User) => void;
   /** Clear the local session after the server has deleted the account. */

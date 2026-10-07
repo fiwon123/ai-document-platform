@@ -35,7 +35,7 @@ Golden rules:
 make dev-up         # isolated dev sandbox: uvicorn + vite + arq worker + infra
 make dev-log        # tail sandbox logs (2nd terminal)
 make dev-down       # stop the sandbox (keeps volumes)
-make check          # lint (ruff + oxlint) + tests (pytest + vitest) + build
+make check          # lint (ruff + oxlint) + format (oxfmt) + tests (pytest + vitest) + build
 ```
 
 Backend tests need the infra services up (`make infra-up`) because they run

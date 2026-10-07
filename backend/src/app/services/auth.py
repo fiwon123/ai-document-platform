@@ -60,15 +60,11 @@ class RefreshSessionService:
     def from_session(cls, db: Session) -> RefreshSessionService:
         return cls(RefreshSessionRepository(db))
 
-    def record_issue(
-        self, jti: str, user_id: UUID, expires_at: datetime
-    ) -> RefreshSessionDB:
+    def record_issue(self, jti: str, user_id: UUID, expires_at: datetime) -> RefreshSessionDB:
         """Track a token handed out at login, and return its row."""
         return self.repo.create(jti, user_id, expires_at)
 
-    def begin_refresh(
-        self, jti: str, user_id: UUID, expires_at: datetime
-    ) -> RefreshOutcome:
+    def begin_refresh(self, jti: str, user_id: UUID, expires_at: datetime) -> RefreshOutcome:
         """Decide whether `jti` may be exchanged, retiring it when it may.
 
         `expires_at` is the token's own `exp`, which the route has already
@@ -92,9 +88,7 @@ class RefreshSessionService:
         # was both logged out and replayed is reported as the logout it was.
         row = self.repo.get(jti)
         if row is not None and row.revoked_at is not None:
-            logger.warning(
-                "Refresh token replayed after logout for user %s", row.user_id
-            )
+            logger.warning("Refresh token replayed after logout for user %s", row.user_id)
             return RefreshOutcome.REVOKED
 
         logger.warning("Spent refresh token replayed for user %s", user_id)
@@ -115,9 +109,7 @@ class RefreshSessionService:
             # Another request adopted the same token between the lookup above and
             # this insert. It got there first, so this caller is the replay.
             self.repo.db.rollback()
-            logger.info(
-                "Refresh token adopted concurrently for user %s; refusing", user_id
-            )
+            logger.info("Refresh token adopted concurrently for user %s; refusing", user_id)
             return RefreshOutcome.REPLAY
 
         self.repo.try_retire(jti, now)

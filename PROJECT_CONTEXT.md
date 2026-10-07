@@ -787,7 +787,7 @@ when done; `make check` before every push; only `dev-up` requires opencode
 - [x] CI/CD pipeline (GitHub Actions: backend tests + ruff lint; frontend lint + build + tests)
 - [x] Production Docker images (backend, worker, frontend with nginx)
 - [x] Kubernetes deployment (Kustomize base + dev/production overlays, standalone Helm chart, Kind cluster scripts)
-- [x] Infra CI: kustomize/helm/kubeconform validation + production image builds pushed to ghcr.io — on a `ci`-labelled `dev`→`main` PR or a manual dispatch, **never on a `dev` push** (see *CI triggers* below)
+- [x] Infra CI: kustomize/helm/kubeconform validation + production image builds pushed to ghcr.io — on a `ci`-labelled `dev`→`main` PR or a manual dispatch (see *CI triggers* below, including how a `dev` push reaches these)
 - [x] Production TLS: cert-manager ClusterIssuers (Let's Encrypt staging/prod + self-signed) with automatic ingress issuance
 - [x] Production secrets: External Secrets Operator (ExternalSecret + ClusterSecretStore) replacing the dev placeholder Secret
 - [x] Production monitoring: Prometheus + Grafana (kube-prometheus-stack) with a backend /metrics endpoint, ServiceMonitor, alert rules, AlertmanagerConfig email routing, and a Grafana dashboard; metrics-server support for HPAs
@@ -798,19 +798,34 @@ when done; `make check` before every push; only `dev-up` requires opencode
 
 ### CI triggers (what actually runs, and when)
 
-Both workflows are **label-gated `dev`→`main` PRs plus manual dispatch**. Neither
-runs on a push to `dev`:
+Both workflows are **label-gated `dev`→`main` PRs plus manual dispatch**:
 
 | Workflow | Runs on |
 |---|---|
 | `ci.yml` (backend tests + ruff, frontend lint/build/tests) | `ci`-labelled PR to `main`, or `workflow_dispatch` |
 | `infra.yml` (kustomize/helm/kubeconform, image builds → ghcr.io, Kind smoke test) | `ci`-labelled PR to `main`, or `workflow_dispatch`. **Dispatch publishes only from `main`** — any other ref runs validation and the Kind smoke test but skips the image build/push, since that would re-tag the `latest` staging and production follow (#544) |
 
+**A push to `dev` can and does reach both workflows** (#680). A push is not
+itself a trigger, but it advances the head of any *open* `dev`→`main` PR, which
+fires `synchronize` — a declared trigger of both files. A merged feature runs CI
+when all three of these hold:
+
+1. an open `dev`→`main` PR exists, **and**
+2. it carries the `ci` label, **and**
+3. the push touches a path in that workflow's `paths:` filter
+
+Miss (2) and the run is **triggered but verifies nothing** — every job comes back
+`skipped`, since the label gate lives in each job's `if:`. **Skipped is not
+passed**: #675, #676 and #677 each reached `main` with a green-looking CI row that
+ran no job. Same trap as #638, where `Scan images` was skipped rather than
+passed. Watch the `pull_request` run, not a dispatch — a non-`main` dispatch
+duplicates it and skips the image build (#544), so it tests stale ghcr images.
+
 **What this means for a feature branch: nothing runs automatically.** A branch
-that changes `infra/**`, `backend/**` or `frontend/**` is unverified until
-either the release PR is opened and labelled, or someone dispatches the
-workflow. `infra/**` in particular gets no `kustomize build`, `helm lint` or
-`kubeconform` at all on the way to `dev`.
+that changes `infra/**`, `backend/**` or `frontend/**` is unverified until the
+release PR is open, labelled `ci`, and the change is in the filter — or someone
+dispatches the workflow. `infra/**` in particular gets no `kustomize build`,
+`helm lint` or `kubeconform` at all on the way to `dev`.
 
 That is deliberate for the *image build* — publishing to ghcr.io on every dev
 push is neither wanted nor free — but it leaves validation uncovered, so run it

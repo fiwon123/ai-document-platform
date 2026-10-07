@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  LEGAL_DOCUMENTS,
-  NAV_LEGAL,
-  legalDocument,
-  legalDocumentProps,
-} from "./legal";
+import { LEGAL_DOCUMENTS, NAV_LEGAL, legalDocument, legalDocumentProps } from "./legal";
 import { MARKETING_ROUTES } from "./marketing";
 
 /**
@@ -57,15 +52,11 @@ describe("legal documents", () => {
     // collision — two nodes fighting over one identity.
     for (const doc of LEGAL_DOCUMENTS) {
       const headings = doc.sections.map((s) => s.heading);
-      expect(new Set(headings).size, `${doc.route} headings`).toBe(
-        headings.length,
-      );
+      expect(new Set(headings).size, `${doc.route} headings`).toBe(headings.length);
       for (const section of doc.sections) {
         const paragraphs = section.body;
         const keys = paragraphs.map((p) => p.slice(0, 40));
-        expect(new Set(keys).size, `${doc.route} / ${section.heading}`).toBe(
-          keys.length,
-        );
+        expect(new Set(keys).size, `${doc.route} / ${section.heading}`).toBe(keys.length);
       }
     }
 
@@ -109,9 +100,7 @@ describe("legal documents", () => {
 
 describe("NAV_LEGAL", () => {
   it("is derived from the documents, so it cannot drift from them", () => {
-    expect(NAV_LEGAL).toEqual(
-      LEGAL_DOCUMENTS.map(({ label, route }) => ({ label, to: route })),
-    );
+    expect(NAV_LEGAL).toEqual(LEGAL_DOCUMENTS.map(({ label, route }) => ({ label, to: route })));
   });
 
   it("points only at real documents", () => {

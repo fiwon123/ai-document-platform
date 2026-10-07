@@ -56,9 +56,7 @@ describe("design tokens", () => {
       return group;
     };
 
-    const declared = new Set(
-      [...css.matchAll(/(--[\w-]+)\s*:/g)].map(capture),
-    );
+    const declared = new Set([...css.matchAll(/(--[\w-]+)\s*:/g)].map(capture));
     const used = new Map<string, number>();
     for (const m of css.matchAll(/var\(\s*(--[\w-]+)\s*[,)]/g)) {
       const token = capture(m);
@@ -106,7 +104,8 @@ describe("design tokens", () => {
     expect(css.match(/--line-strong\s*:/g)).toHaveLength(2);
   });
 
-  it("keeps the logo marquee keyframe in step with its copy count", () => {    // The marquee loops by translating a fixed percentage of a track that
+  it("keeps the logo marquee keyframe in step with its copy count", () => {
+    // The marquee loops by translating a fixed percentage of a track that
     // holds N identical copies of the logo list. For the loop to be seamless
     // the percentage must be exactly one copy's width: 100/N. If the two drift
     // apart the strip wraps mid-copy and the row visibly jumps — the exact
@@ -116,14 +115,10 @@ describe("design tokens", () => {
     // The old two-copy/-50% pairing was correct too, which is the trap: this
     // is a coupling guard, not a bug repro. Deriving the expected value from
     // the keyframe's own percentage keeps it honest for any copy count.
-    const keyframe = css.match(
-      /@keyframes\s+logo-scroll\s*\{[\s\S]*?\n\}/,
-    )?.[0];
+    const keyframe = css.match(/@keyframes\s+logo-scroll\s*\{[\s\S]*?\n\}/)?.[0];
     expect(keyframe, "@keyframes logo-scroll must exist").toBeDefined();
 
-    const to = keyframe!.match(
-      /to\s*\{[^}]*transform:\s*translateX\((-?[\d.]+)%\)/,
-    )?.[1];
+    const to = keyframe!.match(/to\s*\{[^}]*transform:\s*translateX\((-?[\d.]+)%\)/)?.[1];
     expect(to, "logo-scroll must translateX by a percentage").toBeDefined();
 
     const percent = Number(to);
@@ -146,15 +141,9 @@ describe("design tokens", () => {
     // `...LOGOS` spreads is what makes this a real cross-check rather than a
     // restatement of the keyframe. This is the assertion that would have
     // caught a copy-count change made without its matching keyframe edit.
-    const source = readFileSync(
-      resolve(process.cwd(), "src", "pages", "LandingPage.tsx"),
-      "utf8",
-    );
+    const source = readFileSync(resolve(process.cwd(), "src", "pages", "LandingPage.tsx"), "utf8");
     const strip = source.match(/\{(\[\.\.\.LOGOS[^\]]*\])\.map\(/)?.[1];
-    expect(
-      strip,
-      "the logo strip must be built from ...LOGOS spreads",
-    ).toBeDefined();
+    expect(strip, "the logo strip must be built from ...LOGOS spreads").toBeDefined();
     const actual = (strip!.match(/\.\.\.LOGOS/g) ?? []).length;
     expect(
       actual,
@@ -172,13 +161,8 @@ describe("design tokens", () => {
     //   1. two stats sharing an accent, or
     //   2. an accent used here that no dark-theme block restates, so that one
     //      figure stays dark-mode-illegible while the other two lift.
-    const source = readFileSync(
-      resolve(process.cwd(), "src", "pages", "LandingPage.tsx"),
-      "utf8",
-    );
-    const accents = [...source.matchAll(/stat-item"\s+data-accent="(\w+)"/g)].map(
-      (m) => m[1],
-    );
+    const source = readFileSync(resolve(process.cwd(), "src", "pages", "LandingPage.tsx"), "utf8");
+    const accents = [...source.matchAll(/stat-item"\s+data-accent="(\w+)"/g)].map((m) => m[1]);
     expect(accents).toHaveLength(3);
     // No repeats: a duplicated accent means two of the three figures match.
     expect(new Set(accents).size).toBe(3);
@@ -192,9 +176,7 @@ describe("design tokens", () => {
       // `{[^}]*` stops at the first closing brace so only that block's body
       // is considered.
       const body = (selector: string) => {
-        const m = css.match(
-          new RegExp(`(?:^|[}\\n])\\s*${selector}\\s*\\{([^}]*)\\}`),
-        );
+        const m = css.match(new RegExp(`(?:^|[}\\n])\\s*${selector}\\s*\\{([^}]*)\\}`));
         return m?.[1] ?? "";
       };
 
@@ -204,13 +186,10 @@ describe("design tokens", () => {
         `[data-accent="${accent}"] must declare --card-accent for the light theme`,
       ).toMatch(/--card-accent\s*:/);
 
-      const dark = body(
-        `:root\\[data-theme="dark"\\]\\s*\\[data-accent="${accent}"\\]`,
+      const dark = body(`:root\\[data-theme="dark"\\]\\s*\\[data-accent="${accent}"\\]`);
+      expect(dark, `[data-accent="${accent}"] must restate --card-accent for dark theme`).toMatch(
+        /--card-accent\s*:/,
       );
-      expect(
-        dark,
-        `[data-accent="${accent}"] must restate --card-accent for dark theme`,
-      ).toMatch(/--card-accent\s*:/);
     }
   });
 
@@ -243,14 +222,12 @@ describe("design tokens", () => {
     // font-size and colour happened to survive (the .count-up rules outrank
     // this selector), so a render test would not catch a regression here.
     const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8");
-    expect(
-      css,
-      "label styling must not reach the animated number",
-    ).toMatch(/\.stat-item\s*>\s*span\s*\{/);
-    expect(
-      css,
-      "a bare `.stat-item span` re-couples the label to CountUp's span",
-    ).not.toMatch(/\.stat-item\s+span\s*\{/);
+    expect(css, "label styling must not reach the animated number").toMatch(
+      /\.stat-item\s*>\s*span\s*\{/,
+    );
+    expect(css, "a bare `.stat-item span` re-couples the label to CountUp's span").not.toMatch(
+      /\.stat-item\s+span\s*\{/,
+    );
   });
 
   it("never stacks the stat row, so the three figures stay comparable", () => {
@@ -260,10 +237,9 @@ describe("design tokens", () => {
     // the real guarantee, and the vertical divider orientation proves the
     // rotation was not reintroduced under another breakpoint.
     const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8");
-    expect(
-      css,
-      "no breakpoint may force the stat items onto their own row",
-    ).not.toMatch(/\.stat-item\s*\{[^}]*flex-basis:\s*100%/);
+    expect(css, "no breakpoint may force the stat items onto their own row").not.toMatch(
+      /\.stat-item\s*\{[^}]*flex-basis:\s*100%/,
+    );
     const divider = css.match(/\.stat-item\s*\+\s*\.stat-item::before\s*\{([^}]*)\}/)?.[1] ?? "";
     expect(divider, "the stat divider must still be styled").not.toBe("");
     expect(divider, "dividers stay vertical so the row needs no breakpoint").toMatch(
@@ -302,7 +278,10 @@ describe("design tokens", () => {
       }
       const fn = raw.match(/^rgba?\(([^)]+)\)$/);
       if (fn) {
-        const parts = fn[1]!.split(/[\s/]+/).filter(Boolean).map(Number);
+        const parts = fn[1]!
+          .split(/[\s/]+/)
+          .filter(Boolean)
+          .map(Number);
         return {
           r: parts[0] ?? 0,
           g: parts[1] ?? 0,
@@ -326,10 +305,7 @@ describe("design tokens", () => {
       return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
     };
     const contrast = (a: Rgb, b: Rgb): number => {
-      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [
-        number,
-        number,
-      ];
+      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
       return (hi + 0.05) / (lo + 0.05);
     };
 
@@ -382,10 +358,7 @@ describe("design tokens", () => {
       return 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
     };
     const ratio = (a: string, b: string): number => {
-      const [hi, lo] = [relLuminance(a), relLuminance(b)].sort((x, y) => y - x) as [
-        number,
-        number,
-      ];
+      const [hi, lo] = [relLuminance(a), relLuminance(b)].sort((x, y) => y - x) as [number, number];
       return (hi + 0.05) / (lo + 0.05);
     };
 

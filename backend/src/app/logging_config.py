@@ -32,8 +32,8 @@ _EXTRA_FIELDS = (
 class JsonLogFormatter(logging.Formatter):
     """Format a record as a single JSON object::
 
-        {"ts": 1720000000.123, "level": "INFO", "logger": "app.access",
-         "message": "Request completed", "request_id": "abc", ...}
+    {"ts": 1720000000.123, "level": "INFO", "logger": "app.access",
+     "message": "Request completed", "request_id": "abc", ...}
     """
 
     def format(self, record: logging.LogRecord) -> str:

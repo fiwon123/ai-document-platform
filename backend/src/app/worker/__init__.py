@@ -49,12 +49,27 @@ def _recovery_timeout_minutes() -> int:
     The floor is derived from the job timeout × retries so the recovery cron
     never marks a job failed while it is still legitimately retrying; an
     explicit WORKER_RECOVERY_TIMEOUT_MINUTES still wins when it is larger.
+
+    The floor is not optional in practice: at the defaults it is 48 minutes
+    (900s job timeout × 3 retries), so a document whose worker was killed
+    mid-job is reclaimed at ~48 minutes and reaches FAILED by ~68. This function
+    used to fall back to the literal 30, which the floor always overrode — a
+    number that read as "reclaimed after 30 minutes" and sent an operator
+    looking for a missing reclaim path that was working exactly as designed
+    (#688). A clamped override is now logged rather than silently discarded.
     """
     min_floor = (WORKER_JOB_TIMEOUT_SECONDS // 60 + 1) * MAX_RETRIES
-    return max(
-        int(os.getenv("WORKER_RECOVERY_TIMEOUT_MINUTES", "30")),
-        min_floor,
-    )
+    configured = os.getenv("WORKER_RECOVERY_TIMEOUT_MINUTES")
+    override = int(configured) if configured else 0
+    if override < min_floor:
+        if configured:
+            logger.warning(
+                f"WORKER_RECOVERY_TIMEOUT_MINUTES={override} is below the "
+                f"{min_floor}-minute floor (job timeout × retries); using the "
+                f"floor instead."
+            )
+        return min_floor
+    return override
 
 
 RECOVERY_TIMEOUT_MINUTES = _recovery_timeout_minutes()
@@ -288,9 +303,7 @@ async def _process_document_impl(document_id: UUID) -> DocumentDB | None:
         space = embedding_service.space
         model = embedding_service.model
         try:
-            embeddings = embedding_service.generate_embeddings(
-                [chunk.content for chunk in chunks]
-            )
+            embeddings = embedding_service.generate_embeddings([chunk.content for chunk in chunks])
         except Exception as e:  # noqa: BLE001 - worker must not fail on embedding issues
             logger.warning(
                 f"Embeddings unavailable for document {document_id}, "
@@ -309,9 +322,9 @@ async def _process_document_impl(document_id: UUID) -> DocumentDB | None:
 
         # A reprocess (or a retry after a partial commit) must not pile up
         # duplicate chunks: drop anything from a previous run first.
-        db.query(DocumentChunk).filter(
-            DocumentChunk.document_id == document_id
-        ).delete(synchronize_session=False)
+        db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).delete(
+            synchronize_session=False
+        )
 
         # Bulk insert instead of per-chunk add()/flush: for large documents
         # this skips the unit-of-work machinery (identity map, dependency
@@ -328,9 +341,7 @@ async def _process_document_impl(document_id: UUID) -> DocumentDB | None:
                     metadata_=chunk.metadata,
                     **_vector_fields(chunk_embedding, embedding_column, model),
                 )
-                for chunk, chunk_embedding in zip(
-                    chunks, embeddings, strict=False
-                )
+                for chunk, chunk_embedding in zip(chunks, embeddings, strict=False)
             ]
         )
 
@@ -381,17 +392,14 @@ async def process_document(ctx: dict, document_id: str) -> None:
     except Exception as e:  # noqa: BLE001 - transient errors are retried
         job_try = int(ctx.get("job_try", 1))
         logger.error(
-            f"Error processing document {document_uuid} "
-            f"(try {job_try}/{MAX_RETRIES}): {e}"
+            f"Error processing document {document_uuid} (try {job_try}/{MAX_RETRIES}): {e}"
         )
         if job_try >= MAX_RETRIES:
             # Final attempt exhausted — record the failure so the
             # document is never left stuck in a processing state. The
             # raw exception stays in the log; the persisted message is
             # generic so internal error details never reach the client.
-            document = _mark_failed(
-                document_uuid, GENERIC_PROCESSING_FAILURE
-            )
+            document = _mark_failed(document_uuid, GENERIC_PROCESSING_FAILURE)
             if document is not None:
                 _schedule_webhook(WebhookEvent.FAILED, document)
             raise
@@ -415,8 +423,7 @@ async def _enqueue_with_retry(document_id: UUID) -> None:
         except Exception as e:  # noqa: BLE001 - any enqueue failure is retried
             last_error = e
             logger.warning(
-                f"Enqueue attempt {attempt + 1}/{_ENQUEUE_RETRIES} "
-                f"failed for {document_id}: {e}"
+                f"Enqueue attempt {attempt + 1}/{_ENQUEUE_RETRIES} failed for {document_id}: {e}"
             )
             if attempt < _ENQUEUE_RETRIES - 1:
                 await asyncio.sleep(_ENQUEUE_BACKOFF_SECONDS * (2**attempt))
@@ -445,7 +452,7 @@ def process_document_sync(document_id: UUID) -> None:
     except Exception as e:  # noqa: BLE001 - record the failure then re-raise
         # The detail goes to the log; the document gets the same generic message
         # the arq path records, because `error_message` is returned by the API
-        # and rendered on the documents page. A psycopg2 or boto3 exception names
+        # and rendered on the documents page. A psycopg or boto3 exception names
         # the database host, its container IP, the port and the database user —
         # none of which the user can act on.
         logger.error(f"Synchronous processing failed for {document_id}: {e}")
@@ -519,9 +526,7 @@ async def _worker_is_alive(redis) -> bool:
         return False
 
 
-async def _recover_stale_document(
-    document: DocumentDB, redis, *, worker_alive: bool
-) -> None:
+async def _recover_stale_document(document: DocumentDB, redis, *, worker_alive: bool) -> None:
     """Re-enqueue (bounded) or fail a single stale document.
 
     Split out of the sweep so the cron body only ever owns the query/commit
@@ -542,9 +547,7 @@ async def _recover_stale_document(
             await redis.expire(budget_key, STALE_RECOVER_COUNTER_TTL_SECONDS)
     except Exception as e:  # noqa: BLE001 - budget is best-effort
         # Cannot bound the retries, so do not start one: fail now.
-        logger.warning(
-            f"Stale-recovery budget unavailable for {document.id}: {e}"
-        )
+        logger.warning(f"Stale-recovery budget unavailable for {document.id}: {e}")
         _mark_stale_failed(document)
         return
 
@@ -636,24 +639,15 @@ async def recover_stale_documents(ctx: dict) -> None:
     try:
         stale = (
             db.query(DocumentDB)
-            .filter(
-                DocumentDB.status.in_(
-                    [DocumentStatus.PENDING, DocumentStatus.PROCESSING]
-                )
-            )
+            .filter(DocumentDB.status.in_([DocumentStatus.PENDING, DocumentStatus.PROCESSING]))
             .filter(DocumentDB.created_at < cutoff)
             .all()
         )
         for document in stale:
-            await _recover_stale_document(
-                document, redis=redis, worker_alive=worker_alive
-            )
+            await _recover_stale_document(document, redis=redis, worker_alive=worker_alive)
         if stale:
             db.commit()
-            logger.info(
-                f"Recovered {len(stale)} stale document(s) "
-                f"(worker_alive={worker_alive})"
-            )
+            logger.info(f"Recovered {len(stale)} stale document(s) (worker_alive={worker_alive})")
     finally:
         db.close()
 

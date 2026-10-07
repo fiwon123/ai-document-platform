@@ -47,8 +47,7 @@ const token = (body: string, name: string): string => {
   return m[1].trim();
 };
 
-const hasToken = (body: string, name: string): boolean =>
-  new RegExp(`${name}\\s*:`).test(body);
+const hasToken = (body: string, name: string): boolean => new RegExp(`${name}\\s*:`).test(body);
 
 const light = ruleBody(":root");
 const dark = ruleBody(':root\\[data-theme\\="dark"\\]');
@@ -66,7 +65,13 @@ const themed = (theme: "light" | "dark", name: string): string =>
 const parseColor = (value: string): [number, number, number] => {
   const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
   if (hex) {
-    const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+    const full =
+      hex.length === 3
+        ? hex
+            .split("")
+            .map((c) => c + c)
+            .join("")
+        : hex;
     return [
       parseInt(full.slice(0, 2), 16),
       parseInt(full.slice(2, 4), 16),
@@ -90,9 +95,7 @@ const luminance = ([r, g, b]: [number, number, number]): number => {
 };
 
 const contrast = (a: string, b: string): number => {
-  const sorted = [luminance(parseColor(a)), luminance(parseColor(b))].sort(
-    (x, y) => y - x,
-  );
+  const sorted = [luminance(parseColor(a)), luminance(parseColor(b))].sort((x, y) => y - x);
   const hi = sorted[0];
   const lo = sorted[1];
   if (hi === undefined || lo === undefined) {
@@ -110,8 +113,7 @@ const mix = (over: string, pct: number, under: string): string => {
 };
 
 /** The alpha of a `rgb(r g b / a)` declaration, or 1 for an opaque colour. */
-const alphaOf = (value: string): number =>
-  Number(value.match(/\/\s*([\d.]+)\s*\)/)?.[1] ?? "1");
+const alphaOf = (value: string): number => Number(value.match(/\/\s*([\d.]+)\s*\)/)?.[1] ?? "1");
 
 const white = "#ffffff";
 const ACCENTS = ["blue", "violet", "green", "amber", "rose"] as const;
@@ -136,9 +138,7 @@ describe("accent step-number badges", () => {
     // block re-declared the solid fill it would drift light and reintroduce the
     // 1.67:1 amber. Only --card-accent is allowed to change with the theme.
     for (const accent of ACCENTS) {
-      const body = ruleBody(
-        `:root\\[data-theme="dark"\\] \\[data-accent="${accent}"\\]`,
-      );
+      const body = ruleBody(`:root\\[data-theme="dark"\\] \\[data-accent="${accent}"\\]`);
       expect(
         hasToken(body, "--card-accent-solid"),
         `dark ${accent} block re-declares the solid fill`,
@@ -156,9 +156,7 @@ describe("accent step-number badges", () => {
       "\\.pipeline-outcome-label",
     ]) {
       const rule = ruleBody(selector);
-      expect(rule, `${selector} not found`).toMatch(
-        /background:\s*var\(--card-accent-solid/,
-      );
+      expect(rule, `${selector} not found`).toMatch(/background:\s*var\(--card-accent-solid/);
       expect(rule, `${selector} still uses --card-accent as a fill`).not.toMatch(
         /var\(--card-accent[,)]/,
       );
@@ -171,9 +169,7 @@ describe("accent step-number badges", () => {
     // Matched against the stylesheet rather than one rule body: the fill's
     // geometry is shared with the track in one grouped selector and its colour
     // is in the block below, so no single `{}` holds both.
-    expect(css).toMatch(
-      /\.pipeline-rail-fill\s*\{[\s\S]*?var\(--blue\)[\s\S]*?var\(--green\)/,
-    );
+    expect(css).toMatch(/\.pipeline-rail-fill\s*\{[\s\S]*?var\(--blue\)[\s\S]*?var\(--green\)/);
 
     // #582 removed `.pipeline-stage::before`, the per-card accent bar that
     // predates it. Both were 3px at the same x, so each card painted its own
@@ -190,9 +186,7 @@ describe("accent step-number badges", () => {
     // a white numeral cannot survive them. It was true while the badge painted
     // --card-accent, and became exactly backwards once the fill was pinned dark
     // — dark ink on a dark fill, 2.51:1.
-    expect(css).not.toMatch(
-      /:root\[data-theme="dark"\]\s*\.landing-step-number\s*\{/,
-    );
+    expect(css).not.toMatch(/:root\[data-theme="dark"\]\s*\.landing-step-number\s*\{/);
   });
 });
 
@@ -245,10 +239,7 @@ describe("tinted badges take the text step, not the fill step", () => {
   });
 
   it("uses the text steps for the success notices", () => {
-    for (const selector of [
-      "\\.success-message",
-      "\\.webhook-notice-success",
-    ]) {
+    for (const selector of ["\\.success-message", "\\.webhook-notice-success"]) {
       const rule = ruleBody(selector);
       expect(rule, `${selector} not found`).toMatch(/color:\s*var\(--green-text\)/);
       expect(rule).not.toMatch(/color:\s*var\(--success/);
@@ -290,9 +281,7 @@ describe("small secondary text on raised panels", () => {
     ]) {
       const rule = ruleBody(selector);
       expect(rule, `${selector} not found`).toMatch(/color:\s*var\(--ink\)/);
-      expect(rule, `${selector} still uses --muted`).not.toMatch(
-        /color:\s*var\(--muted\)/,
-      );
+      expect(rule, `${selector} still uses --muted`).not.toMatch(/color:\s*var\(--muted\)/);
     }
   });
 
@@ -316,10 +305,7 @@ describe("small secondary text on raised panels", () => {
       ["light", light],
       ["dark", dark],
     ] as const) {
-      const ratio = contrast(
-        token(body, "--code-string"),
-        token(body, "--code-bg"),
-      );
+      const ratio = contrast(token(body, "--code-string"), token(body, "--code-bg"));
       expect(
         ratio,
         `${theme} code string is ${ratio.toFixed(2)}:1, needs 4.5:1`,
@@ -334,10 +320,7 @@ describe("scrims that carry light text", () => {
     // landed on a mid-grey field at 2.84:1. A scrim that satisfies every
     // structural check while being transparent is the same failure, so assert
     // the composited result rather than just the reference.
-    for (const selector of [
-      "\\.carousel-count",
-      "\\.filter-chip\\.is-selected \\.chip-count",
-    ]) {
+    for (const selector of ["\\.carousel-count", "\\.filter-chip\\.is-selected \\.chip-count"]) {
       const rule = ruleBody(selector);
       const scrim = token(rule, "background");
       const label = token(rule, "color");

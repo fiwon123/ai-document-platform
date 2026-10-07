@@ -38,22 +38,16 @@ export type ViewTransitionLike = {
  * Only rejections are swallowed — a promise that resolves is left alone, and
  * the returned transition object is not modified.
  */
-export function ignoreTransitionRejection(
-  transition: ViewTransitionLike,
-): void {
+export function ignoreTransitionRejection(transition: ViewTransitionLike): void {
   transition.updateCallbackDone?.catch(() => {});
   transition.ready?.catch(() => {});
   transition.finished?.catch(() => {});
 }
 
 /** Returns `document.startViewTransition`, or null where the API is absent. */
-export function getViewTransitionStart():
-  | ((update: () => void) => ViewTransitionLike)
-  | null {
+export function getViewTransitionStart(): ((update: () => void) => ViewTransitionLike) | null {
   const doc = document as unknown as {
     startViewTransition?: (update: () => void) => ViewTransitionLike;
   };
-  return typeof doc.startViewTransition === "function"
-    ? doc.startViewTransition.bind(doc)
-    : null;
+  return typeof doc.startViewTransition === "function" ? doc.startViewTransition.bind(doc) : null;
 }

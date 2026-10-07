@@ -57,9 +57,7 @@ function getRemainingLifetime(token: string): number | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(
-    localStorage.getItem("token"),
-  );
+  const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
   // With no token there is nothing to verify on mount, so the provider
   // starts "loaded"; with a token it starts loading until /auth/me resolves.
   const [isLoading, setIsLoading] = useState(() => token !== null);
@@ -144,10 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // over it destroys a session for no reason (#579). The backoff is
         // capped, so an unreachable backend is polled about twice a minute.
         attempt += 1;
-        const delayMs = Math.min(
-          ME_RETRY_BASE_MS * 2 ** (attempt - 1),
-          ME_RETRY_MAX_MS,
-        );
+        const delayMs = Math.min(ME_RETRY_BASE_MS * 2 ** (attempt - 1), ME_RETRY_MAX_MS);
         retryTimer = window.setTimeout(() => void verify(), delayMs);
         return;
       }
@@ -172,11 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     scheduleProactiveRefresh(response.expires_in);
   };
 
-  const register = async (
-    username: string,
-    password: string,
-    confirmPassword: string,
-  ) => {
+  const register = async (username: string, password: string, confirmPassword: string) => {
     await auth.register(username, password, confirmPassword);
   };
 

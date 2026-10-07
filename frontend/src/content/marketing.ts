@@ -17,17 +17,13 @@ export type Feature = { title: string; body: string; icon: string; accent: Accen
 /* ------------------------------------------------------------------ icons */
 
 export const ICONS = {
-  upload:
-    "M12 16V4m0 0L7 9m5-5l5 5M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2",
-  search:
-    "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm10 2-4.35-4.35",
+  upload: "M12 16V4m0 0L7 9m5-5l5 5M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2",
+  search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm10 2-4.35-4.35",
   chat: "M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z",
-  shield:
-    "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z",
+  shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z",
   bolt: "M13 2 4 14h6l-1 8 9-12h-6l1-8Z",
   bulk: "M4 7h16M4 12h16M4 17h10",
-  export:
-    "M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2",
+  export: "M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2",
   webhook:
     "M18 16.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm-12 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm6-9a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm-5 2 2.5 3.5M15 9.5l2.5 3.5",
   lock: "M7 11V7a5 5 0 0 1 10 0v4M5 11h14v10H5V11Z",
@@ -38,8 +34,7 @@ export const ICONS = {
 };
 
 export const STEP_ICONS = {
-  upload:
-    "M12 16V4m0 0L7 9m5-5l5 5M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2",
+  upload: "M12 16V4m0 0L7 9m5-5l5 5M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2",
   search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm10 2-4.35-4.35",
   chat: "M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z",
 };
@@ -177,7 +172,11 @@ export const PIPELINE_STAGES = [
     summary: "A background worker pulls the text out of the file.",
     detail:
       "The worker reads the object back, extracts text according to the format (PDF text layers, plain text, structured JSON), and renders a first-page thumbnail for PDFs. A document that cannot be parsed is marked failed with the reason attached rather than retried silently forever.",
-    facts: ["Asynchronous arq worker", "Failed documents surface the error", "PDF thumbnails rendered"],
+    facts: [
+      "Asynchronous arq worker",
+      "Failed documents surface the error",
+      "PDF thumbnails rendered",
+    ],
     outcome:
       "Real text you can read back, plus a first-page preview so you can check the file landed correctly.",
   },
@@ -188,7 +187,11 @@ export const PIPELINE_STAGES = [
     summary: "The text is split into passages that fit a model's context.",
     detail:
       "Long documents are split into overlapping chunks with their position and page metadata preserved. Chunking is what makes retrieval useful: a search result can point at a specific passage instead of a whole file, and an answer can quote the exact lines it came from.",
-    facts: ["Overlapping windows", "Page + position metadata kept", "Chunk count visible per document"],
+    facts: [
+      "Overlapping windows",
+      "Page + position metadata kept",
+      "Chunk count visible per document",
+    ],
     outcome:
       "Answers that quote a specific passage and page, instead of paraphrasing a whole file.",
   },

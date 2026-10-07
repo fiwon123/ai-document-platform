@@ -51,9 +51,7 @@ function stubRect(element: HTMLElement, rect: Partial<DOMRect>) {
 
 function Harness() {
   const { ref, progress, style } = useScrollProgress<HTMLDivElement>();
-  return (
-    <div ref={ref} style={style} data-testid="track" data-progress={progress} />
-  );
+  return <div ref={ref} style={style} data-testid="track" data-progress={progress} />;
 }
 
 /** The value the CSS custom property carries — what the rail actually renders. */

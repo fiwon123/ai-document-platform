@@ -80,3 +80,137 @@ def test_check_functions_sanitize_internal_errors(monkeypatch):
     assert "10.0.0.7" not in str(database_result)
 
     assert logger_mock.exception.call_count == 3
+
+
+# --- #682: a reachable database with no schema is not healthy --------------
+#
+# `SELECT 1` succeeds against an empty database, so the original check reported
+# "healthy" for a server that had no tables at all -- while every
+# table-dependent request returned 500. These tests pin the corrected
+# behaviour, and the last one deliberately builds the real failing state rather
+# than mocking it: a guard that has only ever been seen to pass is untested.
+
+
+def _schema_session(*, table_present: bool):
+    """A session whose connectivity succeeds but whose schema is absent/present.
+
+    Distinguishes the two statements by SQL text: `SELECT 1` always succeeds,
+    the `to_regclass` probe returns the configured answer.
+    """
+    session = MagicMock()
+
+    def _execute(statement, *args, **kwargs):
+        sql = str(statement)
+        if "to_regclass" in sql:
+            result = MagicMock()
+            result.scalar.return_value = table_present
+            return result
+        result = MagicMock()
+        result.scalar.return_value = 1
+        return result
+
+    session.execute.side_effect = _execute
+    return session
+
+
+def test_check_database_unhealthy_when_schema_missing(monkeypatch):
+    """Reachable database, no `users` table -> unhealthy, not healthy."""
+    from app.routes import health as hr
+
+    logger_mock = MagicMock()
+    monkeypatch.setattr(hr, "logger", logger_mock)
+
+    result = hr.check_database(_schema_session(table_present=False))
+
+    assert result["status"] == "unhealthy"
+    # The message has to tell an operator what to *do*; "Database check failed"
+    # sends them to investigate connectivity instead.
+    assert "migration" in result["error"].lower()
+
+
+def test_check_database_healthy_when_schema_present(monkeypatch):
+    """No regression: a migrated database is still healthy."""
+    from app.routes import health as hr
+
+    result = hr.check_database(_schema_session(table_present=True))
+
+    assert result == {"status": "healthy"}
+
+
+def test_check_database_unhealthy_when_schema_probe_itself_errors(monkeypatch):
+    """A failing schema probe is unhealthy, never silently healthy."""
+    from app.routes import health as hr
+
+    logger_mock = MagicMock()
+    monkeypatch.setattr(hr, "logger", logger_mock)
+
+    session = MagicMock()
+
+    def _execute(statement, *args, **kwargs):
+        if "to_regclass" in str(statement):
+            raise RuntimeError("catalog lookup failed")
+        result = MagicMock()
+        result.scalar.return_value = 1
+        return result
+
+    session.execute.side_effect = _execute
+
+    result = hr.check_database(session)
+
+    assert result["status"] == "unhealthy"
+    assert result["error"] == "Database check failed"
+    assert "catalog lookup failed" not in str(result)
+    assert logger_mock.exception.call_count == 1
+
+
+def test_health_returns_503_when_schema_missing(client, monkeypatch):
+    """End-to-end: the probe reports degraded, so orchestrators stop routing."""
+    import app.routes.health as hr
+
+    monkeypatch.setattr(hr, "check_database", lambda db: {
+        "status": "unhealthy",
+        "error": "Database schema missing (migrations not applied)",
+    })
+    monkeypatch.setattr(hr, "check_redis", lambda: {"status": "healthy"})
+    monkeypatch.setattr(hr, "check_worker", lambda: {"status": "healthy"})
+    monkeypatch.setattr(hr, "check_storage", lambda: {"status": "healthy"})
+
+    resp = client.get("/v1/health")
+
+    assert resp.status_code == 503, resp.text
+    body = resp.json()
+    assert body["status"] == "degraded"
+    assert body["services"]["database"]["status"] == "unhealthy"
+
+
+def test_health_probe_fails_when_schema_actually_absent(db_session, monkeypatch):
+    """The real check against a database genuinely missing its schema.
+
+    Every other test here mocks `check_database`, which cannot catch the check
+    itself being wrong -- the failure mode of #638, #673, #671 and #678, all
+    gates that never fired. So this drops the application's own table and asks
+    the real `check_database` to notice.
+
+    The table is restored afterwards: `db_session` yields a live session on the
+    shared test database, and leaving it dropped would turn every later
+    database-backed test in the run into a `UndefinedTable` error.
+    """
+    from sqlalchemy import text
+
+    from app.routes import health as hr
+
+    db_session.execute(text("ALTER TABLE users RENAME TO users__healthcheck_backup"))
+    try:
+        result = hr.check_database(db_session)
+        assert result["status"] == "unhealthy", (
+            "check_database reported healthy for a database with no users table -- "
+            "this is exactly the #682 failure"
+        )
+        assert "migration" in result["error"].lower()
+    finally:
+        # No rollback here: it would undo the rename above, and the restore
+        # would then target a table that no longer exists. Both statements share
+        # one transaction, so renaming back inside `finally` is what leaves the
+        # database as it was found.
+        db_session.execute(text("ALTER TABLE users__healthcheck_backup RENAME TO users"))
+        db_session.commit()

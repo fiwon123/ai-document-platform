@@ -14,6 +14,14 @@ router = APIRouter(tags=["health"])
 
 logger = logging.getLogger(__name__)
 
+# A single table the application cannot function without. Probing for one known
+# name is deliberately not an exhaustive schema check: `documents` or
+# `refresh_sessions` could be absent while this one exists. What it does catch
+# is the failure that matters at boot -- a database that has never been migrated,
+# or whose tables were dropped -- which is the case where every request fails at
+# once. Reporting an absent *any* table as healthy is what made #682 invisible.
+REQUIRED_TABLE = "users"
+
 
 @router.get("/health")
 def health_check(db: Annotated[Session, Depends(get_db)]):
@@ -34,10 +42,7 @@ def health_check(db: Annotated[Session, Depends(get_db)]):
         },
     }
 
-    all_healthy = all(
-        service["status"] == "healthy"
-        for service in checks["services"].values()
-    )
+    all_healthy = all(service["status"] == "healthy" for service in checks["services"].values())
 
     if not all_healthy:
         checks["status"] = "degraded"
@@ -49,14 +54,56 @@ def health_check(db: Annotated[Session, Depends(get_db)]):
 
 
 def check_database(db: Session) -> dict:
+    """Report whether the database is reachable *and* migrated.
+
+    `SELECT 1` alone is not enough. It answers "is there a server?", and a live
+    connection to an empty database answers that just as happily as a working
+    one -- so a database whose tables are missing reads healthy here while every
+    table-dependent request returns 500.
+
+    That state is reachable in practice, not hypothetically: a stale
+    ``alembic_version`` stamp alongside absent tables makes ``alembic upgrade
+    head`` a no-op, so the entrypoint that exists to prevent a missing schema
+    passes straight over it (#682). This endpoint is what K8s probes and load
+    balancers key off, so a false "healthy" here means traffic is routed to an
+    API that 500s on every authenticated request.
+
+    So check for a table the app actually requires. ``to_regclass`` is a
+    catalog lookup: cheap, and no error when the table is absent.
+    """
     try:
         db.execute(text("SELECT 1"))
-        return {"status": "healthy"}
     except Exception:
         # Log the real cause for operators; the external probe only needs
         # to know the dependency is down (never leak internals).
         logger.exception("Health check failed: database")
         return {"status": "unhealthy", "error": "Database check failed"}
+
+    try:
+        present = db.execute(
+            text("SELECT to_regclass(:table) IS NOT NULL"),
+            {"table": REQUIRED_TABLE},
+        ).scalar()
+    except Exception:
+        logger.exception("Health check failed: database schema probe")
+        return {"status": "unhealthy", "error": "Database check failed"}
+
+    if not present:
+        # Not an error, so not logged as one: the database is up and answering,
+        # it simply has no schema. Say so plainly -- an operator reading this
+        # needs "run the migrations", and "Database check failed" sends them
+        # looking at connectivity instead. No internals leak; the table name is
+        # a fixed constant, not user input or configuration.
+        logger.warning(
+            "Health check: table %r is missing -- migrations have not been applied",
+            REQUIRED_TABLE,
+        )
+        return {
+            "status": "unhealthy",
+            "error": "Database schema missing (migrations not applied)",
+        }
+
+    return {"status": "healthy"}
 
 
 def check_redis() -> dict:

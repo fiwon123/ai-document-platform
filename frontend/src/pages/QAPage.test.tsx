@@ -30,8 +30,7 @@ const mockedGetModels = vi.mocked(qa.getModels);
 /** Matches full textContent — needed when the preview is split into
  *  <mark>/<span> children by query-term highlighting. */
 function byFullText(text: string) {
-  return (_content: string, element: Element | null) =>
-    element?.textContent === text;
+  return (_content: string, element: Element | null) => element?.textContent === text;
 }
 
 function ask(
@@ -52,10 +51,9 @@ function ask(
 
 async function askQuestion(question: string) {
   renderWithClient(<QAPage />);
-  fireEvent.change(
-    screen.getByPlaceholderText("Ask a question about your documents..."),
-    { target: { value: question } },
-  );
+  fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+    target: { value: question },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await act(async () => {});
 }
@@ -126,27 +124,20 @@ describe("QAPage", () => {
   });
 
   it("renders the user question, the answer, and the answering model", async () => {
-    ask(
-      "What is AskDocs?",
-      "AskDocs is a document intelligence platform.",
-      "gpt-4o-mini",
-    );
+    ask("What is AskDocs?", "AskDocs is a document intelligence platform.", "gpt-4o-mini");
 
     renderWithClient(<QAPage />);
 
-    fireEvent.change(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-      { target: { value: "What is AskDocs?" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+      target: { value: "What is AskDocs?" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(await screen.findByText("What is AskDocs?")).toBeInTheDocument();
     expect(
       await screen.findByText("AskDocs is a document intelligence platform."),
     ).toBeInTheDocument();
-    expect(
-      await screen.findByText("Answered by gpt-4o-mini"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Answered by gpt-4o-mini")).toBeInTheDocument();
   });
 
   it("omits the model badge when the model is null", async () => {
@@ -154,10 +145,9 @@ describe("QAPage", () => {
 
     renderWithClient(<QAPage />);
 
-    fireEvent.change(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-      { target: { value: "Hi" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+      target: { value: "Hi" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(await screen.findByText("Hello! How can I help?")).toBeInTheDocument();
@@ -167,11 +157,7 @@ describe("QAPage", () => {
   it("shows an empty state before any question is asked", () => {
     renderWithClient(<QAPage />);
     expect(screen.getByText("No messages yet")).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Ask a question about your documents to get started.",
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText("Ask a question about your documents to get started.")).toBeTruthy();
   });
 
   it("disables Send when the input is empty or whitespace", () => {
@@ -179,16 +165,14 @@ describe("QAPage", () => {
     const send = screen.getByRole("button", { name: "Send" });
     expect(send).toBeDisabled();
 
-    fireEvent.change(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-      { target: { value: "   " } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+      target: { value: "   " },
+    });
     expect(send).toBeDisabled();
 
-    fireEvent.change(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-      { target: { value: "hello" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+      target: { value: "hello" },
+    });
     expect(send).toBeEnabled();
   });
 
@@ -203,9 +187,8 @@ describe("QAPage", () => {
     ask("Hello", "Hi there!", null);
     await askQuestion("Hello");
     expect(
-      (screen.getByPlaceholderText(
-        "Ask a question about your documents...",
-      ) as HTMLInputElement).value,
+      (screen.getByPlaceholderText("Ask a question about your documents...") as HTMLInputElement)
+        .value,
     ).toBe("");
   });
 
@@ -218,18 +201,15 @@ describe("QAPage", () => {
     );
 
     renderWithClient(<QAPage />);
-    fireEvent.change(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-      { target: { value: "Loading?" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+      target: { value: "Loading?" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(screen.getByText("Thinking…")).toBeTruthy();
     expect(screen.getByRole("status", { name: "Thinking" })).toBeTruthy();
     // Fields are disabled while the request is in flight.
-    expect(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-    ).toBeDisabled();
+    expect(screen.getByPlaceholderText("Ask a question about your documents...")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
 
     await act(async () => {
@@ -249,22 +229,19 @@ describe("QAPage", () => {
   });
 
   it("clears a previous error before the next request", async () => {
-    mockedAsk
-      .mockRejectedValueOnce(new Error("AI service unavailable"))
-      .mockResolvedValueOnce({
-        question: "Retry",
-        answer: "Recovered.",
-        sources: [],
-        model: null,
-      });
+    mockedAsk.mockRejectedValueOnce(new Error("AI service unavailable")).mockResolvedValueOnce({
+      question: "Retry",
+      answer: "Recovered.",
+      sources: [],
+      model: null,
+    });
 
     await askQuestion("First");
     expect(screen.getByText("AI service unavailable")).toBeTruthy();
 
-    fireEvent.change(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-      { target: { value: "Retry" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+      target: { value: "Retry" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await act(async () => {});
 
@@ -286,19 +263,16 @@ describe("QAPage", () => {
     ask("What is the revenue growth?", "20% in Q4.", "gpt-4o-mini", sources);
 
     renderWithClient(<QAPage />);
-    fireEvent.change(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-      { target: { value: "What is the revenue growth?" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+      target: { value: "What is the revenue growth?" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(await screen.findByText(/Sources — why this document/)).toBeTruthy();
     expect(screen.getByText("annual-report.pdf")).toBeTruthy();
     // 0.93 distance → 7% similarity → the weak tone chip.
     expect(screen.getByText("7% match")).toBeTruthy();
-    expect(
-      screen.getByText(/closest semantic match to your question/),
-    ).toBeTruthy();
+    expect(screen.getByText(/closest semantic match to your question/)).toBeTruthy();
     expect(
       screen.getByText(byFullText("Revenue grew by 20% in Q4 across all segments.")),
     ).toBeTruthy();
@@ -320,11 +294,7 @@ describe("QAPage", () => {
     });
 
     await askQuestion("Model?");
-    expect(mockedAsk).toHaveBeenCalledWith(
-      "Model?",
-      undefined,
-      "gpt-4-turbo",
-    );
+    expect(mockedAsk).toHaveBeenCalledWith("Model?", undefined, "gpt-4-turbo");
   });
 
   it("sends undefined model when nothing is saved in localStorage", async () => {
@@ -398,10 +368,9 @@ describe("QAPage", () => {
     await act(async () => {});
 
     fireEvent.click(await screen.findByRole("button", { name: /report.pdf/ }));
-    fireEvent.change(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-      { target: { value: "Only this doc?" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+      target: { value: "Only this doc?" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await act(async () => {});
 
@@ -413,10 +382,9 @@ describe("QAPage", () => {
     await askQuestion("First?");
 
     ask("Second?", "Second answer.", null);
-    fireEvent.change(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-      { target: { value: "Second?" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+      target: { value: "Second?" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await act(async () => {});
 
@@ -430,10 +398,9 @@ describe("QAPage", () => {
     ask("Format?", "**bold** and `code`", null);
 
     renderWithClient(<QAPage />);
-    fireEvent.change(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-      { target: { value: "Format?" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+      target: { value: "Format?" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(await screen.findByText("bold")).toBeInTheDocument();
@@ -444,10 +411,9 @@ describe("QAPage", () => {
     ask("Who are you?", "An assistant.", null);
 
     renderWithClient(<QAPage />);
-    fireEvent.change(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-      { target: { value: "Who are you?" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+      target: { value: "Who are you?" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(await screen.findByText("Who are you?")).toBeTruthy();
@@ -468,15 +434,9 @@ describe("QAPage", () => {
     await act(async () => {});
 
     const select = screen.getByLabelText("Model");
-    expect(
-      screen.getByRole("option", { name: "openai/gpt-oss-120b" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("option", { name: "llama-3.3-70b-versatile" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("option", { name: "gpt-4o-mini" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("option", { name: "openai/gpt-oss-120b" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "llama-3.3-70b-versatile" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "gpt-4o-mini" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "gpt-4o" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "Provider default" })).toBeTruthy();
     expect((select as HTMLSelectElement).value).toBe("");
@@ -494,27 +454,20 @@ describe("QAPage", () => {
     });
     expect(localStorage.getItem("askdocs-model")).toBe("gpt-4o-mini");
 
-    fireEvent.change(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-      { target: { value: "Model picker?" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+      target: { value: "Model picker?" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await act(async () => {});
 
-    expect(mockedAsk).toHaveBeenCalledWith(
-      "Model picker?",
-      undefined,
-      "gpt-4o-mini",
-    );
+    expect(mockedAsk).toHaveBeenCalledWith("Model picker?", undefined, "gpt-4o-mini");
   });
 
   it("submits a suggested question from the empty state", async () => {
     ask("Which documents mention security?", "Security is covered.", null);
 
     renderWithClient(<QAPage />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Which documents mention security?" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Which documents mention security?" }));
     await act(async () => {});
 
     expect(mockedAsk).toHaveBeenCalledWith(
@@ -530,22 +483,14 @@ describe("QAPage", () => {
     await askQuestion("First?");
 
     ask("Can you elaborate on that?", "Elaboration.", null);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Can you elaborate on that?" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Can you elaborate on that?" }));
     await act(async () => {});
 
-    expect(mockedAsk).toHaveBeenLastCalledWith(
-      "Can you elaborate on that?",
-      undefined,
-      undefined,
-    );
+    expect(mockedAsk).toHaveBeenLastCalledWith("Can you elaborate on that?", undefined, undefined);
     // Both turns remain on screen.
     expect(screen.getByText("First answer.")).toBeTruthy();
     expect(screen.getByText("Elaboration.")).toBeTruthy();
-    expect(
-      screen.getByText("What are the key takeaways?"),
-    ).toBeTruthy();
+    expect(screen.getByText("What are the key takeaways?")).toBeTruthy();
   });
 
   it("copies an answer to the clipboard with feedback", async () => {
@@ -557,10 +502,9 @@ describe("QAPage", () => {
     ask("Copy?", "Copyable answer text.", null);
 
     renderWithClient(<QAPage />);
-    fireEvent.change(
-      screen.getByPlaceholderText("Ask a question about your documents..."),
-      { target: { value: "Copy?" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Ask a question about your documents..."), {
+      target: { value: "Copy?" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await act(async () => {});
 
@@ -627,9 +571,7 @@ describe("QAPage keyword-only retrieval", () => {
     await askQuestion("q");
 
     const text = document.querySelector(".search-mode-notice")?.textContent ?? "";
-    expect(text).toMatch(
-      /LOCAL_LLM_ENABLED=true[\s\S]*local model server[\s\S]*free/i
-    );
+    expect(text).toMatch(/LOCAL_LLM_ENABLED=true[\s\S]*local model server[\s\S]*free/i);
     // The limitation must be attributed to Groq, not left with no subject.
     expect(text).toMatch(/GROQ_API_KEY[\s\S]*cannot supply embeddings/i);
   });
@@ -666,22 +608,18 @@ describe("QAPage rate limits (#499)", () => {
 
   /** The error the backend sends for a question the provider refused. */
   function rateLimited(retryAfterSeconds = 17) {
-    return new ApiError(
-      429,
-      "The groq provider is rate limited. Please retry in 17 seconds.",
-      {
-        code: "provider_rate_limited",
-        details: {
-          provider: "groq",
-          scope: "minute",
-          limit: 30,
-          used: 30,
-          source: "provider",
-          retry_after: retryAfterSeconds,
-        },
-        retryAfterSeconds,
+    return new ApiError(429, "The groq provider is rate limited. Please retry in 17 seconds.", {
+      code: "provider_rate_limited",
+      details: {
+        provider: "groq",
+        scope: "minute",
+        limit: 30,
+        used: 30,
+        source: "provider",
+        retry_after: retryAfterSeconds,
       },
-    );
+      retryAfterSeconds,
+    });
   }
 
   it("shows a temporary notice with the wait, not the provider's message", async () => {
@@ -731,8 +669,7 @@ describe("QAPage rate limits (#499)", () => {
     // One render, two asks: `askQuestion` renders a fresh page each time, so a
     // second call would mount a second copy and the queries would match both.
     renderWithClient(<QAPage />);
-    const box = () =>
-      screen.getByPlaceholderText("Ask a question about your documents...");
+    const box = () => screen.getByPlaceholderText("Ask a question about your documents...");
     const send = async (question: string) => {
       fireEvent.change(box(), { target: { value: question } });
       fireEvent.click(screen.getByRole("button", { name: "Send" }));

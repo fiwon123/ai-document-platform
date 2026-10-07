@@ -283,7 +283,7 @@ def refresh_access_token(
         user_id = UUID(payload.get("id", ""))
         jti = str(payload.get("jti", ""))
         expires_at = datetime.fromtimestamp(payload["exp"], tz=UTC)
-    except (JWTError, ValueError, TypeError, KeyError):
+    except JWTError, ValueError, TypeError, KeyError:
         # Garbage, expired, malformed, or abused token — clear the cookie
         # and re-auth from scratch.
         _clear_refresh_cookie(response)
@@ -375,7 +375,7 @@ def logout(
         if payload.get("type") != "refresh":
             raise JWTError("Not a refresh token")
         jti = str(payload.get("jti", ""))
-    except (JWTError, ValueError, TypeError):
+    except JWTError, ValueError, TypeError:
         logger.info("Logout presented an unreadable refresh token; nothing to revoke")
         return LogoutResponse(message="Logged out successfully")
 

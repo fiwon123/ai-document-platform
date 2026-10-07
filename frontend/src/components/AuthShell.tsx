@@ -34,13 +34,7 @@ export function AuthShell({
       <main className="auth-shell">
         <aside className="auth-panel" aria-label="About AskDocs">
           <div className="auth-panel-brand">
-            <svg
-              viewBox="0 0 24 24"
-              width="30"
-              height="30"
-              aria-hidden="true"
-              focusable="false"
-            >
+            <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" focusable="false">
               <path
                 d="M6 3h8l4 4v14H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"
                 fill="none"
@@ -90,20 +84,12 @@ export function AuthShell({
             </ul>
           </div>
 
-          <p className="auth-panel-foot">
-            Free to start — no credit card required.
-          </p>
+          <p className="auth-panel-foot">Free to start — no credit card required.</p>
         </aside>
 
         <div className="auth-card">
           <Link to="/" className="auth-back">
-            <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              aria-hidden="true"
-              focusable="false"
-            >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
               <path
                 d="M15 4l-8 8 8 8"
                 fill="none"

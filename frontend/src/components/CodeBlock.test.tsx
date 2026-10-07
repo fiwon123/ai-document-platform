@@ -25,7 +25,7 @@ describe("tokenizeCode", () => {
   });
 
   it("keeps comment text as a single comment token", () => {
-    const tokens = tokenizeCode("url = \"https://x\" # signed", "python");
+    const tokens = tokenizeCode('url = "https://x" # signed', "python");
     expect(tokens.some((t) => t.type === "comment" && t.text === "# signed")).toBe(true);
     expect(tokens.some((t) => t.type === "string" && t.text === '"https://x"')).toBe(true);
   });
@@ -50,8 +50,6 @@ describe("CodeBlock", () => {
     );
     expect(container.querySelector(".tok-keyword")?.textContent).toBe("def");
     expect(container.querySelector(".tok-function")?.textContent).toBe("verify");
-    expect(container.querySelector("pre code")?.textContent).toContain(
-      "hmac.new(secret)",
-    );
+    expect(container.querySelector("pre code")?.textContent).toContain("hmac.new(secret)");
   });
 });

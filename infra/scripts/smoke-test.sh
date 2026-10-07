@@ -20,7 +20,10 @@ CLUSTER_NAME="ai-platform"
 BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:18001}"   # Kind hostPort -> backend NodePort
 FRONTEND_URL="${FRONTEND_URL:-http://127.0.0.1:18080}" # Kind hostPort -> frontend NodePort
 NAMESPACE="ai-platform"
-SMOKE_USER="smoke-$(date +%s)"
+# Note: the register schema (backend/src/app/schemas/user.py) restricts
+# usernames to [a-zA-Z0-9_] and requires confirm_password — a hyphenated or
+# password-only payload 422s and fails every later step (#702).
+SMOKE_USER="smoke_$(date +%s)"
 SMOKE_PASS="SmokeTest-$(date +%s)!"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -258,7 +261,7 @@ echo "==> Smoke: API round-trip (register -> login -> upload -> status -> search
 REGISTER_CODE=$(curl -sS -o /tmp/smoke-register.json -w '%{http_code}' \
   -X POST "${BACKEND_URL}/v1/auth/register" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"${SMOKE_USER}\",\"password\":\"${SMOKE_PASS}\"}" || echo 000)
+  -d "{\"username\":\"${SMOKE_USER}\",\"password\":\"${SMOKE_PASS}\",\"confirm_password\":\"${SMOKE_PASS}\"}" || echo 000)
 if [ "${REGISTER_CODE}" = "200" ] || [ "${REGISTER_CODE}" = "201" ]; then
   ok "register -> ${REGISTER_CODE}"
 else fail "register -> ${REGISTER_CODE}"; fi
@@ -278,7 +281,7 @@ printf 'smoke test document content\n' > /tmp/smoke.txt
 UPLOAD_CODE=$(curl -sS -o /tmp/smoke-upload.json -w '%{http_code}' \
   -X POST "${BACKEND_URL}/v1/documents/" \
   -H "Authorization: Bearer ${TOKEN}" \
-  -F "file=@/tmp/smoke.txt" || echo 000)
+  -F "upload_file=@/tmp/smoke.txt" || echo 000)
 DOC_ID=$(python3 -c "import json;print(json.load(open('/tmp/smoke-upload.json')).get('id',''))" 2>/dev/null || true)
 if [ "${UPLOAD_CODE}" = "201" ] && [ -n "${DOC_ID}" ]; then ok "upload -> ${UPLOAD_CODE} (id ${DOC_ID})";
 else fail "upload -> ${UPLOAD_CODE} (id: ${DOC_ID:-none})"; fi

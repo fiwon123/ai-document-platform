@@ -63,9 +63,11 @@ const MOBILE = 44;
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const mediaBlocks = (feature: "max-width" | "min-width") =>
-  [...css.matchAll(new RegExp(`@media\\s*\\(${feature}:\\s*(\\d+)px\\)\\s*\\{([\\s\\S]*?)\\n\\}`, "g"))].map(
-    (m) => ({ width: Number.parseInt(m[1] ?? "0", 10), body: m[2] ?? "" }),
-  );
+  [
+    ...css.matchAll(
+      new RegExp(`@media\\s*\\(${feature}:\\s*(\\d+)px\\)\\s*\\{([\\s\\S]*?)\\n\\}`, "g"),
+    ),
+  ].map((m) => ({ width: Number.parseInt(m[1] ?? "0", 10), body: m[2] ?? "" }));
 
 const ruleBody = (selector: string): string => {
   const m = css.match(new RegExp(`(?:^|[}\\n])\\s*${escapeRe(selector)}\\s*\\{([^}]*)\\}`));
@@ -140,7 +142,10 @@ describe("touch targets (#442)", () => {
     // themselves get the full 44px here, where this row *is* the primary
     // navigation. The header's section menus — and their triggers — are gone, so
     // there is no longer a disclosure trigger to hold to 44px in this band.
-    const [collapse] = blockContaining("max-width", [".landing-nav-actions .theme-toggle", ".landing-nav-links"]);
+    const [collapse] = blockContaining("max-width", [
+      ".landing-nav-actions .theme-toggle",
+      ".landing-nav-links",
+    ]);
     expect(collapse?.width).toBe(900);
     for (const needle of [".landing-nav-actions .btn", ".landing-nav-links a", ".landing-brand"]) {
       // `[,\\{]` because `.landing-nav-links a,` and `.landing-brand` share one rule.

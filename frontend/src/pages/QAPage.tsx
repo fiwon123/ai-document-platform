@@ -20,10 +20,7 @@ const SUGGESTED_QUESTIONS = [
   "What are the product highlights?",
 ];
 
-const FOLLOW_UPS = [
-  "Can you elaborate on that?",
-  "What are the key takeaways?",
-];
+const FOLLOW_UPS = ["Can you elaborate on that?", "What are the key takeaways?"];
 
 interface Message {
   id: string;
@@ -34,13 +31,13 @@ interface Message {
 }
 
 /** Copy fallback for insecure contexts where navigator.clipboard is missing. */
-  async function copyText(text: string): Promise<void> {
-    if (navigator.clipboard?.writeText) {
-      return navigator.clipboard.writeText(text);
-    }
-    // No-op fallback: keep the button safe (never throws) in non-secure
-    // contexts (e.g. plain-http previews that lack the Clipboard API).
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text);
   }
+  // No-op fallback: keep the button safe (never throws) in non-secure
+  // contexts (e.g. plain-http previews that lack the Clipboard API).
+}
 
 /**
  * Mirrors `question: str = Field(..., max_length=2000)` in
@@ -67,9 +64,7 @@ export function QAPage() {
   // degrades this page too -- and an answer that quietly missed the relevant
   // passage looks exactly like a model that was simply wrong.
   const [isKeywordOnly, setIsKeywordOnly] = useState(false);
-  const [model, setModel] = useState(
-    () => localStorage.getItem(MODEL_KEY) ?? "",
-  );
+  const [model, setModel] = useState(() => localStorage.getItem(MODEL_KEY) ?? "");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   // Monotonic message ids from a ref rather than Date.now(): a wall-clock id
@@ -184,10 +179,7 @@ export function QAPage() {
   }
 
   const lastMessage = messages[messages.length - 1];
-  const showFollowUps =
-    messages.length > 0 &&
-    lastMessage?.type === "assistant" &&
-    !isLoading;
+  const showFollowUps = messages.length > 0 && lastMessage?.type === "assistant" && !isLoading;
 
   return (
     <div className="page qa-page">
@@ -244,12 +236,7 @@ export function QAPage() {
       <div className="chat-container">
         {/* Live region: screen readers announce new messages as they are
             added (role="log" implies aria-live="polite"). */}
-        <div
-          className="chat-messages"
-          role="log"
-          aria-live="polite"
-          aria-relevant="additions"
-        >
+        <div className="chat-messages" role="log" aria-live="polite" aria-relevant="additions">
           {messages.length === 0 && (
             <EmptyState
               title="No messages yet"
@@ -272,9 +259,7 @@ export function QAPage() {
 
           {messages.map((message, index) => (
             <div key={message.id} className={`chat-message ${message.type}`}>
-              <div className="message-avatar">
-                {message.type === "user" ? "U" : "AI"}
-              </div>
+              <div className="message-avatar">{message.type === "user" ? "U" : "AI"}</div>
               <div className="message-content">
                 {message.type === "assistant" ? (
                   <>
@@ -283,9 +268,7 @@ export function QAPage() {
                       className="copy-answer-btn"
                       aria-label="Copy answer"
                       onClick={() => {
-                        void copyText(message.content).then(() =>
-                          setCopiedId(message.id),
-                        );
+                        void copyText(message.content).then(() => setCopiedId(message.id));
                       }}
                       title="Copy the answer to the clipboard"
                     >
@@ -293,9 +276,7 @@ export function QAPage() {
                     </button>
                     <Markdown>{message.content}</Markdown>
                     {message.model && (
-                      <span className="model-badge">
-                        Answered by {message.model}
-                      </span>
+                      <span className="model-badge">Answered by {message.model}</span>
                     )}
                   </>
                 ) : (
@@ -323,8 +304,8 @@ export function QAPage() {
                             <MatchChip pct={(1 - source.score) * 100} />
                           </span>
                           <span className="source-reason">
-                            Why this source: this passage is the closest
-                            semantic match to your question.
+                            Why this source: this passage is the closest semantic match to your
+                            question.
                           </span>
                           <span className="source-preview">
                             <HighlightedText
@@ -378,18 +359,20 @@ export function QAPage() {
           </p>
         )}
 
-        {error && <p className="error-message" role="alert">{error}</p>}
+        {error && (
+          <p className="error-message" role="alert">
+            {error}
+          </p>
+        )}
 
         {isKeywordOnly && (
           <p className="search-mode-notice" role="status">
-            <strong>Keyword-only retrieval.</strong> No embedding provider is
-            configured, so the passages given to the model were found by literal
-            matching. Relevant context can be missing from the answer. Semantic
-            retrieval needs either <code>OPENAI_API_KEY</code>, which bills your
-            OpenAI account per token, or{" "}
-            <code>LOCAL_LLM_ENABLED=true</code> with a local model server, which
-            is free. A free <code>GROQ_API_KEY</code> serves chat models only —
-            it cannot supply embeddings.
+            <strong>Keyword-only retrieval.</strong> No embedding provider is configured, so the
+            passages given to the model were found by literal matching. Relevant context can be
+            missing from the answer. Semantic retrieval needs either <code>OPENAI_API_KEY</code>,
+            which bills your OpenAI account per token, or <code>LOCAL_LLM_ENABLED=true</code> with a
+            local model server, which is free. A free <code>GROQ_API_KEY</code> serves chat models
+            only — it cannot supply embeddings.
           </p>
         )}
 
@@ -417,11 +400,7 @@ export function QAPage() {
               {input.length} / {MAX_QUESTION_LENGTH}
             </span>
           )}
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={isLoading || !input.trim()}
-          >
+          <button type="submit" className="btn btn-primary" disabled={isLoading || !input.trim()}>
             Send
           </button>
         </form>

@@ -25,27 +25,13 @@ import type { Accent } from "../../content/marketing";
  * opacity for the same reason: one colour, two intensities.
  */
 
-export type StageKey =
-  | "upload"
-  | "extract"
-  | "chunk"
-  | "embed"
-  | "search"
-  | "ask";
+export type StageKey = "upload" | "extract" | "chunk" | "embed" | "search" | "ask";
 
 /** Shared geometry. 64×64 viewBox, 1.6 stroke, round caps — one visual weight. */
 const VIEW = 64;
 const SW = 1.6;
 
-const Stroke = ({
-  d,
-  fill = "none",
-  opacity,
-}: {
-  d: string;
-  fill?: string;
-  opacity?: number;
-}) => (
+const Stroke = ({ d, fill = "none", opacity }: { d: string; fill?: string; opacity?: number }) => (
   <path
     d={d}
     fill={fill}
@@ -155,7 +141,10 @@ const scenes: Record<StageKey, () => React.JSX.Element> = {
      passages it was built from. */
   ask: () => (
     <>
-      <Wash d="M10 10h44v32a4 4 0 0 1-4 4H26l-12 9V46h-4a4 4 0 0 1-4-4V14a4 4 0 0 1 4-4Z" opacity={0.09} />
+      <Wash
+        d="M10 10h44v32a4 4 0 0 1-4 4H26l-12 9V46h-4a4 4 0 0 1-4-4V14a4 4 0 0 1 4-4Z"
+        opacity={0.09}
+      />
       <Stroke d="M10 10h44v32a4 4 0 0 1-4 4H26l-12 9V46h-4a4 4 0 0 1-4-4V14a4 4 0 0 1 4-4Z" />
       <Stroke d="M18 22h28M18 31h18" opacity={0.5} />
       {/* The grounding, tied to the bubble: one drop from the bubble's floor to
@@ -171,13 +160,7 @@ const scenes: Record<StageKey, () => React.JSX.Element> = {
   ),
 };
 
-export function StageIllustration({
-  stage,
-  accent,
-}: {
-  stage: StageKey;
-  accent: Accent;
-}) {
+export function StageIllustration({ stage, accent }: { stage: StageKey; accent: Accent }) {
   const scene = scenes[stage];
   if (!scene) return null;
 

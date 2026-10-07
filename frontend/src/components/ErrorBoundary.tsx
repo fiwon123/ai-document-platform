@@ -41,8 +41,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       <div className="error-boundary" role="alert">
         <h2>{title}</h2>
         <p>
-          An unexpected error occurred while rendering this view. Your data is
-          safe — you can retry, or reload the page.
+          An unexpected error occurred while rendering this view. Your data is safe — you can retry,
+          or reload the page.
         </p>
         <pre>{error.message}</pre>
         <div className="error-boundary-actions">

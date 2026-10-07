@@ -54,8 +54,7 @@ async function runSearch(query: string) {
 function byFullText(text: string) {
   // getByText with a string cannot match text split across <mark>/<span>
   // children (query-term highlighting), so match on full textContent.
-  return (_content: string, element: Element | null) =>
-    element?.textContent === text;
+  return (_content: string, element: Element | null) => element?.textContent === text;
 }
 
 describe("SearchPage", () => {
@@ -92,9 +91,7 @@ describe("SearchPage", () => {
     );
 
     renderWithClient(<SearchPage />);
-    const input = screen.getByPlaceholderText(
-      "Search your documents...",
-    ) as HTMLInputElement;
+    const input = screen.getByPlaceholderText("Search your documents...") as HTMLInputElement;
     input.focus();
     fireEvent.change(input, { target: { value: "q3 planning" } });
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
@@ -120,7 +117,9 @@ describe("SearchPage", () => {
   });
 
   it("ignores stale responses when a newer search supersedes an in-flight one", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    });
     try {
       const staleResponse: SearchResponse = {
         query: "first",
@@ -173,7 +172,9 @@ describe("SearchPage", () => {
   });
 
   it("discards an in-flight search when the query is cleared", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    });
     try {
       let resolveSearch: (value: SearchResponse) => void = () => {};
       mockedSearch.mockReturnValue(
@@ -220,7 +221,9 @@ describe("SearchPage", () => {
   });
 
   it("disables load more while a newer search is in flight", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    });
     try {
       mockedSearch
         .mockResolvedValueOnce({
@@ -253,8 +256,7 @@ describe("SearchPage", () => {
       });
 
       expect(
-        (screen.getByRole("button", { name: "Load more results" }) as HTMLButtonElement)
-          .disabled,
+        (screen.getByRole("button", { name: "Load more results" }) as HTMLButtonElement).disabled,
       ).toBe(true);
     } finally {
       vi.useRealTimers();
@@ -271,11 +273,7 @@ describe("SearchPage", () => {
     await runSearch("q3 planning");
 
     expect(screen.getByText("No results found")).toBeTruthy();
-    expect(
-      screen.getByText(
-        'Nothing matched "q3 planning". Try different keywords.',
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText('Nothing matched "q3 planning". Try different keywords.')).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
     expect(screen.queryByText("No results found")).toBeNull();
@@ -302,9 +300,7 @@ describe("SearchPage", () => {
       total_count: 3,
       has_more: false,
     };
-    mockedSearch
-      .mockResolvedValueOnce(firstPage)
-      .mockResolvedValueOnce(secondPage);
+    mockedSearch.mockResolvedValueOnce(firstPage).mockResolvedValueOnce(secondPage);
 
     await runSearch("q3 planning");
     expect(screen.getByText("Results (3)")).toBeTruthy();
@@ -320,9 +316,7 @@ describe("SearchPage", () => {
 
   it("does not show a load-more button when has_more is false", async () => {
     await runSearch("q3 planning");
-    expect(
-      screen.queryByRole("button", { name: "Load more results" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Load more results" })).toBeNull();
   });
 
   it("exports results as CSV with the current query and filters", async () => {
@@ -334,12 +328,7 @@ describe("SearchPage", () => {
 
     // topK matches total_count (capped at the backend's 20) so the whole
     // result set is exported, not just the first page.
-    expect(mockedExportResults).toHaveBeenCalledWith(
-      "q3 planning",
-      "csv",
-      [],
-      1,
-    );
+    expect(mockedExportResults).toHaveBeenCalledWith("q3 planning", "csv", [], 1);
   });
 
   it("exports results as JSON with the current query and filters", async () => {
@@ -349,12 +338,7 @@ describe("SearchPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
     await act(async () => {});
 
-    expect(mockedExportResults).toHaveBeenCalledWith(
-      "q3 planning",
-      "json",
-      [],
-      1,
-    );
+    expect(mockedExportResults).toHaveBeenCalledWith("q3 planning", "json", [], 1);
   });
 
   it("shows an error when the export fails", async () => {
@@ -370,22 +354,14 @@ describe("SearchPage", () => {
   it("shows suggestion chips before the first search and runs them instantly", async () => {
     renderWithClient(<SearchPage />);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "How does document processing work?" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "How does document processing work?" }));
     await act(async () => {});
 
-    expect(mockedSearch).toHaveBeenCalledWith(
-      "How does document processing work?",
-      5,
-      [],
-      0,
-    );
+    expect(mockedSearch).toHaveBeenCalledWith("How does document processing work?", 5, [], 0);
     // The mocked result renders (getAllByText: the snippet may be wrapped in
     // a single span when the query terms don't occur inside the content).
     expect(
-      screen.getAllByText(byFullText("meeting minutes about Q3 planning"))
-        .length,
+      screen.getAllByText(byFullText("meeting minutes about Q3 planning")).length,
     ).toBeGreaterThan(0);
   });
 
@@ -399,9 +375,7 @@ describe("SearchPage", () => {
     await runSearch("nothing here");
 
     expect(screen.getByText("No results found")).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Which documents mention security?" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Which documents mention security?" })).toBeTruthy();
   });
 
   it("shows a status line with the loaded result counts", async () => {
@@ -431,10 +405,9 @@ describe("SearchPage", () => {
     );
 
     renderWithClient(<SearchPage />);
-    fireEvent.change(
-      screen.getByPlaceholderText("Search your documents..."),
-      { target: { value: "q3 planning" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText("Search your documents..."), {
+      target: { value: "q3 planning" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
 
     const skeletons = screen.getByRole("status", { name: "Searching" });
@@ -478,19 +451,16 @@ describe("SearchPage", () => {
     renderWithClient(<SearchPage />);
     await act(async () => {});
 
-    expect(
-      screen.getByPlaceholderText("Search your documents..."),
-    ).toHaveValue("security");
+    expect(screen.getByPlaceholderText("Search your documents...")).toHaveValue("security");
     // The search fires immediately with the deep-linked scope.
     expect(mockedSearch).toHaveBeenCalledWith("security", 5, ["d-9"], 0);
   });
 
   it("mirrors the live search state back into the URL", async () => {
     await runSearch("q3 planning");
-    expect(urlParamsHolder.setParams).toHaveBeenCalledWith(
-      expect.any(URLSearchParams),
-      { replace: true },
-    );
+    expect(urlParamsHolder.setParams).toHaveBeenCalledWith(expect.any(URLSearchParams), {
+      replace: true,
+    });
     const written = urlParamsHolder.setParams.mock.calls.at(-1)?.[0] as URLSearchParams;
     expect(written.get("q")).toBe("q3 planning");
   });
@@ -565,9 +535,7 @@ describe("SearchPage keyword-only mode", () => {
     await runSearch("q3");
 
     const text = document.querySelector(".search-mode-notice")?.textContent ?? "";
-    expect(text).toMatch(
-      /LOCAL_LLM_ENABLED=true[\s\S]*local model server[\s\S]*free/i
-    );
+    expect(text).toMatch(/LOCAL_LLM_ENABLED=true[\s\S]*local model server[\s\S]*free/i);
     // The chat-only limitation must be attributed to Groq specifically, not
     // left as a floating "cannot supply embeddings" of unclear subject.
     expect(text).toMatch(/GROQ_API_KEY[\s\S]*cannot supply embeddings/i);

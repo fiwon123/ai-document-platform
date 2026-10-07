@@ -18,17 +18,10 @@ import { EmptyState } from "../components/EmptyState";
 import { DocumentStatusCell } from "../components/DocumentStatusCell";
 import { isProcessing } from "../components/documentStatusMeta";
 import { DocumentViewToggle, type DocumentView } from "../components/DocumentViewToggle";
-import {
-  readStoredView,
-  writeStoredView,
-} from "../components/documentsViewPreference";
+import { readStoredView, writeStoredView } from "../components/documentsViewPreference";
 import { PreviewModal } from "../components/PreviewModal";
 import { RefreshIcon, EyeIcon, DownloadIcon, SearchIcon } from "../components/icons";
-import {
-  advanceCadence,
-  earliestDue,
-  initialCadence,
-} from "../utils/pollCadence";
+import { advanceCadence, earliestDue, initialCadence } from "../utils/pollCadence";
 import type { PollCadence } from "../utils/pollCadence";
 import { useToast } from "../hooks/useToast";
 import { useDocuments, DOCUMENTS_QUERY_KEY } from "../hooks/useDocuments";
@@ -67,12 +60,7 @@ const MAX_BULK_UPLOAD_FILES = 20;
 const EMPTY_DOCS: Document[] = [];
 
 /** Statuses offered as filter chips, in pipeline order. */
-const STATUS_FILTERS: Document["status"][] = [
-  "pending",
-  "processing",
-  "ready",
-  "failed",
-];
+const STATUS_FILTERS: Document["status"][] = ["pending", "processing", "ready", "failed"];
 
 /**
  * Whether a status response says anything new about a document.
@@ -190,9 +178,7 @@ const DocumentCard = memo(function DocumentCard({
       </div>
       <div className="document-card-body">
         <DocumentStatusCell doc={doc} layout="stacked" />
-        <p className="date">
-          Uploaded: {new Date(doc.created_at).toLocaleDateString()}
-        </p>
+        <p className="date">Uploaded: {new Date(doc.created_at).toLocaleDateString()}</p>
       </div>
       <div className="document-card-footer">
         {documentActions(doc, {
@@ -255,23 +241,27 @@ const DocumentRow = memo(function DocumentRow({
           {doc.filename}
         </span>
       </td>
-      <td className="document-row-type" data-label="Type">{doc.mime_type || "Unknown type"}</td>
+      <td className="document-row-type" data-label="Type">
+        {doc.mime_type || "Unknown type"}
+      </td>
       <td className="document-row-status" data-label="Status">
         <DocumentStatusCell doc={doc} layout="inline" />
       </td>
       <td className="document-row-date" data-label="Uploaded">
         {new Date(doc.created_at).toLocaleDateString()}
       </td>
-      <td className="document-row-actions" data-label="Actions">{documentActions(doc, {
-        isPreviewLoading,
-        isDownloading,
-        isDeleting,
-        isReprocessing,
-        onPreview,
-        onDownload,
-        onDelete,
-        onReprocess,
-      })}</td>
+      <td className="document-row-actions" data-label="Actions">
+        {documentActions(doc, {
+          isPreviewLoading,
+          isDownloading,
+          isDeleting,
+          isReprocessing,
+          onPreview,
+          onDownload,
+          onDelete,
+          onReprocess,
+        })}
+      </td>
     </tr>
   );
 });
@@ -370,39 +360,40 @@ export function DocumentsPage() {
   const [optimisticDocs, addOptimistic] = useOptimistic(
     docs,
     (state, action: OptimisticDocumentAction) => {
-    if (action.type === "delete") {
-      return state.filter((d) => d.id !== action.id);
-    }
-    if (action.type === "reprocess") {
-      return state.map((d) =>
-        d.id === action.id
-          ? {
-              ...d,
-              status: "pending",
-              error_message: null,
-              // Restart the elapsed timer immediately; the 3s poll then
-              // syncs the authoritative value from the backend.
-              updated_at: new Date().toISOString(),
-            }
-          : d,
-      );
-    }
-    // Upload: prepend in-flight placeholder cards for each selected file.
-    const files: File[] = action.files;
-    const placeholders: Document[] = files.map((file) => ({
-      id: `pending-${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      owner_id: "",
-      filename: file.name,
-      object_key: "",
-      mime_type: file.type || "application/octet-stream",
-      status: "pending",
-      error_message: null,
-      has_thumbnail: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }));
-    return [...placeholders, ...state];
-  });
+      if (action.type === "delete") {
+        return state.filter((d) => d.id !== action.id);
+      }
+      if (action.type === "reprocess") {
+        return state.map((d) =>
+          d.id === action.id
+            ? {
+                ...d,
+                status: "pending",
+                error_message: null,
+                // Restart the elapsed timer immediately; the 3s poll then
+                // syncs the authoritative value from the backend.
+                updated_at: new Date().toISOString(),
+              }
+            : d,
+        );
+      }
+      // Upload: prepend in-flight placeholder cards for each selected file.
+      const files: File[] = action.files;
+      const placeholders: Document[] = files.map((file) => ({
+        id: `pending-${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        owner_id: "",
+        filename: file.name,
+        object_key: "",
+        mime_type: file.type || "application/octet-stream",
+        status: "pending",
+        error_message: null,
+        has_thumbnail: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }));
+      return [...placeholders, ...state];
+    },
+  );
   // addOptimistic must run inside an action (async transition) for React to
   // re-render optimistically.
   const [, startTransition] = useTransition();
@@ -529,9 +520,7 @@ export function DocumentsPage() {
 
     function schedule() {
       if (superseded) return;
-      const due = earliestDue(
-        [...activeById.keys()].map((id) => cadenceFor(id)),
-      );
+      const due = earliestDue([...activeById.keys()].map((id) => cadenceFor(id)));
       // The wait is recomputed from absolute due times every time this effect
       // runs, so a `docs` update mid-interval resumes the *remaining* wait
       // rather than pushing the next poll a whole period away.
@@ -541,9 +530,7 @@ export function DocumentsPage() {
     async function run() {
       try {
         const at = Date.now();
-        const dueIds = [...activeById.keys()].filter(
-          (id) => cadenceFor(id).nextDueAt <= at,
-        );
+        const dueIds = [...activeById.keys()].filter((id) => cadenceFor(id).nextDueAt <= at);
         // Defensive. The scheduler always wakes on an earliest due time, so
         // there is normally something to do — but polling nothing would tick the
         // page without merging anything.
@@ -551,9 +538,7 @@ export function DocumentsPage() {
 
         let statuses: DocumentStatusResponse[];
         try {
-          statuses = await Promise.all(
-            dueIds.map((id) => documents.getStatus(id)),
-          );
+          statuses = await Promise.all(dueIds.map((id) => documents.getStatus(id)));
         } catch {
           // Transient failure, a 429 included: not evidence of progress, so the
           // attempted documents back off rather than holding a fast cadence for
@@ -744,38 +729,41 @@ export function DocumentsPage() {
     void uploadFiles(files);
   }
 
-  const handleDelete = useCallback((id: string) => {
-    if (!confirm("Are you sure you want to delete this document?")) return;
+  const handleDelete = useCallback(
+    (id: string) => {
+      if (!confirm("Are you sure you want to delete this document?")) return;
 
-    // Busy flags are urgent (outside the transition) so the row's delete
-    // button disables and shows its spinner immediately.
-    setDeletingId(id);
-    setError(null);
-    startTransition(async () => {
-      addOptimistic({ type: "delete", id });
-      try {
-        await documents.delete(id);
-        queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
-          (prev ?? []).filter((d) => d.id !== id),
-        );
-        // Keep the dashboard summary in sync after a deletion.
-        queryClient.invalidateQueries({ queryKey: MY_STATISTICS_QUERY_KEY });
-        // Drop any cached thumbnail URL so a re-uploaded document with the
-        // same id (never happens today, but cheap) cannot show a stale image.
-        setThumbnailUrls((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
-        toast.success("Document deleted");
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Delete failed");
-        toast.error(err instanceof Error ? err.message : "Delete failed");
-      } finally {
-        setDeletingId(null);
-      }
-    });
-  }, [queryClient, toast, addOptimistic]);
+      // Busy flags are urgent (outside the transition) so the row's delete
+      // button disables and shows its spinner immediately.
+      setDeletingId(id);
+      setError(null);
+      startTransition(async () => {
+        addOptimistic({ type: "delete", id });
+        try {
+          await documents.delete(id);
+          queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
+            (prev ?? []).filter((d) => d.id !== id),
+          );
+          // Keep the dashboard summary in sync after a deletion.
+          queryClient.invalidateQueries({ queryKey: MY_STATISTICS_QUERY_KEY });
+          // Drop any cached thumbnail URL so a re-uploaded document with the
+          // same id (never happens today, but cheap) cannot show a stale image.
+          setThumbnailUrls((prev) => {
+            const next = { ...prev };
+            delete next[id];
+            return next;
+          });
+          toast.success("Document deleted");
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Delete failed");
+          toast.error(err instanceof Error ? err.message : "Delete failed");
+        } finally {
+          setDeletingId(null);
+        }
+      });
+    },
+    [queryClient, toast, addOptimistic],
+  );
 
   // All handlers use only stable references (settiers, the API client,
   // toast), so they keep their identity across renders and memoized cards
@@ -813,42 +801,45 @@ export function DocumentsPage() {
   }, []);
 
   /** Re-enqueue a failed document for processing and start polling it. */
-  const handleReprocess = useCallback((id: string) => {
-    // Busy flag is urgent (outside the transition) so the row's reprocess
-    // button disables and shows its spinner immediately.
-    setReprocessingId(id);
-    setError(null);
-    startTransition(async () => {
-      addOptimistic({ type: "reprocess", id });
-      try {
-        await documents.reprocess(id);
-        queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
-          (prev ?? []).map((d) =>
-            d.id === id
-              ? {
-                  ...d,
-                  status: "pending",
-                  error_message: null,
-                  // Restart the elapsed timer immediately; the 3s poll then
-                  // syncs the authoritative value from the backend.
-                  updated_at: new Date().toISOString(),
-                }
-              : d,
-          ),
-        );
-        toast.success("Document queued for reprocessing");
-        // Reprocessing changes status counts (failed → pending) — refresh
-        // the dashboard summary so its recent list shows the retry state.
-        queryClient.invalidateQueries({ queryKey: MY_STATISTICS_QUERY_KEY });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Reprocessing failed";
-        setError(message);
-        toast.error(message);
-      } finally {
-        setReprocessingId(null);
-      }
-    });
-  }, [queryClient, toast, addOptimistic]);
+  const handleReprocess = useCallback(
+    (id: string) => {
+      // Busy flag is urgent (outside the transition) so the row's reprocess
+      // button disables and shows its spinner immediately.
+      setReprocessingId(id);
+      setError(null);
+      startTransition(async () => {
+        addOptimistic({ type: "reprocess", id });
+        try {
+          await documents.reprocess(id);
+          queryClient.setQueryData<Document[]>(DOCUMENTS_QUERY_KEY, (prev) =>
+            (prev ?? []).map((d) =>
+              d.id === id
+                ? {
+                    ...d,
+                    status: "pending",
+                    error_message: null,
+                    // Restart the elapsed timer immediately; the 3s poll then
+                    // syncs the authoritative value from the backend.
+                    updated_at: new Date().toISOString(),
+                  }
+                : d,
+            ),
+          );
+          toast.success("Document queued for reprocessing");
+          // Reprocessing changes status counts (failed → pending) — refresh
+          // the dashboard summary so its recent list shows the retry state.
+          queryClient.invalidateQueries({ queryKey: MY_STATISTICS_QUERY_KEY });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Reprocessing failed";
+          setError(message);
+          toast.error(message);
+        } finally {
+          setReprocessingId(null);
+        }
+      });
+    },
+    [queryClient, toast, addOptimistic],
+  );
 
   const clearThumbnailUrl = useCallback((id: string) => {
     setThumbnailUrls((prev) => {
@@ -864,161 +855,149 @@ export function DocumentsPage() {
           of the page can be made inert (screen-reader isolation) while the
           dialog is open, without inerting the dialog itself. */}
       <div inert={preview ? true : undefined}>
-      <header className="page-header">
-        <h1>Documents</h1>
-        <p>Upload and manage your documents</p>
-      </header>
+        <header className="page-header">
+          <h1>Documents</h1>
+          <p>Upload and manage your documents</p>
+        </header>
 
-      <div className="upload-section">
-        <label
-          className={`dropzone${isDragging ? " is-dragging" : ""}${isUploading ? " is-uploading" : ""}`}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={handleDrop}
-        >
-
-          <input
-            id="document-upload"
-            name="document-upload"
-            type="file"
-            multiple
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            disabled={isUploading}
-            autoComplete="off"
-          />
-          <span className="upload-symbol" aria-hidden="true">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              focusable="false"
-            >
-              <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
-              <path d="M12 12v9" />
-              <path d="m16 16-4-4-4 4" />
-            </svg>
-          </span>
-          <strong>
-            {isUploading ? "Uploading…" : "Drop documents here"}
-          </strong>
-          <span>or choose one or more files from your device</span>
-<small>PDF, TXT, JSON, CSV up to 25 MB each (20 files per batch)</small>
-        </label>
-      </div>
-
-      {errorMessage && <p className="error-message" role="alert">{errorMessage}</p>}
-      {previewError && <p className="error-message" role="alert">{previewError}</p>}
-
-      {optimisticDocs.length > 0 && (
-        <div className="documents-toolbar">
-          <div className="documents-search">
-            <SearchIcon />
+        <div className="upload-section">
+          <label
+            className={`dropzone${isDragging ? " is-dragging" : ""}${isUploading ? " is-uploading" : ""}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+          >
             <input
-              id="document-filename-filter"
-              name="document-filename-filter"
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by filename"
-              aria-label="Search documents by filename"
+              id="document-upload"
+              name="document-upload"
+              type="file"
+              multiple
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              disabled={isUploading}
               autoComplete="off"
             />
-            {searchQuery && (
+            <span className="upload-symbol" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                focusable="false"
+              >
+                <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+                <path d="M12 12v9" />
+                <path d="m16 16-4-4-4 4" />
+              </svg>
+            </span>
+            <strong>{isUploading ? "Uploading…" : "Drop documents here"}</strong>
+            <span>or choose one or more files from your device</span>
+            <small>PDF, TXT, JSON, CSV up to 25 MB each (20 files per batch)</small>
+          </label>
+        </div>
+
+        {errorMessage && (
+          <p className="error-message" role="alert">
+            {errorMessage}
+          </p>
+        )}
+        {previewError && (
+          <p className="error-message" role="alert">
+            {previewError}
+          </p>
+        )}
+
+        {optimisticDocs.length > 0 && (
+          <div className="documents-toolbar">
+            <div className="documents-search">
+              <SearchIcon />
+              <input
+                id="document-filename-filter"
+                name="document-filename-filter"
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by filename"
+                aria-label="Search documents by filename"
+                autoComplete="off"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="documents-search-clear"
+                  onClick={() => setSearchQuery("")}
+                  aria-label="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            <DocumentViewToggle view={view} onChange={setView} controlsId={LIST_REGION_ID} />
+            <div className="status-filter" role="group" aria-label="Filter documents by status">
               <button
                 type="button"
-                className="documents-search-clear"
-                onClick={() => setSearchQuery("")}
-                aria-label="Clear search"
+                className={`filter-chip${statusFilter === null ? " is-selected" : ""}`}
+                aria-pressed={statusFilter === null}
+                onClick={() => setStatusFilter(null)}
               >
-                ×
+                All
+                <span className="chip-count">{optimisticDocs.length}</span>
               </button>
-            )}
-          </div>
-          <DocumentViewToggle
-            view={view}
-            onChange={setView}
-            controlsId={LIST_REGION_ID}
-          />
-          <div
-            className="status-filter"
-            role="group"
-            aria-label="Filter documents by status"
-          >
-            <button
-              type="button"
-              className={`filter-chip${statusFilter === null ? " is-selected" : ""}`}
-              aria-pressed={statusFilter === null}
-              onClick={() => setStatusFilter(null)}
-            >
-              All
-              <span className="chip-count">{optimisticDocs.length}</span>
-            </button>
-            {STATUS_FILTERS.filter((status) => statusCounts[status] > 0).map(
-              (status) => (
+              {STATUS_FILTERS.filter((status) => statusCounts[status] > 0).map((status) => (
                 <button
                   key={status}
                   type="button"
                   className={`filter-chip${statusFilter === status ? " is-selected" : ""}`}
                   aria-pressed={statusFilter === status}
-                  onClick={() =>
-                    setStatusFilter(statusFilter === status ? null : status)
-                  }
+                  onClick={() => setStatusFilter(statusFilter === status ? null : status)}
                   title={`Show ${status} documents`}
                 >
                   {status.charAt(0).toUpperCase() + status.slice(1)}
                   <span className="chip-count">{statusCounts[status]}</span>
                 </button>
-              ),
+              ))}
+            </div>
+            {(searchQuery || statusFilter !== null) && (
+              <p className="documents-result-count" role="status">
+                Showing {filteredDocs.length} of {optimisticDocs.length} documents
+                <button type="button" className="documents-filter-clear" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              </p>
             )}
           </div>
-          {(searchQuery || statusFilter !== null) && (
-            <p className="documents-result-count" role="status">
-              Showing {filteredDocs.length} of {optimisticDocs.length} documents
-              <button
-                type="button"
-                className="documents-filter-clear"
-                onClick={clearFilters}
-              >
-                Clear filters
-              </button>
-            </p>
-          )}
-        </div>
-      )}
+        )}
 
-      {docsQuery.isPending ? (
-        <div
-          className={view === "grid" ? "document-grid" : "document-grid is-skeleton-rows"}
-          aria-busy="true"
-        >
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
-      ) : optimisticDocs.length === 0 ? (
-        <EmptyState
-          title="No documents uploaded yet"
-          description="Upload your first document above to start asking questions."
-          action={{ label: "Upload a document", onClick: openFilePicker }}
-        />
-      ) : filteredDocs.length === 0 ? (
-        <EmptyState
-          title="No documents match your filters"
-          description={[
-            statusFilter ? `No ${statusFilter} documents` : "No documents",
-            searchQuery ? `match "${searchQuery}".` : "match your filters.",
-          ].join(" ")}
-          action={{ label: "Clear filters", onClick: clearFilters }}
-        />
-      ) : (
-        view === "grid" ? (
+        {docsQuery.isPending ? (
+          <div
+            className={view === "grid" ? "document-grid" : "document-grid is-skeleton-rows"}
+            aria-busy="true"
+          >
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+        ) : optimisticDocs.length === 0 ? (
+          <EmptyState
+            title="No documents uploaded yet"
+            description="Upload your first document above to start asking questions."
+            action={{ label: "Upload a document", onClick: openFilePicker }}
+          />
+        ) : filteredDocs.length === 0 ? (
+          <EmptyState
+            title="No documents match your filters"
+            description={[
+              statusFilter ? `No ${statusFilter} documents` : "No documents",
+              searchQuery ? `match "${searchQuery}".` : "match your filters.",
+            ].join(" ")}
+            action={{ label: "Clear filters", onClick: clearFilters }}
+          />
+        ) : view === "grid" ? (
           <div className="document-grid" id={LIST_REGION_ID}>
             {filteredDocs.map((doc) => (
               <DocumentCard
@@ -1076,13 +1055,10 @@ export function DocumentsPage() {
               </tbody>
             </table>
           </div>
-        )
-      )}
+        )}
       </div>
 
-      {preview && (
-        <PreviewModal preview={preview} onClose={() => setPreview(null)} />
-      )}
+      {preview && <PreviewModal preview={preview} onClose={() => setPreview(null)} />}
     </div>
   );
 }

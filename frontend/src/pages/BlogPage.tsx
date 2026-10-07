@@ -29,12 +29,11 @@ export function BlogPage() {
           <div className="empty-state-panel">
             <h2>No posts yet</h2>
             <p>
-              Nothing has been published. Rather than fill this page with
-              placeholder entries, it stays empty until there is something worth
-              reading — which is mostly about the parts of this problem that took
-              a second attempt: chunk boundaries that do not break sentences,
-              embeddings that stay comparable across model versions, and answers
-              that admit when retrieval came back empty.
+              Nothing has been published. Rather than fill this page with placeholder entries, it
+              stays empty until there is something worth reading — which is mostly about the parts
+              of this problem that took a second attempt: chunk boundaries that do not break
+              sentences, embeddings that stay comparable across model versions, and answers that
+              admit when retrieval came back empty.
             </p>
             <p>
               In the meantime the{" "}
@@ -56,8 +55,7 @@ export function BlogPage() {
           <li>Running embeddings asynchronously without losing track of failures</li>
         </ul>
         <p>
-          Questions about any of these are welcome via{" "}
-          <Link to="/contact">contact</Link>.
+          Questions about any of these are welcome via <Link to="/contact">contact</Link>.
         </p>
       </PageSection>
     </PageLayout>

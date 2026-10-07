@@ -147,9 +147,7 @@ def _is_stale(column, model: str):
     )
 
 
-def plan_backfill(
-    db: Session, *, service: EmbeddingService | None = None
-) -> BackfillPlan:
+def plan_backfill(db: Session, *, service: EmbeddingService | None = None) -> BackfillPlan:
     """Count what a run would do, without writing or calling the provider.
 
     Four counts in one statement, so the dry run stays one round trip on a

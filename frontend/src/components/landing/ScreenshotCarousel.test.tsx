@@ -234,9 +234,7 @@ describe("ScreenshotCarousel", () => {
       return found;
     };
 
-    const narrow = mediaBlocks(css).find(
-      (b) => /(\.carousel-caption\s*\{[^}]*\})/.test(b.body),
-    );
+    const narrow = mediaBlocks(css).find((b) => /(\.carousel-caption\s*\{[^}]*\})/.test(b.body));
     if (!narrow) {
       throw new Error(
         "no max-width block repositions .carousel-caption, so the centred dot row " +

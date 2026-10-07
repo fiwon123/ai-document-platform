@@ -252,7 +252,9 @@ export function LandingFooter() {
       </div>
 
       <div className="footer-bottom">
-        <span>© {new Date().getFullYear()} {SITE.name}</span>
+        <span>
+          © {new Date().getFullYear()} {SITE.name}
+        </span>
         <span>Made for people who love their documents.</span>
       </div>
     </footer>

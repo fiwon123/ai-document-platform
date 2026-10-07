@@ -33,9 +33,7 @@ describe("ChallengesPage", () => {
       </MemoryRouter>,
     );
 
-    expect(
-      screen.getByRole("heading", { level: 1, name: CHALLENGES_TITLE }),
-    ).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: CHALLENGES_TITLE })).toBeTruthy();
     expect(screen.getByText(CHALLENGES_SUBTITLE)).toBeTruthy();
   });
 
@@ -70,9 +68,7 @@ describe("ChallengesPage", () => {
     // `aria-hidden` on the glyph, so the link is announced as "New challenge"
     // rather than "plus new challenge".
     const link = screen.getByRole("link", { name: NEW_CHALLENGE_CTA });
-    expect(link.querySelector(".hero-plus")?.getAttribute("aria-hidden")).toBe(
-      "true",
-    );
+    expect(link.querySelector(".hero-plus")?.getAttribute("aria-hidden")).toBe("true");
     expect(link.textContent).toContain("+");
   });
 
@@ -116,9 +112,7 @@ describe("NewChallengePage", () => {
   it("renders the title, heading and description it was specified with", () => {
     renderForm();
 
-    expect(
-      screen.getByRole("heading", { level: 1, name: NEW_CHALLENGE_TITLE }),
-    ).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: NEW_CHALLENGE_TITLE })).toBeTruthy();
     expect(screen.getByText(NEW_CHALLENGE_HEADING)).toBeTruthy();
     expect(screen.getByText(NEW_CHALLENGE_INTRO)).toBeTruthy();
   });
@@ -131,11 +125,7 @@ describe("NewChallengePage", () => {
       // is also what makes the label the accessible name.
       expect(screen.getByLabelText(field.label)).toBeTruthy();
     }
-    expect(CHALLENGE_FIELDS.map((f) => f.name)).toEqual([
-      "task",
-      "prompt",
-      "tests",
-    ]);
+    expect(CHALLENGE_FIELDS.map((f) => f.name)).toEqual(["task", "prompt", "tests"]);
   });
 
   it("does not use the placeholder as the only guidance", () => {
@@ -181,18 +171,12 @@ describe("NewChallengePage", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/The coding task is required\./)).toBeTruthy();
-      expect(
-        screen.getByText(/The prompt your LLM will see is required\./),
-      ).toBeTruthy();
-      expect(
-        screen.getByText(/Tests used to grade the solution is required\./),
-      ).toBeTruthy();
+      expect(screen.getByText(/The prompt your LLM will see is required\./)).toBeTruthy();
+      expect(screen.getByText(/Tests used to grade the solution is required\./)).toBeTruthy();
     });
 
     for (const field of CHALLENGE_FIELDS) {
-      expect(
-        screen.getByLabelText(field.label).getAttribute("aria-invalid"),
-      ).toBe("true");
+      expect(screen.getByLabelText(field.label).getAttribute("aria-invalid")).toBe("true");
     }
     // A validation failure must not also claim the form was submitted.
     expect(screen.queryByText(CHALLENGES_NOT_SAVED.title)).toBeNull();
@@ -203,22 +187,13 @@ describe("NewChallengePage", () => {
     renderForm();
 
     await user.click(screen.getByRole("button", { name: /create challenge/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/The coding task is required\./)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText(/The coding task is required\./)).toBeTruthy());
 
-    await user.type(
-      screen.getByLabelText(TASK_FIELD.label),
-      "Merge two sorted lists",
-    );
+    await user.type(screen.getByLabelText(TASK_FIELD.label), "Merge two sorted lists");
 
-    await waitFor(() =>
-      expect(screen.queryByText(/The coding task is required\./)).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText(/The coding task is required\./)).toBeNull());
     // The other fields' errors are untouched.
-    expect(
-      screen.getByText(/The prompt your LLM will see is required\./),
-    ).toBeTruthy();
+    expect(screen.getByText(/The prompt your LLM will see is required\./)).toBeTruthy();
   });
 
   it("reports honestly that nothing was saved rather than faking success", async () => {
@@ -230,9 +205,7 @@ describe("NewChallengePage", () => {
     }
     await user.click(screen.getByRole("button", { name: /create challenge/i }));
 
-    await waitFor(() =>
-      expect(screen.getByText(CHALLENGES_NOT_SAVED.title)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText(CHALLENGES_NOT_SAVED.title)).toBeTruthy());
     // The title and body are separate nodes inside one notice, so the element
     // carries the full sentence. Queried by class rather than `role="status"`,
     // which the page chrome also uses for its own live regions.
@@ -245,10 +218,9 @@ describe("NewChallengePage", () => {
     expect(screen.queryByText(/saved successfully/i)).toBeNull();
 
     // And the work is still on screen rather than thrown away.
-    expect(
-      (screen.getByLabelText(TASK_FIELD.label) as HTMLTextAreaElement)
-        .value,
-    ).toBe("something");
+    expect((screen.getByLabelText(TASK_FIELD.label) as HTMLTextAreaElement).value).toBe(
+      "something",
+    );
   });
 
   it("carries no network call on submit", async () => {
@@ -261,9 +233,7 @@ describe("NewChallengePage", () => {
     }
     await user.click(screen.getByRole("button", { name: /create challenge/i }));
 
-    await waitFor(() =>
-      expect(screen.getByText(CHALLENGES_NOT_SAVED.title)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText(CHALLENGES_NOT_SAVED.title)).toBeTruthy());
     // There is no endpoint behind this form, so submitting must not invent one.
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();

@@ -179,15 +179,17 @@ blocks `make dev-up`. To pin a specific token: `make dev-up GH_TOKEN=<pat>`.
 make infra-up             # infra services only (detached)
 cd backend && uv run uvicorn app.main:app --reload   # backend on :8000
 cd frontend && npm run dev                           # vite on :5173
-make check                # lint + tests + build (no containers needed)
+make check                # lint + format + tests + build (no containers needed)
 ```
 
 ## Tests / lint / build (host-native — no sandbox required)
 
 ```bash
-make check        # = lint (ruff + oxlint) + tests (pytest + vitest) + build
+make check        # = lint (ruff + oxlint) + format (oxfmt) + tests (pytest + vitest) + build
 make test         # test-backend (pytest) + test-frontend (vitest)
 make lint         # ruff + oxlint
+make format       # ruff format (backend) + oxfmt (frontend)
+make format-check # oxfmt --check — the frontend formatting gate `make check` runs
 make build        # frontend typecheck + production build
 ```
 
@@ -197,6 +199,109 @@ make build        # frontend typecheck + production build
   app code; tracked as a separate fix.
 - Existing root-owned files from pre-migration sandboxes are covered by the
   one-time repair above; new sandbox writes use the host developer's ownership.
+
+### The backend suite drops tables — never point it at real data
+
+The backend suite calls `create_all` and `drop_all` on the engine it is given,
+so **whatever database it connects to, it empties.** It targets `mydb_test`.
+
+Run it normally. No override is needed, inside the sandbox included:
+
+```bash
+cd backend && uv run pytest
+```
+
+`tests/conftest.py` forces `DATABASE_URL` to the test database before importing
+any app module, because `app/database/db.py` resolves `DATABASE_URL` **first**
+and falls back to the `POSTGRES_*` parts only when it is unset. The dev sandbox
+exports `DATABASE_URL` pointing at `mydb`, so isolation via `POSTGRES_DB` alone
+was inert there — every full-suite run inside the container emptied the
+development database, silently, while still reporting green (#683).
+
+`_assert_test_database` refuses to start if the engine is connected to anything
+other than the test database, **or** if `TEST_DB_NAME` names the database the
+application itself uses. If you ever see:
+
+```text
+RuntimeError: Refusing to run: the test engine is bound to database 'mydb', expected 'mydb_test'.
+```
+
+you are one step from deleting real data, and the suite stops instead of doing it.
+
+### Recovering a database the suite emptied
+
+The damage is recognisable and total: `alembic_version` survives while every app
+table is gone, because `drop_all` only drops tables in `Base.metadata` and
+`alembic_version` is not one.
+
+**`alembic upgrade head` will not fix it** — Alembic reads the stamp, concludes
+it is already at head, and applies nothing. Restarting the sandbox will not fix
+it either.
+
+Clear the surviving objects, then migrate for real:
+
+```bash
+cd backend
+uv run python -c "
+from sqlalchemy import text
+from app.database.db import engine
+with engine.begin() as c:
+    c.execute(text('DROP TABLE IF EXISTS alembic_version CASCADE'))
+    for t in ('role', 'documentstatus'):
+        c.execute(text(f'DROP TYPE IF EXISTS {t} CASCADE'))
+"
+uv run alembic upgrade head
+```
+
+**The enum types are required, not optional.** `drop_all` drops *tables* from
+`Base.metadata`; Postgres enum types are not tables, so `role` and
+`documentstatus` survive alongside `alembic_version` — as does anything else a
+migration created outside `Base.metadata`. Migration 001 then runs
+`CREATE TYPE role AS ENUM (...)` against a type that already exists and aborts:
+
+```text
+[SQL: CREATE TYPE role AS ENUM ('customer', 'admin')]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+```
+
+`CREATE TYPE` is not idempotent, unlike `CREATE TABLE IF NOT EXISTS`, so a
+surviving type is a hard failure rather than a skipped step. Any future migration
+that creates an object outside `Base.metadata` needs adding to that loop.
+
+> **Dropping the stamp first is one-way.** If `alembic upgrade head` then fails,
+> there is no stamp left to migrate from. Check for surviving objects first:
+> ```bash
+> uv run python -c "
+> from sqlalchemy import text
+> from app.database.db import engine
+> with engine.connect() as c:
+>     print('tables', [r[0] for r in c.execute(text(\"select tablename from pg_tables where schemaname='public' order by 1\"))])
+>     print('enums ', [r[0] for r in c.execute(text(\"select typname from pg_type t join pg_namespace n on n.oid=t.typnamespace where n.nspname='public' and t.typtype='e' order by 1\"))])
+> "
+> ```
+> In the emptied state this prints `tables ['alembic_version']` and
+> `enums ['documentstatus', 'role']` — the types with no table beside them are
+> the leftovers to drop. When in doubt, or on a database where you do not need
+> anything, reset the schema outright:
+> ```bash
+> uv run python -c "
+> from sqlalchemy import text
+> from app.database.db import engine
+> with engine.begin() as c:
+>     c.execute(text('DROP SCHEMA public CASCADE'))
+>     c.execute(text('CREATE SCHEMA public'))
+> "
+> uv run alembic upgrade head
+> ```
+
+Verify afterwards — you want 7 tables and the stamp at `010`:
+
+```bash
+uv run alembic current
+```
+
+Anything the database held is gone. In a dev sandbox that is usually nothing;
+anywhere else it is data loss, so treat it as the incident it is.
 
 ## Browser checks (headless Chromium is baked into the dev image)
 

@@ -6,8 +6,7 @@
   --border: #e2e8f0;
   --code-bg: #f1f5f9;
   --accent: #2563eb;
-  --shadow: rgba(15, 23, 42, 0.08) 0 10px 15px -3px,
-    rgba(15, 23, 42, 0.04) 0 4px 6px -2px;
+  --shadow: rgba(15, 23, 42, 0.08) 0 10px 15px -3px, rgba(15, 23, 42, 0.04) 0 4px 6px -2px;
 
   --sans: "Manrope", system-ui, "Segoe UI", Roboto, sans-serif;
   --heading: "Manrope", system-ui, "Segoe UI", Roboto, sans-serif;
@@ -32,12 +31,9 @@
 
   /* Shadow scale (dark theme redefines below — black shadows are
      invisible on dark backgrounds). */
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06),
-    0 1px 3px rgba(15, 23, 42, 0.1);
-  --shadow-md: 0 4px 6px -2px rgba(15, 23, 42, 0.08),
-    0 10px 15px -3px rgba(15, 23, 42, 0.06);
-  --shadow-lg: 0 10px 25px rgba(15, 23, 42, 0.12),
-    0 20px 40px rgba(15, 23, 42, 0.08);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.1);
+  --shadow-md: 0 4px 6px -2px rgba(15, 23, 42, 0.08), 0 10px 15px -3px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 10px 25px rgba(15, 23, 42, 0.12), 0 20px 40px rgba(15, 23, 42, 0.08);
 
   /* Motion: durations + easing curves */
   --duration-instant: 50ms;
@@ -95,14 +91,11 @@
   --border: #2c3a52;
   --code-bg: #1b2639;
   --accent: #3b82f6;
-  --shadow: rgba(0, 0, 0, 0.55) 0 10px 15px -3px,
-    rgba(0, 0, 0, 0.35) 0 4px 6px -2px;
+  --shadow: rgba(0, 0, 0, 0.55) 0 10px 15px -3px, rgba(0, 0, 0, 0.35) 0 4px 6px -2px;
   /* Stronger black shadows for depth on dark backgrounds (Theme Rule 5). */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.45);
-  --shadow-md: 0 4px 6px -2px rgba(0, 0, 0, 0.45),
-    0 10px 15px -3px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.6),
-    0 20px 40px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -2px rgba(0, 0, 0, 0.45), 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.6), 0 20px 40px rgba(0, 0, 0, 0.4);
 }
 
 #root {

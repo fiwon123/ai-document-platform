@@ -80,20 +80,14 @@ export function SettingsPage() {
   const modelsQuery = useQAModels();
   // The models endpoint is optional — the page keeps working with defaults
   // when it is unreachable (e.g. no provider configured).
-  const models: QAModels | null =
-    modelsQuery.isError ? DEFAULT_MODELS : (modelsQuery.data ?? null);
+  const models: QAModels | null = modelsQuery.isError ? DEFAULT_MODELS : (modelsQuery.data ?? null);
   const isLoadingModels = modelsQuery.isPending && !modelsQuery.data;
-  const modelsError = modelsQuery.isError
-    ? (modelsQuery.error as Error).message
-    : null;
+  const modelsError = modelsQuery.isError ? (modelsQuery.error as Error).message : null;
   const [selectedModel, setSelectedModel] = useState<string>(
     // Last resort only: DEFAULT_MODELS.free is never empty, so a save that
     // points at a model the backend no longer offers simply falls back to the
     // first free one rather than selecting nothing.
-    () =>
-      localStorage.getItem(MODEL_STORAGE_KEY) ??
-      DEFAULT_MODELS.free[0] ??
-      "gpt-4o-mini",
+    () => localStorage.getItem(MODEL_STORAGE_KEY) ?? DEFAULT_MODELS.free[0] ?? "gpt-4o-mini",
   );
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -114,8 +108,13 @@ export function SettingsPage() {
      notice, which do, so the derived value is never a render behind. */
   const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY) ?? "";
   const trimmedDraft = apiKeyDraft.trim();
-  const keyState: "saved" | "empty" | "unsaved" =
-    !trimmedDraft ? (storedKey ? "saved" : "empty") : trimmedDraft === storedKey ? "saved" : "unsaved";
+  const keyState: "saved" | "empty" | "unsaved" = !trimmedDraft
+    ? storedKey
+      ? "saved"
+      : "empty"
+    : trimmedDraft === storedKey
+      ? "saved"
+      : "unsaved";
 
   function handleModelChange(model: string) {
     setSelectedModel(model);
@@ -244,8 +243,7 @@ export function SettingsPage() {
           Custom API key
         </h2>
         <p className="settings-desc">
-          Bring your own API key to use with your questions. It is stored only
-          in your browser.
+          Bring your own API key to use with your questions. It is stored only in your browser.
         </p>
 
         <form className="settings-api-key-form" onSubmit={handleSaveApiKey}>
@@ -287,9 +285,7 @@ export function SettingsPage() {
           {keyState === "unsaved" && "Unsaved changes — press Save to use this key."}
         </p>
 
-        {notice?.type === "success" && (
-          <p className="success-message">{notice.text}</p>
-        )}
+        {notice?.type === "success" && <p className="success-message">{notice.text}</p>}
         {notice?.type === "error" && (
           <p className="error-message" role="alert">
             {notice.text}

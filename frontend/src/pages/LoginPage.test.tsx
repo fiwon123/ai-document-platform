@@ -180,9 +180,7 @@ describe("LoginPage", () => {
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Forgot password?" }));
-    expect(toastInfo).toHaveBeenCalledWith(
-      expect.stringContaining("coming soon"),
-    );
+    expect(toastInfo).toHaveBeenCalledWith(expect.stringContaining("coming soon"));
   });
 
   it("shows a coming-soon toast for social sign-in buttons", () => {
@@ -196,8 +194,6 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Google" }));
     fireEvent.click(screen.getByRole("button", { name: "GitHub" }));
     expect(toastInfo).toHaveBeenCalledTimes(2);
-    expect(toastInfo).toHaveBeenCalledWith(
-      expect.stringContaining("coming soon"),
-    );
+    expect(toastInfo).toHaveBeenCalledWith(expect.stringContaining("coming soon"));
   });
 });

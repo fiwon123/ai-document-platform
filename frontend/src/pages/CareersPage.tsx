@@ -1,9 +1,5 @@
 import { Link } from "react-router-dom";
-import {
-  PageCta,
-  PageLayout,
-  PageSection,
-} from "../components/PageLayout";
+import { PageCta, PageLayout, PageSection } from "../components/PageLayout";
 import { CareersVisual } from "../components/company/PageVisuals";
 import { SITE } from "../content/marketing";
 
@@ -61,7 +57,10 @@ export function CareersPage() {
                   {role.title} <span className="role-type">{role.type}</span>
                 </h3>
                 <p>{role.body}</p>
-                <a className="btn btn-secondary" href={`mailto:${SITE.email}?subject=${encodeURIComponent(role.title)}`}>
+                <a
+                  className="btn btn-secondary"
+                  href={`mailto:${SITE.email}?subject=${encodeURIComponent(role.title)}`}
+                >
                   Express interest
                 </a>
               </div>
@@ -81,18 +80,16 @@ export function CareersPage() {
 
       <PageSection title="How to start">
         <p>
-          Open the repository and pick something up. The{" "}
-          <Link to="/blog">blog</Link> page lists the areas that are least
-          covered by documentation, and the issue tracker is the best place to
-          find something that is both wanted and small enough to be a first
-          contribution. If you would rather not start from an issue, the{" "}
-          <Link to="/contact">contact page</Link> has an email address.
+          Open the repository and pick something up. The <Link to="/blog">blog</Link> page lists the
+          areas that are least covered by documentation, and the issue tracker is the best place to
+          find something that is both wanted and small enough to be a first contribution. If you
+          would rather not start from an issue, the <Link to="/contact">contact page</Link> has an
+          email address.
         </p>
         <p>
-          These listings are illustrative. They describe work that genuinely
-          exists in this project, but the project is small enough that "hiring"
-          means collaborating — so please check before treating them as
-          openings.
+          These listings are illustrative. They describe work that genuinely exists in this project,
+          but the project is small enough that "hiring" means collaborating — so please check before
+          treating them as openings.
         </p>
       </PageSection>
 

@@ -41,10 +41,7 @@ beforeEach(() => {
  * App.css with comments stripped — a comment quoting a selector would otherwise
  * satisfy a guard that is only looking for the text.
  */
-const css = readFileSync(resolve(__dirname, "../App.css"), "utf8").replace(
-  /\/\*[\s\S]*?\*\//g,
-  "",
-);
+const css = readFileSync(resolve(__dirname, "../App.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
 /** Declarations of the first rule whose selector list contains `selector`. */
 function declarationsFor(selector: string): string[] {
@@ -86,9 +83,7 @@ describe("Navbar", () => {
      jsdom assertion about the DOM can see. */
   it("centres the page links by splitting the row's free space either side", () => {
     const decls = declarationsFor(".navbar-links");
-    expect(decls, "links must split the free space on both sides").toContain(
-      "margin-inline: auto",
-    );
+    expect(decls, "links must split the free space on both sides").toContain("margin-inline: auto");
   });
 
   it("does not push the user cluster with a one-sided auto margin", () => {
@@ -105,17 +100,13 @@ describe("Navbar", () => {
     // cluster that holds the theme toggle, username and logout.
     const nav = container.querySelector(".navbar")!;
     const children = [...nav.children].map((el) => el.className.split(" ")[0]);
-    expect(children.indexOf("navbar-links")).toBeLessThan(
-      children.indexOf("navbar-user"),
-    );
+    expect(children.indexOf("navbar-links")).toBeLessThan(children.indexOf("navbar-user"));
   });
 
   it("renders the AskDocs brand mark next to the name", () => {
     const { container } = renderNavbar();
     expect(container.querySelector(".navbar-brand-mark")).toBeTruthy();
-    expect(
-      container.querySelector(".navbar-brand a span")?.textContent,
-    ).toBe("AskDocs");
+    expect(container.querySelector(".navbar-brand a span")?.textContent).toBe("AskDocs");
   });
 
   it("only renders the Users link for admins", () => {
@@ -129,17 +120,17 @@ describe("Navbar", () => {
 
   it("links all app navigation to /app-prefixed routes", () => {
     renderNavbar();
-    expect(
-      screen.getByRole("link", { name: "AskDocs home" }).getAttribute("href"),
-    ).toBe("/app");
-    expect(
-      screen.getByRole("link", { name: "Back to site" }).getAttribute("href"),
-    ).toBe("/");
+    expect(screen.getByRole("link", { name: "AskDocs home" }).getAttribute("href")).toBe("/app");
+    expect(screen.getByRole("link", { name: "Back to site" }).getAttribute("href")).toBe("/");
     expect(screen.getByRole("link", { name: "Dashboard" }).getAttribute("href")).toBe("/app");
-    expect(screen.getByRole("link", { name: "Documents" }).getAttribute("href")).toBe("/app/documents");
+    expect(screen.getByRole("link", { name: "Documents" }).getAttribute("href")).toBe(
+      "/app/documents",
+    );
     expect(screen.getByRole("link", { name: "Search" }).getAttribute("href")).toBe("/app/search");
     expect(screen.getByRole("link", { name: "Q&A" }).getAttribute("href")).toBe("/app/qa");
-    expect(screen.getByRole("link", { name: "Settings" }).getAttribute("href")).toBe("/app/settings");
+    expect(screen.getByRole("link", { name: "Settings" }).getAttribute("href")).toBe(
+      "/app/settings",
+    );
   });
 
   it("links the admin and profile areas under /app", () => {
@@ -169,14 +160,14 @@ describe("Navbar", () => {
     // Focus lands on the first link *inside the menu*. The back link is no
     // longer a menu item — it sits beside the brand, always visible — so
     // "Dashboard" is now the first focusable thing the disclosure reveals.
-    expect(document.activeElement).toBe(
-      screen.getByRole("link", { name: "Dashboard" }),
-    );
+    expect(document.activeElement).toBe(screen.getByRole("link", { name: "Dashboard" }));
 
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.getByRole("button", {
-      name: "Open navigation menu",
-    })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Open navigation menu",
+      }),
+    ).toBeTruthy();
     // Focus returns to the toggle button.
     expect(document.activeElement).toBe(toggle);
   });
@@ -188,12 +179,10 @@ describe("Navbar", () => {
       </MemoryRouter>,
     );
 
-    expect(
-      screen.getByRole("link", { name: "Documents" }).getAttribute("aria-current"),
-    ).toBe("page");
-    expect(
-      screen.getByRole("link", { name: "Dashboard" }).getAttribute("aria-current"),
-    ).toBeNull();
+    expect(screen.getByRole("link", { name: "Documents" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect(screen.getByRole("link", { name: "Dashboard" }).getAttribute("aria-current")).toBeNull();
     expect(
       screen.getByRole("link", { name: "Back to site" }).getAttribute("aria-current"),
     ).toBeNull();
@@ -218,9 +207,7 @@ describe("Navbar", () => {
     // it stays in the accessibility tree and the link keeps its name.
     renderNavbar();
     const backLink = screen.getByRole("link", { name: "Back to site" });
-    expect(backLink.querySelector(".navbar-back-link-text")?.textContent).toBe(
-      "Back to site",
-    );
+    expect(backLink.querySelector(".navbar-back-link-text")?.textContent).toBe("Back to site");
     // No aria-label overriding the visible text (voice-control label match).
     expect(backLink.getAttribute("aria-label")).toBeNull();
   });
@@ -232,11 +219,9 @@ describe("Navbar", () => {
       </MemoryRouter>,
     );
 
-    expect(
-      screen.getByRole("link", { name: "Dashboard" }).getAttribute("aria-current"),
-    ).toBe("page");
-    expect(
-      screen.getByRole("link", { name: "Documents" }).getAttribute("aria-current"),
-    ).toBeNull();
+    expect(screen.getByRole("link", { name: "Dashboard" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect(screen.getByRole("link", { name: "Documents" }).getAttribute("aria-current")).toBeNull();
   });
 });

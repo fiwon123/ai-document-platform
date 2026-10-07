@@ -239,3 +239,5 @@ frontend/visual-audit/
 .opencode/memory/
 # DevSpace (local Kubernetes dev — caches local, not committed)
 .devspace/
+# Local repro fixtures for reported bugs (e.g. the #688 trigger PDF)
+test_file/

@@ -29,7 +29,16 @@ function isProcessing(status: DocumentStatus): boolean {
    because every icon accompanies visible text. Sizes inherit via CSS. */
 function FileIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <path d="M14 2v6h6" />
       <path d="M9 13h6" />
@@ -40,7 +49,16 @@ function FileIcon() {
 
 function CheckCircleIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
       <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
       <path d="m9 11 3 3L22 4" />
     </svg>
@@ -49,7 +67,16 @@ function CheckCircleIcon() {
 
 function ClockIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
       <circle cx="12" cy="12" r="10" />
       <path d="M12 6v6l4 2" />
     </svg>
@@ -58,7 +85,16 @@ function ClockIcon() {
 
 function ProcessingIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
       <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
       <path d="M21 3v5h-5" />
       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
@@ -69,7 +105,16 @@ function ProcessingIcon() {
 
 function AlertIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
       <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
       <path d="M12 9v4" />
       <path d="M12 17h.01" />
@@ -79,7 +124,16 @@ function AlertIcon() {
 
 function LayersIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
       <path d="m12 2 10 6-10 6L2 8Z" />
       <path d="m2 14 10 6 10-6" />
     </svg>
@@ -88,7 +142,16 @@ function LayersIcon() {
 
 function UploadIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <path d="m17 8-5-5-5 5" />
       <path d="M12 3v12" />
@@ -98,7 +161,16 @@ function UploadIcon() {
 
 function SearchIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
       <circle cx="11" cy="11" r="8" />
       <path d="m21 21-4.35-4.35" />
     </svg>
@@ -107,7 +179,16 @@ function SearchIcon() {
 
 function ChatIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
@@ -145,9 +226,10 @@ export function DashboardPage() {
   const statsQuery = useMyStatistics();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [busyAction, setBusyAction] = useState<
-    { kind: "preview" | "download" | "reprocess"; id: string } | null
-  >(null);
+  const [busyAction, setBusyAction] = useState<{
+    kind: "preview" | "download" | "reprocess";
+    id: string;
+  } | null>(null);
   const [preview, setPreview] = useState<DocumentPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
@@ -161,8 +243,7 @@ export function DashboardPage() {
         const data = await documents.preview(docId);
         setPreview(data);
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : `Preview of "${filename}" failed`;
+        const message = err instanceof Error ? err.message : `Preview of "${filename}" failed`;
         setPreviewError(message);
         toast.error(message);
       } finally {
@@ -172,24 +253,26 @@ export function DashboardPage() {
     [toast],
   );
 
-  const handleDownload = useCallback(async (docId: string, filename: string) => {
-    setBusyAction({ kind: "download", id: docId });
-    try {
-      const { download_url } = await documents.getDownloadUrl(docId);
-      const link = document.createElement("a");
-      link.href = download_url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : `Download of "${filename}" failed`;
-      toast.error(message);
-    } finally {
-      setBusyAction(null);
-    }
-  }, [toast]);
+  const handleDownload = useCallback(
+    async (docId: string, filename: string) => {
+      setBusyAction({ kind: "download", id: docId });
+      try {
+        const { download_url } = await documents.getDownloadUrl(docId);
+        const link = document.createElement("a");
+        link.href = download_url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : `Download of "${filename}" failed`;
+        toast.error(message);
+      } finally {
+        setBusyAction(null);
+      }
+    },
+    [toast],
+  );
 
   const handleReprocess = useCallback(
     async (docId: string, filename: string) => {
@@ -201,8 +284,7 @@ export function DashboardPage() {
         queryClient.invalidateQueries({ queryKey: MY_STATISTICS_QUERY_KEY });
         toast.success(`"${filename}" queued for reprocessing`);
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Reprocessing failed";
+        const message = err instanceof Error ? err.message : "Reprocessing failed";
         toast.error(message);
       } finally {
         setBusyAction(null);
@@ -351,9 +433,7 @@ export function DashboardPage() {
                       <span className="progress-track" aria-hidden="true">
                         <span className="progress-bar" />
                       </span>
-                      <span className="status-elapsed">
-                        {timeAgo(doc.created_at)}
-                      </span>
+                      <span className="status-elapsed">{timeAgo(doc.created_at)}</span>
                     </span>
                   )}
                   {doc.status === "ready" && (
@@ -416,11 +496,13 @@ export function DashboardPage() {
         </section>
       </div>
 
-      {previewError && <p className="error-message" role="alert">{previewError}</p>}
-
-      {preview && (
-        <PreviewModal preview={preview} onClose={() => setPreview(null)} />
+      {previewError && (
+        <p className="error-message" role="alert">
+          {previewError}
+        </p>
       )}
+
+      {preview && <PreviewModal preview={preview} onClose={() => setPreview(null)} />}
     </div>
   );
 }

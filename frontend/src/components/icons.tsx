@@ -91,13 +91,7 @@ export function SearchIcon() {
  *  the landing navbar and the workspace navbar so the brand renders the same
  *  everywhere. `className` hooks the per-surface color rules (--blue on the
  *  landing page, --paper on the inverted app bar). */
-export function BrandMark({
-  size = 22,
-  className,
-}: {
-  size?: number;
-  className?: string;
-}) {
+export function BrandMark({ size = 22, className }: { size?: number; className?: string }) {
   return (
     <svg
       className={className}
@@ -121,10 +115,7 @@ export function BrandMark({
         strokeWidth="1.8"
         strokeLinejoin="round"
       />
-      <path
-        d="M9.5 12l.9 1.9 1.9.9-1.9.9-.9 1.9-.9-1.9-1.9-.9 1.9-.9.9-1.9Z"
-        fill="currentColor"
-      />
+      <path d="M9.5 12l.9 1.9 1.9.9-1.9.9-.9 1.9-.9-1.9-1.9-.9 1.9-.9.9-1.9Z" fill="currentColor" />
     </svg>
   );
 }

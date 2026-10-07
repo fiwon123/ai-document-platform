@@ -117,7 +117,8 @@ export function CountUp({ value, durationMs = 2000, suffix = "", format }: Count
   // value immediately, so they are `done` and never `pending` — otherwise a
   // capture on a reduced-motion browser would wait out the full timeout for
   // something that will never start.
-  const countState = !canAnimate || !started ? (canAnimate ? "pending" : "done") : animating ? "animating" : "done";
+  const countState =
+    !canAnimate || !started ? (canAnimate ? "pending" : "done") : animating ? "animating" : "done";
 
   return (
     <span

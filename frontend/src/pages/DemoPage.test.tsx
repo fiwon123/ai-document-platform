@@ -58,10 +58,9 @@ async function askQuestion(question: string) {
   const user = userEvent.setup();
   await dismissTour(user);
   await user.click(screen.getByRole("tab", { name: /^Ask/ }));
-  fireEvent.change(
-    screen.getByPlaceholderText("Ask about the sample documents..."),
-    { target: { value: question } },
-  );
+  fireEvent.change(screen.getByPlaceholderText("Ask about the sample documents..."), {
+    target: { value: question },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await act(async () => {});
 }
@@ -77,12 +76,8 @@ describe("DemoPage", () => {
     renderDemo();
     await dismissTour(user);
 
-    expect(
-      screen.getByText(/Sign up to save your work and access more models/i),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("link", { name: "Back to home" }).getAttribute("href"),
-    ).toBe("/");
+    expect(screen.getByText(/Sign up to save your work and access more models/i)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Back to home" }).getAttribute("href")).toBe("/");
     for (const doc of DEMO_DOCUMENTS) {
       expect(screen.getByText(doc.filename)).toBeTruthy();
     }
@@ -95,9 +90,7 @@ describe("DemoPage", () => {
     // printed the identical sentence in the header badge and the panel counter —
     // is noise, so the panel stays silent until the budget runs out.
     expect(screen.getAllByText("0 of 10 searches used — 10 left")).toHaveLength(1);
-    expect(
-      screen.queryByText("Search limit reached for this session."),
-    ).toBeNull();
+    expect(screen.queryByText("Search limit reached for this session.")).toBeNull();
   });
 
   it("describes what each sample document holds and what it demonstrates", async () => {
@@ -139,9 +132,9 @@ describe("DemoPage", () => {
     // newsletter's report-back line at once.
     const status = within(screen.getByRole("main")).getByRole("status");
     expect(within(status).getByText("You have reached the demo search limit.")).toBeTruthy();
-    expect(
-      within(status).getByRole("link", { name: "Sign up" }).getAttribute("href"),
-    ).toBe("/register");
+    expect(within(status).getByRole("link", { name: "Sign up" }).getAttribute("href")).toBe(
+      "/register",
+    );
     expect(screen.getByPlaceholderText("Search sample documents...")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Search" })).toBeDisabled();
   });
@@ -153,9 +146,7 @@ describe("DemoPage", () => {
     await askQuestion("What benefits do employees get?");
 
     expect(screen.getByText("AskDocs demo")).toBeTruthy();
-    expect(
-      screen.getAllByText(/Answered by the demo assistant/i).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Answered by the demo assistant/i).length).toBeGreaterThan(0);
     // The matched source document is listed in the assistant message.
     expect(screen.getAllByText("company-handbook.pdf").length).toBeGreaterThan(1);
     expect(screen.getByText("1 of 5 questions used — 4 left")).toBeTruthy();
@@ -173,12 +164,10 @@ describe("DemoPage", () => {
     // newsletter's report-back line at once.
     const status = within(screen.getByRole("main")).getByRole("status");
     expect(within(status).getByText("You have reached the demo Q&A limit.")).toBeTruthy();
-    expect(
-      within(status).getByRole("link", { name: "Sign up" }).getAttribute("href"),
-    ).toBe("/register");
-    expect(
-      screen.getByPlaceholderText("Ask about the sample documents..."),
-    ).toBeDisabled();
+    expect(within(status).getByRole("link", { name: "Sign up" }).getAttribute("href")).toBe(
+      "/register",
+    );
+    expect(screen.getByPlaceholderText("Ask about the sample documents...")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   });
 
@@ -214,10 +203,9 @@ describe("DemoPage", () => {
 });
 /** `askQuestion` without the tab switch, for callers already on the Ask tab. */
 async function askQuestionNow(question: string) {
-  fireEvent.change(
-    screen.getByPlaceholderText("Ask about the sample documents..."),
-    { target: { value: question } },
-  );
+  fireEvent.change(screen.getByPlaceholderText("Ask about the sample documents..."), {
+    target: { value: question },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await act(async () => {});
 }
@@ -239,20 +227,12 @@ describe("DemoPage — tabs", () => {
     // not merely hidden. That is what stops the two halves pushing each other
     // down the page, which is what the issue reports.
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
-    expect(
-      screen.getByPlaceholderText("Search sample documents..."),
-    ).toBeTruthy();
-    expect(
-      screen.queryByPlaceholderText("Ask about the sample documents..."),
-    ).toBeNull();
+    expect(screen.getByPlaceholderText("Search sample documents...")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Ask about the sample documents...")).toBeNull();
 
     await user.click(within(tablist).getByRole("tab", { name: /^Ask/ }));
-    expect(
-      screen.getByPlaceholderText("Ask about the sample documents..."),
-    ).toBeTruthy();
-    expect(
-      screen.queryByPlaceholderText("Search sample documents..."),
-    ).toBeNull();
+    expect(screen.getByPlaceholderText("Ask about the sample documents...")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Search sample documents...")).toBeNull();
   });
 
   it("keeps each tab's own state across a switch", async () => {
@@ -268,9 +248,7 @@ describe("DemoPage — tabs", () => {
     // Back to Search: the results, the query text and the budget all survive.
     await user.click(screen.getByRole("tab", { name: /^Search/ }));
     expect(screen.getByText("Results (1)")).toBeTruthy();
-    expect(
-      screen.getByPlaceholderText("Search sample documents..."),
-    ).toHaveValue("benefits");
+    expect(screen.getByPlaceholderText("Search sample documents...")).toHaveValue("benefits");
     expect(screen.getByText("1 of 10 searches used — 9 left")).toBeTruthy();
 
     // And forward to Ask: the conversation is still there.
@@ -286,19 +264,11 @@ describe("DemoPage — tabs", () => {
     screen.getByRole("tab", { name: /^Search/ }).focus();
     await user.keyboard("{ArrowRight}");
 
-    expect(screen.getByRole("tab", { name: /^Ask/ })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(
-      screen.getByPlaceholderText("Ask about the sample documents..."),
-    ).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /^Ask/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByPlaceholderText("Ask about the sample documents...")).toBeTruthy();
     // Wraps, so the tablist is not a dead end at either end.
     await user.keyboard("{ArrowRight}");
-    expect(screen.getByRole("tab", { name: /^Search/ })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.getByRole("tab", { name: /^Search/ })).toHaveAttribute("aria-selected", "true");
   });
 
   it("shows each tab's remaining budget in the tab strip", async () => {
@@ -308,17 +278,11 @@ describe("DemoPage — tabs", () => {
 
     // The badges carry the long-form budget; the tab hints carry the short form,
     // so the budget for the tab you are *not* on is still visible.
-    expect(
-      within(screen.getByRole("tab", { name: /^Search/ })).getByText("7 left"),
-    ).toBeTruthy();
-    expect(
-      within(screen.getByRole("tab", { name: /^Ask/ })).getByText("5 left"),
-    ).toBeTruthy();
+    expect(within(screen.getByRole("tab", { name: /^Search/ })).getByText("7 left")).toBeTruthy();
+    expect(within(screen.getByRole("tab", { name: /^Ask/ })).getByText("5 left")).toBeTruthy();
 
     await user.click(screen.getByRole("tab", { name: /^Ask/ }));
-    expect(
-      screen.getByPlaceholderText("Ask about the sample documents..."),
-    ).toBeTruthy();
+    expect(screen.getByPlaceholderText("Ask about the sample documents...")).toBeTruthy();
   });
 });
 
@@ -337,15 +301,11 @@ describe("DemoPage — walkthrough", () => {
     // Nothing behind it is announced or reachable while it is open.
     expect(dialog).toHaveAttribute("aria-modal", "true");
     // The closing button is the last step's label, not the first's.
-    expect(
-      within(dialog).queryByRole("button", { name: /start exploring/i }),
-    ).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: /start exploring/i })).toBeNull();
 
     await user.click(within(dialog).getByRole("button", { name: "Next" }));
     await user.click(within(dialog).getByRole("button", { name: "Next" }));
-    await user.click(
-      within(dialog).getByRole("button", { name: /start exploring/i }),
-    );
+    await user.click(within(dialog).getByRole("button", { name: /start exploring/i }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(window.localStorage.getItem(KEY_TOUR)).toBe("1");
   });
@@ -397,9 +357,7 @@ describe("DemoPage — walkthrough", () => {
 
     window.localStorage.clear();
     renderDemo();
-    await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: /close/i }),
-    );
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /close/i }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(window.localStorage.getItem(KEY_TOUR)).toBe("1");
   });
@@ -432,9 +390,7 @@ describe("DemoPage — walkthrough", () => {
     await user.tab();
     expect(dialog.contains(document.activeElement)).toBe(true);
     // Wrapped to the first control rather than to the page behind.
-    expect(document.activeElement).toBe(
-      within(dialog).getByRole("button", { name: /close/i }),
-    );
+    expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: /close/i }));
   });
 
   it("wraps backwards from the first control to the last", async () => {
@@ -445,9 +401,7 @@ describe("DemoPage — walkthrough", () => {
     const first = within(dialog).getByRole("button", { name: /close/i });
     first.focus();
     await user.tab({ shift: true });
-    expect(document.activeElement).toBe(
-      within(dialog).getByRole("button", { name: "Next" }),
-    );
+    expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Next" }));
   });
 });
 
@@ -480,9 +434,7 @@ describe("DemoPage — placeholder fit", () => {
     expect(placeholder.length).toBeLessThanOrEqual(MAX_PLACEHOLDER_CHARS);
     // The descriptive label is the accessible name, so shortening the visible
     // hint does not shorten what a screen reader announces.
-    expect(input.getAttribute("aria-label")).toBe(
-      "Ask a question about the sample documents",
-    );
+    expect(input.getAttribute("aria-label")).toBe("Ask a question about the sample documents");
   });
 
   it("keeps the Search placeholder inside the same budget", () => {
@@ -558,7 +510,7 @@ describe("DemoPage — stylesheet invariants", () => {
     const tabHint = ruleBody(".tab-hint");
     expect(
       decl(tabHint, "word-spacing"),
-      "the tab hint fuses \"10 left\" into \"10left\" without a word gap",
+      'the tab hint fuses "10 left" into "10left" without a word gap',
     ).toBeTruthy();
   });
 
