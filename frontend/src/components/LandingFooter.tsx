@@ -131,7 +131,7 @@ export function LandingFooter() {
   };
 
   return (
-    <footer className="landing-footer">
+    <footer className="landing-footer forced-dark">
       <div className="footer-cols">
         <div className="footer-col footer-brand">
           <span className="footer-brand-name">{SITE.name}</span>

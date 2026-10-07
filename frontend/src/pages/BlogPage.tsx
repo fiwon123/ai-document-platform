@@ -26,7 +26,7 @@ export function BlogPage() {
     >
       <PageSection>
         <div className="page-split">
-          <div className="empty-state-panel">
+          <div className="empty-state-panel forced-dark">
             <h2>No posts yet</h2>
             <p>
               Nothing has been published. Rather than fill this page with placeholder entries, it

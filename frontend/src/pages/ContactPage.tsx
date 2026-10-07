@@ -37,7 +37,7 @@ export function ContactPage() {
           close to its height, so the pairing is balanced rather than merely
           placed. */}
       <PageSection title="Where to go">
-        <div className="contact-list contact-list--pair">
+        <div className="contact-list contact-list--pair forced-dark">
           <div className="contact-row">
             <h3>Bugs and feature requests</h3>
             <p>

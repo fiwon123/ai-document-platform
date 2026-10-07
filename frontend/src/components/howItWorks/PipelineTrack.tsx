@@ -46,7 +46,7 @@ export function PipelineTrack() {
   const { ref, style } = useScrollProgress<HTMLDivElement>();
 
   return (
-    <div className="pipeline-track" ref={ref} style={style}>
+    <div className="pipeline-track forced-dark" ref={ref} style={style}>
       {/* The rail. Two elements rather than one gradient so the drawn portion
           can be a solid accent and the remaining portion a track, which reads
           as progress rather than as a decoration. */}

@@ -99,9 +99,61 @@ describe("design tokens", () => {
   });
 
   it("defines --line-strong once per theme", () => {
-    // Two definitions: the light default and the dark override. If either
-    // is dropped the card edges silently fall back to the hairline.
-    expect(css.match(/--line-strong\s*:/g)).toHaveLength(2);
+    // Three definitions: the light default, the dark override, and the
+    // forced-dark restate (see the .forced-dark section at the end of
+    // App.css). If any is dropped the card edges silently fall back to the
+    // hairline.
+    expect(css.match(/--line-strong\s*:/g)).toHaveLength(3);
+  });
+
+  it("forced-dark restates every dark-theme token with the same value", () => {
+    // .forced-dark pins a subtree to the dark aesthetic in BOTH themes by
+    // re-declaring the dark blocks' tokens (the section at the end of
+    // App.css). The values are copies — CSS custom properties resolve where
+    // they are used, so there is no way to alias another scope's declaration —
+    // which means the two lists can drift: someone restyles the dark theme
+    // and forgets the copy, and every pinned surface keeps the OLD dark value
+    // while everything around it moves on. No render test can see that,
+    // because both values are "dark-looking"; only a name+value comparison
+    // against the real dark blocks catches it, in either direction (a token
+    // dropped from forced-dark, or one invented there that dark never had).
+    const darkBodies = [
+      ...css.matchAll(/(?:^|[}\n])\s*:root\[data-theme="dark"\]\s*\{([^}]*)\}/g),
+    ].map((m) => m[1] ?? "");
+    // Four today: App.css's surface ladder, the badge colours, --error-text,
+    // and index.css's type/shadow tokens. A regex that matched nothing would
+    // make the loops below vacuous, so pin the floor.
+    expect(darkBodies.length).toBeGreaterThanOrEqual(4);
+
+    const parse = (body: string): Map<string, string> => {
+      const out = new Map<string, string>();
+      for (const m of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
+        // Values may wrap across lines differently in the two blocks
+        // (prettier line-width), so compare on normalised whitespace.
+        out.set(m[1] ?? "", (m[2] ?? "").replace(/\s+/g, " ").trim());
+      }
+      return out;
+    };
+
+    const dark = new Map<string, string>();
+    for (const body of darkBodies) {
+      for (const [name, value] of parse(body)) dark.set(name, value);
+    }
+    expect(dark.size, "the dark blocks must declare tokens").toBeGreaterThan(40);
+
+    const forced = parse(ruleBody("\\.forced-dark"));
+
+    for (const [name, value] of dark) {
+      expect(
+        forced.get(name),
+        `forced-dark must restate ${name} exactly as the dark theme declares it`,
+      ).toBe(value);
+    }
+    for (const name of forced.keys()) {
+      expect(dark.has(name), `forced-dark declares ${name}, which no dark-theme block does`).toBe(
+        true,
+      );
+    }
   });
 
   it("keeps the logo marquee keyframe in step with its copy count", () => {
