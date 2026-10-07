@@ -223,11 +223,31 @@ gh pr create \
 - **Ask user to confirm merge**: "CI passed. Ready to merge dev to main?"
 - Only merge after user confirms:
   ```bash
-  gh pr merge <number> --squash --delete-branch
+  gh pr merge <number> --squash
   ```
+  - **Never add `--delete-branch` to a release merge.** The release PR's head
+    branch is `dev` itself, so `--delete-branch` deletes the integration
+    branch from the remote — which breaks Dependabot (`target-branch: dev`),
+    the uv-lock-upgrade workflow (`git fetch origin dev`), and every future
+    PR's base. It happened on #701 and took until #708 to notice.
+    `--delete-branch` belongs to step 6, for feature branches only.
 - After merging:
   - **Comment on the issue**: `gh issue comment <issue-number> --body "Released in <commit-sha>"`
   - **Comment on the PR**: `gh pr comment <number> --body "Released — thanks!"`
+- **Merge `main` back into `dev`** — a squash merge leaves `dev` and `main`
+  diverged at the old merge-base, so the *next* release PR would re-list
+  every file from this one. This is the repo's own pattern (`133b98a`):
+  ```bash
+  git checkout dev
+  git pull origin dev
+  git merge origin/main -m "Merge remote-tracking branch 'origin/main' into dev"
+  git push origin dev
+  ```
+- **Verify `dev` survived** — an empty output means the integration branch
+  is gone and the automation that targets it is broken:
+  ```bash
+  git ls-remote --heads origin dev   # must print a line
+  ```
 - **Always return to dev after release merge**:
   ```bash
   git checkout dev
@@ -244,6 +264,9 @@ git remote prune origin
 
 - **Always end on `dev`** — this is the working branch with the latest integrated features
 - Verify clean state: only `dev` remains locally and on the remote
+  ```bash
+  git ls-remote --heads origin dev   # must print a line — an empty output means dev is gone (#708)
+  ```
 
 ### Environment Notes
 
