@@ -112,7 +112,7 @@ gh pr edit <number> --add-assignee fiwon123 --add-label "<label>"
 gh pr checks <number> --watch
 
 # Merge (only when explicitly instructed)
-gh pr merge <number> --squash --delete-branch
+gh pr merge <number> --squash --delete-branch   # feature branches only
 ```
 
 ### Pull Request Workflow
@@ -131,6 +131,9 @@ gh pr merge <number> --squash --delete-branch
 
 - NEVER push directly to `dev` or `main`
 - Always work in feature branches
+- `--delete-branch` is for feature branches only — a release PR's head is
+  `dev` itself, so `gh pr merge ... --delete-branch` on it deletes the
+  integration branch (#708). Never delete `dev` or `main`.
 - Run tests before opening a PR
 - Write clear PR descriptions
 - Link related issues with `Closes #N`
