@@ -1464,10 +1464,18 @@ body {
    brand and links out of alignment with the copy directly below them.
 
    This replaces the old 1200px/980px gap-only steps. Those left a residual
-   ~37px deficit from 1025px to ~1051px, so the navbar still wrapped just above
-   the old step; one band that reaches from 1200px down to the collapse point
-   has no such gap. */
-@media (max-width: 1200px) {
+   deficit just above the old step, so the navbar still wrapped there; one band
+   that reaches from the base row's real requirement down to the collapse point
+   has no such gap.
+
+   The band ends at 1320px, not 1200px, because the Company disclosure added a
+   chevron the flat link did not have (#715). Measured in Chromium: the base-gap
+   row needs ~1285px (logged out) / ~1306px (the wider "Go to app" CTA), against
+   a content box of `viewport * 0.88`, so above 1320px the base spacing always
+   fits and below it the tightened spacing does. A band set *below* where the row
+   fits is the wrap, so it is sized from the measurement rather than from the old
+   value. */
+@media (max-width: 1320px) {
   .landing-navbar {
     gap: 14px;
   }
@@ -1589,6 +1597,97 @@ body {
   padding: 4px 12px;
 }
 
+/* Company: the header's one disclosure menu. The trigger matches a flat link's
+   box so the row still reads as one set of controls; the panel anchors to the
+   group and opens on hover (pointer) or on click/Enter (touch and keyboard),
+   with focus-within keeping it open while a keyboard user is inside it. */
+.nav-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.landing-nav-links .nav-group-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--appbar-fg);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+
+.landing-nav-links .nav-group-trigger:hover,
+.landing-nav-links .nav-group-trigger[aria-expanded="true"] {
+  color: var(--appbar-active-fg);
+  background: var(--appbar-wash);
+}
+
+.landing-nav-links .nav-group-trigger.active {
+  color: var(--appbar-active-fg);
+  background: var(--appbar-active-bg);
+}
+
+.nav-group-chevron {
+  flex: none;
+  transition: transform 0.18s ease;
+}
+
+.nav-group:hover .nav-group-chevron,
+.nav-group-trigger[aria-expanded="true"] .nav-group-chevron {
+  transform: rotate(180deg);
+}
+
+.nav-group-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 6px;
+  border-radius: 14px;
+  box-shadow: 0 18px 40px -18px rgb(0 0 0 / 55%);
+}
+
+.nav-group:hover .nav-group-menu,
+.nav-group:focus-within .nav-group-menu,
+.nav-group-menu.open {
+  display: flex;
+}
+
+.landing-nav-links .nav-group-menu a {
+  display: block;
+  min-height: 24px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.landing-nav-links .nav-group-menu a:hover,
+.landing-nav-links .nav-group-menu a.active,
+.landing-nav-links .nav-group-menu a[aria-current="page"] {
+  color: var(--appbar-active-fg);
+  background: var(--appbar-wash);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-group-chevron {
+    transition: none;
+  }
+}
+
 .landing-nav-actions {
   display: flex;
   align-items: center;
@@ -1692,6 +1791,69 @@ body {
     width: 100%;
     padding: 11px 0;
     font-size: 0.95rem;
+  }
+
+  /* Company joins the stacked list: the trigger becomes a full-width row, and
+     its menu drops the floating panel for an indented inline list. Hover has no
+     meaning on touch, so it is disabled here — only the trigger's `open` state
+     reveals the items, keeping one interaction (tap) rather than two. */
+  .nav-group {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .landing-nav-links .nav-group-trigger {
+    justify-content: space-between;
+    width: 100%;
+    padding: 11px 0;
+    border-radius: 0;
+    font-size: 0.95rem;
+  }
+
+  /* A tap also matches `:hover`, which would leave the chevron flipped up while
+     the submenu is closed. At this width rotation follows the real open state
+     (`aria-expanded`) instead. */
+  .nav-group:hover .nav-group-chevron {
+    transform: none;
+  }
+
+  .nav-group-trigger[aria-expanded="true"] .nav-group-chevron {
+    transform: rotate(180deg);
+  }
+
+  .nav-group:hover .nav-group-menu,
+  .nav-group:focus-within .nav-group-menu {
+    display: none;
+  }
+
+  /* (0,3,0) to outrank the two `display: none` rules just above — a bare
+     `.nav-group-menu.open` (0,2,0) lost to their pseudo-class, so the tap did
+     nothing and the submenu rendered empty. */
+  .nav-group .nav-group-menu.open {
+    display: flex;
+  }
+
+  /* Self selector for the mobile override: the forced-dark surface rule is
+     (0,3,0), so a bare `.nav-group-menu` (0,1,0) here would leave the submenu
+     as a floating box inside the panel instead of an indented inline list. */
+  .landing-nav-links .nav-group-menu.forced-dark {
+    border: none;
+    background: none;
+  }
+
+  .nav-group-menu {
+    position: static;
+    min-width: 0;
+    padding: 0 0 6px 12px;
+    border-radius: 0;
+    box-shadow: none;
+    background: none;
+  }
+
+  .landing-nav-links .nav-group-menu a {
+    padding: 10px 0;
+    font-size: 0.92rem;
   }
 
   /* Mobile 2.5.5 targets for the header controls — 44x44 rather than merely
@@ -10115,15 +10277,16 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
   color: var(--ink);
 }
 
-/* The demo page paints its paper on `.demo-page`, which stays outside the
-   wrapper (the navbar and banner keep their own design), so the pinned
-   content region has to carry the dark page fill itself. */
-.demo-content.forced-dark {
-  background: var(--paper);
-}
+/* The demo's dark objects each carry `.forced-dark` themselves — the sample
+   cards, the search bar, the result cards, and the chat — so the page keeps its
+   light background and header while the boxes stay dark in both themes (#715).
+   They are deliberately not wrapped in one panel: a grouped rectangle buries
+   the section titles, and each box already paints its own background. */
 
 /* Surface-ladder gradient for the card family — the dark counterpart of the
-   light theme's near-white gradient. */
+   light theme's near-white gradient. The self-selector arms are for boxes that
+   carry `.forced-dark` themselves (e.g. the demo's individual cards), which a
+   descendant selector would not match. */
 .forced-dark
   :is(
     .document-card,
@@ -10135,7 +10298,18 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
     .recent-item,
     .stat-skeleton,
     .skeleton-card
-  ) {
+  ),
+:is(
+  .document-card,
+  .search-result-card,
+  .settings-card,
+  .profile-hero,
+  .profile-stat,
+  .quick-action,
+  .recent-item,
+  .stat-skeleton,
+  .skeleton-card
+).forced-dark {
   background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
 }
 
@@ -10273,4 +10447,40 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 
 .forced-dark .demo-back-home {
   color: #ffffff;
+}
+
+/* The Company menu is a forced-dark surface, so it pins the dark panel and
+   keeps light text in both themes. Placed on the menu itself rather than its
+   links so the class describes the surface. */
+.landing-nav-links .nav-group-menu.forced-dark {
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+}
+
+.landing-nav-links .nav-group-menu a.forced-dark,
+.landing-nav-links .nav-group-menu a {
+  color: var(--ink);
+}
+
+.landing-nav-links .nav-group-menu a:hover,
+.landing-nav-links .nav-group-menu a.active,
+.landing-nav-links .nav-group-menu a[aria-current="page"] {
+  color: #ffffff;
+  background: var(--appbar-active-bg);
+}
+
+/* `PageCta` carries `forced-dark` on the band element itself, so the surface
+   has to be re-declared with a self selector — `.forced-dark .page-cta-band`
+   is (0,2,0) but matches nothing, because the band is the wrapper, not a
+   descendant of one. The heading/subtext below stay descendant rules: those
+   elements are inside the band. */
+.page-cta-band.forced-dark {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+}
+.forced-dark .page-cta-band h2 {
+  color: var(--text-h);
+}
+.forced-dark .page-cta-band-sub {
+  color: var(--muted);
 }

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "note": "Accepted findings for the visual audit's --gate. Every entry here is a problem someone has looked at and decided to live with for now, so a run that finds nothing new passes. Empty means the audit is clean: contrast failures, page errors, skipped captures, horizontal overflow and unlabelled controls are all at zero. Add an entry only with --update-baseline, and review the resulting diff in the PR. Keys identify the element (route, viewport, theme, state, tag, class, required level) and deliberately exclude measured values, so retuning a colour does not read as a new regression; `fingerprint` records the severity that was accepted.",
-  "updatedAt": "2026-10-07T19:52:25.536Z",
+  "updatedAt": "2026-10-08T16:32:03.992693Z",
   "findings": [
     {
       "key": "overflow|/how-it-works [mobile/dark] page-10|overflow",
@@ -146,24 +146,6 @@
       "signal": "overflow",
       "where": "/how-it-works [mobile/light] top",
       "fingerprint": "24"
-    },
-    {
-      "key": "skips|/ disclosure-hover|post-condition not met: aria-expanded=\"true\" on .nav-group-trigger",
-      "signal": "skips",
-      "where": "/ disclosure-hover",
-      "fingerprint": ""
-    },
-    {
-      "key": "skips|/ disclosure-open|post-condition not met: aria-expanded=\"true\" on .nav-group-trigger",
-      "signal": "skips",
-      "where": "/ disclosure-open",
-      "fingerprint": ""
-    },
-    {
-      "key": "skips|/ menu-open|post-condition not met: aria-expanded=\"true\" on .nav-group-trigger",
-      "signal": "skips",
-      "where": "/ menu-open",
-      "fingerprint": ""
     }
   ]
 }
