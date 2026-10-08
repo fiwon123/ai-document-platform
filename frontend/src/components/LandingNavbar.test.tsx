@@ -368,6 +368,36 @@ describe("LandingNavbar", () => {
     );
   });
 
+  /* A pointer click always lands *after* the hover that just opened the menu.
+     If the click toggled the very state the hover set, the disclosure closed
+     itself under the cursor — aria-expanded flipping to false while the CSS
+     `:hover` rule kept the panel visibly open. That is what the audit's
+     `disclosure-open` scenario hit. The click must instead pin what hover
+     opened, leaving "open" alone until the pointer leaves. */
+  it("keeps the Company menu open when a click lands on a hover-opened menu", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("hover: hover"),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderNavbar();
+    const group = document.querySelector(".nav-group--company")!;
+    const trigger = screen.getByRole("button", { name: /Company/ });
+    await user.hover(group);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    await user.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    // Closing still works the pointer way: leaving the group ends both states.
+    await user.unhover(group);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+
   /* A touch tap fires `mouseenter` just before `click`. If hover opened the menu
      the click then toggled it straight back shut, so the submenu never appeared
      on the first tap (#715 regression). On a no-hover device the hover handlers

@@ -81,7 +81,19 @@ export function LandingNavbar() {
      footer column follows (#584). */
   const companyActive = NAV_COMPANY.some((item) => pathname === item.to);
   const companyItems = NAV_COMPANY.filter((item) => item.to !== "/company");
-  const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
+  /* The Company menu has two ways to be open, because the pointer and the rest
+     of the input world activate it differently. A real hover (a device whose
+     `(hover: hover)` matches) opens it — but the click that *follows* that
+     hover must not toggle it shut, or the disclosure reads as broken under the
+     cursor: `mouseenter` opened the menu, the `click` toggled it straight back,
+     and the audit's `disclosure-open` scenario caught exactly that. So openness
+     is `pinned || hovered`: hover sets `hovered`, activation (a touch tap, an
+     Enter, or a pointer click) toggles `pinned` against whatever is already
+     open, and a cold click — no hover involved — toggles normally. `pinned` is
+     what persists: a keyboard-opened menu survives pointer leave. */
+  const [companyHovered, setCompanyHovered] = useState(false);
+  const [companyPinned, setCompanyPinned] = useState(false);
+  const companyMenuOpen = companyPinned || companyHovered;
   const companyDropdownRef = useRef<HTMLDivElement>(null);
 
   /* Open on hover only where the pointer can actually hover. On a touch device
@@ -95,6 +107,14 @@ export function LandingNavbar() {
     typeof window.matchMedia === "function" &&
     window.matchMedia("(hover: hover)").matches;
 
+  /* Every close affordance (Escape, click-outside, a link, the hamburger) must
+     end both halves: leaving `hovered` set would keep the menu open over the
+     page it just navigated to, since the pointer still sits inside the group. */
+  const closeCompanyMenu = useCallback(() => {
+    setCompanyPinned(false);
+    setCompanyHovered(false);
+  }, []);
+
   // Mobile panel key handling (ARIA disclosure, APG "Navigation Menu Button"):
   // focus moves to the first link on open, Escape closes and returns focus to
   // the toggle. Tab follows DOM order — a disclosure panel is not a dialog, so
@@ -106,12 +126,12 @@ export function LandingNavbar() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       closeMenu();
-      setCompanyMenuOpen(false);
+      closeCompanyMenu();
       toggleRef.current?.focus();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [menuOpen, closeMenu]);
+  }, [menuOpen, closeMenu, closeCompanyMenu]);
 
   useEffect(() => {
     const onClickOutside = (event: MouseEvent) => {
@@ -119,14 +139,14 @@ export function LandingNavbar() {
         companyDropdownRef.current &&
         !companyDropdownRef.current.contains(event.target as Node)
       ) {
-        setCompanyMenuOpen(false);
+        closeCompanyMenu();
       }
     };
     if (companyMenuOpen) {
       document.addEventListener("mousedown", onClickOutside);
     }
     return () => document.removeEventListener("mousedown", onClickOutside);
-  }, [companyMenuOpen]);
+  }, [companyMenuOpen, closeCompanyMenu]);
 
   // Escape closes the Company menu wherever focus sits inside it. The mobile
   // panel's own Escape handler above only runs while that panel is open, so
@@ -134,16 +154,16 @@ export function LandingNavbar() {
   useEffect(() => {
     if (!companyMenuOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setCompanyMenuOpen(false);
+      if (event.key === "Escape") closeCompanyMenu();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [companyMenuOpen]);
+  }, [companyMenuOpen, closeCompanyMenu]);
 
   const toggleMenu = useCallback(() => {
     setOpenedFor((current) => (current === pathname ? null : pathname));
-    setCompanyMenuOpen(false);
-  }, [pathname]);
+    closeCompanyMenu();
+  }, [pathname, closeCompanyMenu]);
 
   return (
     <nav className="landing-navbar">
@@ -189,10 +209,10 @@ export function LandingNavbar() {
             className="nav-group nav-group--company"
             ref={companyDropdownRef}
             onMouseEnter={() => {
-              if (hoverOpensMenu()) setCompanyMenuOpen(true);
+              if (hoverOpensMenu()) setCompanyHovered(true);
             }}
             onMouseLeave={() => {
-              if (hoverOpensMenu()) setCompanyMenuOpen(false);
+              if (hoverOpensMenu()) setCompanyHovered(false);
             }}
           >
             <button
@@ -200,7 +220,7 @@ export function LandingNavbar() {
               className={`nav-group-trigger${companyActive ? " active" : ""}`}
               aria-expanded={companyMenuOpen}
               aria-controls="company-nav-menu"
-              onClick={() => setCompanyMenuOpen((current) => !current)}
+              onClick={() => setCompanyPinned(!companyMenuOpen)}
             >
               Company
               <svg
@@ -231,7 +251,7 @@ export function LandingNavbar() {
                 role="menuitem"
                 onClick={() => {
                   closeMenu();
-                  setCompanyMenuOpen(false);
+                  closeCompanyMenu();
                 }}
                 className={pathname === COMPANY_HUB ? "active" : undefined}
                 aria-current={pathname === COMPANY_HUB ? "page" : undefined}
@@ -245,7 +265,7 @@ export function LandingNavbar() {
                   role="menuitem"
                   onClick={() => {
                     closeMenu();
-                    setCompanyMenuOpen(false);
+                    closeCompanyMenu();
                   }}
                   className={pathname === item.to ? "active" : undefined}
                   aria-current={pathname === item.to ? "page" : undefined}
