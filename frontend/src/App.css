@@ -3880,14 +3880,17 @@ body {
   visibility: visible;
 }
 
-.faq-answer p {
+.faq-item .faq-answer p {
   min-height: 0;
   overflow: hidden;
   margin: 0;
   padding: 0 20px 18px;
   /* Full ink, not muted: the FAQ cards are a forced-dark surface in both
      themes, so the dark theme's muted (#94a3b8 on #1b2639) read as gray
-     answers instead of supporting text (#718). */
+     answers instead of supporting text (#718). The leading `.faq-item` earns
+     specificity over `.page-body p` (both 0,1,1 previously; order decided),
+     which left the answers on muted #94a3b8 wherever the page used
+     PageLayout — /pricing, but not the landing page (#720). */
   color: var(--ink);
   line-height: 1.6;
 }
@@ -6602,6 +6605,32 @@ nav.footer-col a:hover {
 
 :root[data-theme="dark"] .chat-message.user .message-avatar {
   background: #15803d;
+}
+
+/* QA + demo message boxes (#716, #720): on the forced-dark chat panel the
+   assistant bubble was `--paper` on a `--surface` panel (1.08:1 — a box that
+   did not read as a box). Step the fill up one rung and let the border carry
+   the boundary: `--muted` clears 3:1 against both the panel (5.25:1) and the
+   new fill (3.20:1). User bubbles keep their inverted ink fill (their dark
+   border already reads 10.9:1 against it), which is why this is scoped to
+   `.assistant`. Sources sit on the bubble's new fill, so they step up to
+   surface-3 with their own `--muted` edge (3.20:1 outer, 4.44:1 inner). */
+.forced-dark .chat-message.assistant .message-content {
+  background: var(--surface-2);
+  border-color: var(--muted);
+}
+
+.forced-dark .source-item {
+  background: var(--surface-3);
+  border-color: var(--muted);
+}
+
+/* The result cards carry `forced-dark` on themselves (app search + demo
+   both), so the ancestor box-shadow rule further down cannot match them — the
+   same reason the gradient rule has a self-arm. Mirror it. */
+.forced-dark .search-result-card,
+.search-result-card.forced-dark {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 .message-content {
@@ -10428,6 +10457,15 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 .forced-dark .page-card-static p,
 .forced-dark .plan-detail-price span,
 .forced-dark .plan-includes li {
+  color: var(--text-h);
+}
+
+/* The main plan cards' price row: the figure inherited --ink (fine) but the
+   period ("forever", "per month", "per team") kept --muted — gray on the dark
+   card while the detail cards' equivalents were lifted to --text-h (#718).
+   Make the whole row the same heading-white the detail cards use (#720). */
+.forced-dark .landing-price,
+.forced-dark .landing-price-period {
   color: var(--text-h);
 }
 

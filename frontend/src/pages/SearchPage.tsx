@@ -27,6 +27,10 @@ interface SearchParams {
 interface SearchResultCardProps {
   result: SearchResult;
   query: string;
+  /** Extra classes, e.g. `forced-dark` to pin the card to the dark surface.
+   *  Applied via the className prop so the memoized card stays a single
+   *  component while its theming is decided at the call site. */
+  className?: string;
 }
 
 /**
@@ -34,9 +38,13 @@ interface SearchResultCardProps {
  * highlighted snippet re-renders, but unrelated page state (export toggles,
  * filters) does not force every card to rebuild.
  */
-const SearchResultCard = memo(function SearchResultCard({ result, query }: SearchResultCardProps) {
+const SearchResultCard = memo(function SearchResultCard({
+  result,
+  query,
+  className,
+}: SearchResultCardProps) {
   return (
-    <div className="search-result-card">
+    <div className={`search-result-card${className ? ` ${className}` : ""}`}>
       <div className="result-header">
         <span className="result-document">
           <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
@@ -378,7 +386,12 @@ export function SearchPage() {
             </span>
           </p>
           {results.map((result) => (
-            <SearchResultCard key={result.chunk_id} result={result} query={query} />
+            <SearchResultCard
+              key={result.chunk_id}
+              result={result}
+              query={query}
+              className="forced-dark"
+            />
           ))}
           {hasMore && (
             <div className="search-load-more">

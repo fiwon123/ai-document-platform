@@ -252,7 +252,7 @@ export function ProfilePage() {
       </section>
 
       <div className="profile-grid">
-        <section className="settings-card">
+        <section className="settings-card forced-dark">
           <h2>Account info</h2>
           <p className="settings-desc">
             Your username and a summary of what is stored under this account.

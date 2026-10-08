@@ -258,7 +258,7 @@ export function QAPage() {
           )}
 
           {messages.map((message, index) => (
-            <div key={message.id} className={`chat-message ${message.type}`}>
+            <div key={message.id} className={`chat-message forced-dark ${message.type}`}>
               <div className="message-avatar">{message.type === "user" ? "U" : "AI"}</div>
               <div className="message-content">
                 {message.type === "assistant" ? (
