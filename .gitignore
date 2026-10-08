@@ -233,6 +233,10 @@ node_modules/
 # without a `docker compose cp`. Kept at 3 runs by the tool's own --keep-runs.
 frontend/visual-audit/
 
+# Agent scratch captures (probe screenshots + ad-hoc Playwright scripts) written
+# during a feature's visual verification — same rationale as above.
+.captures/
+
 # OpenCode
 .opencode/node_modules/
 # OpenCode memory (agent session memory — local only, never committed)
