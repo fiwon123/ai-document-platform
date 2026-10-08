@@ -190,7 +190,7 @@ export function QAPage() {
 
       <DocumentFilter selected={selectedIds} onChange={setSelectedIds} />
 
-      <div className="qa-controls">
+      <div className="qa-controls forced-dark">
         <label className="qa-model-label" htmlFor="qa-model">
           Model
         </label>
@@ -233,7 +233,7 @@ export function QAPage() {
         )}
       </div>
 
-      <div className="chat-container">
+      <div className="chat-container forced-dark">
         {/* Live region: screen readers announce new messages as they are
             added (role="log" implies aria-live="polite"). */}
         <div className="chat-messages" role="log" aria-live="polite" aria-relevant="additions">

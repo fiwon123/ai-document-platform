@@ -240,7 +240,7 @@ export function ProfilePage() {
         <p>Manage your account and keep your data secure</p>
       </header>
 
-      <section className="profile-hero" aria-label="Account overview">
+      <section className="profile-hero forced-dark" aria-label="Account overview">
         <span className="avatar-initials avatar-lg" aria-hidden="true">
           {initial}
         </span>
@@ -283,7 +283,7 @@ export function ProfilePage() {
           </form>
         </section>
 
-        <section className="settings-card">
+        <section className="settings-card forced-dark">
           <h2>Security</h2>
           <p className="settings-desc">
             Change your account password. You will keep the current password until the change is
@@ -302,7 +302,7 @@ export function ProfilePage() {
           </form>
         </section>
 
-        <section className="settings-card danger-zone">
+        <section className="settings-card forced-dark danger-zone">
           <h2>Danger zone</h2>
           <p className="settings-desc">
             Permanently delete your account, documents, and search history. This cannot be undone.

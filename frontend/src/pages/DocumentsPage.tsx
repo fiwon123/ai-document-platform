@@ -860,7 +860,7 @@ export function DocumentsPage() {
           <p>Upload and manage your documents</p>
         </header>
 
-        <div className="upload-section">
+        <div className="upload-section forced-dark">
           <label
             className={`dropzone${isDragging ? " is-dragging" : ""}${isUploading ? " is-uploading" : ""}`}
             onDragOver={(e) => {
@@ -914,7 +914,7 @@ export function DocumentsPage() {
 
         {optimisticDocs.length > 0 && (
           <div className="documents-toolbar">
-            <div className="documents-search">
+            <div className="documents-search forced-dark">
               <SearchIcon />
               <input
                 id="document-filename-filter"
@@ -975,7 +975,7 @@ export function DocumentsPage() {
 
         {docsQuery.isPending ? (
           <div
-            className={view === "grid" ? "document-grid" : "document-grid is-skeleton-rows"}
+            className={`document-grid forced-dark${view === "grid" ? "" : " is-skeleton-rows"}`}
             aria-busy="true"
           >
             <SkeletonCard />
@@ -998,7 +998,7 @@ export function DocumentsPage() {
             action={{ label: "Clear filters", onClick: clearFilters }}
           />
         ) : view === "grid" ? (
-          <div className="document-grid" id={LIST_REGION_ID}>
+          <div className="document-grid forced-dark" id={LIST_REGION_ID}>
             {filteredDocs.map((doc) => (
               <DocumentCard
                 key={doc.id}
@@ -1021,7 +1021,7 @@ export function DocumentsPage() {
              re-implemented with divs and ARIA. `aria-controls` on the toggle
              points here, so the switch is announced as changing how the list
              is presented. */
-          <div className="document-table-wrap" id={LIST_REGION_ID}>
+          <div className="document-table-wrap forced-dark" id={LIST_REGION_ID}>
             <table className="document-table">
               <caption className="sr-only">
                 Your documents — {filteredDocs.length} of {optimisticDocs.length} shown

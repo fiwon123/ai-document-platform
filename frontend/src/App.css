@@ -1649,7 +1649,13 @@ body {
 
 .nav-group-menu {
   position: absolute;
-  top: calc(100% + 8px);
+  /* 1px, not the old 8px: the moat between the trigger and the panel is a
+     dead zone where a slow pointer never belongs to either element, and a
+     slow move down ended with the menu closed before the links were
+     reachable (#718). The 1px keeps the panel attached enough that the only
+     way to lose it is to leave the group entirely; the JS hover grace period
+     (LandingNavbar) covers even that crossing. */
+  top: calc(100% + 1px);
   left: 0;
   z-index: 30;
   display: none;
@@ -3879,7 +3885,10 @@ body {
   overflow: hidden;
   margin: 0;
   padding: 0 20px 18px;
-  color: var(--muted);
+  /* Full ink, not muted: the FAQ cards are a forced-dark surface in both
+     themes, so the dark theme's muted (#94a3b8 on #1b2639) read as gray
+     answers instead of supporting text (#718). */
+  color: var(--ink);
   line-height: 1.6;
 }
 
@@ -10361,6 +10370,39 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
   background: #1d4ed8;
 }
 
+/* The dropzone's hover/drag wash is `background: var(--blue-soft)` — a
+   translucent value that, with no surface beneath it (the wrapper is
+   transparent), composites over the white page into a light blue that fails
+   with the light --muted text (2.05:1, audit gate #718). Swap the wash for a
+   solid surface step; the border + symbol lift keep the hover affordance. */
+.forced-dark .dropzone:hover,
+.forced-dark .dropzone.is-dragging {
+  background: var(--surface-2);
+  border-color: var(--blue);
+}
+
+/* QA chat: the controls row and the chat column carry forced-dark but no
+   background of their own, so the flipped-to-light labels/empty state sat
+   directly on the light page (1.23:1 for the empty title). Give both the
+   surface rail the rest of the forced-dark cards have. */
+.forced-dark.qa-controls {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.forced-dark.chat-container {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0 16px;
+}
+
+.forced-dark .webhook-step-num {
+  background: #2563eb;
+}
+
 .forced-dark .landing-card,
 .forced-dark .landing-step,
 .forced-dark .landing-plan {
@@ -10375,6 +10417,18 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 
 .forced-dark .plan-badge {
   background: #2563eb;
+}
+
+/* Detail text on the pricing detail cards reads full ink inside the dark
+   scope. The descriptions (.page-card-static p) and per-plan lines
+   (.plan-includes li) inherit nothing of their own and previously landed on
+   --muted in dark; on the forced-dark surface that is gray on gray instead
+   of supporting text (#718). The price's unit is the last muted holdout on
+   those cards, and it has no business being dimmer than the description. */
+.forced-dark .page-card-static p,
+.forced-dark .plan-detail-price span,
+.forced-dark .plan-includes li {
+  color: var(--text-h);
 }
 
 /* Comparison table rungs (dark theme: thead sits on surface-3, the Pro
