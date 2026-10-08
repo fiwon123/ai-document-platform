@@ -16,19 +16,17 @@ const COMPANY_HUB = "/company";
  * signed in the auth button becomes a shortcut back to the app instead of a
  * sign-up prompt.
  *
- * Product is a flat list rather than a second menu. Its five destinations are
- * the header's primary content, and hiding them behind a disclosure meant the
- * one section a visitor is most likely to want cost a hover, a click, and two
- * tab stops to reach.
+ * Product is a flat list rather than a menu. Its five destinations are the
+ * header's primary content, and hiding them behind a disclosure meant the one
+ * section a visitor is most likely to want cost a hover, a click, and two tab
+ * stops to reach.
  *
- * Company is a flat link for the same reason, and it was the last section menu
- * standing. It offered one destination — the hub — behind a hover, a click and
- * two tab stops, while its five pages sat in the footer all along. So the header
- * now carries six links in one row and no dropdown at all: a section is a
- * navigation level that costs a level of nesting to express, and with nothing
- * behind it there was nothing to reveal. `NAV_COMPANY` still defines the section
- * — the link's active state and the footer column both read it — so the header
- * cannot drift from the list of pages that actually exist.
+ * Company is the header's one disclosure. Its five leaf pages are a section a
+ * visitor descends into rather than a destination in their own right, so the
+ * trigger opens a small menu — on hover for a pointer, on click/Enter for
+ * touch and keyboard — with the hub itself as its first item. `NAV_COMPANY`
+ * still defines the section, so the trigger's active state, the menu items and
+ * the footer column are all derived from the same list and cannot drift.
  *
  * Legal pages are deliberately absent: they live in the footer only. Putting
  * eight destinations in the header turns navigation into a wall of links, and
@@ -82,6 +80,20 @@ export function LandingNavbar() {
      page cannot leave the header blind to it — the same single-source rule the
      footer column follows (#584). */
   const companyActive = NAV_COMPANY.some((item) => pathname === item.to);
+  const companyItems = NAV_COMPANY.filter((item) => item.to !== "/company");
+  const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
+  const companyDropdownRef = useRef<HTMLDivElement>(null);
+
+  /* Open on hover only where the pointer can actually hover. On a touch device
+     a tap fires `mouseenter` immediately before `click`, so an unguarded
+     `onMouseEnter` opened the menu and the following `click` toggled it straight
+     back shut — the submenu never appeared on the first tap. `(hover: none)`
+     devices skip the JS hover entirely and let `click` own the toggle; desktop
+     keeps hover-to-open. Guarded because jsdom may not implement `matchMedia`. */
+  const hoverOpensMenu = () =>
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(hover: hover)").matches;
 
   // Mobile panel key handling (ARIA disclosure, APG "Navigation Menu Button"):
   // focus moves to the first link on open, Escape closes and returns focus to
@@ -94,16 +106,44 @@ export function LandingNavbar() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       closeMenu();
+      setCompanyMenuOpen(false);
       toggleRef.current?.focus();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [menuOpen, closeMenu]);
 
-  const toggleMenu = useCallback(
-    () => setOpenedFor((current) => (current === pathname ? null : pathname)),
-    [pathname],
-  );
+  useEffect(() => {
+    const onClickOutside = (event: MouseEvent) => {
+      if (
+        companyDropdownRef.current &&
+        !companyDropdownRef.current.contains(event.target as Node)
+      ) {
+        setCompanyMenuOpen(false);
+      }
+    };
+    if (companyMenuOpen) {
+      document.addEventListener("mousedown", onClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [companyMenuOpen]);
+
+  // Escape closes the Company menu wherever focus sits inside it. The mobile
+  // panel's own Escape handler above only runs while that panel is open, so
+  // without this the desktop menu had no keyboard way out.
+  useEffect(() => {
+    if (!companyMenuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setCompanyMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [companyMenuOpen]);
+
+  const toggleMenu = useCallback(() => {
+    setOpenedFor((current) => (current === pathname ? null : pathname));
+    setCompanyMenuOpen(false);
+  }, [pathname]);
 
   return (
     <nav className="landing-navbar">
@@ -140,19 +180,81 @@ export function LandingNavbar() {
               {item.label}
             </Link>
           ))}
-          {/* Company is a plain link, not a second disclosure: its five pages
-              are reachable from the footer, and a section menu here cost a
-              hover and a tab stop to reach the one thing it held. The link
-              still reads as active across the whole section, so it is not
-              ambiguous which section you are in. */}
-          <Link
-            to={COMPANY_HUB}
-            onClick={closeMenu}
-            className={companyActive ? "active" : undefined}
-            aria-current={companyActive ? "page" : undefined}
+          {/* Company is the header's one disclosure: the section has five
+              leaf pages, which is more than the row can carry as flat links.
+              The trigger reads as active across the whole section, and the menu
+              leads with the hub itself so "the section overview" stays one
+              click away. */}
+          <div
+            className="nav-group nav-group--company"
+            ref={companyDropdownRef}
+            onMouseEnter={() => {
+              if (hoverOpensMenu()) setCompanyMenuOpen(true);
+            }}
+            onMouseLeave={() => {
+              if (hoverOpensMenu()) setCompanyMenuOpen(false);
+            }}
           >
-            Company
-          </Link>
+            <button
+              type="button"
+              className={`nav-group-trigger${companyActive ? " active" : ""}`}
+              aria-expanded={companyMenuOpen}
+              aria-controls="company-nav-menu"
+              onClick={() => setCompanyMenuOpen((current) => !current)}
+            >
+              Company
+              <svg
+                className="nav-group-chevron"
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path
+                  d="M6 9l6 6 6-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            <div
+              id="company-nav-menu"
+              className={`nav-group-menu forced-dark${companyMenuOpen ? " open" : ""}`}
+              role="menu"
+            >
+              <Link
+                to={COMPANY_HUB}
+                role="menuitem"
+                onClick={() => {
+                  closeMenu();
+                  setCompanyMenuOpen(false);
+                }}
+                className={pathname === COMPANY_HUB ? "active" : undefined}
+                aria-current={pathname === COMPANY_HUB ? "page" : undefined}
+              >
+                General
+              </Link>
+              {companyItems.map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  role="menuitem"
+                  onClick={() => {
+                    closeMenu();
+                    setCompanyMenuOpen(false);
+                  }}
+                  className={pathname === item.to ? "active" : undefined}
+                  aria-current={pathname === item.to ? "page" : undefined}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Only rendered in the collapsed band, because the row's copy of the

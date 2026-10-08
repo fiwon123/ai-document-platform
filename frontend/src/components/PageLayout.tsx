@@ -190,14 +190,20 @@ export function PageCta({
   body,
   primary = { to: "/login", label: "Create free account" },
   secondary = { to: "/demo", label: "Try the live demo" },
+  forcedDark = true,
 }: {
   title: string;
   body: string;
   primary?: { to: string; label: string };
   secondary?: { to: string; label: string };
+  forcedDark?: boolean;
 }) {
   return (
-    <Reveal as="section" variant="up" className="page-cta-band">
+    <Reveal
+      as="section"
+      variant="up"
+      className={`page-cta-band${forcedDark ? " forced-dark" : ""}`}
+    >
       <h2>{title}</h2>
       <p className="page-cta-band-sub">{body}</p>
       <div className="page-cta-band-ctas">
