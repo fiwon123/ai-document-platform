@@ -126,7 +126,7 @@ export function LandingPage() {
                 boundaries were often on screen together, which made the row read
                 as one image tearing rather than as separate tags.
                 aria-hidden: purely decorative text marks. */}
-            <div className="logo-marquee" aria-hidden="true">
+            <div className="logo-marquee forced-dark" aria-hidden="true">
               <div className="logo-strip">
                 {[...LOGOS, ...LOGOS, ...LOGOS].map((logo, i) => (
                   <span key={`${logo}-${i}`} className="logo-mark">
@@ -177,7 +177,7 @@ export function LandingPage() {
             <p className="stats-demo-note">
               Sample figures shown for illustration — your workspace shows your real numbers.
             </p>
-            <ul className="trust-badges">
+            <ul className="trust-badges forced-dark">
               {TRUST_BADGES.map((badge) => (
                 <li key={badge}>
                   <span className="trust-badge-check">

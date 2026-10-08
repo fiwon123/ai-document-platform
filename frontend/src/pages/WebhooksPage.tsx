@@ -215,7 +215,7 @@ export function WebhooksPage() {
       </header>
 
       <details
-        className="webhook-tutorial"
+        className="webhook-tutorial forced-dark"
         open={!hasSubscriptions && !tutorialDismissed}
         onToggle={(e) => {
           // Remember manual closes so an empty list does not force the card
@@ -264,7 +264,7 @@ export function WebhooksPage() {
           </li>
         </ol>
 
-        <div className="webhook-snippets">
+        <div className="webhook-snippets forced-dark">
           <details className="webhook-snippet">
             <summary>Verify in Python (FastAPI / Flask)</summary>
             <CodeBlock code={PY_VERIFY_SNIPPET} language="python" />
@@ -276,7 +276,7 @@ export function WebhooksPage() {
         </div>
       </details>
 
-      <section className="settings-card">
+      <section className="settings-card forced-dark">
         <h2>New webhook</h2>
         <p className="settings-desc">
           Receive a signed HTTP POST whenever a document event occurs. Verify payloads with the{" "}
@@ -353,7 +353,7 @@ export function WebhooksPage() {
                the narrowing that the `&&` guard established. */
             const testResult = testResults[sub.id];
             return (
-              <article key={sub.id} className="settings-card webhook-card">
+              <article key={sub.id} className="settings-card webhook-card forced-dark">
                 <div className="webhook-card-header">
                   <code className="webhook-url">{sub.url}</code>
                   <Badge tone={sub.is_active ? "green" : "gray"}>

@@ -302,7 +302,7 @@ export function DashboardPage() {
           <h1>Dashboard</h1>
           <p>Overview of your documents</p>
         </header>
-        <div className="stats-grid">
+        <div className="stats-grid forced-dark">
           {Array.from({ length: 6 }, (_, i) => (
             <div key={i} className="stat-card stat-skeleton">
               <Skeleton width={30} height={30} />
@@ -357,7 +357,7 @@ export function DashboardPage() {
           <p>Overview of your documents</p>
         </header>
 
-        <div className="quick-actions">
+        <div className="quick-actions forced-dark">
           {QUICK_ACTIONS.map(({ to, label, caption, Icon }) => (
             <Link key={to} to={to} className="quick-action">
               <span className="quick-action-icon">
@@ -369,7 +369,7 @@ export function DashboardPage() {
           ))}
         </div>
 
-        <div className="stats-grid">
+        <div className="stats-grid forced-dark">
           <div className="stat-card stat-total">
             <span className="stat-icon">
               <FileIcon />
@@ -411,7 +411,7 @@ export function DashboardPage() {
               action={{ label: "Upload a document", to: "/app/documents" }}
             />
           ) : (
-            <ul className="recent-list">
+            <ul className="recent-list forced-dark">
               {stats.recent_documents.map((doc) => (
                 <li key={doc.id} className="recent-item">
                   <span

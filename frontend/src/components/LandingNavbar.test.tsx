@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -363,6 +363,14 @@ describe("LandingNavbar", () => {
       "true",
     );
     await user.unhover(group);
+    // The close is grace-timed, not instant: a slow move down crosses the
+    // 1px moat between trigger and panel and must not lose the menu (#718).
+    expect(screen.getByRole("button", { name: /Company/ }).getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
     expect(screen.getByRole("button", { name: /Company/ }).getAttribute("aria-expanded")).toBe(
       "false",
     );
@@ -393,8 +401,50 @@ describe("LandingNavbar", () => {
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     await user.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    // Closing still works the pointer way: leaving the group ends both states.
+    // Closing still works the pointer way: leaving the group ends both
+    // states once the hover grace period expires.
     await user.unhover(group);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  /* A pointer that briefly leaves the group on its way down into the panel —
+     the 1px moat between trigger and menu — must not lose the menu. The
+     leave close is a 180ms grace timer, so re-entering within that window
+     cancels the scheduled close rather than racing it (#718). */
+  it("keeps the Company menu open through the hover grace period and cancels it on re-enter", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("hover: hover"),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderNavbar();
+    const group = document.querySelector(".nav-group--company")!;
+    const trigger = screen.getByRole("button", { name: /Company/ });
+    await user.hover(group);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    // Briefly leave (crossing the moat), then come back before the timer fires.
+    await user.unhover(group);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    await user.hover(group);
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    // Leaving for good closes the menu once the grace expires.
+    await user.unhover(group);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
 

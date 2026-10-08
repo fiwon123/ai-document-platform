@@ -261,7 +261,7 @@ export function SearchPage() {
         <p>Search through your documents using natural language</p>
       </header>
 
-      <form onSubmit={handleSearch} className="search-form">
+      <form onSubmit={handleSearch} className="search-form forced-dark">
         <div className="search-input-group">
           <input
             id="search-query"

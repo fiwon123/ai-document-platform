@@ -95,6 +95,15 @@ export function LandingNavbar() {
   const [companyPinned, setCompanyPinned] = useState(false);
   const companyMenuOpen = companyPinned || companyHovered;
   const companyDropdownRef = useRef<HTMLDivElement>(null);
+  /* Grace period between pointer-leave and the hover close. The menu hangs
+     1px below the trigger, and a *slow* move down briefly leaves the group
+     (the pointer is in the 1px moat, or between the trigger's padding and the
+     panel) — without the grace period that instant `mouseleave` closes the
+     menu before the pointer can reach it, so a normal-speed move could never
+     select an item (#718). 180ms is long enough to cross the moat at any
+     sane speed and short enough that a pointer that truly left the group
+     closes the menu almost immediately. */
+  const hoverLeaveTimerRef = useRef<number | null>(null);
 
   /* Open on hover only where the pointer can actually hover. On a touch device
      a tap fires `mouseenter` immediately before `click`, so an unguarded
@@ -109,11 +118,44 @@ export function LandingNavbar() {
 
   /* Every close affordance (Escape, click-outside, a link, the hamburger) must
      end both halves: leaving `hovered` set would keep the menu open over the
-     page it just navigated to, since the pointer still sits inside the group. */
+     page it just navigated to, since the pointer still sits inside the group.
+     A pending leave timer is cancelled too, so a click that closes the menu
+     cannot be undone by a timer that was already scheduled to fire. */
   const closeCompanyMenu = useCallback(() => {
+    if (hoverLeaveTimerRef.current !== null) {
+      window.clearTimeout(hoverLeaveTimerRef.current);
+      hoverLeaveTimerRef.current = null;
+    }
     setCompanyPinned(false);
     setCompanyHovered(false);
   }, []);
+
+  const enterCompanyMenu = useCallback(() => {
+    if (hoverLeaveTimerRef.current !== null) {
+      window.clearTimeout(hoverLeaveTimerRef.current);
+      hoverLeaveTimerRef.current = null;
+    }
+    if (hoverOpensMenu()) setCompanyHovered(true);
+  }, []);
+
+  const leaveCompanyMenu = useCallback(() => {
+    if (hoverLeaveTimerRef.current !== null) return;
+    hoverLeaveTimerRef.current = window.setTimeout(() => {
+      hoverLeaveTimerRef.current = null;
+      setCompanyHovered(false);
+    }, 180);
+  }, []);
+
+  /* Drop any pending timer with the component so it cannot set state on an
+     unmounted subtree. */
+  useEffect(
+    () => () => {
+      if (hoverLeaveTimerRef.current !== null) {
+        window.clearTimeout(hoverLeaveTimerRef.current);
+      }
+    },
+    [],
+  );
 
   // Mobile panel key handling (ARIA disclosure, APG "Navigation Menu Button"):
   // focus moves to the first link on open, Escape closes and returns focus to
@@ -208,12 +250,8 @@ export function LandingNavbar() {
           <div
             className="nav-group nav-group--company"
             ref={companyDropdownRef}
-            onMouseEnter={() => {
-              if (hoverOpensMenu()) setCompanyHovered(true);
-            }}
-            onMouseLeave={() => {
-              if (hoverOpensMenu()) setCompanyHovered(false);
-            }}
+            onMouseEnter={enterCompanyMenu}
+            onMouseLeave={leaveCompanyMenu}
           >
             <button
               type="button"
