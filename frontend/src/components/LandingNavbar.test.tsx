@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -151,7 +151,10 @@ describe("LandingNavbar", () => {
       expect(screen.getByRole("link", { name: label }), label).toBeTruthy();
     }
     expect(screen.queryByRole("button", { name: /Product/ })).toBeNull();
-    expect(screen.getByRole("link", { name: /Company/ })).toBeTruthy();
+    // Company is the header's one disclosure menu — a trigger, not a flat link.
+    const company = screen.getByRole("button", { name: /Company/ });
+    expect(company).toBeTruthy();
+    expect(company.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("points each flat Product link at its own page", () => {
@@ -169,8 +172,11 @@ describe("LandingNavbar", () => {
 
   it("composes the Overview link instead of adding one to NAV_PRODUCT", () => {
     renderNavbar();
-    const navLinks = document.querySelectorAll(".nav-flat a");
-    expect(navLinks.length).toBe(NAV_PRODUCT.length + 2);
+    // Only the direct anchors of `.nav-flat`: the Company menu's own links are
+    // nested inside `.nav-group`, not children of the flat row.
+    const flatLinks = [...document.querySelectorAll(".nav-flat > a")];
+    expect(flatLinks).toHaveLength(NAV_PRODUCT.length + 1);
+    expect(flatLinks.map((a) => a.getAttribute("href"))).toContain("/product");
     expect(NAV_PRODUCT.map((item) => item.to)).not.toContain("/product");
   });
 
@@ -252,13 +258,11 @@ describe("LandingNavbar", () => {
     // showing the links at this width.
     // The collapse is identified by what it does — it moves the links off the
     // row entirely and hands them to the panel — rather than by a selector that
-    // another change could reintroduce. The `.nav-group-menu` half of this test
-    // used to pin the navbar collapse and the section dropdown to the *same*
-    // width, because an absolutely positioned menu opened off-screen relative to
-    // a row that no longer held it. Company is now a link in that row, so there
-    // is no dropdown left to align: the off-screen-panel failure cannot recur,
-    // and the assertion that guarded it would only fail on a control that does
-    // not exist.
+    // another change could reintroduce. The Company menu is absolutely
+    // positioned on the row, so the same block must also pull it back to
+    // `static`: an absolutely positioned menu opened off-screen relative to a
+    // row that no longer holds it, which no DOM test can see. Pinning the
+    // collapse and the menu to one width is what keeps that from recurring.
     const collapse = maxWidthBlockWhere(
       (body) => body.includes(".landing-navbar") && /flex-wrap\s*:\s*wrap/.test(body),
     );
@@ -267,6 +271,7 @@ describe("LandingNavbar", () => {
     // a comment rather than a fact. `valueOf` is numeric, so read the raw
     // declaration list for a non-numeric value like `none`.
     expect(declarationsIn(collapse.body, ".landing-nav-links")).toContain("display: none");
+    expect(declarationsIn(collapse.body, ".nav-group-menu")).toContain("position: static");
   });
 
   it("keeps the navbar gutter aligned with the page's own gutter", () => {
@@ -306,7 +311,7 @@ describe("LandingNavbar", () => {
     for (const path of ["/company", "/about", "/careers", "/contact", "/blog"]) {
       const { unmount } = renderNavbar(path);
       expect(
-        screen.getByRole("link", { name: /Company/ }).className,
+        screen.getByRole("button", { name: /Company/ }).className,
         `expected Company to be active on ${path}`,
       ).toMatch(/active/);
       unmount();
@@ -315,17 +320,177 @@ describe("LandingNavbar", () => {
 
   it("leaves nothing marked active on an unrelated route", () => {
     renderNavbar("/privacy");
-    expect(screen.getByRole("link", { name: /Company/ }).className).not.toMatch(/active/);
-    for (const link of document.querySelectorAll(".nav-flat a")) {
+    expect(screen.getByRole("button", { name: /Company/ }).className).not.toMatch(/active/);
+    for (const link of document.querySelectorAll(".nav-flat > a")) {
       expect(link.className).not.toMatch(/active/);
     }
   });
 
-  /* Company used to be the header's last disclosure menu: a button that opened
-     on hover or click, five links inside it, and a `/company` hub behind all of
-     it. It is now one link in the flat row. These pin the shape that replaced
-     it — a section menu with nothing behind it is a level of navigation that
-     buys one destination and costs a hover plus two tab stops. */
+  /* Company is a disclosure menu again: the trigger opens on hover (pointer) or
+     click/Enter (touch and keyboard) and the panel holds the hub plus the
+     section's leaf pages, all derived from `NAV_COMPANY`. The tests below pin
+     that shape — the trigger, the menu it controls, and the reachability of
+     every page in it — rather than the flat link that briefly replaced it. */
+  it("renders Company as a disclosure trigger that owns its menu", () => {
+    renderNavbar();
+    expect(screen.queryByRole("link", { name: /Company/ })).toBeNull();
+    const trigger = screen.getByRole("button", { name: /Company/ });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    const menu = document.getElementById("company-nav-menu");
+    expect(menu).not.toBeNull();
+    expect(trigger.getAttribute("aria-controls")).toBe("company-nav-menu");
+    expect(menu?.className).not.toMatch(/\bopen\b/);
+  });
+
+  it("opens the Company menu on hover and closes it on leave", async () => {
+    // A pointer device: `(hover: hover)` is what lets `onMouseEnter` open the
+    // menu. jsdom reports no match by default, so it is stubbed here.
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("hover: hover"),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderNavbar();
+    const group = document.querySelector(".nav-group--company")!;
+    await user.hover(group);
+    expect(screen.getByRole("button", { name: /Company/ }).getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    await user.unhover(group);
+    // The close is grace-timed, not instant: a slow move down crosses the
+    // 1px moat between trigger and panel and must not lose the menu (#718).
+    expect(screen.getByRole("button", { name: /Company/ }).getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.getByRole("button", { name: /Company/ }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+  });
+
+  /* A pointer click always lands *after* the hover that just opened the menu.
+     If the click toggled the very state the hover set, the disclosure closed
+     itself under the cursor — aria-expanded flipping to false while the CSS
+     `:hover` rule kept the panel visibly open. That is what the audit's
+     `disclosure-open` scenario hit. The click must instead pin what hover
+     opened, leaving "open" alone until the pointer leaves. */
+  it("keeps the Company menu open when a click lands on a hover-opened menu", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("hover: hover"),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderNavbar();
+    const group = document.querySelector(".nav-group--company")!;
+    const trigger = screen.getByRole("button", { name: /Company/ });
+    await user.hover(group);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    await user.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    // Closing still works the pointer way: leaving the group ends both
+    // states once the hover grace period expires.
+    await user.unhover(group);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  /* A pointer that briefly leaves the group on its way down into the panel —
+     the 1px moat between trigger and menu — must not lose the menu. The
+     leave close is a 180ms grace timer, so re-entering within that window
+     cancels the scheduled close rather than racing it (#718). */
+  it("keeps the Company menu open through the hover grace period and cancels it on re-enter", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("hover: hover"),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderNavbar();
+    const group = document.querySelector(".nav-group--company")!;
+    const trigger = screen.getByRole("button", { name: /Company/ });
+    await user.hover(group);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    // Briefly leave (crossing the moat), then come back before the timer fires.
+    await user.unhover(group);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    await user.hover(group);
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    // Leaving for good closes the menu once the grace expires.
+    await user.unhover(group);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  /* A touch tap fires `mouseenter` just before `click`. If hover opened the menu
+     the click then toggled it straight back shut, so the submenu never appeared
+     on the first tap (#715 regression). On a no-hover device the hover handlers
+     must be inert and `click` must be the only opener. */
+  it("ignores hover on a touch device so a tap opens the Company menu", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderNavbar();
+    const group = document.querySelector(".nav-group--company")!;
+    const trigger = screen.getByRole("button", { name: /Company/ });
+    // The hover half of a tap must not flip the state.
+    fireEvent.mouseEnter(group);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    // The click half opens it, and a second tap closes it.
+    await user.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(document.getElementById("company-nav-menu")?.className).toMatch(/\bopen\b/);
+    await user.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("keeps every Company page reachable from the menu", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderNavbar();
+    await user.click(screen.getByRole("button", { name: /Company/ }));
+    const menu = document.getElementById("company-nav-menu")!;
+    const hrefs = [...menu.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+    // Every destination in the section is present, the hub first.
+    for (const item of NAV_COMPANY) {
+      expect(hrefs, `menu must link ${item.to}`).toContain(item.to);
+    }
+    expect(hrefs[0]).toBe("/company");
+  });
+
   /* The action cluster (theme toggle, "Try the demo", "Go to app"/"Sign up")
      used to sit in the DOM *before* the links, immediately after the brand. With
      the links carrying the row's only auto margin, that put the toggle and the
@@ -379,34 +544,6 @@ describe("LandingNavbar", () => {
       "margin-left: auto",
     );
     expect(decls).toContain("margin-inline: auto");
-  });
-
-  it("renders Company as a flat link to its hub, not a menu trigger", () => {
-    renderNavbar();
-    expect(screen.queryByRole("button", { name: /Company/ })).toBeNull();
-    expect(screen.getByRole("link", { name: /Company/ }).getAttribute("href")).toBe("/company");
-  });
-
-  it("leaves no disclosure menu anywhere in the header", () => {
-    renderNavbar();
-    // `.nav-group*` is the menu's own vocabulary, so its absence from the
-    // rendered DOM is the direct statement that no header section hides its
-    // pages behind a trigger any more.
-    expect(document.querySelector(".nav-group")).toBeNull();
-    expect(document.querySelector(".nav-group-trigger")).toBeNull();
-  });
-
-  it("leaves every Company page reachable from the header's footerless row", () => {
-    // The menu's contents were only reachable through the trigger. The
-    // replacement link points at the hub, so the pages it used to hold have to
-    // still be reachable somewhere — the footer column, which reads the same
-    // `NAV_COMPANY` the active state does.
-    renderNavbar();
-    const company = screen.getByRole("link", { name: /Company/ });
-    for (const item of NAV_COMPANY) {
-      expect(item.to, `NAV_COMPANY must still define ${item.label}`).toBeTruthy();
-    }
-    expect(company.getAttribute("href")).toBe(NAV_COMPANY[0]?.to);
   });
 
   it("keeps legal pages out of the header", () => {

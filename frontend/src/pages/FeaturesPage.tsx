@@ -25,7 +25,7 @@ export function FeaturesPage() {
       subtitle="Upload, search, and ask — one private workspace per user. This page is the long version of the feature grid on the home page."
     >
       <PageSection title="Core capabilities">
-        <div className={`${balancedGridClass(CORE_FEATURES.length)}`}>
+        <div className={`${balancedGridClass(CORE_FEATURES.length)} forced-dark`}>
           {CORE_FEATURES.map((feature) => (
             <article key={feature.title} className="page-card-static" data-accent={feature.accent}>
               <PageCardIcon>
@@ -39,7 +39,9 @@ export function FeaturesPage() {
       </PageSection>
 
       <PageSection title="More to explore">
-        <div className={`${balancedGridClass(SECONDARY_FEATURES.length)} page-grid-secondary`}>
+        <div
+          className={`${balancedGridClass(SECONDARY_FEATURES.length)} page-grid-secondary forced-dark`}
+        >
           {SECONDARY_FEATURES.map((feature) => (
             <article key={feature.title} className="page-card-static" data-accent={feature.accent}>
               <PageCardIcon>

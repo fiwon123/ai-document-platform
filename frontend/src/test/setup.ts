@@ -31,3 +31,8 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: vi.fn(),
   })),
 });
+
+// jsdom does not implement scrollTo either, and useScrollToTop() calls it on
+// every marketing navigation. Without a stub each such render logs
+// "Not implemented: Window's scrollTo() method" to the test output.
+window.scrollTo = vi.fn();

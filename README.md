@@ -1,280 +1,202 @@
 # AI Document Intelligence Platform
 
-Upload documents, search them semantically, and ask questions powered by AI.
+<p align="center">
+  <img src="./frontend/public/favicon.svg" alt="AskDocs Logo" width="120" height="120" />
+</p>
 
-## Tech Stack
+> Upload documents, search semantically, and get grounded answers from your own knowledge base
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 19, TypeScript, Vite 8 |
-| Backend | Python 3.14, FastAPI, SQLAlchemy |
-| Database | PostgreSQL 16 + pgvector |
-| Storage | MinIO (S3-compatible) |
-| Cache & Queue | Redis 7 (arq worker) |
-| AI | OpenAI API (embeddings + chat) |
-| Background jobs | arq-based Redis worker service |
-| CI | GitHub Actions (lint, build, pytest) |
-| Dev | Docker Compose dev sandbox (uvicorn + vite + arq worker), mise, Makefile |
+[![Python](https://img.shields.io/badge/Python-3.14-blue.svg)](https://www.python.org/downloads/)
+[![Node](https://img.shields.io/badge/Node-22-green.svg)](https://nodejs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-latest-red.svg)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-19-blue.svg)](https://react.dev/)
+[![Tests](https://img.shields.io/badge/Tests-Passed-brightgreen.svg)](.github/workflows/ci.yml)
+[![CI](https://img.shields.io/badge/CI-GitHub_Actions-orange.svg)](.github/workflows/ci.yml)
+[![Infra CI](https://img.shields.io/badge/Infra_CI-K8s_Validation-yellow.svg)](.github/workflows/infra.yml)
+[![License](https://img.shields.io/badge/License-Custom-red.svg)](LICENSE)
+
+## Table of Contents
+
+- [Home Page](#home-page)
+- [Purpose](#purpose)
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Tech Stack](#tech-stack)
+- [Prerequisites](#prerequisites)
+- [Quick Start (Local)](#quick-start-local)
+- [Host-Native (No Sandbox)](#host-native-no-sandbox)
+- [Project Structure](#project-structure)
+- [Testing & Quality](#testing--quality)
+- [Deployment](#deployment)
+- [Credits](#credits)
+- [AI & Attribution](#ai--attribution)
+- [License](#license)
+
+## Home Page
+
+<p align="center">
+  <img src="./frontend/public/screenshots/landing-dark.png" alt="Landing page (dark mode)" width="700" />
+</p>
+
+**AI Document Intelligence Platform** — Upload documents, extract and chunk text, generate embeddings (OpenAI or local models), search semantically with pgvector, and ask questions grounded in your documents with source attribution. Runs locally via Docker Compose; deployable to Kubernetes (Kustomize + Helm) for production.
+
+Key capabilities: document upload/bulk upload, async processing, semantic & keyword search, Q&A with citations, PDF thumbnails/preview, JWT auth with refresh rotation, semantic caching, webhooks, admin dashboard, rate limiting.
+
+## Purpose
+
+This is a full-stack AI Document Intelligence Platform: upload documents, extract and split text, generate embeddings (OpenAI or local models), search semantically, and ask questions grounded in your documents with source context. Everything runs locally for development and is deployable to Kubernetes (Kustomize + Helm) for production.
 
 ## Features
 
-- Upload documents, processed asynchronously by a background worker
-- Text extraction, chunking, and embedding generation during processing
-- Vector-based semantic search over document chunks (with text fallback)
-- Question answering over the indexed documents
-- Per-document search/QA scoping (filter by selected documents)
-- Dashboard statistics (document counts by status, chunk totals)
-- JWT authentication with admin role management
-- Redis caching for search results and document metadata
+- **Document Upload**: Upload single or bulk documents (PDF, TXT, JSON, CSV up to 25MB)
+- **Asynchronous Processing**: Text extraction, chunking, and embedding generation in background workers
+- **Semantic Search**: pgvector-powered similarity search with keyword fallback when embeddings unavailable
+- **Q&A with Sources**: Grounded answers with source attribution across your documents
+- **Thumbnails & Preview**: PDF first-page thumbnails and extracted text preview
+- **Secure Auth**: JWT authentication with rotating refresh tokens
+- **Caching**: Semantic caching for QA and dashboard statistics
+- **Webhooks**: Event notifications for document processing lifecycle
+- **Admin Controls**: User management, system statistics, and role-based access
+- **Rate Limiting & CORS**: Built-in protection with Redis-backed rate limiting
 
-## Getting Started
+## Screenshots
 
-### Dev Sandbox (recommended)
+### 1. Dashboard — Your Workspace at a Glance
+<p align="center">
+  <img src="./frontend/public/screenshots/dashboard-dark.png" alt="Dashboard showing document statistics and recent uploads" width="800" />
+</p>
+Get an instant overview with document counts by status, recent uploads, and quick access to your most recent activity.
 
-1. `make dev-up` — builds the dev image (mise + deps baked) and starts
-   uvicorn (`--reload`) + Vite (HMR) + arq worker + postgres + redis + minio
-2. Open http://localhost:5175 (frontend) / http://localhost:8001/docs (API)
-3. `make dev-log` to tail sandbox logs; `make dev-down` to stop (volumes kept);
-   `make dev-build` to rebuild the image after `pyproject.toml`/`uv.lock` changes
-4. Code with AI inside the sandbox: `make opencode` (agent TUI, runs with
-   `--auto` — permission prompts auto-approved) or `make sandbox` (plain
-   shell) — same files, stack at :8000/:5173
+### 2. Documents — Upload & Manage
+<p align="center">
+  <img src="./frontend/public/screenshots/documents-dark.png" alt="Document library with upload controls and processing statuses" width="800" />
+</p>
+Upload single or bulk files, drag-and-drop support, track processing status in real-time, and preview or download processed documents.
 
-See `DEVELOPMENT.md` for the daily loop and golden rules.
+### 3. Search — Semantic Search Across Your Files
+<p align="center">
+  <img src="./frontend/public/screenshots/search-dark.png" alt="Semantic search results ranked by relevance" width="800" />
+</p>
+Find exactly what you're looking for with vector-based semantic search. Results are ranked by relevance with match percentages, exportable as CSV or JSON.
 
-### Manual Setup
+### 4. Preview — Read Extracted Content Instantly
+<p align="center">
+  <img src="./frontend/public/screenshots/preview-dark.png" alt="Extracted text preview of a processed document" width="800" />
+</p>
+Instantly preview extracted text from processed documents with clean formatting and full scrollable content view.
 
-1. Start infrastructure:
+## Tech Stack
 
-   ```bash
-   docker compose up -d postgres redis minio
-   ```
+| Layer | Technology | Version | Purpose |
+|---|---|---|---|
+| Frontend | React, TypeScript, Vite | React 19, TS 5.x, Vite 8 | SPA with TypeScript |
+| Backend | FastAPI, Python | Python 3.14 | REST API |
+| Database | PostgreSQL + pgvector | 15+ | Relational + vector search |
+| Cache/Queue | Redis | 7+ | Caching & background jobs (ARQ) |
+| Storage | MinIO/S3 | Compatible | Object storage |
+| Auth | JWT (HS256) | - | Authentication with refresh rotation |
+| AI | OpenAI, Groq, Ollama | Configurable | Embeddings & Q&A |
+| Infrastructure | Docker, Kubernetes, Helm | - | Containerization & deployment
 
-2. Start backend:
+## Prerequisites
 
-   ```bash
-   cd backend
-   uv sync
-   uv run alembic upgrade head
-   uv run uvicorn app.main:app --port 8000 --reload
-   ```
+- Docker & Docker Compose
+- Git
+- Make (optional, but recommended)
+- `uv` for backend deps (handled in sandbox)
+- `node` 22+ for frontend (handled in sandbox)
 
-3. Start the background worker:
-
-   ```bash
-   cd backend
-   uv run arq app.worker.WorkerSettings
-   ```
-
-4. Start frontend:
-
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-
-### Kubernetes (Kind + DevSpace)
-
-Local development *inside* a Kind cluster with hot reload (run on the host —
-Docker and Kind are required, see `infra/scripts/setup-kind.sh`):
-
-```bash
-# 1. Create the Kind cluster + local registry (localhost:5000)
-./infra/scripts/setup-kind.sh
-
-# 2. Build, deploy and start the dev containers (backend uvicorn --reload,
-#    frontend Vite dev server) with live source sync
-devspace dev
-
-# 3. Stop dev containers / tear down
-devspace dev --stop
-devspace purge
-```
-
-- Backend sources sync into the running pod (`backend/src/app` → `/app/src/app`);
-  uvicorn reloads on save — API on `http://localhost:8000`.
-- Frontend runs the Vite dev server inside the cluster — `http://localhost:5173`.
-- The stack deploys to the `ai-platform` namespace from the dev Kustomize
-  overlay (`infra/k8s/overlays/dev`).
-
-### Production TLS (cert-manager)
-
-The production overlay and Helm chart ship with cert-manager ClusterIssuers
-(Let's Encrypt staging + production, plus a self-signed one for local
-testing). Install cert-manager, then deploy:
+## Quick Start (Local)
 
 ```bash
-# 1. Install cert-manager (once per cluster)
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+# Clone the repository
+git clone https://github.com/fiwon123/ai-document-platform.git
+cd ai-document-platform
 
-# 2. Deploy the production overlay — the Ingress is annotated
-#    cert-manager.io/cluster-issuer: letsencrypt-prod and cert-manager
-#    creates/renews the TLS secret automatically.
-kustomize build infra/k8s/overlays/production | kubectl apply -f -
+# Start the full dev sandbox (dev + worker + infra)
+make dev-up
+
+# View logs (2nd terminal)
+make dev-log
 ```
 
-- Replace `ops@example.com` in `cert-manager.yaml` / chart values with the
-  real ops email before going live.
-- Local Kind testing: point the ingress annotation (or chart value
-  `certManager.clusterIssuer`) at `selfsigned` for functional TLS.
+Access:
+- Frontend: http://localhost:5175
+- Backend API: http://localhost:8001
+- API Docs: http://localhost:8001/docs
+- MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
 
-### Production secrets (External Secrets Operator)
+Stop:
+```bash
+make dev-down
+```
 
-The production overlay and Helm chart (with `secrets.eso.enabled=true`)
-materialize the `app-secrets` Secret from a cloud secret manager via
-[External Secrets Operator](https://external-secrets.io) — the plaintext dev
-placeholder is never deployed. See `infra/README.md` for the provider setup,
-secret layout, and rotation workflow.
-
-### Production monitoring (Prometheus + Grafana)
-
-The production overlay and Helm chart (with `monitoring.enabled=true`) ship
-kube-prometheus-stack integration: a ServiceMonitor scraping the backend
-`/metrics` endpoint (process + HTTP metrics), alert rules (down / high 5xx /
-high latency), an AlertmanagerConfig email route, and an auto-loaded Grafana
-dashboard.
+## Host-Native (No Sandbox)
 
 ```bash
-# 1. Install metrics-server (Kind only — enables HPA autoscaling locally)
-./infra/scripts/install-metrics-server.sh
+# Start infrastructure
+docker compose up -d postgres redis minio
 
-# 2. Install kube-prometheus-stack (once per cluster)
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm install prometheus-stack prometheus-community/kube-prometheus-stack \
-  -n monitoring --create-namespace
+# Backend
+cd backend
+uv sync
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# 3. Deploy the production overlay (or render the Helm chart with
-#    monitoring.enabled=true) — metrics and alerts go live automatically.
-kustomize build infra/k8s/overlays/production | kubectl apply -f -
+# Frontend (separate terminal)
+cd frontend
+npm install
+npm run dev
 ```
-
-- Grafana: `kubectl -n monitoring port-forward svc/prometheus-stack-grafana 3000:80`
-  (default admin/admin).
-- Alerts route to `ops@example.com` via SMTP — replace with real values and
-  create the `smtp-auth` Secret in `monitoring` before enabling the route.
-See `infra/README.md`.
-
-### Staging environment
-
-`infra/k8s/overlays/staging` is a production-like pre-production environment:
-real registry images (ghcr.io), ingress + TLS via the Let's Encrypt **staging**
-ClusterIssuer, moderate replicas (2/1/1) and smaller resource limits.
-Deployed by ArgoCD (`ai-platform-staging`) like production — see
-`infra/README.md`.
-
-### End-to-end smoke test (Kind)
-
-`infra/scripts/smoke-test.sh` boots the whole stack on a local Kind cluster
-(reusing `setup-kind.sh` + `kind-load-images.sh`), applies the dev overlay and
-asserts backend health (200), frontend reachability (200) and an API
-round-trip (register → login → upload → status → search). Runs on a `ci`-labelled
-`dev`→`main` PR or a manual dispatch in the Infra CI (`smoke` job) — not on a
-push to `dev`.
-
-```bash
-./infra/scripts/smoke-test.sh
-```
-
-### Production logging (Loki + Promtail)
-
-The production overlay and Helm chart (with `logging.enabled=true`) ship
-centralized logging: a Loki StatefulSet (filesystem storage, 7-day retention)
-and a Promtail DaemonSet tailing pod logs on every node. Grafana picks up the
-Loki datasource automatically:
-
-```bash
-kustomize build infra/k8s/overlays/production | kubectl apply -f -
-# then in Grafana → Explore → Loki:
-#   {namespace="ai-platform"} |= "error"
-```
-
-Tune retention (`logging.retentionPeriod` / `limits_config.retention_period`)
-and storage size (`logging.storageSize`) via chart values. See
-`infra/README.md`.
-
-### GitOps deployment (ArgoCD)
-
-`infra/argo/` ships an app-of-apps GitOps setup: ArgoCD self-manages the
-Kustomize overlays from this repo — `ai-platform-dev` (branch `dev`) and
-`ai-platform-production` (branch `main`) — with automated sync, self-heal and
-prune. Rollouts follow the CI image pushes; rollback is a git revert.
-
-```bash
-kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-kubectl apply -f infra/argo/   # bootstrap root app + ApplicationSet
-```
-
-See `infra/README.md`.
-
-## API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/v1/auth/register` | Register user |
-| POST | `/v1/auth/login` | Login |
-| GET | `/v1/auth/me` | Current user |
-| POST | `/v1/documents/` | Upload document |
-| GET | `/v1/documents/` | List documents |
-| GET | `/v1/documents/{id}` | Get document |
-| GET | `/v1/documents/{id}/status` | Poll processing status |
-| GET | `/v1/documents/{id}/download` | Get download URL |
-| DELETE | `/v1/documents/{id}` | Delete document |
-| POST | `/v1/search/` | Semantic search (`document_ids` optional) |
-| POST | `/v1/qa/ask` | Ask question (`document_ids` optional) |
-| GET | `/v1/statistics/me` | Workspace statistics |
-| PUT | `/v1/users/me` | Update own profile |
-| DELETE | `/v1/users/me` | Delete own account |
-| GET | `/v1/users/` | List users (admin) |
-| PATCH | `/v1/users/{id}/role` | Change user role (admin) |
-| DELETE | `/v1/users/{id}` | Delete user (admin) |
-| GET | `/v1/health` | Health check |
-
-Full API docs: `http://localhost:8001/docs`
 
 ## Project Structure
 
 ```
-backend/          Python/FastAPI backend
-frontend/         React/TypeScript frontend
-Dockerfile        Dev sandbox image (mise runtime + deps baked)
-docker-compose.yaml  Dev sandbox: dev (uvicorn+vite), worker, postgres, redis, minio
-dev-entrypoint.sh Dev sandbox entrypoint (alembic + uvicorn + vite, hot reload)
-Makefile          Dev workflow targets (dev-up, infra-up, check, ...)
-mise.toml         Tool versions (node/uv/gh)
-.github/          CI workflows, dependabot, templates
-.opencode/        AI agent config and instructions
+├── backend/       # FastAPI app, SQLAlchemy models, routes, services
+├── frontend/      # React 19 + TypeScript + Vite SPA
+├── infra/         # K8s (Kustomize + Helm), Docker images, scripts
+├── docker-compose.yaml  # Dev sandbox
+├── Makefile       # Dev workflow targets
+└── README.md
 ```
 
-## Testing
-
-Backend (requires PostgreSQL, Redis, MinIO running locally):
+## Testing & Quality
 
 ```bash
-cd backend
-uv run pytest
-uv run ruff check src/
+# Backend tests
+cd backend && uv run pytest
+
+# Backend lint
+cd backend && uv run ruff check src/
+
+# Frontend lint & build
+cd frontend && npm run lint && npm run build
+
+# Full check (lint + format + tests + build)
+make check
 ```
 
-Frontend:
+## Deployment
 
-```bash
-cd frontend
-npm test
-npm run lint
-npm run build
-```
+Production-ready deployment with multi-stage Docker images, Kubernetes manifests, and Helm charts. See:
+- [Kustomize](./infra/k8s/) - Base + dev/production overlays
+- [Helm](./infra/helm/ai-platform/) - Standalone chart
+- [Docker Images](./infra/docker/) - Multi-stage builds
+- [CI/CD](./.github/workflows/) - GitHub Actions
 
-## Development
+## Credits
 
-See [AGENTS.md](AGENTS.md) for development guidelines and workflow, and
-[DEVELOPMENT.md](DEVELOPMENT.md) for the daily-loop cheatsheet (golden rules:
-`make dev-up` → `make dev-log` → `make dev-down`; `make check` before every
-push; only `dev-up` requires opencode).
+- [FastAPI](https://fastapi.tiangolo.com/) — High-performance web framework
+- [React 19](https://react.dev/) — UI framework
+- [pgvector](https://github.com/pgvector/pgvector) — Vector similarity search for PostgreSQL
+- [ARQ](https://arq-docs.helpmanual.io/) — Redis-based async task queue
+- [MinIO](https://min.io/) — S3-compatible object storage
+- [Playwright](https://playwright.dev/) — End-to-end testing & visual captures
 
-## Contributing
+## AI & Attribution
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute — setup, branch
-strategy, commit conventions, and the PR workflow. Security vulnerabilities
-should be reported privately per [SECURITY.md](SECURITY.md).
+This is a portfolio project. AI-assisted development helped accelerate iteration, but all architectural decisions and code are actively curated.  
+
+## License
+
+Custom License — see [LICENSE](LICENSE) for details.

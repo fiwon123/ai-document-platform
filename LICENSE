@@ -1,0 +1,25 @@
+AI DOCUMENT INTELLIGENCE PLATFORM — PORTFOLIO LICENSE
+
+Copyright (c) 2026 Felipe Inoue
+
+This software is provided for **portfolio and demonstration purposes only**.
+
+**Permitted:**
+- Viewing, studying, or running the source code for evaluation of this portfolio.
+- Forking for non-commercial learning or personal experimentation.
+- Using screenshots, descriptions, or links to showcase work in a professional portfolio.
+
+**Not Permitted:**
+- Commercial use, including but not limited to selling, licensing, or incorporating into a commercial product or service.
+- Redistributing, sublicensing, or repackaging this software (in whole or in part) for any purpose without explicit written permission from the copyright holder.
+- Using this code to directly compete with or replace this portfolio work in a commercial context.
+
+**Third-Party Software:**
+This software depends on third-party libraries and frameworks. Those dependencies retain their own copyrights and licenses. Please refer to:
+- backend/uv.lock
+- frontend/package-lock.json
+
+**Disclaimer:**
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE USE OF THIS SOFTWARE.
+
+Portfolio project. AI-assisted development.

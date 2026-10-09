@@ -230,7 +230,7 @@ export function DemoPage() {
     <div className="demo-page">
       <LandingNavbar />
 
-      <div className="demo-banner">
+      <div className="demo-banner forced-dark">
         <p>
           <strong>Demo mode.</strong> Sign up to save your work and access more models.
         </p>
@@ -307,9 +307,14 @@ export function DemoPage() {
           />
         )}
 
+        {/* White page, dark objects: each box keeps its own dark treatment —
+            the sample cards, the search bar and the result/chat boxes — rather
+            than one panel swallowing the sections. Text between the boxes (the
+            page header, section titles, empty states) stays on the light theme
+            (#715). */}
         <section aria-label="Sample documents">
           <h2 className="demo-section-title">Sample documents</h2>
-          <div className="document-grid">
+          <div className="document-grid forced-dark">
             {DEMO_DOCUMENTS.map((doc) => (
               <div key={doc.id} className="document-card">
                 <div className="document-card-header">
@@ -350,7 +355,7 @@ export function DemoPage() {
               active === "search" ? (
                 <div className="demo-panel">
                   <form onSubmit={handleSearch} className="search-form">
-                    <div className="search-input-group">
+                    <div className="search-input-group forced-dark">
                       <input
                         id="demo-search"
                         name="demo-search"
@@ -388,7 +393,7 @@ export function DemoPage() {
                     <div className="search-results">
                       <h2>Results ({searchResults.length})</h2>
                       {searchResults.map((result) => (
-                        <div key={result.chunkId} className="search-result-card">
+                        <div key={result.chunkId} className="search-result-card forced-dark">
                           <div className="result-header">
                             <span className="result-document">{result.doc.filename}</span>
                             <MatchChip pct={result.score * 100} />
@@ -413,7 +418,7 @@ export function DemoPage() {
                     {qaCapped && renderSignUpCta("qa")}
 
                     {messages.map((message) => (
-                      <div key={message.id} className={`chat-message ${message.role}`}>
+                      <div key={message.id} className={`chat-message forced-dark ${message.role}`}>
                         <div className="message-avatar">{message.role === "user" ? "U" : "AI"}</div>
                         <div className="message-content">
                           {message.role === "assistant" ? (
@@ -438,7 +443,7 @@ export function DemoPage() {
                     ))}
                   </div>
 
-                  <form onSubmit={handleAsk} className="chat-input-form">
+                  <form onSubmit={handleAsk} className="chat-input-form forced-dark">
                     <input
                       id="demo-question"
                       name="demo-question"

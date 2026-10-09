@@ -29,7 +29,7 @@ export function ProductPage() {
       subtitle="Upload files, search them by meaning, and ask questions that get answered from your own content — not from a model's memory."
     >
       <PageSection title="Where to go next">
-        <div className={`${balancedGridClass(NAV_PRODUCT.length)}`}>
+        <div className={`${balancedGridClass(NAV_PRODUCT.length)} forced-dark`}>
           {NAV_PRODUCT.map((item) => (
             <PageCard
               key={item.to}

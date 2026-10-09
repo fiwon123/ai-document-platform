@@ -146,7 +146,7 @@ export function SettingsPage() {
         <p>Manage your account, model, and API access</p>
       </header>
 
-      <section className="settings-card" aria-label="Profile settings">
+      <section className="settings-card forced-dark" aria-label="Profile settings">
         <h2>
           <UserIcon />
           Profile
@@ -159,7 +159,7 @@ export function SettingsPage() {
         </Link>
       </section>
 
-      <section className="settings-card" aria-label="Model settings">
+      <section className="settings-card forced-dark" aria-label="Model settings">
         <h2>
           <CpuIcon />
           Model
@@ -237,7 +237,7 @@ export function SettingsPage() {
         )}
       </section>
 
-      <section className="settings-card" aria-label="API key settings">
+      <section className="settings-card forced-dark" aria-label="API key settings">
         <h2>
           <KeyIcon />
           Custom API key

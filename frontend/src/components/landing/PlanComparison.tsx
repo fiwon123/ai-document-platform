@@ -17,7 +17,12 @@ import { PlanCellValue } from "./FeatureIcon";
 export function PlanComparison() {
   return (
     <div className="landing-table-block">
-      <div className="landing-table-wrap" tabIndex={0} role="region" aria-label="Plan comparison">
+      <div
+        className="landing-table-wrap forced-dark"
+        tabIndex={0}
+        role="region"
+        aria-label="Plan comparison"
+      >
         <table className="landing-table">
           <thead>
             <tr>

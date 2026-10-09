@@ -17,6 +17,7 @@ import { Navbar } from "./components/Navbar";
 import { MarketingShell } from "./components/PageLayout";
 import { queryClient } from "./lib/queryClient";
 import { getViewTransitionStart, ignoreTransitionRejection } from "./lib/viewTransition";
+import { useScrollToTop } from "./hooks/useScrollToTop";
 import "./App.css";
 
 // Route pages are code-split so each loads on demand.
@@ -109,6 +110,7 @@ const DisplayLocationContext = createContext<Location | null>(null);
    this component can drift from it without failing anything — which is exactly
    what happened when the mirror still carried the old flushSync body. */
 export function ViewTransitionRoutes({ children }: { children: ReactNode }) {
+  useScrollToTop();
   const location = useLocation();
   const [displayLocation, setDisplayLocation] = useState(location);
 

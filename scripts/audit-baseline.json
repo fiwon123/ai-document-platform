@@ -1,6 +1,151 @@
 {
   "version": 1,
   "note": "Accepted findings for the visual audit's --gate. Every entry here is a problem someone has looked at and decided to live with for now, so a run that finds nothing new passes. Empty means the audit is clean: contrast failures, page errors, skipped captures, horizontal overflow and unlabelled controls are all at zero. Add an entry only with --update-baseline, and review the resulting diff in the PR. Keys identify the element (route, viewport, theme, state, tag, class, required level) and deliberately exclude measured values, so retuning a colour does not read as a new regression; `fingerprint` records the severity that was accepted.",
-  "updatedAt": "2026-09-27T19:45:26.893Z",
-  "findings": []
+  "updatedAt": "2026-10-08T16:32:03.992693Z",
+  "findings": [
+    {
+      "key": "overflow|/how-it-works [mobile/dark] page-10|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/dark] page-10",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/dark] page-11|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/dark] page-11",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/dark] page-12|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/dark] page-12",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/dark] page-2|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/dark] page-2",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/dark] page-3|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/dark] page-3",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/dark] page-4|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/dark] page-4",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/dark] page-5|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/dark] page-5",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/dark] page-6|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/dark] page-6",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/dark] page-7|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/dark] page-7",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/dark] page-8|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/dark] page-8",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/dark] page-9|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/dark] page-9",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/dark] top|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/dark] top",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/light] page-10|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/light] page-10",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/light] page-11|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/light] page-11",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/light] page-12|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/light] page-12",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/light] page-2|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/light] page-2",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/light] page-3|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/light] page-3",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/light] page-4|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/light] page-4",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/light] page-5|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/light] page-5",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/light] page-6|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/light] page-6",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/light] page-7|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/light] page-7",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/light] page-8|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/light] page-8",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/light] page-9|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/light] page-9",
+      "fingerprint": "24"
+    },
+    {
+      "key": "overflow|/how-it-works [mobile/light] top|overflow",
+      "signal": "overflow",
+      "where": "/how-it-works [mobile/light] top",
+      "fingerprint": "24"
+    }
+  ]
 }

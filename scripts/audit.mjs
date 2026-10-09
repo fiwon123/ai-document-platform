@@ -2025,7 +2025,14 @@ GROUPS.videos = [
       // all, and the wait was `.catch(() => {})`-swallowed, so when nothing matched
       // the scenario clicked nothing and recorded 6s of a static page under a name
       // that claimed it covered a menu (#568).
-      const toggle = page.locator(".landing-navbar button[aria-expanded]").first();
+      //
+      // The generic `button[aria-expanded]` was fine while the hamburger was the
+      // only such button in the header. Restoring the Company disclosure (#715)
+      // added a second one that sits *inside* the collapsed panel, so `.first()`
+      // resolved to a hidden trigger and the wait timed out — naming the
+      // hamburger directly is what this scenario has meant all along, and it is
+      // the same class the focus post-condition below already asserts.
+      const toggle = page.locator(".landing-navbar .landing-nav-toggle");
       await toggle.waitFor({ state: "visible", timeout: 5000 });
       if (!(await toggle.count())) {
         throw new Error("no landing-navbar disclosure button at the mobile width");

@@ -19,22 +19,22 @@ import { CORE_FEATURES, SECONDARY_FEATURES, STEPS, PLANS, FAQ_ITEMS } from "../c
 
 const SCREENSHOTS = [
   {
-    src: "/screenshots/dashboard.png",
+    src: "/screenshots/dashboard-dark.png",
     alt: "AskDocs dashboard with document statistics and recent uploads",
     caption: "Your workspace at a glance",
   },
   {
-    src: "/screenshots/documents.png",
+    src: "/screenshots/documents-dark.png",
     alt: "Document library with upload controls and processing statuses",
     caption: "Upload and manage documents",
   },
   {
-    src: "/screenshots/search.png",
+    src: "/screenshots/search-dark.png",
     alt: "Semantic search results ranked by relevance",
     caption: "Semantic search across your files",
   },
   {
-    src: "/screenshots/preview.png",
+    src: "/screenshots/preview-dark.png",
     alt: "Extracted text preview of a processed document",
     caption: "Read extracted content instantly",
   },
@@ -126,7 +126,7 @@ export function LandingPage() {
                 boundaries were often on screen together, which made the row read
                 as one image tearing rather than as separate tags.
                 aria-hidden: purely decorative text marks. */}
-            <div className="logo-marquee" aria-hidden="true">
+            <div className="logo-marquee forced-dark" aria-hidden="true">
               <div className="logo-strip">
                 {[...LOGOS, ...LOGOS, ...LOGOS].map((logo, i) => (
                   <span key={`${logo}-${i}`} className="logo-mark">
@@ -177,7 +177,7 @@ export function LandingPage() {
             <p className="stats-demo-note">
               Sample figures shown for illustration — your workspace shows your real numbers.
             </p>
-            <ul className="trust-badges">
+            <ul className="trust-badges forced-dark">
               {TRUST_BADGES.map((badge) => (
                 <li key={badge}>
                   <span className="trust-badge-check">
@@ -200,7 +200,7 @@ export function LandingPage() {
           <Reveal variant="up" delay={60}>
             <h3 className="feature-category">Core capabilities</h3>
           </Reveal>
-          <div className="landing-grid landing-grid-core">
+          <div className="landing-grid landing-grid-core forced-dark">
             {CORE_FEATURES.map((feature, i) => (
               <RevealCard
                 key={feature.title}
@@ -220,7 +220,7 @@ export function LandingPage() {
           {/* RevealCard rather than Reveal: a Reveal wrapper box would collapse each
               card back to its own content height and leave the row's bottom edge
               stepping by the difference (24px, measured). See RevealCard. */}
-          <div className="landing-grid landing-grid-secondary">
+          <div className="landing-grid landing-grid-secondary forced-dark">
             {SECONDARY_FEATURES.map((feature, i) => (
               <RevealCard
                 key={feature.title}
@@ -248,7 +248,7 @@ export function LandingPage() {
           <Reveal variant="up">
             <FlowIllustration />
           </Reveal>
-          <div className="landing-steps">
+          <div className="landing-steps forced-dark">
             {STEPS.map((item, i) => (
               <Reveal key={item.title} variant="up" delay={Math.min(i * 100, 200)}>
                 <article className="landing-step" data-accent={item.accent}>
@@ -289,7 +289,7 @@ export function LandingPage() {
             <BillingToggle annual={annual} onChange={setAnnual} />
           </Reveal>
 
-          <div className="landing-plans">
+          <div className="landing-plans forced-dark">
             {PLANS.map((plan, i) => (
               <Reveal key={plan.name} variant="up" delay={Math.min(i * 80, 160)}>
                 <article

@@ -1464,10 +1464,18 @@ body {
    brand and links out of alignment with the copy directly below them.
 
    This replaces the old 1200px/980px gap-only steps. Those left a residual
-   ~37px deficit from 1025px to ~1051px, so the navbar still wrapped just above
-   the old step; one band that reaches from 1200px down to the collapse point
-   has no such gap. */
-@media (max-width: 1200px) {
+   deficit just above the old step, so the navbar still wrapped there; one band
+   that reaches from the base row's real requirement down to the collapse point
+   has no such gap.
+
+   The band ends at 1320px, not 1200px, because the Company disclosure added a
+   chevron the flat link did not have (#715). Measured in Chromium: the base-gap
+   row needs ~1285px (logged out) / ~1306px (the wider "Go to app" CTA), against
+   a content box of `viewport * 0.88`, so above 1320px the base spacing always
+   fits and below it the tightened spacing does. A band set *below* where the row
+   fits is the wrap, so it is sized from the measurement rather than from the old
+   value. */
+@media (max-width: 1320px) {
   .landing-navbar {
     gap: 14px;
   }
@@ -1589,6 +1597,103 @@ body {
   padding: 4px 12px;
 }
 
+/* Company: the header's one disclosure menu. The trigger matches a flat link's
+   box so the row still reads as one set of controls; the panel anchors to the
+   group and opens on hover (pointer) or on click/Enter (touch and keyboard),
+   with focus-within keeping it open while a keyboard user is inside it. */
+.nav-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.landing-nav-links .nav-group-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--appbar-fg);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+
+.landing-nav-links .nav-group-trigger:hover,
+.landing-nav-links .nav-group-trigger[aria-expanded="true"] {
+  color: var(--appbar-active-fg);
+  background: var(--appbar-wash);
+}
+
+.landing-nav-links .nav-group-trigger.active {
+  color: var(--appbar-active-fg);
+  background: var(--appbar-active-bg);
+}
+
+.nav-group-chevron {
+  flex: none;
+  transition: transform 0.18s ease;
+}
+
+.nav-group:hover .nav-group-chevron,
+.nav-group-trigger[aria-expanded="true"] .nav-group-chevron {
+  transform: rotate(180deg);
+}
+
+.nav-group-menu {
+  position: absolute;
+  /* 1px, not the old 8px: the moat between the trigger and the panel is a
+     dead zone where a slow pointer never belongs to either element, and a
+     slow move down ended with the menu closed before the links were
+     reachable (#718). The 1px keeps the panel attached enough that the only
+     way to lose it is to leave the group entirely; the JS hover grace period
+     (LandingNavbar) covers even that crossing. */
+  top: calc(100% + 1px);
+  left: 0;
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 6px;
+  border-radius: 14px;
+  box-shadow: 0 18px 40px -18px rgb(0 0 0 / 55%);
+}
+
+.nav-group:hover .nav-group-menu,
+.nav-group:focus-within .nav-group-menu,
+.nav-group-menu.open {
+  display: flex;
+}
+
+.landing-nav-links .nav-group-menu a {
+  display: block;
+  min-height: 24px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.landing-nav-links .nav-group-menu a:hover,
+.landing-nav-links .nav-group-menu a.active,
+.landing-nav-links .nav-group-menu a[aria-current="page"] {
+  color: var(--appbar-active-fg);
+  background: var(--appbar-wash);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-group-chevron {
+    transition: none;
+  }
+}
+
 .landing-nav-actions {
   display: flex;
   align-items: center;
@@ -1692,6 +1797,69 @@ body {
     width: 100%;
     padding: 11px 0;
     font-size: 0.95rem;
+  }
+
+  /* Company joins the stacked list: the trigger becomes a full-width row, and
+     its menu drops the floating panel for an indented inline list. Hover has no
+     meaning on touch, so it is disabled here — only the trigger's `open` state
+     reveals the items, keeping one interaction (tap) rather than two. */
+  .nav-group {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .landing-nav-links .nav-group-trigger {
+    justify-content: space-between;
+    width: 100%;
+    padding: 11px 0;
+    border-radius: 0;
+    font-size: 0.95rem;
+  }
+
+  /* A tap also matches `:hover`, which would leave the chevron flipped up while
+     the submenu is closed. At this width rotation follows the real open state
+     (`aria-expanded`) instead. */
+  .nav-group:hover .nav-group-chevron {
+    transform: none;
+  }
+
+  .nav-group-trigger[aria-expanded="true"] .nav-group-chevron {
+    transform: rotate(180deg);
+  }
+
+  .nav-group:hover .nav-group-menu,
+  .nav-group:focus-within .nav-group-menu {
+    display: none;
+  }
+
+  /* (0,3,0) to outrank the two `display: none` rules just above — a bare
+     `.nav-group-menu.open` (0,2,0) lost to their pseudo-class, so the tap did
+     nothing and the submenu rendered empty. */
+  .nav-group .nav-group-menu.open {
+    display: flex;
+  }
+
+  /* Self selector for the mobile override: the forced-dark surface rule is
+     (0,3,0), so a bare `.nav-group-menu` (0,1,0) here would leave the submenu
+     as a floating box inside the panel instead of an indented inline list. */
+  .landing-nav-links .nav-group-menu.forced-dark {
+    border: none;
+    background: none;
+  }
+
+  .nav-group-menu {
+    position: static;
+    min-width: 0;
+    padding: 0 0 6px 12px;
+    border-radius: 0;
+    box-shadow: none;
+    background: none;
+  }
+
+  .landing-nav-links .nav-group-menu a {
+    padding: 10px 0;
+    font-size: 0.92rem;
   }
 
   /* Mobile 2.5.5 targets for the header controls — 44x44 rather than merely
@@ -3712,12 +3880,18 @@ body {
   visibility: visible;
 }
 
-.faq-answer p {
+.faq-item .faq-answer p {
   min-height: 0;
   overflow: hidden;
   margin: 0;
   padding: 0 20px 18px;
-  color: var(--muted);
+  /* Full ink, not muted: the FAQ cards are a forced-dark surface in both
+     themes, so the dark theme's muted (#94a3b8 on #1b2639) read as gray
+     answers instead of supporting text (#718). The leading `.faq-item` earns
+     specificity over `.page-body p` (both 0,1,1 previously; order decided),
+     which left the answers on muted #94a3b8 wherever the page used
+     PageLayout — /pricing, but not the landing page (#720). */
+  color: var(--ink);
   line-height: 1.6;
 }
 
@@ -6431,6 +6605,32 @@ nav.footer-col a:hover {
 
 :root[data-theme="dark"] .chat-message.user .message-avatar {
   background: #15803d;
+}
+
+/* QA + demo message boxes (#716, #720): on the forced-dark chat panel the
+   assistant bubble was `--paper` on a `--surface` panel (1.08:1 — a box that
+   did not read as a box). Step the fill up one rung and let the border carry
+   the boundary: `--muted` clears 3:1 against both the panel (5.25:1) and the
+   new fill (3.20:1). User bubbles keep their inverted ink fill (their dark
+   border already reads 10.9:1 against it), which is why this is scoped to
+   `.assistant`. Sources sit on the bubble's new fill, so they step up to
+   surface-3 with their own `--muted` edge (3.20:1 outer, 4.44:1 inner). */
+.forced-dark .chat-message.assistant .message-content {
+  background: var(--surface-2);
+  border-color: var(--muted);
+}
+
+.forced-dark .source-item {
+  background: var(--surface-3);
+  border-color: var(--muted);
+}
+
+/* The result cards carry `forced-dark` on themselves (app search + demo
+   both), so the ancestor box-shadow rule further down cannot match them — the
+   same reason the gradient rule has a self-arm. Mirror it. */
+.forced-dark .search-result-card,
+.search-result-card.forced-dark {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 .message-content {
@@ -9999,4 +10199,380 @@ when they inherited `--muted` at 0.62 — below the 3:1 that WCAG asks of
 }
 .pipeline-stage:nth-child(even) .pipeline-outcome {
   order: 4;
+}
+
+/* ── Forced-dark surfaces (#711) ─────────────────────────────────────────────
+   A scoped utility that pins a subtree to the dark theme's look in BOTH
+   themes. Light mode's marketing surfaces read "too light" (the report that
+   opened #711), so the footer, the landing feature/step/plan/FAQ boxes, the
+   interior card grids, the pipeline stages and the demo content carry the
+   dark treatment regardless of the global `data-theme`.
+
+   Two layers, and the split is deliberate:
+
+   1. `.forced-dark { … }` re-declares EVERY token from EVERY
+      `:root[data-theme="dark"]` token block (App.css's surface ladder, the
+      badge colours, --error-text, and index.css's type/shadow tokens) with
+      the same value, plus `color-scheme: dark` and a `color: var(--ink)` so
+      text that merely INHERITS its colour from body (which resolves outside
+      this scope) does not arrive light-on-white here. Custom properties
+      resolve where they are used, so every `var(--x)` inside the wrapper —
+      card fills, borders, zebra tints, hover rings, status pills — picks up
+      the dark value with no component knowing.
+
+   2. The component rules below mirror the dark theme's own component
+      overrides that carry literal values rather than tokens (white-on-blue
+      buttons, the plan badge, the file icon gradient, the sticky table
+      header rung…). Each is the exact declaration its
+      `:root[data-theme="dark"]` counterpart makes, so in dark mode this
+      whole section is a no-op: values equal values. That is also why
+      nothing here joins `html.theme-transitioning` — a pinned surface does
+      not change when the theme toggles, so there is nothing to tween.
+
+   `themeTokens.test.ts` fails the build if the token layer drifts from the
+   dark blocks; it compares name AND value both ways.
+
+   Scope rule when adding a new wrapper: only wrap containers whose children
+   paint their own background (cards, tables, rows), or one that paints its
+   own (the footer paints --surface, the demo content is given --paper
+   below). A wrapper that stays transparent puts `--muted` grey text
+   directly on the white page, which is 2.8:1 — the exact failure this
+   feature must not reintroduce. Section headings stay OUTSIDE the wrapper
+   on purpose: they keep the light theme's ink on the light section.
+
+   Applied on: LandingFooter, the landing grids/steps/plans, FaqAccordion,
+   PlanComparison's scroll wrapper, the Features grids, PipelineTrack,
+   Pricing's plans + detail grid, DemoPage's main content, and the Company
+   hub/about/blog/careers/contact card lists. */
+.forced-dark {
+  /* Surface ladder + text (App.css dark block). */
+  --ink: #e2e8f0;
+  --muted: #94a3b8;
+  --on-ink-muted: #334155;
+  --green-text: #22c55e;
+  --danger-text: #f87171;
+  --blue-text: #93c5fd;
+  --line: #2c3a52;
+  --line-strong: #546a97;
+  --paper: #121927;
+  --surface: #1b2639;
+  --surface-2: #242f47;
+  --surface-3: #2b3a55;
+  --appbar-bg: #0a0f1a;
+  --appbar-fg: #e2e8f0;
+  --appbar-muted: #94a3b8;
+  --appbar-line: rgb(226 232 240 / 0.16);
+  --appbar-active-bg: #2563eb;
+  --appbar-active-fg: #ffffff;
+  --appbar-wash: rgb(226 232 240 / 0.14);
+
+  /* Accents + status colours. */
+  --blue: #60a5fa;
+  --blue-hover: #93c5fd;
+  --blue-soft: rgb(37 99 235 / 0.16);
+  --green: #22c55e;
+  --green-soft: rgb(34 197 94 / 0.12);
+  --compare-no: #f87171;
+  --info: #60a5fa;
+  --danger-soft: rgb(220 38 38 / 0.14);
+  --danger-line: rgb(220 38 38 / 0.35);
+  --success-soft: rgb(22 163 74 / 0.14);
+  --success-line: rgb(22 163 74 / 0.35);
+  --error-text: #fca5a5;
+
+  /* Code + badge chips. */
+  --code-bg: #1b2639;
+  --code-keyword: #c4b5fd;
+  --code-string: #86efac;
+  --code-comment: #8296ab;
+  --code-func: #93c5fd;
+  --code-number: #fcd34d;
+  --badge-blue-bg: rgba(59, 130, 246, 0.26);
+  --badge-blue-text: #93c5fd;
+  --badge-green-bg: rgba(34, 197, 94, 0.26);
+  --badge-green-text: #86efac;
+  --badge-amber-bg: rgba(245, 158, 11, 0.26);
+  --badge-amber-text: #fcd34d;
+  --badge-red-bg: rgba(239, 68, 68, 0.26);
+  --badge-red-text: #fca5a5;
+  --badge-gray-bg: rgba(148, 163, 184, 0.26);
+  --badge-gray-text: #cbd5e1;
+
+  /* Type, page chrome and elevation (index.css dark block). */
+  --text: #e2e8f0;
+  --text-h: #f1f5f9;
+  --bg: #121927;
+  --border: #2c3a52;
+  --accent: #3b82f6;
+  --shadow: rgba(0, 0, 0, 0.55) 0 10px 15px -3px, rgba(0, 0, 0, 0.35) 0 4px 6px -2px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 4px 6px -2px rgba(0, 0, 0, 0.45), 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.6), 0 20px 40px rgba(0, 0, 0, 0.4);
+
+  color-scheme: dark;
+  /* body's computed --ink resolves OUTSIDE this wrapper and would inherit
+     in light; set the wrapper's own colour so bare descendants start dark. */
+  color: var(--ink);
+}
+
+/* The demo's dark objects each carry `.forced-dark` themselves — the sample
+   cards, the search bar, the result cards, and the chat — so the page keeps its
+   light background and header while the boxes stay dark in both themes (#715).
+   They are deliberately not wrapped in one panel: a grouped rectangle buries
+   the section titles, and each box already paints its own background. */
+
+/* Surface-ladder gradient for the card family — the dark counterpart of the
+   light theme's near-white gradient. The self-selector arms are for boxes that
+   carry `.forced-dark` themselves (e.g. the demo's individual cards), which a
+   descendant selector would not match. */
+.forced-dark
+  :is(
+    .document-card,
+    .search-result-card,
+    .settings-card,
+    .profile-hero,
+    .profile-stat,
+    .quick-action,
+    .recent-item,
+    .stat-skeleton,
+    .skeleton-card
+  ),
+:is(
+  .document-card,
+  .search-result-card,
+  .settings-card,
+  .profile-hero,
+  .profile-stat,
+  .quick-action,
+  .recent-item,
+  .stat-skeleton,
+  .skeleton-card
+).forced-dark {
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+}
+
+/* Accent palette: lift a step for dark legibility, exactly as the dark
+   theme does. --card-accent-solid stays untouched on purpose (white-on-fill
+   contrast — see the palette comment above). */
+.forced-dark [data-accent="blue"] {
+  --card-accent: #60a5fa;
+  --card-accent-soft: rgb(37 99 235 / 0.16);
+  --card-accent-ring: rgb(96 165 250 / 0.3);
+}
+.forced-dark [data-accent="violet"] {
+  --card-accent: #a78bfa;
+  --card-accent-soft: rgb(124 58 237 / 0.18);
+  --card-accent-ring: rgb(167 139 250 / 0.32);
+}
+.forced-dark [data-accent="green"] {
+  --card-accent: #4ade80;
+  --card-accent-soft: rgb(22 163 74 / 0.16);
+  --card-accent-ring: rgb(74 222 128 / 0.3);
+}
+.forced-dark [data-accent="amber"] {
+  --card-accent: #fbbf24;
+  --card-accent-soft: rgb(217 119 6 / 0.18);
+  --card-accent-ring: rgb(251 191 36 / 0.32);
+}
+.forced-dark [data-accent="rose"] {
+  --card-accent: #fb7185;
+  --card-accent-soft: rgb(225 29 72 / 0.18);
+  --card-accent-ring: rgb(251 113 133 / 0.32);
+}
+
+/* Inputs: stronger edge + inset depth on the darker rung. */
+.forced-dark :is(input, textarea, select, .documents-search input, .search-input, .filter-chip) {
+  border-color: var(--line-strong);
+}
+
+.forced-dark :is(input, textarea, select) {
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.3);
+}
+
+/* White-on-blue stays AA: the token lifts --blue to blue-400 (2.54:1 with
+   white), so the fill is pinned to blue-600 like the dark theme's. */
+.forced-dark .btn-primary {
+  background: #2563eb;
+}
+
+.forced-dark .btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+/* The dropzone's hover/drag wash is `background: var(--blue-soft)` — a
+   translucent value that, with no surface beneath it (the wrapper is
+   transparent), composites over the white page into a light blue that fails
+   with the light --muted text (2.05:1, audit gate #718). Swap the wash for a
+   solid surface step; the border + symbol lift keep the hover affordance. */
+.forced-dark .dropzone:hover,
+.forced-dark .dropzone.is-dragging {
+  background: var(--surface-2);
+  border-color: var(--blue);
+}
+
+/* QA chat: the controls row and the chat column carry forced-dark but no
+   background of their own, so the flipped-to-light labels/empty state sat
+   directly on the light page (1.23:1 for the empty title). Give both the
+   surface rail the rest of the forced-dark cards have. */
+.forced-dark.qa-controls {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.forced-dark.chat-container {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0 16px;
+}
+
+.forced-dark .webhook-step-num {
+  background: #2563eb;
+}
+
+.forced-dark .landing-card,
+.forced-dark .landing-step,
+.forced-dark .landing-plan {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+}
+
+/* The dark theme pins the core cards' left rail to a literal blue-600-era
+   value rather than trusting the token; mirror it so the two never drift. */
+.forced-dark .landing-card-core {
+  border-left-color: #60a5fa;
+}
+
+.forced-dark .plan-badge {
+  background: #2563eb;
+}
+
+/* Detail text on the pricing detail cards reads full ink inside the dark
+   scope. The descriptions (.page-card-static p) and per-plan lines
+   (.plan-includes li) inherit nothing of their own and previously landed on
+   --muted in dark; on the forced-dark surface that is gray on gray instead
+   of supporting text (#718). The price's unit is the last muted holdout on
+   those cards, and it has no business being dimmer than the description. */
+.forced-dark .page-card-static p,
+.forced-dark .plan-detail-price span,
+.forced-dark .plan-includes li {
+  color: var(--text-h);
+}
+
+/* The main plan cards' price row: the figure inherited --ink (fine) but the
+   period ("forever", "per month", "per team") kept --muted — gray on the dark
+   card while the detail cards' equivalents were lifted to --text-h (#718).
+   Make the whole row the same heading-white the detail cards use (#720). */
+.forced-dark .landing-price,
+.forced-dark .landing-price-period {
+  color: var(--text-h);
+}
+
+/* Comparison table rungs (dark theme: thead sits on surface-3, the Pro
+   column's tints lift to 16%/14% so they clear the zebra). */
+.forced-dark .landing-table-wrap {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+}
+
+.forced-dark .landing-table thead th {
+  background: var(--surface-3);
+}
+
+/* Needs its own selector ahead of the generic rule above: (0,3,2) vs
+   (0,2,2), the same specificity pair the dark pair documents. */
+.forced-dark .landing-table thead th.pro-head {
+  background: color-mix(in srgb, var(--blue) 16%, var(--surface-2));
+}
+
+.forced-dark .landing-table .pro-cell {
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+}
+
+/* Demo + document-card chrome whose dark overrides are literal. */
+.forced-dark .search-result-card {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.forced-dark .file-icon {
+  border-color: var(--line-strong);
+  background: linear-gradient(135deg, rgb(37 99 235 / 0.28), rgb(124 58 237 / 0.28));
+  color: #f1f5f9;
+}
+
+.forced-dark .document-thumbnail {
+  border-color: var(--line-strong);
+}
+
+/* The assistant avatar is white-on-`--blue`; --blue's dark step is blue-400
+   (2.54:1), so it pins to blue-600 like the dark theme's avatar. */
+.forced-dark .message-avatar {
+  background: #2563eb;
+}
+
+/* /blog's dashed panel is transparent by design — it borrows the page.
+   Pinned to the (dark) paper so the box itself reads as a box on the white
+   light-mode page; a no-op in dark mode where paper IS the page colour.
+   Compound selector: both classes sit on the SAME element here (unlike every
+   other rule in this section, which targets a wrapper's children) — a
+   descendant `.forced-dark .empty-state-panel` would match nothing and leave
+   the panel transparent, i.e. the light heading on white this rule exists to
+   prevent. */
+.forced-dark.empty-state-panel {
+  background: var(--paper);
+}
+
+/* The demo banner (#711 AC: "/demo: banner … always dark mode"). Outside
+   this section the banner is the site's one deliberate inversion (#121): it
+   paints var(--ink) with var(--paper) text, so it is a dark strip in light
+   mode and a LIGHT strip in dark mode. The AC pins the demo dark in both
+   themes, so the banner joins the scope with the light theme's literals —
+   in light mode these are exactly its computed colours (no change), in dark
+   mode they hold it dark instead of letting --ink invert it.
+   `.demo-back-home` spells --paper as white for the same reason the button
+   fills do: inside the scope, --paper is the dark page fill, and its text
+   would otherwise go dark-on-dark. */
+.forced-dark.demo-banner {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.forced-dark .demo-back-home {
+  color: #ffffff;
+}
+
+/* The Company menu is a forced-dark surface, so it pins the dark panel and
+   keeps light text in both themes. Placed on the menu itself rather than its
+   links so the class describes the surface. */
+.landing-nav-links .nav-group-menu.forced-dark {
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+}
+
+.landing-nav-links .nav-group-menu a.forced-dark,
+.landing-nav-links .nav-group-menu a {
+  color: var(--ink);
+}
+
+.landing-nav-links .nav-group-menu a:hover,
+.landing-nav-links .nav-group-menu a.active,
+.landing-nav-links .nav-group-menu a[aria-current="page"] {
+  color: #ffffff;
+  background: var(--appbar-active-bg);
+}
+
+/* `PageCta` carries `forced-dark` on the band element itself, so the surface
+   has to be re-declared with a self selector — `.forced-dark .page-cta-band`
+   is (0,2,0) but matches nothing, because the band is the wrapper, not a
+   descendant of one. The heading/subtext below stay descendant rules: those
+   elements are inside the band. */
+.page-cta-band.forced-dark {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+}
+.forced-dark .page-cta-band h2 {
+  color: var(--text-h);
+}
+.forced-dark .page-cta-band-sub {
+  color: var(--muted);
 }
