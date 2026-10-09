@@ -2,6 +2,26 @@
 
 This is a full-stack AI Document Intelligence Platform: upload documents, extract and split text, generate embeddings (OpenAI or local models), search semantically, and ask questions grounded in your documents with source context. Everything runs locally for development and is deployable to Kubernetes (Kustomize + Helm) for production.
 
+<details><summary>Table of Contents</summary>
+
+- [Purpose](#purpose)
+- [Hero](#hero)
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Tech Stack](#tech-stack)
+- [Prerequisites](#prerequisites)
+- [Quick Start (Local)](#quick-start-local)
+- [Host-Native (No Sandbox)](#host-native-no-sandbox)
+- [Project Structure](#project-structure)
+- [Testing & Quality](#testing--quality)
+- [Deployment](#deployment)
+- [Credits](#credits)
+- [AI & Attribution](#ai--attribution)
+- [License](#license)
+
+</details>
+
+
 ## Hero
 
 <p align="center">
