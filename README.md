@@ -1,5 +1,9 @@
 # AI Document Intelligence Platform
 
+<p align="center">
+  <img src="./frontend/public/favicon.svg" alt="AskDocs Logo" width="120" height="120" />
+</p>
+
 > Upload documents, search semantically, and get grounded answers from your own knowledge base
 
 [![Python](https://img.shields.io/badge/Python-3.14-blue.svg)](https://www.python.org/downloads/)
@@ -11,11 +15,10 @@
 [![Infra CI](https://img.shields.io/badge/Infra_CI-K8s_Validation-yellow.svg)](.github/workflows/infra.yml)
 [![License](https://img.shields.io/badge/License-Custom-red.svg)](LICENSE)
 
-<details>
-<summary>Table of Contents</summary>
+## Table of Contents
 
+- [Home Page](#home-page)
 - [Purpose](#purpose)
-- [Hero](#hero)
 - [Features](#features)
 - [Screenshots](#screenshots)
 - [Tech Stack](#tech-stack)
@@ -29,17 +32,19 @@
 - [AI & Attribution](#ai--attribution)
 - [License](#license)
 
-</details>
+## Home Page
+
+<p align="center">
+  <img src="./frontend/public/screenshots/landing-dark.png" alt="Landing page (dark mode)" width="700" />
+</p>
+
+**AI Document Intelligence Platform** — Upload documents, extract and chunk text, generate embeddings (OpenAI or local models), search semantically with pgvector, and ask questions grounded in your documents with source attribution. Runs locally via Docker Compose; deployable to Kubernetes (Kustomize + Helm) for production.
+
+Key capabilities: document upload/bulk upload, async processing, semantic & keyword search, Q&A with citations, PDF thumbnails/preview, JWT auth with refresh rotation, semantic caching, webhooks, admin dashboard, rate limiting.
 
 ## Purpose
 
 This is a full-stack AI Document Intelligence Platform: upload documents, extract and split text, generate embeddings (OpenAI or local models), search semantically, and ask questions grounded in your documents with source context. Everything runs locally for development and is deployable to Kubernetes (Kustomize + Helm) for production.
-
-## Hero
-
-<p align="center">
-  <img src="./frontend/public/screenshots/landing-dark.png" alt="Landing hero (dark mode)" width="700" />
-</p>
 
 ## Features
 
@@ -91,7 +96,7 @@ Instantly preview extracted text from processed documents with clean formatting 
 | Storage | MinIO/S3 | Compatible | Object storage |
 | Auth | JWT (HS256) | - | Authentication with refresh rotation |
 | AI | OpenAI, Groq, Ollama | Configurable | Embeddings & Q&A |
-| Infrastructure | Docker, Kubernetes, Helm | - | Containerization & deployment |
+| Infrastructure | Docker, Kubernetes, Helm | - | Containerization & deployment
 
 ## Prerequisites
 
