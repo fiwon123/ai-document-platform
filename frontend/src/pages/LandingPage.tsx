@@ -19,22 +19,22 @@ import { CORE_FEATURES, SECONDARY_FEATURES, STEPS, PLANS, FAQ_ITEMS } from "../c
 
 const SCREENSHOTS = [
   {
-    src: "/screenshots/dashboard.png",
+    src: "/screenshots/dashboard-dark.png",
     alt: "AskDocs dashboard with document statistics and recent uploads",
     caption: "Your workspace at a glance",
   },
   {
-    src: "/screenshots/documents.png",
+    src: "/screenshots/documents-dark.png",
     alt: "Document library with upload controls and processing statuses",
     caption: "Upload and manage documents",
   },
   {
-    src: "/screenshots/search.png",
+    src: "/screenshots/search-dark.png",
     alt: "Semantic search results ranked by relevance",
     caption: "Semantic search across your files",
   },
   {
-    src: "/screenshots/preview.png",
+    src: "/screenshots/preview-dark.png",
     alt: "Extracted text preview of a processed document",
     caption: "Read extracted content instantly",
   },
