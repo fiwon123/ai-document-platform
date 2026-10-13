@@ -28,7 +28,7 @@ dependencies = [
     "openai>=3.13.0",
     "arq>=0.28.0",
     "pymupdf>=1.28.2",
-    "prometheus-client>=0.20.0",
+    "prometheus-client>=0.26.0",
 ]
 
 [dependency-groups]
