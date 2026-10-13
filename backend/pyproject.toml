@@ -11,7 +11,7 @@ dependencies = [
     # Pinned: passlib 1.7.4 is incompatible with bcrypt>=4.1 (removed bcrypt.__about__)
     "bcrypt==4.0.1",
     "passlib>=1.7.4",
-    "pgvector>=0.5.0",
+    "pgvector>=0.5.1",
     # psycopg3 (import `psycopg`) is the driver SQLAlchemy 2.1+ uses by
     # default for driverless `postgresql://` URLs, which is how this app and
     # its tests build them (database/db.py, tests/conftest.py). The old
@@ -25,7 +25,7 @@ dependencies = [
     # psycopg3 is the default driver for driverless postgresql:// URLs since
     # 2.1 — see the psycopg[binary] entry above (#697).
     "sqlalchemy>=2.1",
-    "openai>=3.13.0",
+    "openai>=3.28.0",
     "arq>=0.28.0",
     "pymupdf>=1.28.2",
     "prometheus-client>=0.20.0",
