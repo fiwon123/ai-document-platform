@@ -41,7 +41,7 @@ dev = [
     # sandbox's provider variables to the app's own defaults. Already resolved
     # transitively via alembic; declared here so the test does not rely on
     # another package's dependency graph.
-    "pyyaml>=6.0",
+    "pyyaml>=6.0.3",
 ]
 
 [tool.pytest.ini_options]
