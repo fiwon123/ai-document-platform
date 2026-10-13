@@ -205,7 +205,7 @@ jobs:
           done
 
       - name: Scan backend image
-        uses: aquasecurity/trivy-action@v0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           # The Trivy version is pinned, and written literally in every scan
           # step rather than hoisted into a job-level `env`. Left unset,
@@ -225,7 +225,7 @@ jobs:
           exit-code: "1"
 
       - name: Scan worker image
-        uses: aquasecurity/trivy-action@v0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/fiwon123/ai-platform/worker:${{ needs.build-images.outputs.tag }}
           version: v0.75.0
@@ -234,7 +234,7 @@ jobs:
           exit-code: "1"
 
       - name: Scan frontend image
-        uses: aquasecurity/trivy-action@v0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/fiwon123/ai-platform/frontend:${{ needs.build-images.outputs.tag }}
           version: v0.75.0
@@ -246,7 +246,7 @@ jobs:
       # infra/docker/Dockerfile.minio, #646), so it is scanned on the same terms
       # as the other three rather than shipped unscanned.
       - name: Scan minio image
-        uses: aquasecurity/trivy-action@v0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/fiwon123/ai-platform/minio:${{ needs.build-images.outputs.tag }}
           # Same pin as the other three scan steps, and for the same reason:
