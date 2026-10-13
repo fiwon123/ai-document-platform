@@ -16,7 +16,7 @@ dependencies = [
     # default for driverless `postgresql://` URLs, which is how this app and
     # its tests build them (database/db.py, tests/conftest.py). The old
     # psycopg2-binary dependency was dropped when the stack moved to it (#697).
-    "psycopg[binary]>=3.2.0",
+    "psycopg[binary]>=3.3.6",
     # pypdf is the maintained continuation of PyPDF2 (the project was
     # renamed; PyPDF2 3.0.1 was the last release under that name).
     "pypdf>=4.0.0",
