@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.19.2",
-    "boto3>=1.43.92",
+    "boto3>=1.43.111",
     "fastapi[standard]>=0.141.1",
     # Pinned: passlib 1.7.4 is incompatible with bcrypt>=4.1 (removed bcrypt.__about__)
     "bcrypt==4.0.1",
