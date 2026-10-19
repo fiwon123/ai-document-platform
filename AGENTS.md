@@ -133,9 +133,16 @@ docker compose down -v
 
 1. `make dev-up` to start → `make dev-log` (2nd terminal) → `make dev-down` when done
 2. `make check` before every push — always green before PR
-3. Only `dev-up` requires opencode; `infra-up` + host loop (`make check`) don't
+3. The in-container agent needs a **Linux** opencode binary (Linux/WSL2); the
+   application does not. `dev-up`, `infra-up` and `make check` work without it.
+   macOS/native-Windows users run `opencode` on the host.
 4. **UI changes are verified by looking at them.** Captures are part of the gate,
    not an optional extra — see `.opencode/instructions/testing.md` → "Visual checks"
+
+> Platform support: the Makefile targets require a POSIX shell (Linux, macOS,
+> WSL2). Native Windows uses `python scripts/dev-up.py <command>`, and
+> portfolio/demo users run `docker compose up` on any OS. See `README.md` →
+> *Quick Start*.
 
 ## Runtime Environment
 

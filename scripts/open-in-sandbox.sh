@@ -62,10 +62,15 @@ if [ -n "$sandbox_gh_token" ]; then
 fi
 
 # Keep direct invocations equivalent to `make sandbox`: the read-only mounts
-# must exist before Compose creates the container.
-if [ ! -x "${HOST_HOME}/.opencode/bin/opencode" ]; then
-    echo "ERROR: opencode not found at ${HOST_HOME}/.opencode/bin/opencode" >&2
-    echo "  Install: curl -fsSL https://opencode.ai/install | bash" >&2
+# must exist before Compose creates the container. The container is Linux, so
+# only an ELF binary can execute inside it — a macOS/Windows install cannot.
+OPENCODE_BIN="${OPENCODE_BIN:-${HOST_HOME}/.opencode/bin/opencode}"
+opencode_magic="$(head -c 4 "$OPENCODE_BIN" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n')"
+if [ "$opencode_magic" != "7f454c46" ]; then
+    echo "ERROR: the in-container AI agent needs a Linux opencode binary at ${OPENCODE_BIN}." >&2
+    echo "  A macOS/Windows binary cannot execute inside the Linux dev container." >&2
+    echo "  Recommended: use WSL2, where the host binary is Linux." >&2
+    echo "  Alternative: run 'opencode' on the host against the running stack." >&2
     exit 1
 fi
 mkdir -p "${HOST_HOME}/.config/opencode" "${HOST_HOME}/.config/gh"
@@ -77,23 +82,28 @@ touch "${HOST_HOME}/.gitconfig"
 # `make dev-up` / `make dev-restart` no longer starts a second, racing build.
 # (It used to run `docker compose up -d --build` unconditionally, which rebuilt
 # the images every time and could clobber a live `make opencode` session.)
+#
+# The agent override must be merged here: a plain `docker compose up -d` would
+# reconcile the running container against a config without these mounts and
+# recreate it, dropping the agent mid-session (#760).
+COMPOSE_AGENT="docker compose -f docker-compose.yaml -f docker-compose.agent.yaml"
 echo "[sandbox] Ensuring dev stack is running..."
-"$SCRIPT_DIR/ensure-sandbox-running.sh"
+COMPOSE="$COMPOSE_AGENT" "$SCRIPT_DIR/ensure-sandbox-running.sh"
 
 # One-shot command mode: use a TTY when we are interactive so tools like
 # pytest --pdb keep working, and -T when stdin is piped.
 if [[ $# -gt 0 ]]; then
     if [[ -t 0 ]]; then
-        exec docker compose exec -it dev zsh -lc "$*"
+        exec $COMPOSE_AGENT exec -it dev zsh -lc "$*"
     else
-        exec docker compose exec -T dev zsh -lc "$*"
+        exec $COMPOSE_AGENT exec -T dev zsh -lc "$*"
     fi
 fi
 
 echo "[sandbox] Dev sandbox shell — run the AI coding agent with:"
 echo "          cd /sandbox/ai-document-platform && opencode"
 if [[ -t 0 ]]; then
-    exec docker compose exec -it dev zsh
+    exec $COMPOSE_AGENT exec -it dev zsh
 else
-    exec docker compose exec -T dev zsh
+    exec $COMPOSE_AGENT exec -T dev zsh
 fi

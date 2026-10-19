@@ -1,0 +1,36 @@
+# Sandboxed AI coding agent override — merge this ON TOP of docker-compose.yaml.
+#
+#     docker compose -f docker-compose.yaml -f docker-compose.agent.yaml up ...
+#
+# The Makefile and scripts/dev-up.py add this file automatically for developer
+# targets (`dev-up`, `opencode`, `shell`, `dev-exec`). A bare
+# `docker compose up` (the demo/portfolio path) deliberately does not.
+#
+# Why it is separate: every mount here is a HOST-side path that a demo user
+# does not have. Missing bind-mount sources are fatal on Windows and create
+# root-owned directories on Linux, and the mounted opencode binary must be a
+# LINUX executable to run inside the Linux container. Keeping these out of the
+# base file is what lets `docker compose up` work everywhere with no setup.
+#
+# Trusted-agent model (see DEVELOPMENT.md): the dev container shares the
+# workspace, the host Docker socket, gh auth and opencode config with the host
+# BY DESIGN. The `worker` service receives none of it.
+#
+# Platform note: the in-container agent requires a Linux opencode binary at
+# ${HOST_HOME}/.opencode/bin/opencode. That exists on Linux and inside WSL2.
+# On macOS and native Windows the binary is Mach-O / PE and cannot execute in
+# the Linux container, so the Makefile and dev-up.py omit this override there.
+# Run opencode on the HOST against the running stack on those platforms.
+
+services:
+  dev:
+    volumes:
+      # Lets the sandboxed agent drive Docker/compose on the host.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same gh auth as the host (read-only); GH_TOKEN is forwarded separately.
+      - ${HOST_HOME:-${HOME}}/.config/gh:/home/appuser/.config/gh:ro
+      # The Linux opencode binary and its config.
+      - ${HOST_HOME:-${HOME}}/.opencode/bin/opencode:/usr/local/bin/opencode:ro
+      - ${HOST_HOME:-${HOME}}/.config/opencode:/home/appuser/.config/opencode:ro
+      # Git identity used by commits made inside the sandbox.
+      - ${HOST_HOME:-${HOME}}/.gitconfig:/home/appuser/.gitconfig:ro

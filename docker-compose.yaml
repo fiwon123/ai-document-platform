@@ -1,18 +1,30 @@
 # Dev-sandbox Compose file (repo root) — lightweight Docker-based development.
 #
-# Replaces the old VS Code Dev Containers setup (`.devcontainer/`): a single
-# prebuilt `dev` container (bind-mounted source, deps baked at image build)
-# runs uvicorn + vite in the foreground with fast hot reload, a `worker`
-# service runs the arq document-processing worker, and `postgres` / `redis` /
-# `minio` provide infrastructure. Use `docker compose up dev` (or `make
-# dev-up`); use `make infra-up` for the host-native path (infra only, then
-# run uvicorn + vite directly on the host).
+# This file is the SUPPORTED STANDALONE ENTRY POINT:
+#
+#     docker compose up
+#
+# It runs the whole platform (dev + worker + postgres + redis + minio) and has
+# no host-side prerequisites beyond Docker itself — no Make, no Python, no
+# opencode, no gh. That is what a portfolio/demo user should run, on Linux,
+# macOS or Windows with Docker Desktop.
+#
+# Developer workflows add two optional layers on top:
+#   - `make dev-up`          (Linux / macOS / WSL2)          — see Makefile
+#   - `python scripts/dev-up.py dev-up` (any OS, incl. Windows native)
+#
+# Both layer `docker-compose.agent.yaml` on top of this file when a Linux
+# opencode binary is available, which is what makes the sandboxed AI agent
+# work. That override is deliberately NOT read by a bare `docker compose up`:
+# it mounts host-only paths (~/.opencode, ~/.config/gh, the Docker socket) that
+# demo users do not have. See docker-compose.agent.yaml.
 #
 # `name` is pinned so project volumes/networks keep the
 # ai-document-platform_* prefix regardless of where the compose file lives.
-# The Make targets export host identity and host path variables. Direct
-# `docker compose` users should set HOST_UID/HOST_GID/DOCKER_GID and use
-# `--build` before starting the services.
+# Host identity defaults to UID/GID 1000, which is correct for Docker Desktop
+# (macOS/Windows virtualise ownership) and for the standard first user on
+# Linux. Override HOST_UID/HOST_GID when your Linux UID differs, otherwise the
+# workspace write probe in dev-entrypoint.sh refuses to start.
 
 name: ai-document-platform
 
@@ -47,7 +59,13 @@ services:
     # tests/test_compose_env.py pins this so the docs cannot drift again.
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: ["/sandbox/ai-document-platform/dev-entrypoint.sh"]
+    # Invoke through /bin/bash explicitly. The entrypoint lives in the
+    # bind-mounted workspace, and on a Windows checkout the executable bit is
+    # not preserved by the filesystem, so executing the path directly would
+    # fail with "Permission denied". Opening it with the interpreter also makes
+    # the CRLF protection in .gitattributes a redundancy rather than a
+    # requirement.
+    command: ["/bin/bash", "/sandbox/ai-document-platform/dev-entrypoint.sh"]
     # Docker's default /dev/shm is 64 MB, which makes Chromium crash on any
     # non-trivial page. The baked headless Chromium (see Dockerfile) is what
     # accessibility/E2E checks run against, so give it real shared memory.
@@ -154,17 +172,12 @@ services:
         condition: service_healthy
     volumes:
       - ${HOST_PROJECT_DIR:-.}:/sandbox/ai-document-platform:cached
-      # Sandboxed AI coding agent (trusted-agent model — see DEVELOPMENT.md):
-      # mount the host Docker socket so opencode INSIDE the dev container can
-      # drive Docker/compose, and share the host gh auth, opencode binary +
-      # config, and git identity read-only. `make dev-up` pre-creates
-      # ${HOST_HOME}/.config/opencode and ${HOST_HOME}/.gitconfig so these mounts
-      # never fail on a fresh machine. The `worker` service gets none of these.
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ${HOST_HOME:-${HOME}}/.config/gh:/home/appuser/.config/gh:ro
-      - ${HOST_HOME:-${HOME}}/.opencode/bin/opencode:/usr/local/bin/opencode:ro
-      - ${HOST_HOME:-${HOME}}/.config/opencode:/home/appuser/.config/opencode:ro
-      - ${HOST_HOME:-${HOME}}/.gitconfig:/home/appuser/.gitconfig:ro
+      # NOTE: the sandboxed AI agent mounts (opencode binary + config, gh auth,
+      # git identity, and the host Docker socket) live in
+      # docker-compose.agent.yaml. They are NOT here on purpose: a demo user
+      # running `docker compose up` has none of those paths, and a missing
+      # bind-mount source is a hard failure on Windows. The Makefile and
+      # scripts/dev-up.py merge the override in for developer workflows.
     healthcheck:
       # python:3.14-slim ships no curl; urllib is stdlib and always present.
       # /v1/health returns 503 when degraded (e.g. no worker heartbeat yet).
