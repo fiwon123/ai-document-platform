@@ -47,7 +47,10 @@ PACKAGE_JSON_PATH = REPO_ROOT / "frontend" / "package.json"
 #: build becomes false the moment the gate gains a step — which is what happened
 #: to the CI-trigger claims in #680, where three files asserted something the
 #: workflows had not done for some time.
-CHECK_DOC_PATHS = ["AGENTS.md", "DEVELOPMENT.md", "CONTRIBUTING.md"]
+# Every entry must still exist: the test reads each file, so listing a deleted
+# doc turns an assertion into a FileNotFoundError. CONTRIBUTING.md and
+# SECURITY.md were removed in #726 and are deliberately not listed here.
+CHECK_DOC_PATHS = ["AGENTS.md", "DEVELOPMENT.md"]
 
 #: The job that lints the frontend, and therefore the job that owns the check.
 CI_JOB = "frontend-lint"
