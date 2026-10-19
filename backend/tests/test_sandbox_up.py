@@ -61,6 +61,12 @@ exit 0
 def run_helper(tmp_path):
     """Run the helper against a fake docker; return the recorded `up` calls."""
 
+    # The helper is a POSIX shell script. On a native Windows host (no WSL,
+    # no Git Bash exposed as /bin/bash) there is nothing to execute; the static
+    # wiring tests below still run. CI and the sandbox are Linux.
+    if not Path("/bin/bash").exists():
+        pytest.skip("ensure-sandbox-running.sh needs /bin/bash (POSIX host)")
+
     def _run(state="", health="", **extra_env):
         fake = tmp_path / "fake-docker"
         fake.write_text(FAKE_DOCKER)

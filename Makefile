@@ -1,6 +1,12 @@
-.PHONY: help setup host-tools infra-up infra-down check-identity check-gh-token preflight dev-up dev-build dev-down dev-restart \
-        dev-log dev-exec dev-agent opencode shell sandbox reset \
+.PHONY: help setup host-tools infra-up infra-down check-identity check-gh-token preflight require-agent prepare-agent-mounts \
+        dev-up dev-build dev-down dev-restart dev-log dev-exec dev-agent opencode shell sandbox reset demo-up demo-down \
         test test-backend test-frontend lint lint-fix format format-check typecheck build check
+
+# Cross-platform note (#760): this Makefile targets POSIX hosts — Linux, macOS
+# and WSL2 — where `make` runs under a POSIX shell. Native Windows users should
+# use `python scripts/dev-up.py dev-up` (or scripts/dev-up.ps1), which provides
+# the same targets without a POSIX shell. Everyone can run the platform with a
+# plain `docker compose up` (the demo/portfolio path).
 
 COMPOSE := docker compose
 
@@ -28,10 +34,14 @@ FRONTEND_DIR := frontend
 # kicking off a redundant image build — and racing the running stack — when
 # called right after `make dev-up` / `make dev-restart`.
 # Pass COMPOSE= to the helper so it uses the same command as the Makefile.
-SANDBOX_UP := COMPOSE="$(COMPOSE)" scripts/ensure-sandbox-running.sh
+# Recursively expanded (`=`) on purpose: COMPOSE_UP is defined further down and
+# includes the agent override when one is available.
+SANDBOX_UP = COMPOSE="$(COMPOSE_UP)" scripts/ensure-sandbox-running.sh
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+	@printf '\n  \033[36m%-15s\033[0m %s\n' "docker compose" "Demo/portfolio: run the whole platform (any OS)"
+	@printf '  \033[36m%-15s\033[0m %s\n' "dev-up.py" "Native Windows: python scripts/dev-up.py dev-up"
 
 # --- Host-native path (fastest, no containers) ----------------------------
 setup: ## Install host-native deps (uv sync + npm install)
@@ -51,12 +61,29 @@ infra-down: ## Stop infra services
 # --- Isolated dev sandbox (dev + worker + infra) ----------------------------
 # Sandboxed AI coding agent (trusted-agent model): the dev container mounts the
 # host opencode binary + config, git identity, and gh auth read-only, plus the
-# host Docker socket (RW by design — see DEVELOPMENT.md). Only the
-# sandbox-starting targets below require the host opencode binary; the
-# host-native loop (infra-up, make check) never does.
+# host Docker socket (RW by design — see DEVELOPMENT.md). Those mounts live in
+# docker-compose.agent.yaml and are merged only when the host can actually
+# provide them (see AGENT_AVAILABLE below).
+#
+# Starting the application never requires opencode. The agent layer is optional
+# so `make dev-up` works on macOS and Windows too, where the host binary cannot
+# run inside the Linux container (#760).
 # NOTE: not named OPENCODE — the opencode agent runtime exports an OPENCODE
 # env var (=1) which would override a ?= default via make's env import.
 OPENCODE_BIN ?= $(HOME)/.opencode/bin/opencode
+
+# The dev container is Linux, so only an ELF binary can execute inside it. A
+# macOS Mach-O or Windows PE opencode install would fail with "exec format
+# error" after a confusing mount, so it is detected here and skipped.
+OPENCODE_MAGIC := $(shell head -c 4 "$(OPENCODE_BIN)" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n')
+AGENT_AVAILABLE := $(if $(filter 7f454c46,$(OPENCODE_MAGIC)),yes,no)
+
+ifeq ($(AGENT_AVAILABLE),yes)
+COMPOSE_UP := $(COMPOSE) -f docker-compose.yaml -f docker-compose.agent.yaml
+else
+COMPOSE_UP := $(COMPOSE)
+endif
+
 
 # Default for the sandbox: auto-approve permission prompts (trusted-agent
 # model — the dev container already has the workspace + docker socket).
@@ -96,13 +123,32 @@ dev-up dev-restart dev-exec opencode: GH_TOKEN = $(shell scripts/resolve-gh-toke
 check-gh-token:
 	@scripts/resolve-gh-token.sh --check
 
-preflight: check-identity check-gh-token ## (internal) Require host opencode + pre-create mounted config paths
-	@test -x "$(HOST_HOME)/.opencode/bin/opencode" || { echo "ERROR: opencode not found at $(HOST_HOME)/.opencode/bin/opencode" >&2; \
-	  echo "  Install: curl -fsSL https://opencode.ai/install | bash" >&2; exit 1; }
-	@mkdir -p "$(HOST_HOME)/.config/opencode" "$(HOST_HOME)/.config/gh" && touch "$(HOST_HOME)/.gitconfig"
+preflight: check-identity check-gh-token prepare-agent-mounts ## (internal) Require Docker identity + GH credential, prepare agent mounts
+	@if [ "$(AGENT_AVAILABLE)" = "yes" ]; then \
+	  echo "[sandbox] in-container agent available — merging docker-compose.agent.yaml."; \
+	else \
+	  echo "[sandbox] in-container agent unavailable (no Linux binary at $(OPENCODE_BIN))." >&2; \
+	  echo "[sandbox]   Starting the application without it." >&2; \
+	fi
+
+# Only the agent-specific targets need the in-container binary. This is the
+# check that used to sit in preflight and block every `make dev-up` on Windows.
+require-agent:
+	@test "$(AGENT_AVAILABLE)" = "yes" || { \
+	  echo "ERROR: the in-container AI agent needs a Linux opencode binary at $(OPENCODE_BIN)." >&2; \
+	  echo "  A macOS/Windows binary cannot execute inside the Linux dev container." >&2; \
+	  echo "  Recommended: use WSL2, where the host binary is Linux." >&2; \
+	  echo "  Alternative: run 'opencode' on the host against the running stack." >&2; \
+	  exit 1; }
+
+# Create the read-only mount sources Compose needs. Missing sources are fatal
+# on Windows and create root-owned directories on Linux. No-op without an agent.
+prepare-agent-mounts:
+	@if [ "$(AGENT_AVAILABLE)" = "yes" ]; then \
+	  mkdir -p "$(HOST_HOME)/.config/opencode" "$(HOST_HOME)/.config/gh" && touch "$(HOST_HOME)/.gitconfig"; fi
 
 dev-up: preflight ## Start the isolated dev sandbox (uvicorn + vite + worker + infra)
-	$(COMPOSE) up --build dev worker
+	$(COMPOSE_UP) up --build dev worker
 
 dev-build: check-identity ## Rebuild the dev images after Dockerfile/pyproject/uv.lock changes
 	$(COMPOSE) build dev worker
@@ -112,27 +158,34 @@ dev-down: ## Stop the dev sandbox (keeps volumes)
 
 dev-restart: preflight ## Stop and restart the dev sandbox in one step (volumes kept)
 	$(COMPOSE) down
-	$(COMPOSE) up --build dev worker
+	$(COMPOSE_UP) up --build dev worker
 
 dev-log: ## Tail dev sandbox logs
 	$(COMPOSE) logs -f dev
 
 dev-exec: preflight ## Open a shell inside the dev sandbox
 	$(SANDBOX_UP)
-	$(COMPOSE) exec dev zsh
+	$(COMPOSE_UP) exec dev zsh
 
-opencode: preflight ## Run the AI coding agent (opencode) inside the dev sandbox
+opencode: preflight require-agent ## Run the AI coding agent (opencode) inside the dev sandbox
 	$(SANDBOX_UP)
-	@if [ -t 0 ]; then $(COMPOSE) exec -it dev zsh -lc "cd /sandbox/ai-document-platform && opencode $(OPENCODE_ARGS)"; else $(COMPOSE) exec -T dev zsh -lc "cd /sandbox/ai-document-platform && opencode $(OPENCODE_ARGS)"; fi
+	@if [ -t 0 ]; then $(COMPOSE_UP) exec -it dev zsh -lc "cd /sandbox/ai-document-platform && opencode $(OPENCODE_ARGS)"; else $(COMPOSE_UP) exec -T dev zsh -lc "cd /sandbox/ai-document-platform && opencode $(OPENCODE_ARGS)"; fi
 
 # Alias kept for compatibility with earlier dev-sandbox docs.
 dev-agent: opencode
 
-shell: preflight ## Open an interactive shell in the dev sandbox (opencode ready)
+shell: preflight require-agent ## Open an interactive shell in the dev sandbox (opencode ready)
 	scripts/open-in-sandbox.sh
 
 # Alias kept for compatibility with earlier dev-sandbox docs.
 sandbox: shell
+
+# --- Demo / portfolio path (no Makefile, no agent, no host config) ----------
+demo-up: ## Run the whole platform with plain docker compose (works on any OS)
+	$(COMPOSE) up
+
+demo-down: ## Stop the stack started by demo-up
+	$(COMPOSE) down
 
 reset: ## Stop everything and wipe volumes (clean slate)
 	$(COMPOSE) down -v
