@@ -34,14 +34,26 @@
 # e313adaa08acd21372d8d18de2ddd1dacdf888c6 is the master head at the time of
 # writing (post "Dependency CVE remediation" — govulncheck-driven dep bumps).
 #
-# Dependency override: upstream pins google.golang.org/grpc v1.83.1, which has
+# Dependency overrides: upstream pins google.golang.org/grpc v1.83.1, which has
 # CVE-2026-84445 (gRPC-Go DoS, fixed in v1.83.2) — the Trivy gate blocks on
 # it. The `go get google.golang.org/grpc@v1.83.2` in the build step is a
 # pinned, deliberate remediation (same philosophy as upstream's own
 # govulncheck bumps); once MINIO_REF is bumped past the commit that lifts
 # grpc, the line becomes a no-op and can be removed.
+#
+# golang.org/x/net is the same story, reopened by a later CVE (#769). minio's
+# go.mod pins x/net v0.57.0 (indirect) and the grpc override above lifts it to
+# v0.58.0 — which Trivy reports, and which CVE-2026-78669 (net/http DoS via
+# excessive HTTP/2 SETTINGS frames) affects. v0.60.0 is the fix, and nothing in
+# the resolved dep graph reaches it on its own, so it is pinned explicitly here
+# and relies on the same deletion-on-bump property as the grpc line.
+#
+# The golang digest is bumped with it: the previous pin shipped Go 1.26.8,
+# which carries CVE-2026-78667, CVE-2026-78669 and CVE-2026-97031 (all fixed
+# in 1.26.9). A stale digest is invisible — it builds fine and only the Trivy
+# gate notices — so it must be bumped deliberately whenever the tag moves.
 
-FROM golang:1.26-alpine@sha256:66f9a494af2b76ecb3eab75ff47166df61caec6d200c59d556b77327493d83a8 AS build
+FROM golang:1.26-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS build
 
 ARG MINIO_REPO=SimpleDataLabsInc/minio
 ARG MINIO_REF=e313adaa08acd21372d8d18de2ddd1dacdf888c6
@@ -63,6 +75,7 @@ ENV CGO_ENABLED=0
 RUN MINIO_VERSION="$(git -C /src/minio show -s --format=%cI HEAD)" \
  && MINIO_MOD="$(grep '^module ' /src/minio/go.mod | awk '{print $2}')" \
  && go get google.golang.org/grpc@v1.83.2 \
+ && go get golang.org/x/net@v0.60.0 \
  && go build -trimpath \
       -ldflags="-s -w \
         -X ${MINIO_MOD}/cmd.Version=${MINIO_VERSION} \
