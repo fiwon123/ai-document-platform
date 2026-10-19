@@ -23,8 +23,7 @@
 - [Screenshots](#screenshots)
 - [Tech Stack](#tech-stack)
 - [Quick Start](#quick-start)
-  - [Just want to see it run? (any OS)](#just-want-to-see-it-run-any-os)
-  - [Development setup by platform](#development-setup-by-platform)
+  - [Optional: development mode](#optional-development-mode)
 - [Host-Native (No Sandbox)](#host-native-no-sandbox)
 - [Common Commands](#common-commands)
 - [Troubleshooting](#troubleshooting)
@@ -103,20 +102,26 @@ Instantly preview extracted text from processed documents with clean formatting 
 
 ## Quick Start
 
-The platform **always runs in Docker Compose** — you do not need Python,
-Node, Make, or an AI key installed to see it working. The only required
-dependency is Docker with the Compose plugin.
-
-### Just want to see it run? (any OS)
-
-From the repository root — Linux, macOS, and Windows (Docker Desktop):
+**Two commands. That is the whole setup.**
 
 ```bash
+git clone https://github.com/fiwon123/ai-document-platform.git
+cd ai-document-platform
 docker compose up
 ```
 
-That is the whole setup. The first run builds the images (a few minutes);
-later runs start in seconds. When it is ready:
+That starts the **entire platform** — frontend, API, background worker,
+PostgreSQL, Redis and MinIO — on **Linux, macOS and Windows**.
+
+| You need | You do **not** need |
+|---|---|
+| Docker with the Compose plugin | Python, Node, or `make` |
+| — | WSL2 |
+| — | An AI/LLM key |
+| — | Any host setup beyond the clone |
+
+The first run builds the images (a few minutes); later runs start in seconds.
+When it is ready:
 
 | Service | URL |
 |---|---|
@@ -136,10 +141,20 @@ Add `-d` (`docker compose up -d`) to run it in the background.
 > [DEVELOPMENT.md](./DEVELOPMENT.md) → *LLM provider config in the sandbox*),
 > then `docker compose up` again.
 
-### Development setup by platform
+**Everything below this point is optional.** It is for people who want hot
+reload, the background worker's logs, or the sandboxed AI coding agent. If you
+are here to see the platform run, you are already done.
 
-Development mode additionally gives you hot reload, the background worker, and
-(where the host allows it) the sandboxed AI coding agent. Pick your platform:
+---
+
+### Optional: development mode
+
+Development mode adds hot reload, the background worker, and (where the host
+allows it) the sandboxed AI coding agent. **None of it is needed to run the
+app** — `docker compose up` above already runs all five services with the same
+behaviour.
+
+Pick your platform:
 
 | Platform | Recommended command | In-container agent |
 |---|---|---|
@@ -150,7 +165,26 @@ Development mode additionally gives you hot reload, the background worker, and
 
 All four start the same stack. `make` is the recommended interface on POSIX
 hosts; the Python launcher exists because native Windows has no POSIX shell.
-Both read the same Compose files, so they behave identically.
+Both read the same Compose files as `docker compose up`, so they behave
+identically.
+
+**Prerequisites for this optional path:**
+
+| Requirement | Linux | macOS | WSL2 | Windows native |
+|---|---|---|---|---|
+| Docker + Compose | ✅ | Docker Desktop | Docker Desktop | Docker Desktop |
+| `git` | ✅ | ✅ | ✅ | ✅ |
+| `make` | ✅ | ✅ | ✅ | ❌ (use Python) |
+| Python 3.10+ | optional | optional | optional | ✅ (launcher) |
+| `uv` + Node 22 | only for host-native | only for host-native | only for host-native | only for host-native |
+
+`uv`, Node, and the backend virtualenv are **baked into the dev image**; you do
+not install them to run the sandbox.
+
+> **The in-container AI agent needs a Linux `opencode` binary.** A macOS or
+> Windows binary cannot execute inside the Linux container, so on those
+> platforms run `opencode` on the host against the running stack instead. WSL2
+> is the one way to get the agent inside the container on Windows.
 
 #### 🐧 Linux
 
@@ -279,22 +313,8 @@ it does inside the sandbox.
 | Host prerequisites | Docker only | Docker + Make or Python | Docker + uv + Node |
 | Platforms | any | any | any |
 
-## Prerequisites
-
-**Demo / portfolio:** Docker with the Compose plugin. Nothing else.
-
-**Development:**
-
-| Requirement | Linux | macOS | WSL2 | Windows native |
-|---|---|---|---|---|
-| Docker + Compose | ✅ | Docker Desktop | Docker Desktop | Docker Desktop |
-| `git` | ✅ | ✅ | ✅ | ✅ |
-| `make` | ✅ | ✅ | ✅ | ❌ (use Python) |
-| Python 3.10+ | optional | optional | optional | ✅ (launcher) |
-| `uv` + Node 22 | only for host-native | only for host-native | only for host-native | only for host-native |
-
-`uv`, Node, and the backend virtualenv are **baked into the dev image**; you do
-not install them to run the sandbox.
+`docker compose up` and the development commands run **the same five
+services**; the difference is convenience, not capability.
 
 ## Host-Native (No Sandbox)
 
