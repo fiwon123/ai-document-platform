@@ -1,4 +1,39 @@
 #!/bin/bash
+# CRLF guard (#762) — deliberately the first executable statement, above
+# `set -euo pipefail`. There is no blank line between here and the guard on
+# purpose: an empty line in a CRLF copy is a bare `\r` command, and bash would
+# report `$'\r': command not found` before the guard could say anything useful.
+# Comment lines absorb it; use `#` on its own for a paragraph break, never an
+# empty line.
+#
+# This script runs through bash from the bind mount, so bash parses the *host*
+# working-tree bytes. A Windows checkout whose working tree predates the
+# `.gitattributes` `* text=auto eol=lf` rule keeps stale CRLF bytes, and
+# `git status` stays clean throughout, because git compares normalized content.
+# Bash then reads `set -euo pipefail\r` and dies with `set: pipefail: invalid
+# option name` — a message that names neither the cause nor a repair.
+#
+# The guard has to survive the CRLF it reports. Bash parses a whole compound
+# command before executing it, so a plain multi-line `if` would fail to parse
+# before its own check ever ran. Every line of this block therefore ends with
+# the `# crlf-guard` tag: that is where the trailing `\r` lands, inside a
+# comment, where it does no harm. The tag also delimits the block for the test
+# that pins this behaviour (backend/tests/test_dev_entrypoint_crlf_guard.py).
+#
+# The `-f` test covers the one invocation this cannot check: piped in
+# (`bash < dev-entrypoint.sh`), where BASH_SOURCE is empty and grep would report
+# `grep: : No such file or directory` before skipping. Compose always passes a
+# path, so this is about staying quiet where the check is impossible, not about
+# covering that case.
+#
+# The message points at the remedy README.md already documents under
+# Troubleshooting rather than inventing a second, narrower one: this failure
+# means the *whole* working tree is stale, not just this file.
+if [[ -f "${BASH_SOURCE[0]}" ]] && grep -q $'\r$' "${BASH_SOURCE[0]}"; then # crlf-guard
+    printf '%s\n' "[dev] ${BASH_SOURCE[0]##*/} has CRLF line endings, so bash cannot parse it — the sandbox would die with 'set: pipefail: invalid option name' (#762)." "      The bind mount serves the host checkout as-is. Re-check it out with LF endings (README.md → Troubleshooting):" >&2 # crlf-guard
+    printf '%s\n' "        git rm --cached -r . >/dev/null && git reset --hard" >&2; exit 1 # crlf-guard
+fi # crlf-guard
+
 set -euo pipefail
 
 # Dev-sandbox entrypoint — runs uvicorn (backend) + vite (frontend) in the

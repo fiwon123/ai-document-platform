@@ -356,7 +356,7 @@ python scripts/dev-up.py dev-up
 without the in-container agent. Only `make opencode` / `make shell` need a
 **Linux** opencode binary (Linux or WSL2).
 
-### `/bin/bash^M: bad interpreter` or `$'\r': command not found`
+### `/bin/bash^M: bad interpreter`, `$'\r': command not found`, or `set: pipefail: invalid option name`
 
 The shell scripts were checked out with Windows (CRLF) line endings. The
 repository pins LF in `.gitattributes`; re-checkout the files:
@@ -368,6 +368,11 @@ git reset --hard
 
 Confirm with `git ls-files --eol dev-entrypoint.sh` — the working tree (`w/`)
 must be `lf`, not `crlf`.
+
+The third form is the same cause reaching bash one step later: `set -euo
+pipefail\r` is rejected before any of the entrypoint's own checks can run, so
+bash reports `set: pipefail: invalid option name` and names nothing else.
+`dev-entrypoint.sh` now detects that itself and prints the remedy above (#762).
 
 ### The container cannot write to the workspace
 
