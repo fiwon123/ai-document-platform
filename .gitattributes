@@ -1,0 +1,32 @@
+# Normalise line endings so a Windows checkout is usable by the Linux sandbox.
+#
+# The host shell scripts (`dev-entrypoint.sh`, `scripts/*.sh`) are executed
+# INSIDE the Linux container through the bind mount. With `core.autocrlf=true`
+# (the Git for Windows default) they land in the working tree with CRLF, and
+# the kernel then reports:
+#
+#     /bin/bash^M: bad interpreter: No such file or directory
+#
+# or `$'\r': command not found` on every line. `text=auto eol=lf` keeps the
+# index and the working tree LF on every platform, so a Windows clone produces
+# the same bytes as a Linux one. Do not relax this to `eol=crlf` for scripts.
+* text=auto eol=lf
+
+# Binary assets must never be normalised.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.webm  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+
+# Windows entry points may use CRLF without affecting anything: they are read
+# by PowerShell, not by the Linux kernel.
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf

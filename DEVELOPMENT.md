@@ -49,11 +49,19 @@ workflow. This repair is not needed on a fresh clone.
 
 1. `make dev-up` to start → `make dev-log` (2nd terminal) → `make dev-down` when done
 2. `make check` before every push — always green before PR
-3. Only `dev-up` requires opencode; `infra-up` + host loop (`make check`) don't
+3. The **in-container AI agent** needs a Linux opencode binary; the application
+   does not. `make dev-up` starts the sandbox with or without it.
 
-> Rule 3 in practice: the **sandbox-starting** targets run the preflight and
-> need the host opencode binary — `dev-up`, `dev-restart`, `opencode`,
-> `sandbox`. Everything else (including `make check`) never does.
+> Rule 3 in practice: only `make opencode` / `make shell` require the host
+> opencode binary, and only when it is a **Linux** binary (Linux or WSL2).
+> `dev-up`, `dev-restart`, `dev-exec`, `infra-up` and `make check` never do.
+> On macOS and native Windows, run `opencode` on the host against the running
+> stack instead of inside the container.
+
+> Platform note: the Makefile targets assume a POSIX shell (Linux, macOS or
+> WSL2). Native Windows users run `python scripts/dev-up.py dev-up`, which
+> provides the same targets; portfolio/demo users run `docker compose up`
+> anywhere. See [README.md](./README.md) → *Quick Start*.
 
 ## Architecture at a glance
 
@@ -86,9 +94,13 @@ docker compose down -v    # ONLY to wipe the database + Redis + MinIO too
 - Host ports: frontend `:5175`, backend API `:8001` (docs at `/docs`), postgres
   `:5434`, redis `:63790`, MinIO console `:9001`. Inside the `dev` container the
   stack is reachable at `:8000` / `:5173`.
-- `make dev-up` requires the opencode binary (`${HOME}/.opencode/bin/opencode`);
-  install with `curl -fsSL https://opencode.ai/install | bash`. It pre-creates
-  `~/.config/opencode` and `~/.gitconfig` (mounted read-only into the container).
+- The in-container agent needs a **Linux** opencode binary at
+  `${HOME}/.opencode/bin/opencode` (Linux or WSL2). It is optional: if the
+  binary is absent or is a macOS/Windows executable, the sandbox starts without
+  the agent layer instead of failing. `make opencode` / `make shell` still
+  require it. On macOS and native Windows, run `opencode` on the host against
+  the running stack. When present, the preflight creates `~/.config/opencode`
+  and `~/.gitconfig` (mounted read-only into the container).
 
 ## Code with AI — sandboxed (recommended)
 
