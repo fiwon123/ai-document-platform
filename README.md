@@ -102,28 +102,44 @@ Instantly preview extracted text from processed documents with clean formatting 
 
 ## Quick Start
 
-**Two commands. That is the whole setup.**
+**Requirements: Docker, and `git` to clone.** Nothing else — no Python, Node
+or AI key just to start it. Windows, macOS and Linux all use the same command.
 
-```bash
-git clone https://github.com/fiwon123/ai-document-platform.git
-cd ai-document-platform
-docker compose up
-```
+1. Install [Docker](https://www.docker.com/products/docker-desktop/) (Docker
+   Desktop on macOS/Windows, Docker Engine + Compose plugin on Linux).
+2. Get the code and start the stack from its root:
 
-That starts the **entire platform** — frontend, API, background worker,
-PostgreSQL, Redis and MinIO — on **Linux, macOS and Windows**.
+   ```bash
+   git clone https://github.com/fiwon123/ai-document-platform.git
+   cd ai-document-platform
+   docker compose up
+   ```
 
-| You need | You do **not** need |
+> **No `git`?** Download the ZIP from the repository's GitHub page instead,
+> then run `docker compose up` in the extracted folder.
+
+This one command brings up the whole platform as **five containers**:
+
+| Container | Runs |
 |---|---|
-| Docker with the Compose plugin | Python, Node, or `make` |
-| — | WSL2 |
-| — | An AI/LLM key |
-| — | Any host setup beyond the clone |
+| `dev` | the frontend **and** the API (both, in one container) |
+| `worker` | the background document processor |
+| `postgres` | the database |
+| `redis` | the queue and cache |
+| `minio` | S3-compatible object storage |
 
 The first run builds the images (a few minutes); later runs start in seconds.
-When it is ready:
 
-| Service | URL |
+> **Prefer not to tie up your terminal?** Start detached instead —
+> `docker compose up -d` — and follow it with `docker compose logs -f` (all
+> containers) or `docker compose logs -f dev` (the app only). Everything below
+> works the same either way.
+
+**When it is ready**, `docker compose ps` shows all five running (`worker` has no
+healthcheck; the other four report `(healthy)`). In the foreground, run that from
+a second terminal. Then open the application:
+
+| Where | Address |
 |---|---|
 | **Application** | http://localhost:5175 |
 | **API docs (Swagger)** | http://localhost:8001/docs |
@@ -131,28 +147,34 @@ When it is ready:
 | PostgreSQL | `localhost:5434` |
 | Redis | `localhost:63790` |
 
-Press `Ctrl+C` to stop, or run `docker compose down` from another terminal.
-Add `-d` (`docker compose up -d`) to run it in the background.
+> **Start using it right away.** Upload, process, preview and keyword-search
+> documents with no configuration at all. Semantic search and Q&A additionally
+> need an embedding/chat provider — optional, and covered in
+> [DEVELOPMENT.md](./DEVELOPMENT.md) → *LLM provider config in the sandbox*.
 
-> **No AI key required for a first look.** Without a provider the app still
-> uploads, processes, previews and keyword-searches documents; semantic search
-> and Q&A need an embedding/chat provider. To enable them, copy the provider
-> variables into a gitignored `.env` at the repository root (see
-> [DEVELOPMENT.md](./DEVELOPMENT.md) → *LLM provider config in the sandbox*),
-> then `docker compose up` again.
-
-**Everything below this point is optional.** It is for people who want hot
-reload, the background worker's logs, or the sandboxed AI coding agent. If you
-are here to see the platform run, you are already done.
+**To stop:** if you started in the foreground, `Ctrl+C` in that terminal. If you
+started detached (`-d`), run `docker compose down` — pressing `Ctrl+C` there only
+stops the log tail, not the stack.
 
 ---
 
+**Everything below this point is optional.** It is only for people working
+*on* the code. If you came to see the platform run, you are already done.
+
 ### Optional: development mode
 
-Development mode adds hot reload, the background worker, and (where the host
-allows it) the sandboxed AI coding agent. **None of it is needed to run the
-app** — `docker compose up` above already runs all five services with the same
-behaviour.
+> Throughout this README, **"the sandbox"** means this Docker Compose stack —
+> the same five containers. The commands below wrap those containers rather
+> than replace them.
+
+The commands below are a convenience layer over the same Compose files: they
+add an interactive shell in the container, `Makefile` short-cuts (`dev-log`,
+`dev-down`, and `reset`, which **deletes all data** — see
+*[Reset everything](#reset-everything)*) and, on Linux or inside WSL2, the
+sandboxed AI coding agent. They start the identical five services.
+
+Everything here is optional — the WSL2 and `make` requirements below apply
+**only** if you choose this path.
 
 Pick your platform:
 
