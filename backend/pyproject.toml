@@ -19,7 +19,7 @@ dependencies = [
     "psycopg[binary]>=3.2.0",
     # pypdf is the maintained continuation of PyPDF2 (the project was
     # renamed; PyPDF2 3.0.1 was the last release under that name).
-    "pypdf>=4.0.0",
+    "pypdf>=6.21.2",
     "python-jose[cryptography]>=3.5.0",
     "redis>=5.0.0",
     # psycopg3 is the default driver for driverless postgresql:// URLs since
