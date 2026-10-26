@@ -36,7 +36,7 @@ dev = [
     "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
-    "ruff>=0.16.10",
+    "ruff>=0.17.2",
     # Parses docker-compose.yaml in tests/test_compose_env.py, which pins the
     # sandbox's provider variables to the app's own defaults. Already resolved
     # transitively via alembic; declared here so the test does not rely on
